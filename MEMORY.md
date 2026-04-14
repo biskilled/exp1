@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 17:55 UTC by aicli /memory_
+_Generated: 2026-04-14 18:26 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL pgvector) with an Electron desktop UI, enabling teams to capture, synthesize, and query project events through 4-layer memory architecture (session → raw capture → LLM digests → actionable facts). The system features async DAG workflow execution, multi-LLM provider support, semantic search via embeddings, and unified tag management, currently focused on consolidating UI components and normalizing database schema for stability.
 
 ## Project Facts
 
@@ -219,21 +223,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)
-- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items
-- Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id → project_id → created_at/processed_at/embedding at end
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)
+- Tag system: unified planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater; clean category-based organization
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## In Progress
 
 - Feature snapshot implementation (2026-04-12) — mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking
-- UI work items & planner refactor (2026-04-13) — Fixed duplicate `const cats` declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
-- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration to save space
+- UI work items & planner refactor (2026-04-13) — Fixed duplicate const cats declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
+- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration
 - Tag cleanup & consolidation (2026-04-13) — Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events
-- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m039 migrations for schema cleanup
-- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (in design phase)
+- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m041 migrations for schema cleanup
+- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (design phase)
 
 ## Active Features / Bugs / Tasks
 
@@ -285,145 +289,35 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-14
+### `prompt_batch: 05e9af57-76f6-4aef-bb28-8347693f4099` — 2026-04-14
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index a455e25..24115c5 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
-+- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-+- Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
-+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
- - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
--- Project startup race condition fix (2026-03-20) — Sequential `await api.listProjects()` prevents empty home screen; edge case where list succeeds but returns empty now handled
--- Pipeline sidebar caching (2026-03-20) — `_listCache` stores {workflows, roles, runs} to prevent redundant API calls during pipeline UI rendering
- - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
--- Memory endpoint code_dir scoping (2026-03-18) — Fixed undefined template variable causing CLAUDE.md generation failure; variable now properly scoped from config
- - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
+User requested consolidating Planer's 4 tabs (Feature, Tag, Bugs, Tags) into a single unified tag management system with categories, tag properties (status, description, due date, assigned user), and quick access to active tags via chat (+) listbox.
 
+### `prompt_batch: cc2769f9-f6ba-4197-8f12-570d8750f00d` — 2026-04-14
 
-### `commit` — 2026-04-14
+User asked me to use the MCP tool and explain a project, but no actual conversation or project details were provided yet.
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index eca8ccf..5299476 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-20 19:53 UTC
-+> Generated by aicli 2026-03-20 21:51 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -44,4 +44,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
- - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
- - 2-pane approval chat workflow for requirement negotiation before work_item save
--- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
-\ No newline at end of file
-+- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
-\ No newline at end of file
+### `prompt_batch: test-session-verify` — 2026-04-14
 
+Verified that the client_id fix resolves the prompt handling issue; system now correctly processes prompts with proper client identification.
 
-### `commit` — 2026-04-14
+### `prompt_batch: test-schema-001` — 2026-04-14
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index e6fb745..2371610 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 19:53 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 21:51 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
- - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
- - 2-pane approval chat workflow for requirement negotiation before work_item save
--- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
-+- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-20] Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
--- [2026-03-20] Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
- - [2026-03-20] I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
- - [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
--- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-\ No newline at end of file
-+- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-+- [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
-+- [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
-\ No newline at end of file
+Test prompt submitted post-migration with no substantive content or decision to extract.
 
+### `prompt_batch: final-verify` — 2026-04-14
 
-### `commit` — 2026-04-14
+User requested a final verification prompt but provided no prior conversation context or decisions to summarize.
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index e6fb745..2371610 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 19:53 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-20 21:51 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -44,12 +44,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - MCP server (stdio) with 12+ tools for project state, memory search, entity management, feature status
- - Per-project DB tables indexed on phase/feature/session_id for fast contextual retrieval
- - 2-pane approval chat workflow for requirement negotiation before work_item save
--- Hierarchical data model: Clients contain Users; per-project tables (commits_{p}, events_{p}, embeddings_{p}, etc.); shared auth/billing tables
-+- System roles for document generation (e.g., PM, architect roles with specific output formatting expectations)
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-20] Currently  memory_items (compressed knowledge) is based on prompt/responses, commit, workflows node results.  I would li
--- [2026-03-20] Projects only loading when I press to prject tab. as Project  loaded as default page, it should load when app is starter
- - [2026-03-20] I still dont see the project loaded when app is started. all I can see in the logs is  Application startup complete. (us
- - [2026-03-20] I am testing the Pipeline - when I clicked approved I do see the old md version . I would expcet to see process and afte
--- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-\ No newline at end of file
-+- [2026-03-20] I do see that last version is arhcitet, pm... and all the rest are not under old folder. Also - I would like to provide 
-+- [2026-03-20] Work Item pieplien suppose to use the existing roles - PM - project manage, architect - Sr architect. can you optimize t
-+- [2026-03-20] I would like to start optimising the project motly the following buiding block - sql queries, and running the workflow w
-\ No newline at end of file
+### `prompt_batch: 04d3b8ba-c786-4b24-b0d6-ed49009f369d` — 2026-04-14
 
+User requested three database schema updates: add llem_source column after project column, add embedding columns at the end of all tables that contain embeddings, and refactor database.py to remove unused tables and reduce file length.
 
-### `commit` — 2026-04-14
+## AI Synthesis
 
-Commit: chore: update system context and session state files
-Hash: 8dab27e6
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit` — 2026-04-14
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 24115c5..eaeaf0a 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- SQL query optimization (2026-03-20) — P0 issues identified: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
-+- SQL query optimization (2026-03-20) — P0 issues: row-by-row INSERT in event migration (2000+ queries for 1000 events) and unbounded fetchall() in memory synthesis; requires batch INSERT refactor and pagination
- - Workflow performance optimization (2026-03-20) — Workflow execution runs very slowly; requires analysis of async DAG executor bottlenecks and potential query caching improvements
--- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations (e.g., document generation role outputs short bullet-point descriptions)
-+- System roles enhancement (2026-03-20) — Optimize work_item pipeline to use existing roles (PM, architect) and add system roles with formatting expectations for document generation
- - Pipeline approval workflow rendering (2026-03-20) — Old MD version displayed instead of current output/progress logs; requires chat panel state management and step sequencing investigation
- - UUID validation in pipeline run queries (2026-03-19) — psycopg2 InvalidTextRepresentation when string 'recent' passed to UUID field; requires UUID object conversion in backend
- - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
-
+**[2026-04-14]** `migration` — Completed memory mirror tables refactor; reordered mem_mrr_prompts columns (project_id/event_id moved after client_id) to align schema convention (client_id → project_id → metadata).
+**[2026-04-13]** `event-schema` — Dropped importance column from mem_ai_events; restructured column ordering to client_id → project_id → created_at/processed_at/embedding; cleaned up orphaned old table after successful migration.
+**[2026-04-13]** `tag-consolidation` — Stripped system metadata (llm, event, chunk_type, commit_hash, etc.) from 1441 events; preserved only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events during backfill.
+**[2026-04-13]** `planner-ui` — Fixed duplicate const cats declaration breaking Electron app initialization; refactored planner UI to show categories (bug/feature/task) with proper work item linking and improved tag acceptance workflow.
+**[2026-04-12]** `feature-snapshot` — Implemented mem_ai_feature_snapshot table merging user requirements with work items; added summaries, use cases, and delivery type tracking (code/document/architecture/ppt).
+**[2026-04-12]** `dashboard-planning` — Designed new dashboard tab for pipeline visibility; enabled pipeline triggering from planner/docs/chat modules; created 2-pane approval panel for workflow execution negotiation (design phase).

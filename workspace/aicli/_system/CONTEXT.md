@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 18:26 UTC — do not edit manually.
+> Auto-generated 2026-04-14 18:27 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 528
-- **Last active**: 2026-04-14T18:26:02Z
+- **Sessions**: 529
+- **Last active**: 2026-04-14T18:26:52Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -59,11 +59,11 @@
 ## In Progress
 
 - Feature snapshot implementation (2026-04-12) — mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking
-- UI work items & planner refactor (2026-04-13) — Fixed duplicate `const cats` declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
-- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration to save space
+- UI work items & planner refactor (2026-04-13) — Fixed duplicate const cats declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
+- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration
 - Tag cleanup & consolidation (2026-04-13) — Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events
-- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m039 migrations for schema cleanup
-- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (in design phase)
+- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m041 migrations for schema cleanup
+- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (design phase)
 
 ## Key Decisions
 
@@ -76,10 +76,10 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)
-- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items
-- Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id → project_id → created_at/processed_at/embedding at end
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)
+- Tag system: unified planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater; clean category-based organization
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 
