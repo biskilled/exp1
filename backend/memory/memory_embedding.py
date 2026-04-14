@@ -636,48 +636,6 @@ class MemoryEmbedding:
         except Exception as e:
             log.debug(f"process_commit column update error: {e}")
 
-        # Per-file diff chunks (raw embed) — file/language/symbol stats now live in
-        # mem_mrr_commits_code (populated by memory_code_parser.extract_commit_code)
-        try:
-            # Prefer project-specific code_dir from DB; fall back to settings.code_dir
-            code_dir = settings.code_dir
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT code_dir FROM mng_projects WHERE name=%s AND code_dir IS NOT NULL LIMIT 1",
-                            (project,),
-                        )
-                        prow = cur.fetchone()
-                        if prow and prow[0]:
-                            code_dir = prow[0]
-            except Exception:
-                pass
-            if code_dir:
-                result = subprocess.run(
-                    ["git", "show", "--format=%B%n---DIFF---", commit_hash_val],
-                    cwd=code_dir, capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode == 0:
-                    parts = result.stdout.split("\n---DIFF---\n", 1)
-                    diff_text = parts[1] if len(parts) > 1 else ""
-                    if diff_text.strip():
-                        diff_chunks = MemoryEmbedding.smart_chunk_diff(
-                            diff_text, commit_hash_val, {"commit_msg": commit_msg}
-                        )
-                        # Skip chunk[0] (summary) — Haiku digest is already chunk=0
-                        for i, dc in enumerate(diff_chunks[1:], start=1):
-                            dc_content = dc.get("content", "")
-                            dc_emb = await _embed(dc_content)
-                            _upsert_event(
-                                project, "commit", commit_hash_val, i, "diff_file",
-                                dc_content, dc_emb,
-                                session_id=session_id, tags=mrr_tags,
-                                event_cnt=1,
-                            )
-        except Exception as e:
-            log.debug(f"process_commit diff chunks error: {e}")
-
         return event_id
 
     async def process_item(

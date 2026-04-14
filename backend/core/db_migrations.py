@@ -896,6 +896,24 @@ def m039_reorder_mem_mrr_prompts(conn) -> None:
     log.info("m039: mem_mrr_prompts reordered (event_id moved after project_id) and _old dropped")
 
 
+def m041_drop_diff_file_chunks(conn) -> None:
+    """Delete all diff_file chunk rows from mem_ai_events.
+
+    The old process_commit() created 1 Haiku summary row (chunk=0, chunk_type='summary')
+    PLUS N raw diff-text chunks (chunk=1..N, chunk_type='diff_file') — one per changed file.
+    These diff_file rows were never useful for display and are noisy for semantic search.
+    Per-symbol data lives in mem_mrr_commits_code; the summary (chunk=0) is kept.
+
+    The new process_commit_batch() never creates diff_file chunks, and the loop in
+    process_commit() was removed. This migration cleans up all 2105 legacy rows.
+    """
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM mem_ai_events WHERE chunk_type = 'diff_file'")
+        deleted = cur.rowcount
+    conn.commit()
+    log.info(f"m041: deleted {deleted} diff_file chunk rows from mem_ai_events")
+
+
 def m040_backfill_event_cnt_and_tags(conn) -> None:
     """Backfill event_cnt and tags on existing mem_ai_events rows.
 
@@ -1023,4 +1041,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m038_drop_commits_code_embedding", m038_drop_commits_code_embedding),
     ("m039_reorder_mem_mrr_prompts", m039_reorder_mem_mrr_prompts),
     ("m040_backfill_event_cnt_and_tags", m040_backfill_event_cnt_and_tags),
+    ("m041_drop_diff_file_chunks", m041_drop_diff_file_chunks),
 ]

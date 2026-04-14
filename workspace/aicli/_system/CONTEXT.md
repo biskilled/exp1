@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 12:05 UTC — do not edit manually.
+> Auto-generated 2026-04-14 13:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 507
-- **Last active**: 2026-04-14T12:04:37Z
+- **Sessions**: 508
+- **Last active**: 2026-04-14T12:40:59Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extension
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ + Electron-builder; Vite dev server
@@ -49,7 +49,7 @@
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m037)
+- **schema_management**: db_schema.sql + db_migrations.py (m001-m037)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
@@ -57,11 +57,11 @@
 ## In Progress
 
 - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
 - Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
 - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
-- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history
 
 ## Key Decisions
 
@@ -74,12 +74,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
 
 ---
 

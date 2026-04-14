@@ -376,8 +376,8 @@ All tables follow a structured naming convention:
 ## Recent Work
 
 - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
 - Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
 - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
-- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history

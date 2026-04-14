@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 12:04 UTC by aicli /memory_
+_Generated: 2026-04-14 12:41 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python CLI/FastAPI backend with an Electron desktop UI, enabling teams to synthesize development context through semantic search, workflows, and LLM-powered memory synthesis. The project uses PostgreSQL with pgvector embeddings, async DAG workflows, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw events and commits into structured work items and project facts. Current development focus is on data integrity (tag cleanup, event repair) and completing history display/rendering features post-schema stabilization.
 
 ## Project Facts
 
@@ -190,7 +194,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extension
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
 - **build_tooling**: npm 8+ + Electron-builder; Vite dev server
@@ -201,7 +205,7 @@ Reviewer: ```json
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **deployment_local**: bash start_backend.sh + npm run dev
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
-- **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m037)
+- **schema_management**: db_schema.sql + db_migrations.py (m001-m037)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
@@ -217,21 +221,21 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
 
 ## In Progress
 
 - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking (prompt_created/updated, commit_created/updated, etc.) and event_id backfill logic
+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
 - Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
 - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
-- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps identified; 2026-04-06 JSONB operator conflict in route_history fixed
+- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history
 
 ## Active Features / Bugs / Tasks
 
@@ -285,131 +289,52 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index f85ad22..1514012 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-28 01:43 UTC
-+> Generated by aicli 2026-03-28 01:46 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak
+new file mode 100644
+index 0000000..81f5c1f
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/tr.lproj/locale.pak differ
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 4db285f..809086a 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 01:43 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 01:46 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-27] I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
- - [2026-03-27] Where is the file ? I cannnot see that in the folder
- - [2026-03-27] I do see that you have native /memory function as well. what is it ?
- - [2026-03-28] Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
--- [2026-03-28] Can you fix that and update the aicli_memory.md with all changes you did
-\ No newline at end of file
-+- [2026-03-28] Can you fix that and update the aicli_memory.md with all changes you did
-+- [2026-03-28] is the file aicli_memory.md shows the correct flow (including the one you have added) ?
-\ No newline at end of file
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak
+new file mode 100644
+index 0000000..a6f833c
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/th.lproj/locale.pak differ
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 4db285f..809086a 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 01:43 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 01:46 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -56,8 +56,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-27] I do see that in any llm repsonse is summerised - when is it happend, can you also add all the internal prompt you are u
- - [2026-03-27] Where is the file ? I cannnot see that in the folder
- - [2026-03-27] I do see that you have native /memory function as well. what is it ?
- - [2026-03-28] Based on what you wrote and understand about the current memoery layer, should I add mem0, zen or blackboard layer, woul
--- [2026-03-28] Can you fix that and update the aicli_memory.md with all changes you did
-\ No newline at end of file
-+- [2026-03-28] Can you fix that and update the aicli_memory.md with all changes you did
-+- [2026-03-28] is the file aicli_memory.md shows the correct flow (including the one you have added) ?
-\ No newline at end of file
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak
+new file mode 100644
+index 0000000..e30eca7
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/te.lproj/locale.pak differ
 
 
 ### `commit` — 2026-04-14
 
-Commit: chore: update AI memory and context files after session fa5883c1
-Hash: 45ca2794
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - aicli_memory.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/routers/route_search.py b/backend/routers/route_search.py
-index 8b69d2e..fd37037 100644
---- a/backend/routers/route_search.py
-+++ b/backend/routers/route_search.py
-@@ -56,6 +56,9 @@ class SearchRequest(BaseModel):
-     # Tag-aware filters — restrict results to events with this phase/feature
-     phase: Optional[str] = None
-     feature: Optional[str] = None
-+    # Entity-tag filters — restrict to embeddings tagged with a specific entity value or category
-+    entity_name: Optional[str] = None       # e.g. "auth", "UI dropbox"
-+    entity_category: Optional[str] = None  # e.g. "bug", "feature", "task"
- 
- 
- @router.post("/semantic")
-@@ -76,6 +79,8 @@ async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
-         chunk_types=body.chunk_types or None,
-         phase=body.phase,
-         feature=body.feature,
-+        entity_name=body.entity_name,
-+        entity_category=body.entity_category,
-     )
-     return {"results": results, "query": body.query, "total": len(results)}
- 
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak
+new file mode 100644
+index 0000000..08c14a2
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ta.lproj/locale.pak differ
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
-index 08d5aef..06f44fe 100644
---- a/backend/routers/route_projects.py
-+++ b/backend/routers/route_projects.py
-@@ -2125,6 +2125,13 @@ async def _sync_and_autotag(project: str, since: str | None = None) -> None:
-     except Exception as e:
-         logging.getLogger(__name__).debug(f"_sync_and_autotag auto-tag failed: {e}")
- 
-+    # Propagate all entity tags into embedding metadata so search_memory filters work
-+    try:
-+        from memory.mem_embeddings import backfill_entity_tags as _bfe
-+        await _bfe(project)
-+    except Exception:
-+        pass
-+
- 
- async def _detect_relationships(project: str, since: str | None = None) -> None:
-     """Detect and create relationships between new events. Silent on error.
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak
+new file mode 100644
+index 0000000..0f0f141
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sw.lproj/locale.pak differ
 
+
+### `commit` — 2026-04-14
+
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak
+new file mode 100644
+index 0000000..ad592b5
+Binary files /dev/null and b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/sv.lproj/locale.pak differ
+
+
+## AI Synthesis
+
+**2026-04-06** `internal` — Completed tag system metadata cleanup (Passes 0-2) removing system metadata from 1441 events while preserving user-facing tags (phase, feature, bug, source); repaired 6 corrupt session_summary events with malformed JSON arrays. **2026-04-06** `internal` — Redesigned mem_mrr_tags with per-source-type UPSERT logic including timestamp tracking (prompt_created/updated, commit_created/updated) and event_id backfill to link raw captures to synthesized events. **2026-04-05** `internal` — Executed schema migration m037 removing deprecated importance column from mem_ai_events and completed column reordering with cleanup of _old tables. **2026-04-04** `infrastructure` — Resolved PostgreSQL nohup logging issues by switching to fresh log file paths on backend startup, eliminating stale file handle errors. **2026-04-02** `ui` — Fixed JSONB operator conflict in route_history endpoint; identified gaps in history display rendering (prompt + response incomplete rendering, copy-to-clipboard functionality). **2026-03-28** `feature` — AI tag suggestion system in production with approve/remove button handlers; refactored chip markup and improved tooltip UX from 'No existing tag' to 'Does not exist yet'.
