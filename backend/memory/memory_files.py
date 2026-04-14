@@ -88,7 +88,8 @@ _SQL_BLOCKED_TAGS = """
 
 _SQL_TOP_EVENTS = """
     SELECT content, event_type, created_at,
-           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
+           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance,
+           tags, session_id
     FROM mem_ai_events
     WHERE project_id=%s
     ORDER BY relevance DESC
@@ -249,6 +250,8 @@ class MemoryFiles:
                             "event_type": r[1],
                             "created_at": r[2].isoformat() if r[2] else "",
                             "relevance":  float(r[3]) if r[3] else 0.0,
+                            "tags":       r[4] or {},
+                            "session_id": r[5],
                         }
                         for r in cur.fetchall()
                     ]

@@ -1193,6 +1193,14 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
           ${descClip ? `<div style="font-size:0.6rem;color:var(--muted);margin-top:0.08rem;
                                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                              title="${_esc(desc)}">${_esc(descClip)}</div>` : ''}
+          ${wi.tags && Object.keys(wi.tags).some(k=>['phase','feature','bug'].includes(k)) ? `
+          <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-top:0.12rem">
+            ${Object.entries(wi.tags).filter(([k])=>['phase','feature','bug'].includes(k)).map(([k,v])=>{
+              const col = k==='bug'?'#e74c3c':k==='feature'?'#3498db':'#27ae60';
+              return `<span style="font-size:0.48rem;padding:0 0.28rem;border-radius:6px;
+                        background:${col}18;color:${col};border:1px solid ${col}33">${_esc(String(v))}</span>`;
+            }).join('')}
+          </div>` : ''}
         </td>
         <td style="padding:0.42rem 0.5rem;text-align:right;white-space:nowrap;
                    font-size:0.65rem;color:var(--text2);font-variant-numeric:tabular-nums;
@@ -1308,6 +1316,17 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <span>&#8859; ${wi.commit_count||0} commits</span>
           <span id="wi-stat-files-${id}"></span>
         </div>
+
+        <!-- Context tags (phase/feature/bug from events) -->
+        ${wi.tags && Object.keys(wi.tags).length ? `
+        <div style="display:flex;flex-wrap:wrap;gap:0.3rem;align-items:center">
+          ${Object.entries(wi.tags).filter(([k])=>['phase','feature','bug'].includes(k)).map(([k,v])=>{
+            const col = k==='bug'?'#e74c3c':k==='feature'?'#3498db':'#27ae60';
+            return `<span style="font-size:0.55rem;padding:0.1rem 0.4rem;border-radius:8px;
+                      background:${col}18;color:${col};border:1px solid ${col}44;white-space:nowrap"
+                    title="${_esc(k)}">${_esc(k)}: ${_esc(String(v))}</span>`;
+          }).join('')}
+        </div>` : ''}
 
         <!-- Actions row: Extract Code + Refresh AI -->
         <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">

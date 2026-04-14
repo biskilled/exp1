@@ -11,6 +11,7 @@ Endpoints:
     POST /memory/{project}/regenerate           — regenerate context files from DB
     GET  /memory/{project}/llm-prompt           — get rendered system prompt (compact|full|gemini)
     POST /memory/{project}/embed-commits        — run Haiku digest + embedding for all unprocessed commits
+    POST /memory/{project}/embed-prompts        — process all pending prompts across all sessions
 """
 from __future__ import annotations
 
@@ -381,6 +382,57 @@ async def embed_commits(
     emb = MemoryEmbedding()
     n = await emb.process_commit_batch(project, min_commits=1)
     return {"events_created": n, "project": project}
+
+
+@router.post("/{project}/embed-prompts")
+async def embed_prompts(project: str):
+    """Process all pending prompts across every session for this project.
+
+    For each session that has prompts with event_id IS NULL, runs
+    process_prompt_batch() to create mem_ai_events rows and back-propagate
+    event_id. Useful as a backfill after a session ends without triggering
+    the periodic batch digest.
+    Returns count of events created and sessions processed.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    project_id = db.get_or_create_project_id(project)
+    # Find all sessions with unprocessed prompts
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT session_id, COUNT(*) as cnt
+                       FROM mem_mrr_prompts
+                       WHERE project_id=%s AND event_id IS NULL
+                       GROUP BY session_id
+                       ORDER BY cnt DESC""",
+                    (project_id,),
+                )
+                sessions = cur.fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    from memory.memory_embedding import MemoryEmbedding
+    emb = MemoryEmbedding()
+    total_events = 0
+    sessions_done = 0
+    for session_id, prompt_cnt in sessions:
+        try:
+            event_id = await emb.process_prompt_batch(project, str(session_id), prompt_cnt)
+            if event_id:
+                sessions_done += 1
+                total_events += 1  # at least 1 event per session
+        except Exception as _e:
+            log.debug(f"embed_prompts: session {str(session_id)[:8]} error: {_e}")
+
+    return {
+        "project": project,
+        "sessions_processed": sessions_done,
+        "sessions_found": len(sessions),
+        "events_created": total_events,
+    }
 
 @router.post("/{project}/dedup-work-items")
 async def dedup_work_items(project: str):
