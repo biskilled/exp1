@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 14:44 UTC by aicli /memory_
+_Generated: 2026-04-14 14:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -286,258 +286,101 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index d4cef1a..af19f4c 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -382,6 +382,21 @@ async def embed_commits(
-     n = await emb.process_commit_batch(project, min_commits=1)
-     return {"events_created": n, "project": project}
- 
-+@router.post("/{project}/dedup-work-items")
-+async def dedup_work_items(project: str):
-+    """Merge duplicate work items that share the same feature or bug tag.
-+
-+    For each tag value that maps to multiple work items, keeps one canonical
-+    item (named after the tag value) and merges all others into it.
-+    Re-links mem_ai_events.work_item_id to the canonical item.
-+    """
-+    if not db.is_available():
-+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
-+    from memory.memory_promotion import MemoryPromotion
-+    result = await MemoryPromotion().dedup_work_items(project)
-+    return {"project": project, **result}
-+
-+
- @router.get("/{project}/pipeline-status")
- async def get_pipeline_status(project: str):
-     """Return pipeline health dashboard: last-24h stats per pipeline, pending counts, recent errors."""
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/memory/memory_promotion.py b/backend/memory/memory_promotion.py
-index 1e6eede..f8ea4eb 100644
---- a/backend/memory/memory_promotion.py
-+++ b/backend/memory/memory_promotion.py
-@@ -173,20 +173,62 @@ _SQL_INSERT_EXTRACTED_WORK_ITEM = """
-     VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid,
-             (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
-     ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
--        desc_ai              = EXCLUDED.desc_ai,
-+        desc_ai              = CASE WHEN EXCLUDED.desc_ai != ''
-+                                    THEN EXCLUDED.desc_ai
-+                                    ELSE mem_ai_work_items.desc_ai END,
-         acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
-                                       THEN EXCLUDED.acceptance_criteria_ai
-                                       ELSE mem_ai_work_items.acceptance_criteria_ai END,
--        action_items_ai      = CASE WHEN EXCLUDED.action_items_ai != ''
--                                    THEN EXCLUDED.action_items_ai
--                                    ELSE mem_ai_work_items.action_items_ai END,
-+        action_items_ai      = CASE
-+                                    WHEN EXCLUDED.action_items_ai = '' THEN mem_ai_work_items.action_items_ai
-+                                    WHEN mem_ai_work_items.action_items_ai = '' THEN EXCLUDED.action_items_ai
-+                                    ELSE mem_ai_work_items.action_items_ai || E'\n---\n' || EXCLUDED.action_items_ai
-+                               END,
-         tags                 = CASE WHEN EXCLUDED.tags != '{}'::jsonb
-                                     THEN mem_ai_work_items.tags || EXCLUDED.tags
-                                     ELSE mem_ai_work_items.tags END,
-+        source_event_id      = COALESCE(mem_ai_work_items.source_event_id, EXCLUDED.source_event_id),
-         updated_at           = NOW()
-     RETURNING id
- """
- 
-+# Link a single event row to a work item
-+_SQL_LINK_EVENT_TO_WI = """
-+    UPDATE mem_ai_events SET work_item_id = %s::uuid
-+    WHERE id = %s::uuid AND project_id = %s
-+"""
-+
-+# Find work items that share the same feature tag (for dedup)
-+_SQL_WI_GROUPS_BY_FEATURE = """
-+    SELECT
-+        tags->>'feature' AS tag_val,
-+        'feature'        AS tag_key,
-+        array_agg(id::text ORDER BY
-+            CASE WHEN tag_id_user IS NOT NULL THEN 0 ELSE 1 END ASC,
-+            created_at ASC
-+        ) AS ids
-+    FROM mem_ai_work_items wi
-+    WHERE project_id = %s
-+      AND tags->>'feature' IS NOT NULL AND tags->>'feature' != ''
-+    GROUP BY 1
-+    HAVING COUNT(*) > 1
-+"""
-+
-+_SQL_WI_GROUPS_BY_BUG = """
-+    SELECT
-+        tags->>'bug'  AS tag_val,
-+        'bug'         AS tag_key,
-+        array_agg(id::text ORDER BY
-+            CASE WHEN tag_id_user IS NOT NULL THEN 0 ELSE 1 END ASC,
-+            created_at ASC
-+        ) AS ids
-+    FROM mem_ai_work_items wi
-+    WHERE project_id = %s
-+      AND tags->>'bug' IS NOT NULL AND tags->>'bug' != ''
-+    GROUP BY 1
-+    HAVING COUNT(*) > 1
-+"""
-+
- # Keys considered "user intent" tags — copied from event tags to work item tags
- _USER_TAG_KEYS = frozenset({"source", "phase", "feature", "bug", "component",
-                              "doc_type", "design", "decision", "meeting", "customer"})
-@@ -670,14 +712,18 @@ class MemoryPromotion:
-         project: str,
-         batch_size: int = 10,
-     ) -> int:
--        """
--        Scan recent unprocessed events (prompt_batch + session_summary) and use
--        Haiku to identify actionable work items (tasks, bugs, features).
--
--        Each extracted item is stored in mem_ai_work_items with source_event_id
--        and source_session_id set so it's not re-extracted on the next run.
--
--        Returns count of work items created.
-+        """Scan unprocessed events and map them to work items.
-+
-+        Priority:
-+          1. User-tag first — if the event carries a 'feature' or 'bug' tag,
-+             use that tag value AS the work item name.  All events with the same
-+             feature/bug value are collapsed into ONE work item via the UNIQUE
-+             (project_id, category_ai, name_ai) constraint.
-+          2. AI fallback — only for events with no user tag. Haiku extracts
-+             up to 2 slugs per event; limited to avoid explosion.
-+
-+        The work_item_id is set on the event row so the link is queryable.
-+        Returns count of work items created (inserts only, not updates).
-         """
-         if not db.is_available():
-             return 0
-@@ -695,149 +741,248 @@ class MemoryPromotion:
-         if not events:
-             return 0
- 
--        system_prompt = _prompts.content("work_item_extraction") or (
--            "You are a project memory analyst. Given a digest of recent development activity, "
--            "identify actionable work items: bugs to fix, features to build, tasks to complete. "
--            "Return JSON only:\n"
--            "{\"items\": [\n"
--            "  {\"category\": \"bug|feature|task\", \"name\": \"short-slug\", "
--            "\"description\": \"1-2 sentence explanation\"}\n"
--            "]}\n"
--            "Return at most 5 items. Use lowercase-hyphenated slugs for name. "
--            "Return {\"items\": []} if nothing actionable is found."
-+        ai_fallback_prompt = _prompts.content("work_item_extraction") or (
-+            "Given a digest of development activity, identify at most 2 actionable work items. "
-+            "Return JSON only: {\"items\": [{\"category\": \"bug|feature|task\", "
-+            "\"name\": \"short-slug\", \"description\": \"1-2 sentence explanation\"}]}. "
-+            "Use lowercase-hyphenated slugs. Return {\"items\": []} if nothing actionable."
-         )
- 
-         created = 0
--        updated = 0
-+
-         for ev_id, event_type, session_id, summary, action_items, created_at, tags in events:
-             content_parts = [p for p in [summary, action_item
-
-### `commit` — 2026-04-14
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 9478ab9..9a486d4 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-14 13:22 UTC
-+> Generated by aicli 2026-04-14 13:24 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,8 +61,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
--- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-\ No newline at end of file
-+- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
-\ No newline at end of file
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 9f96448..b067896 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
+diff --git a/.ai/rules.md b/.ai/rules.md
+index ae2b838..142286b 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:12 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:26 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,11 +61,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
+@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
+-- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
++- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
  
  ## Recent Context (last 5 changes)
  
+-- [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
+ - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
+ - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
+ - [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
+-- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
+\ No newline at end of file
++- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
++- [2026-03-23] It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-14
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 9f96448..b067896 100644
+index b067896..ccb765e 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:41 UTC
  
  # aicli — Shared AI Memory Platform
- 
-@@ -61,11 +61,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
- 
- ## Recent Context (last 5 changes)
  
 
 
 ### `commit` — 2026-04-14
 
-Commit: chore: clean up legacy _system root files and consolidate context into f
-Hash: 24d0541b
-Code files (6):
+Commit: chore: remove legacy _system root files and consolidate context into sub
+Hash: be1b4050
+Code files (4):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
-  - backend/memory/memory_promotion.py
-  - backend/routers/route_memory.py
   - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-Symbols changed: _mark
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
+
+### `commit` — 2026-04-14
+
+Commit: chore: update ai context files and session state after cli session
+Hash: e03fc376
+Code files (5):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - ui/frontend/views/entities.js
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+Symbols changed: _plannerSelectCat
+
+### `commit` — 2026-04-14
+
+Commit: chore: remove legacy flat _system context files after claude session 2a6
+Hash: 63a92b63
+Generated/internal files: workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/CLAUDE.md
+
+### `commit` — 2026-04-14
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index a621d73..58c33fd 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
+ ## Recent Work
+ 
+-- Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic
++- Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
++- Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI
++- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback
++- Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
++- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+ - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+-- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations
+-- PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
+-- History display rendering: fixed JSONB operator conflict in route_history and addressed prompt + response rendering gaps
+
