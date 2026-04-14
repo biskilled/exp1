@@ -818,6 +818,200 @@ async def db_vacuum(
     return report
 
 
+@router.post("/backfill-event-tags")
+async def backfill_event_tags(
+    project: str,
+    dry_run: bool = False,
+    _: dict = Depends(_require_admin),
+):
+    """Backfill and clean mem_ai_events.tags.
+
+    Pass 1 — Strip: remove system metadata keys (llm, event, chunk_type,
+              commit_hash, commit_msg, file, files, languages, symbols,
+              rows_changed, changed_files) from all existing event tags.
+              Only phase/feature/bug/source survive.
+
+    Pass 2 — Backfill commit events: for every commit event with {} tags,
+              pull phase/feature/bug/source from mem_mrr_commits.tags.
+              Works for both old-style (source_id = commit_hash) and
+              batch-style (via mem_mrr_commits.event_id = e.id).
+
+    Pass 3 — Backfill prompt_batch events: for every prompt_batch event
+              with {} tags, merge phase/feature/bug/source from all
+              mem_mrr_prompts rows where event_id = e.id.
+
+    Idempotent — safe to run multiple times.
+    Returns counts per pass.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    project_id = db.get_or_create_project_id(project)
+    _KEEP = ("phase", "feature", "bug", "source")
+    keep_arr = list(_KEEP)
+
+    stats: dict = {"project": project, "dry_run": dry_run}
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+
+            # ── Pass 0: reset corrupt non-object tags (arrays/scalars) to {} ───
+            cur.execute("""
+                SELECT COUNT(*) FROM mem_ai_events
+                WHERE project_id = %s
+                  AND tags IS NOT NULL AND jsonb_typeof(tags) != 'object'
+            """, (project_id,))
+            stats["pass0_corrupt"] = cur.fetchone()[0]
+            if not dry_run and stats["pass0_corrupt"] > 0:
+                cur.execute("""
+                    UPDATE mem_ai_events
+                    SET tags = '{}'::jsonb
+                    WHERE project_id = %s
+                      AND tags IS NOT NULL AND jsonb_typeof(tags) != 'object'
+                """, (project_id,))
+                stats["pass0_fixed"] = cur.rowcount
+            else:
+                stats["pass0_fixed"] = 0
+
+            # ── Pass 1: strip system keys from non-empty object tags ───────────
+            # Build a new JSONB keeping only allowed keys (phase/feature/bug/source)
+            cur.execute("""
+                SELECT COUNT(*) FROM mem_ai_events
+                WHERE project_id = %s
+                  AND tags IS NOT NULL
+                  AND jsonb_typeof(tags) = 'object'
+                  AND tags != '{}'::jsonb
+            """, (project_id,))
+            stats["pass1_candidates"] = cur.fetchone()[0]
+
+            if not dry_run:
+                cur.execute("""
+                    UPDATE mem_ai_events
+                    SET tags = (
+                        SELECT COALESCE(
+                            jsonb_object_agg(k, v) FILTER (WHERE k = ANY(%s::text[])),
+                            '{}'::jsonb
+                        )
+                        FROM jsonb_each(tags) AS kv(k, v)
+                    )
+                    WHERE project_id = %s
+                      AND tags IS NOT NULL
+                      AND jsonb_typeof(tags) = 'object'
+                      AND tags != '{}'::jsonb
+                """, (keep_arr, project_id))
+                stats["pass1_updated"] = cur.rowcount
+            else:
+                stats["pass1_updated"] = 0
+
+            # ── Pass 2: backfill commit events from mem_mrr_commits ────────────
+            # Old-style: source_id = commit_hash (direct join)
+            cur.execute("""
+                SELECT COUNT(*) FROM mem_ai_events e
+                WHERE e.project_id = %s AND e.event_type = 'commit'
+                  AND e.tags = '{}'::jsonb
+                  AND EXISTS (
+                      SELECT 1 FROM mem_mrr_commits c
+                      WHERE c.project_id = %s AND c.commit_hash = e.source_id
+                  )
+            """, (project_id, project_id))
+            stats["pass2a_candidates"] = cur.fetchone()[0]
+
+            if not dry_run:
+                cur.execute("""
+                    UPDATE mem_ai_events e
+                    SET tags = (
+                        SELECT COALESCE(
+                            jsonb_object_agg(k, v) FILTER (WHERE k = ANY(%s::text[])),
+                            '{}'::jsonb
+                        )
+                        FROM mem_mrr_commits c
+                        CROSS JOIN LATERAL jsonb_each(COALESCE(c.tags, '{}'::jsonb)) AS kv(k, v)
+                        WHERE c.project_id = %s AND c.commit_hash = e.source_id
+                    )
+                    WHERE e.project_id = %s AND e.event_type = 'commit'
+                      AND (e.tags IS NULL OR e.tags = '{}'::jsonb)
+                      AND EXISTS (
+                          SELECT 1 FROM mem_mrr_commits c2
+                          WHERE c2.project_id = %s AND c2.commit_hash = e.source_id
+                      )
+                """, (keep_arr, project_id, project_id, project_id))
+                stats["pass2a_updated"] = cur.rowcount
+            else:
+                stats["pass2a_updated"] = 0
+
+            # Batch-style: source_id = 'batch_*', join via mem_mrr_commits.event_id
+            cur.execute("""
+                SELECT COUNT(*) FROM mem_ai_events e
+                WHERE e.project_id = %s AND e.event_type = 'commit'
+                  AND e.tags = '{}'::jsonb
+                  AND e.source_id LIKE 'batch\\_%%'
+                  AND EXISTS (
+                      SELECT 1 FROM mem_mrr_commits c
+                      WHERE c.project_id = %s AND c.event_id = e.id
+                  )
+            """, (project_id, project_id))
+            stats["pass2b_candidates"] = cur.fetchone()[0]
+
+            if not dry_run:
+                cur.execute("""
+                    UPDATE mem_ai_events e
+                    SET tags = (
+                        SELECT COALESCE(
+                            jsonb_object_agg(k, v) FILTER (WHERE k = ANY(%s::text[])),
+                            '{}'::jsonb
+                        )
+                        FROM (
+                            SELECT DISTINCT ON (kv.k) kv.k, kv.v
+                            FROM mem_mrr_commits c
+                            CROSS JOIN LATERAL jsonb_each(COALESCE(c.tags, '{}'::jsonb)) AS kv(k, v)
+                            WHERE c.project_id = %s AND c.event_id = e.id
+                        ) merged
+                    )
+                    WHERE e.project_id = %s AND e.event_type = 'commit'
+                      AND (e.tags IS NULL OR e.tags = '{}'::jsonb)
+                      AND e.source_id LIKE 'batch\\_%%'
+                """, (keep_arr, project_id, project_id))
+                stats["pass2b_updated"] = cur.rowcount
+            else:
+                stats["pass2b_updated"] = 0
+
+            # ── Pass 3: backfill prompt_batch events from mem_mrr_prompts ──────
+            cur.execute("""
+                SELECT COUNT(*) FROM mem_ai_events e
+                WHERE e.project_id = %s AND e.event_type = 'prompt_batch'
+                  AND (e.tags IS NULL OR e.tags = '{}'::jsonb)
+                  AND EXISTS (
+                      SELECT 1 FROM mem_mrr_prompts p
+                      WHERE p.project_id = %s AND p.event_id = e.id
+                  )
+            """, (project_id, project_id))
+            stats["pass3_candidates"] = cur.fetchone()[0]
+
+            if not dry_run:
+                cur.execute("""
+                    UPDATE mem_ai_events e
+                    SET tags = (
+                        SELECT COALESCE(
+                            jsonb_object_agg(k, v) FILTER (WHERE k = ANY(%s::text[])),
+                            '{}'::jsonb
+                        )
+                        FROM (
+                            SELECT DISTINCT ON (kv.k) kv.k, kv.v
+                            FROM mem_mrr_prompts p
+                            CROSS JOIN LATERAL jsonb_each(COALESCE(p.tags, '{}'::jsonb)) AS kv(k, v)
+                            WHERE p.project_id = %s AND p.event_id = e.id
+                        ) merged
+                    )
+                    WHERE e.project_id = %s AND e.event_type = 'prompt_batch'
+                      AND (e.tags IS NULL OR e.tags = '{}'::jsonb)
+                """, (keep_arr, project_id, project_id))
+                stats["pass3_updated"] = cur.rowcount
+            else:
+                stats["pass3_updated"] = 0
+
+    return stats
+
+
 @router.post("/migrate-to-memory-layers")
 async def migrate_to_memory_layers(project: str, _: dict = Depends(_require_admin)):
     """Migrate per-project event/tag tables to shared interactions/work_items tables.

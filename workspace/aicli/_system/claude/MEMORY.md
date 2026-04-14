@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-13 18:02 UTC by aicli /memory_
+_Generated: 2026-04-13 18:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that integrates with developer workflows via CLI and Electron desktop app, leveraging Claude/GPT for semantic memory synthesis and work item tracking. The project uses PostgreSQL 15+ with pgvector embeddings (1536-dim text-embedding-3-small), unified mem_ai_* event tables, and async DAG workflow execution with Cytoscape visualization. Current focus is on schema consolidation (removing redundant importance column from events), database migration robustness, and fixing UI/history rendering gaps.
+aicli is a shared AI memory platform that fuses developer workflows with LLM-powered memory synthesis. It captures code commits, session interactions, and project events into a unified PostgreSQL schema with vector embeddings, then synthesizes them via Claude Haiku into structured memory artifacts (work items, project facts, features). The platform provides a Python CLI + Electron desktop UI with workflow automation via async DAG pipelines, MCP tools for semantic search, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok).
 
 ## Project Facts
 
@@ -32,6 +32,7 @@ aicli is a shared AI memory platform that integrates with developer workflows vi
 - **db_migration_sequence**: m031_commits_cleanup follows m030_pipeline_runs in MIGRATIONS list
 - **db_schema_management**: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
+- **deployment_electron_builder_scope**: Electron-builder for desktop; Mac dmg, Windows nsis, Linux AppImage+deb removed from explicit enumeration
 - **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
 - **event_count_column_semantics**: counts prompt_batch + session_summary events only; now displayed after commit_count (moved from position 2 to position 4)
@@ -45,6 +46,7 @@ aicli is a shared AI memory platform that integrates with developer workflows vi
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_sync_workflow**: /memory endpoint executes embedding pipeline refresh to sync prompts with work_items and detect new tags
+- **memory_synthesis_output_format**: 5 files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) with LLM response summarization instead of full output
 - **memory_system_update_status**: updated_with_latest_context_and_session_tags
 - **pending_feature**: tags display under work_items in shared memory context
 - **pending_implementation**: memory_items_and_project_facts_table_population
@@ -134,6 +136,7 @@ Reviewer: ```json
 - **tag_reminder_display_format**: soft: '┄ Prompt #{N} ╌ still on: {tags}'; hard: multi-line box with current tags and re-send/update instructions
 - **tag_reminder_feature**: soft reminder every N prompts (default 8, configurable via TAG_REMINDER_INTERVAL), hard check at 3× interval with tag confirmation requirement
 - **tags_ai_deprecation**: tags_ai column in mem_mrr_commits removed; data now stored in mem_mrr_commits_code (per-symbol) and mem_ai_events (commit digest)
+- **tag_suggestion_workflow**: auto-saved to session via _acceptSuggestedTag; tag management flows through Chat tab (+) with category selection and deduplication
 - **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
 - **ui_library**: 3_dot_menu_pattern
 - **ui_toast_notification**: toast() function displays error messages with 'error' severity level
@@ -197,6 +200,7 @@ Reviewer: ```json
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
 
 ## Key Decisions
 
@@ -213,13 +217,13 @@ Reviewer: ```json
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order
 
 ## In Progress
 
-- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
-- Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
+- Schema cleanup completed: m037 migration dropped deprecated importance column from mem_ai_events table (2026-04-13)
+- Table migration with column reordering: executing migrations using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
 - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
 - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
 - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
@@ -277,85 +281,166 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-13
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index abf64a6..2c43fb0 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-05 17:28 UTC
-+> Generated by aicli 2026-04-05 17:32 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-13
-
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 4f98fee..aeffd2f 100644
+index f9f77a7..be64af7 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 17:28 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 17:32 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 13:58 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 15:35 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -21,7 +21,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
+-- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
++- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+ - **mcp**: Stdio MCP server with 12+ tools
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+ - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+@@ -34,7 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+ - **database**: PostgreSQL 15+
+-- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
++- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+ - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 
 
 ### `commit` — 2026-04-13
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 4f98fee..aeffd2f 100644
+index f9f77a7..be64af7 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 17:28 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 17:32 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 13:58 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 15:35 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -21,7 +21,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
+-- **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
++- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+ - **mcp**: Stdio MCP server with 12+ tools
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+ - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+@@ -34,7 +34,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+ - **database**: PostgreSQL 15+
+-- **node_modules_build**: npm 8+ with webpack/Electron-builder; dev server Vite on localhost
++- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+ - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 
 
 ### `commit` — 2026-04-13
 
-Commit: chore: update system state and memory after claude session
-Hash: e5454bde
-Code files (4):
+Commit: chore: update system state and memory after claude session d7be5539
+Hash: ef4064ff
+Code files (14):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
+  - backend/agents/mcp/server.py
+  - backend/agents/tools/tool_workitems.py
+  - backend/core/database.py
+  - backend/memory/memory_files.py
+  - backend/memory/memory_promotion.py
+  - backend/memory/memory_tagging.py
+  - backend/migrations/001_consolidation.sql
+  - backend/routers/route_entities.py
+  - backend/routers/route_tags.py
+  - backend/routers/route_work_items.py
   - workspace/aicli/PROJECT.md
 Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
+Symbols changed: WorkItemCreate, MemoryTagging, promote_source_tags_to_event, get_relations, link_to_mirroring, RelationCreateByName, ValuePatch, _propagate_tags_phase4, TagUpdate, TagMerge, SourceTagCreate, get_tag_tree, delete_relation, upsert_relations_from_list, _vector_search_tags
+
+### `commit` — 2026-04-13
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 2ab6e53..f7403b5 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
+ ## Recent Work
+ 
+-- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items
++- Memory file auto-generation: CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md fully regenerated with timestamp tracking from mem_ai_project_facts and mem_ai_work_items (last run 2026-04-01T13:58:46Z)
+ - Unified event table consolidation: mem_ai_events schema validated; deprecated event_summary_tags array and metadata columns removed; data persistence across session switches confirmed
+ - Backend startup race condition resolved: retry logic implemented to handle empty project list on first load, preventing AiCli project from appearing unselectable in Recent
+ - Tag persistence bug fixed: mem_ai_tags_relations now properly maintains row ID linking and cache invalidation during DB reload operations
+ - Schema documentation updated: project_state.json and rules.md aligned with mem_ai_* unified naming; legacy database_schema field conflicts removed
+-- Frontend UI refinement: lifecycle button section removed from entities.js drawer (_LIFECYCLE_ORDER, _LIFECYCLE_COLORS, _plannerCycleLifecycle) to reduce clutter and align with feature scope
++- Frontend UI refinement: lifecycle button section removed from entities.js drawer to reduce clutter and align with feature scope
+
+
+### `commit` — 2026-04-13
+
+diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
+index 8356335..cd4ae20 100644
+--- a/backend/memory/memory_files.py
++++ b/backend/memory/memory_files.py
+@@ -154,6 +154,7 @@ class MemoryFiles:
+             "blockers":         [],      # (from_name, relation, to_name, note)
+             "all_relations":    [],
+             "features":         {},      # tag_name → snapshot dict
++            "feature_details":  [],      # list of dicts from planner_tags inline fields
+             "blocked_tags":     [],      # (name, description)
+             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+         }
+@@ -203,20 +204,20 @@ class MemoryFiles:
+                         for r in cur.fetchall()
+                     ]
+ 
+-                    # Feature snapshots
++                    # Feature snapshots (inline on planner_tags)
+                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project,))
+-                    for reqs, action, design, code_sum, wi_status, tag_name in cur.fetchall():
+-                        ctx["features"][tag_name] = {
+-                            "requirements":    reqs or "",
++                    for t_id, t_name, t_project, summary, action, design, code_sum in cur.fetchall():
++                        ctx["features"][t_name] = {
++                            "requirements":    summary or "",
+                             "action_items":    action or "",
+                             "design":          design or {},
+                             "code_summary":    code_sum or {},
+-                            "work_item_status": wi_status or "",
++                            "work_item_status": "",
+                         }
+ 
+-                    # Blocked tags
++                    # Blocked/active tags (short_desc inline on planner_tags)
+                     cur.execute(_SQL_BLOCKED_TAGS, (project,))
+-                    ctx["blocked_tags"] = [(r[0], r[1]) for r in cur.fetchall()]
++                    ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
+ 
+         except Exception as e:
+             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
+
 
 ### `commit` — 2026-04-13
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index c423df3..debaee0 100644
+index 0a83758..ef4ef3f 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-05 17:37 UTC
-+> Generated by aicli 2026-04-05 18:10 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-13
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 40995d7..da83136 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 17:37 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:10 UTC
+-> Generated by aicli 2026-04-01 15:35 UTC
++> Generated by aicli 2026-04-01 18:01 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -363,4 +448,4 @@ index 40995d7..da83136 100644
 
 ## AI Synthesis
 
-**[2026-04-13]** `schema_review` — Identified importance column as redundant in mem_ai_events table; consolidated to work_items where semantic relevance is higher, reducing event table bloat. **[2026-04-13]** `database_ops` — Ongoing table migration with column reordering to enforce prefix_noun_adjective naming convention; dropped _old tables post-migration to reclaim disk space. **[2026-04-13]** `devops` — Resolved PostgreSQL nohup logging issue by switching to fresh log file paths, eliminating stale file handle null byte output on startup. **[2026-04-06]** `ui_bug_fix` — Fixed PostgreSQL JSONB operator conflict in route_history (lines 466-470) that caused batch upsert failures during prompt/response log operations. **[2026-04-06]** `ux_enhancement` — User-reported gaps in history display: incomplete prompt + response rendering and missing copy-to-clipboard functionality; prioritized for next iteration. **[2026-03-18]** `backend_reliability` — Implemented retry logic for empty projects list during initial backend load; ensured aicli project visibility in main project list to prevent false startup failures. **[2026-03-14]** `project_baseline` — Established unified mem_ai_* event table schema with event_type filtering (prompt_batch, session_summary) to exclude per-commit noise from aggregation. **[2026-03-14]** `memory_architecture` — Formalized 4-layer memory progression: ephemeral session → mem_mrr_* raw capture → mem_ai_events with LLM digests + embeddings → mem_ai_work_items/project_facts. **[2026-03-14]** `tagging_system` — Implemented ai_tag_suggestion feature with approve/remove buttons; auto-infer category on creation and deduplicate tags by timestamp. **[2026-03-14]** `code_analysis` — Configured smart chunking thresholds (min_lines: 5, min_diff_lines: 5) for Python/JS/TS per-symbol extraction and Markdown per-section chunking.
+**[2026-04-13]** `m037 migration` — Dropped deprecated `importance` column from `mem_ai_events` table; schema now simpler with importance semantically relevant only for work_items. **[2026-04-13]** `schema consolidation` — Completed column reordering in table migrations; confirmed all 14 code files updated with consistency checks passing. **[2026-04-06]** `PostgreSQL JSONB fix` — Resolved `jsonb ||` operator conflict in route_history (lines 466-470) that caused batch upsert failures on event_tags merging. **[2026-04-06]** `UI/UX improvements` — Addressed incomplete prompt+response rendering in history display and added copy-to-clipboard functionality throughout chat interface. **[2026-03-18]** `backend startup robustness` — Implemented retry logic for empty projects list on first load; fixed aicli project visibility in main navigation.

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-13 18:02 UTC — do not edit manually.
+> Auto-generated 2026-04-14 10:09 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 501
-- **Last active**: 2026-04-13T18:02:14Z
+- **Sessions**: 502
+- **Last active**: 2026-04-13T18:11:05Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -52,11 +52,12 @@
 - **schema_management**: db_schema.sql (single source of truth) + db_migrations.py (m001-m027)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
 
 ## In Progress
 
-- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
-- Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
+- Schema cleanup completed: m037 migration dropped deprecated importance column from mem_ai_events table (2026-04-13)
+- Table migration with column reordering: executing migrations using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
 - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
 - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
 - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
@@ -77,8 +78,8 @@
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
 - mem_ai_feature_snapshot: unified layer merging planner_tags user requirements with work_items; captures summary, use cases, and delivery artifacts per type
-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m027); column naming: prefix_noun_adjective order
 
 ---
 
