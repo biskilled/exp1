@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 23:24 UTC by aicli /memory_
+_Generated: 2026-04-14 23:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and Electron desktop UI to capture, analyze, and synthesize development work into actionable insights. The system uses async DAG workflows, Claude-based memory synthesis, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw code commits and session events into structured work items, project facts, and tagged memories. Currently stabilizing agent role automation, memory schema organization, tag suggestion workflows, and pipeline UI rendering to improve development team coordination.
+aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL + pgvector), Python CLI, and Electron desktop app to capture, synthesize, and manage development context across projects. It uses Claude Haiku for dual-layer memory synthesis, async DAG workflow execution for automation, and semantic search via embeddings to create intelligent project-wide documentation and work item tracking.
 
 ## Project Facts
 
@@ -223,7 +223,7 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
@@ -232,8 +232,8 @@ Reviewer: ```json
 
 ## In Progress
 
-- Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides
+- Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
 - Memory mirror tables refactor (2026-04-14) — mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup
 - Tag suggestion and approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
 - Pipeline execution UI rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation
@@ -291,6 +291,64 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index a440df0..6ff7ac8 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -62,10 +62,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+-- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)
+-- Tag system: unified planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater; clean category-based organization
+-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)
++- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items
++- Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater
++- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id → project_id → created_at/processed_at/embedding at end
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ 
+
+
+### `commit` — 2026-04-14
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index a440df0..6ff7ac8 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -62,10 +62,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+-- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)
+-- Tag system: unified planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater; clean category-based organization
+-- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)
++- Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items
++- Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater
++- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id → project_id → created_at/processed_at/embedding at end
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ 
+
+
+### `commit` — 2026-04-14
+
+Commit: chore: remove stale agent context and consolidated CLAUDE.md files after
+Hash: 87852109
+Code files (5):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/memory/memory_promotion.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/aicli/context.md
+
+### `commit` — 2026-04-14
+
 Commit: chore: clean up stale system context files after claude cli session 2a6b
 Hash: 77ddc19d
 Generated/internal files: workspace/aicli/_system/dev_runtime_state.json
@@ -325,255 +383,16 @@ index b776c67..a455e25 100644
  - Memory items and project_facts table population (pending) — Tables exist in schema but update logic unimplemented; blocks improved memory/context mechanism
 
 
-### `commit` — 2026-04-14
-
-diff --git a/ui/backend/routers/agent_roles.py b/ui/backend/routers/agent_roles.py
-index 133583c..24625d3 100644
---- a/ui/backend/routers/agent_roles.py
-+++ b/ui/backend/routers/agent_roles.py
-@@ -56,6 +56,7 @@ def _row_to_role(row, include_prompt: bool = True) -> dict:
-         "outputs":       row[12] if len(row) > 12 and row[12] is not None else [],
-         "role_type":     row[13] if len(row) > 13 and row[13] else "agent",
-         "output_schema": row[14] if len(row) > 14 else None,
-+        "auto_commit":   row[15] if len(row) > 15 else False,
-     }
-     if include_prompt:
-         r["system_prompt"] = row[4]
-@@ -76,7 +77,7 @@ async def list_roles(
-             cur.execute(
-                 """SELECT id, project, name, description, system_prompt,
-                           provider, model, tags, is_active, created_at, updated_at,
--                          inputs, outputs, role_type, output_schema
-+                          inputs, outputs, role_type, output_schema, auto_commit
-                    FROM mng_agent_roles
-                    WHERE client_id=1 AND is_active=TRUE AND (project='_global' OR project=%s)
-                    ORDER BY (project='_global') DESC, name""",
-@@ -103,6 +104,7 @@ class RoleCreate(BaseModel):
-     outputs:       list      = []
-     role_type:     str       = "agent"
-     output_schema: Optional[dict] = None
-+    auto_commit:   bool      = False
- 
- 
- @router.post("/")
-@@ -115,16 +117,17 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
-             cur.execute(
-                 """INSERT INTO mng_agent_roles
-                        (client_id, project, name, description, system_prompt, provider, model, tags,
--                        inputs, outputs, role_type, output_schema)
--                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-+                        inputs, outputs, role_type, output_schema, auto_commit)
-+                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id, project, name, description, system_prompt,
-                              provider, model, tags, is_active, created_at, updated_at,
--                             inputs, outputs, role_type, output_schema""",
-+                             inputs, outputs, role_type, output_schema, auto_commit""",
-                 (body.project, body.name, body.description, body.system_prompt,
-                  body.provider, body.model, body.tags,
-                  _json.dumps(body.inputs), _json.dumps(body.outputs),
-                  body.role_type,
--                 _json.dumps(body.output_schema) if body.output_schema else None),
-+                 _json.dumps(body.output_schema) if body.output_schema else None,
-+                 body.auto_commit),
-             )
-             row = cur.fetchone()
-     return _row_to_role(row, include_prompt=True)
-@@ -143,6 +146,7 @@ class RoleUpdate(BaseModel):
-     outputs:       Optional[list]      = None
-     role_type:     Optional[str]       = None
-     output_schema: Optional[dict]      = None
-+    auto_commit:   Optional[bool]      = None
-     note:          str                 = ""
- 
- 
-@@ -179,6 +183,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
-         ("model",         body.model),
-         ("tags",          body.tags),
-         ("role_type",     body.role_type),
-+        ("auto_commit",   body.auto_commit),
-     ]:
-         if val is not None:
-             fields.append(f"{col}=%s")
-@@ -214,7 +219,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
-             cur.execute(
-                 """SELECT id, project, name, description, system_prompt,
-                           provider, model, tags, is_active, created_at, updated_at,
--                          inputs, outputs, role_type, output_schema
-+                          inputs, outputs, role_type, output_schema, auto_commit
-                    FROM mng_agent_roles WHERE id=%s""",
-                 (role_id,),
-             )
-
-
-### `commit` — 2026-04-14
-
-diff --git a/ui/backend/core/work_item_pipeline.py b/ui/backend/core/work_item_pipeline.py
-index 1452125..b093323 100644
---- a/ui/backend/core/work_item_pipeline.py
-+++ b/ui/backend/core/work_item_pipeline.py
-@@ -1,11 +1,11 @@
- """
- work_item_pipeline.py — 4-agent pipeline for work item development.
- 
--Pipeline stages (all via Anthropic API):
--  1. PM        (Haiku)  — write acceptance criteria from description + project_facts
--  2. Architect (Haiku)  — write implementation plan using project_facts + memory_items
--  3. Developer (claude_model) — implement against plan + acceptance_criteria
--  4. Reviewer  (Haiku, fresh context = Trycycle) — review against criteria only;
-+Pipeline stages (all via Anthropic API, prompts loaded from DB agent roles):
-+  1. PM        (Product Manager role)  — write acceptance criteria from description
-+  2. Architect (Sr. Architect role)    — write implementation plan
-+  3. Developer (Web Developer role)    — implement against plan + AC
-+  4. Reviewer  (Code Reviewer role, fresh context) — review against criteria only;
-      returns {passed, score, issues}; loops back to Developer if score < 7, max_iterations=2
- 
- Stores graph_runs.id → work_items.agent_run_id on start.
-@@ -24,13 +24,92 @@ log = logging.getLogger(__name__)
- 
- _MAX_ITERATIONS = 2
- 
-+# Role name → fallback system prompt (used when DB is unavailable)
-+_FALLBACK_PROMPTS: dict[str, str] = {
-+    "Product Manager": (
-+        "You are a senior product manager. Given a work item, produce ONLY:\n\n"
-+        "## Task\n<one-sentence task statement>\n\n"
-+        "## Description\n<2-3 sentences: goal, user value, scope>\n\n"
-+        "## Acceptance Criteria\n"
-+        "- [ ] <specific, testable criterion 1>\n"
-+        "- [ ] <specific, testable criterion 2>\n"
-+        "- [ ] <specific, testable criterion 3 (max 5 total)>\n\n"
-+        "Rules: under 250 words total. No preamble."
-+    ),
-+    "Sr. Architect": (
-+        "You are a senior software architect. Given a task and acceptance criteria, "
-+        "produce ONLY:\n\n"
-+        "## Plan\n1. <concrete step>\n2. <concrete step>\n...(max 6 steps)\n\n"
-+        "## Files to Change\n"
-+        "- `path/to/file.py` — <what to add/modify>\n\n"
-+        "## Notes\n<2-3 sentences: key decisions, patterns to follow, risks>\n\n"
-+        "Rules: under 300 words. Be precise about file paths."
-+    ),
-+    "Web Developer": (
-+        "You are a senior full-stack developer. Given an implementation plan and "
-+        "acceptance criteria, write the actual code changes.\n\n"
-+        "For EACH file you create or modify, use this EXACT format:\n\n"
-+        "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
-+        "After all files, add:\n"
-+        "## Summary\n- <bullet: what changed>\n- <bullet: why>"
-+    ),
-+    "Code Reviewer": (
-+        "You are a senior code reviewer. Review the implementation against "
-+        "the acceptance criteria.\n\n"
-+        "Return ONLY valid JSON (no markdown fences, no preamble):\n"
-+        '{"score": <1-10>, "passed": <true|false>, '
-+        '"issues": ["..."], "suggestions": ["..."]}\n\n'
-+        "Score >= 7 means passed."
-+    ),
-+}
-+
-+
-+def _load_role(role_name: str) -> tuple[str, str, str]:
-+    """Return (system_prompt, provider, model) for the named role.
-+
-+    Falls back to _FALLBACK_PROMPTS if DB is unavailable or role not found.
-+    Returns (haiku_model, haiku_model, haiku_model) provider/model defaults.
-+    """
-+    if db.is_available():
-+        try:
-+            with db.conn() as conn:
-+                with conn.cursor() as cur:
-+                    cur.execute(
-+                        """SELECT ar.system_prompt, ar.provider, ar.model,
-+                                  COALESCE(
-+                                    string_agg(sr.content, E'\\n\\n' ORDER BY rl.order_index),
-+                                    ''
-+                                  ) AS sys_content
-+                           FROM   mng_agent_roles ar
-+                           LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
-+                           LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
-+                           WHERE  ar.name = %s AND ar.client_id = 1
-+                           GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model""",
-+                        (role_name,),
-+                    )
-+                    row = cur.fetchone()
-+                    if row:
-+                        base_prompt = row[0] or ""
-+                        provider = row[1] or "claude"
-+                        model = row[2] or settings.haiku_model
-+                        sys_content = row[3] or ""
-+                        if sys_content:
-+                            full_prompt = f"{base_prompt}\n\n{sys_content}".strip()
-+                        else:
-+                            full_prompt = base_prompt
-+                        return full_prompt, provider, model
-+        except Exception as e:
-+            log.debug(f"_load_role DB error for '{role_name}': {e}")
-+
-+    # Fallback
-+    prompt = _FALLBACK_PROMPTS.get(role_name, f"You are a {role_name}.")
-+    return prompt, "claude", settings.haiku_model
-+
- 
- def _save_pipeline_doc(project: str, work_item_id: str, filename: str, content: str) -> None:
-     """Save a pipeline stage output to the documents folder. Silent on error."""
-     import re
-     from pathlib import Path
--    from config import settings
--    from core.database import db
-     if not db.is_available():
-         return
-     try:
-@@ -105,21 +184,18 @@ async def trigger_work_item_pipeline(
-             context_block += f"[Recent Project Memory]\n{memory_text[:1500]}\n\n"
- 
-         # ── Stage 1: PM — short task spec + acceptance criteria ─────────────
--        pm_prompt = (
-+        pm_prompt_sys, _, pm_model = _load_role("Product Manager")
-+        pm_user = (
-             f"{context_block}"
-             f"Work item: **{name}**\nDescription: {description}\n\n"
-     
-
-### `commit` — 2026-04-14
-
-diff --git a/ui/backend/core/graph_runner.py b/ui/backend/core/graph_runner.py
-index 50cb8e3..751e1dd 100644
---- a/ui/backend/core/graph_runner.py
-+++ b/ui/backend/core/graph_runner.py
-@@ -639,17 +639,25 @@ def _load_workflow_from_db(workflow_id: str) -> tuple[dict, dict[str, dict], lis
-             }
- 
-             cur.execute(
--                """SELECT id, name, role_file, role_prompt, provider, model,
--                          output_schema, inject_context, require_approval, approval_msg, role_id,
--                          stateless, retry_config, success_criteria,
--                          order_index, max_retry, continue_on_fail, auto_commit
--                   FROM pr_graph_nodes WHERE workflow_id=%s ORDER BY order_index, created_at""",
-+                """SELECT n.id, n.name, n.role_file, n.role_prompt, n.provider, n.model,
-+                          n.output_schema, n.inject_context, n.require_approval, n.approval_msg,
-+                          n.role_id, n.stateless, n.retry_config, n.success_criteria,
-+                          n.order_index, n.max_retry, n.continue_on_fail,
-+                          COALESCE(n.auto_commit, ar.auto_commit, FALSE) AS auto_commit,
-+                          COALESCE(NULLIF(n.role_prompt, ''), ar.system_prompt, '') AS effective_prompt,
-+                          COALESCE(NULLIF(n.provider, ''), ar.provider, '') AS effective_provider,
-+                          COALESCE(NULLIF(n.model, ''), ar.model, '') AS effective_model
-+                   FROM   pr_graph_nodes n
-+                   LEFT JOIN mng_agent_roles ar ON ar.id = n.role_id
-+                   WHERE  n.workflow_id=%s ORDER BY n.order_index, n.created_at""",
-                 (workflow_id,),
-             )
-             for r in cur.fetchall():
-                 nodes[r[0]] = {
-                     "id": r[0], "name": r[1], "role_file": r[2],
--                    "role_prompt": r[3], "provider": r[4], "model": r[5],
-+                    "role_prompt": r[18],           # effective_prompt (node or role)
-+                    "provider": r[19],              # effective_provider
-+                    "model": r[20],                 # effective_model
-                     "output_schema": r[6], "inject_context": r[7],
-                     "require_approval": r[8] if len(r) > 8 else False,
-                     "approval_msg": r[9] if len(r) > 9 else "",
-
-
 ## AI Synthesis
 
-**[2026-04-14]** `agent_roles` — Enhanced agent roles with auto_commit boolean column to improve pipeline automation; RoleCreate/RoleUpdate models updated and all 4-stage work item pipeline phases support provider/model overrides. **[2026-04-14]** `memory_schema` — Refactored mem_mrr_prompts columns (project_id/event_id reordered after client_id) with m037-m039 migrations applied for schema cleanup and consistency. **[2026-04-13]** `tag_suggestion` — Implemented ai_tag_suggestion column with approve/remove button handlers; simplified chip markup with category inference; investigating missing suggested_new tags rendering in UI. **[2026-03-20]** `pipeline_ui` — Identified issue where approval panel displays old MD version instead of current output/progress logs; requires chat panel state management and step sequencing investigation. **[2026-03-20]** `project_startup` — Fixed race condition with empty home screen by implementing sequential await api.listProjects(); handles edge case where API succeeds but returns empty list. **[2026-03-19]** `pipeline_queries` — Resolved UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; backend handler now converts strings to UUID objects.
+**[2026-04-14]** `in_progress` — Agent roles enhancement: auto_commit boolean column added to mng_agent_roles table; 4-stage pipeline (PM→Architect→Developer→Reviewer) refactored to load agent roles from DB with fallback prompts; all pipeline stages now support provider/model overrides for flexible LLM routing.
+
+**[2026-04-14]** `in_progress` — Work item pipeline refactor completed; RoleCreate/RoleUpdate Pydantic models updated to reflect schema changes; improved automation workflow with auto_commit flag enabling seamless pipeline progression without manual intervention.
+
+**[2026-04-14]** `in_progress` — Memory mirror tables refactor: mem_mrr_prompts columns reordered (project_id/event_id repositioned after client_id per naming convention); m037-m039 migrations applied for schema consistency and cleanup across unified and per-project tables.
+
+**[2026-04-13]** `in_progress` — Tag suggestion and approval flow: ai_tag_suggestion column integrated with UI approve/remove buttons; chip markup simplified to remove category prefix display in non-category mode; suggested_new tags rendering under investigation in ui_tags query.
+
+**[2026-03-20]** `in_progress` — Pipeline execution UI rendering: identified issue where old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation for live update flow.
+
+**[2026-03-20]** `bug_fix` — Project startup race condition: sequential await api.listProjects() prevents empty home screen on first load; edge case where list succeeds but returns empty array now properly handled with retry logic.

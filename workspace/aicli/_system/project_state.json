@@ -56,7 +56,7 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
-    "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)",
+    "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)",
     "Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with auto_commit flag",
     "Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
@@ -90,8 +90,8 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
-    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
+    "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides",
+    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
     "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup",
     "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
     "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation",
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T23:25:03Z",
+  "last_memory_run": "2026-04-14T23:26:08Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -139,7 +139,7 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
-      "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)",
+      "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)",
       "Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with auto_commit flag",
       "Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
@@ -147,8 +147,8 @@
       "Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation"
     ],
     "in_progress": [
-      "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
-      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
+      "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides",
+      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
       "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup",
       "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
       "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation",
@@ -164,14 +164,13 @@
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-      "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
       "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "mcp": "Stdio MCP server with 12+ tools"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and Electron desktop UI to capture, analyze, and synthesize development work into actionable insights. The system uses async DAG workflows, Claude-based memory synthesis, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw code commits and session events into structured work items, project facts, and tagged memories. Currently stabilizing agent role automation, memory schema organization, tag suggestion workflows, and pipeline UI rendering to improve development team coordination.",
-    "memory_digest": "**[2026-04-14]** `agent_roles` \u2014 Enhanced agent roles with auto_commit boolean column to improve pipeline automation; RoleCreate/RoleUpdate models updated and all 4-stage work item pipeline phases support provider/model overrides. **[2026-04-14]** `memory_schema` \u2014 Refactored mem_mrr_prompts columns (project_id/event_id reordered after client_id) with m037-m039 migrations applied for schema cleanup and consistency. **[2026-04-13]** `tag_suggestion` \u2014 Implemented ai_tag_suggestion column with approve/remove button handlers; simplified chip markup with category inference; investigating missing suggested_new tags rendering in UI. **[2026-03-20]** `pipeline_ui` \u2014 Identified issue where approval panel displays old MD version instead of current output/progress logs; requires chat panel state management and step sequencing investigation. **[2026-03-20]** `project_startup` \u2014 Fixed race condition with empty home screen by implementing sequential await api.listProjects(); handles edge case where API succeeds but returns empty list. **[2026-03-19]** `pipeline_queries` \u2014 Resolved UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; backend handler now converts strings to UUID objects."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL + pgvector), Python CLI, and Electron desktop app to capture, synthesize, and manage development context across projects. It uses Claude Haiku for dual-layer memory synthesis, async DAG workflow execution for automation, and semantic search via embeddings to create intelligent project-wide documentation and work item tracking.",
+    "memory_digest": "**[2026-04-14]** `in_progress` \u2014 Agent roles enhancement: auto_commit boolean column added to mng_agent_roles table; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) refactored to load agent roles from DB with fallback prompts; all pipeline stages now support provider/model overrides for flexible LLM routing.\n\n**[2026-04-14]** `in_progress` \u2014 Work item pipeline refactor completed; RoleCreate/RoleUpdate Pydantic models updated to reflect schema changes; improved automation workflow with auto_commit flag enabling seamless pipeline progression without manual intervention.\n\n**[2026-04-14]** `in_progress` \u2014 Memory mirror tables refactor: mem_mrr_prompts columns reordered (project_id/event_id repositioned after client_id per naming convention); m037-m039 migrations applied for schema consistency and cleanup across unified and per-project tables.\n\n**[2026-04-13]** `in_progress` \u2014 Tag suggestion and approval flow: ai_tag_suggestion column integrated with UI approve/remove buttons; chip markup simplified to remove category prefix display in non-category mode; suggested_new tags rendering under investigation in ui_tags query.\n\n**[2026-03-20]** `in_progress` \u2014 Pipeline execution UI rendering: identified issue where old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation for live update flow.\n\n**[2026-03-20]** `bug_fix` \u2014 Project startup race condition: sequential await api.listProjects() prevents empty home screen on first load; edge case where list succeeds but returns empty array now properly handled with retry logic."
   }
 }

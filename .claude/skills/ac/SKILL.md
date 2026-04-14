@@ -30,6 +30,7 @@ Parse the first word of `$ARGUMENTS` as the command name. Match it against the t
 | `/commit [message]` | Use MCP tool `commit_push` with optional `message_hint`. Show result. |
 | `/schema` | Use MCP tool `get_db_schema`. Show table structure. |
 | `/sync-github <owner> <repo>` | Use MCP tool `sync_github_issues` with `owner` and `repo`. Show imported count. |
+| `/rebuild [confirm]` | Rebuild all open+unlinked work items from scratch. Without `confirm`, calls `curl -s "http://localhost:8000/memory/aicli/rebuild?dry_run=true"` and shows preview (items/events that would be deleted). With `confirm`, calls with `?dry_run=false` — deletes open work items with no user tag, deletes/resets auto-generated events, resets mirror event_ids, then queues embed-prompts + embed-commits in background. |
 | `/agent <role_name> <task>` | Run a single agent in pipeline mode. See **Agent Testing** below. |
 | `/run <pipeline_name> <task>` | Run a full pipeline. See **Pipeline Testing** below. |
 | `/help` | Show this command table to the user. |

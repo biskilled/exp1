@@ -434,6 +434,168 @@ async def embed_prompts(project: str):
         "events_created": total_events,
     }
 
+@router.post("/{project}/rebuild")
+async def rebuild_work_items(
+    project: str,
+    background_tasks: BackgroundTasks,
+    dry_run: bool = Query(True, description="If true, only preview what would be deleted"),
+):
+    """Rebuild all open+unlinked work items and their events from scratch.
+
+    Deletes open work items (status != 'done') that have no user tag link
+    (tag_id_user IS NULL), then nullifies event_id on all mirror rows and
+    queues embed-prompts + embed-commits to reprocess everything.
+    Pass ?dry_run=false to execute. Default is preview only.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    project_id = db.get_or_create_project_id(project)
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Count what would be deleted
+                cur.execute(
+                    """SELECT COUNT(*) FROM mem_ai_work_items
+                       WHERE project_id = %s
+                         AND COALESCE(status_user,'active') NOT IN ('done','archived')
+                         AND tag_id_user IS NULL""",
+                    (project_id,),
+                )
+                wi_count = cur.fetchone()[0]
+
+                cur.execute(
+                    """SELECT COUNT(*) FROM mem_ai_events
+                       WHERE project_id = %s
+                         AND event_type IN ('prompt_batch','commit','session_summary')""",
+                    (project_id,),
+                )
+                ev_count = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NOT NULL",
+                    (project_id,),
+                )
+                p_backprop = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NOT NULL",
+                    (project_id,),
+                )
+                c_backprop = cur.fetchone()[0]
+
+                if dry_run:
+                    return {
+                        "dry_run": True,
+                        "project": project,
+                        "would_delete": {
+                            "work_items": wi_count,
+                            "events": ev_count,
+                        },
+                        "would_reset": {
+                            "prompt_event_ids": p_backprop,
+                            "commit_event_ids": c_backprop,
+                        },
+                        "note": "Pass ?dry_run=false to execute",
+                    }
+
+                # --- EXECUTE ---
+                # 1. NULL work_item_id on events before deleting work items (FK)
+                cur.execute(
+                    """UPDATE mem_ai_events SET work_item_id = NULL
+                       WHERE project_id = %s AND work_item_id IN (
+                           SELECT id FROM mem_ai_work_items
+                           WHERE project_id = %s
+                             AND COALESCE(status_user,'active') NOT IN ('done','archived')
+                             AND tag_id_user IS NULL
+                       )""",
+                    (project_id, project_id),
+                )
+
+                # 2. Delete open+unlinked work items
+                cur.execute(
+                    """DELETE FROM mem_ai_work_items
+                       WHERE project_id = %s
+                         AND COALESCE(status_user,'active') NOT IN ('done','archived')
+                         AND tag_id_user IS NULL""",
+                    (project_id,),
+                )
+                deleted_wi = cur.rowcount
+
+                # 3. Delete auto-generated events (not linked to kept work items)
+                cur.execute(
+                    """DELETE FROM mem_ai_events
+                       WHERE project_id = %s
+                         AND event_type IN ('prompt_batch','commit','session_summary')
+                         AND work_item_id IS NULL""",
+                    (project_id,),
+                )
+                deleted_ev = cur.rowcount
+
+                # 4. Reset back-propagated event_ids on mirror tables
+                cur.execute(
+                    "UPDATE mem_mrr_prompts SET event_id = NULL WHERE project_id = %s",
+                    (project_id,),
+                )
+                reset_prompts = cur.rowcount
+
+                cur.execute(
+                    "UPDATE mem_mrr_commits SET event_id = NULL WHERE project_id = %s",
+                    (project_id,),
+                )
+                reset_commits = cur.rowcount
+
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # 5. Queue reprocessing in background
+    async def _reprocess():
+        from memory.memory_embedding import MemoryEmbedding
+        emb = MemoryEmbedding()
+        # Embed all pending prompts
+        try:
+            with db.conn() as conn2:
+                with conn2.cursor() as cur2:
+                    cur2.execute(
+                        """SELECT session_id, COUNT(*) FROM mem_mrr_prompts
+                           WHERE project_id=%s AND event_id IS NULL
+                           GROUP BY session_id ORDER BY COUNT(*) DESC""",
+                        (project_id,),
+                    )
+                    sessions = cur2.fetchall()
+            for sid, cnt in sessions:
+                try:
+                    await emb.process_prompt_batch(project, str(sid), cnt)
+                except Exception as _e:
+                    log.debug(f"rebuild reprocess prompt session {str(sid)[:8]}: {_e}")
+        except Exception as _e:
+            log.warning(f"rebuild reprocess prompts error: {_e}")
+
+        # Embed all pending commits
+        try:
+            await emb.process_commit_batch(project, min_commits=1)
+        except Exception as _e:
+            log.warning(f"rebuild reprocess commits error: {_e}")
+
+    background_tasks.add_task(_reprocess)
+
+    return {
+        "dry_run": False,
+        "project": project,
+        "deleted": {
+            "work_items": deleted_wi,
+            "events": deleted_ev,
+        },
+        "reset": {
+            "prompt_event_ids": reset_prompts,
+            "commit_event_ids": reset_commits,
+        },
+        "reprocess": "queued in background (embed-prompts + embed-commits)",
+    }
+
+
 @router.post("/{project}/dedup-work-items")
 async def dedup_work_items(project: str):
     """Merge duplicate work items that share the same feature or bug tag.
