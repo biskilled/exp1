@@ -47,7 +47,7 @@
   },
   "key_decisions": [
     "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
-    "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)",
+    "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features",
     "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients \u2192 Users",
     "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract",
     "Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
@@ -89,7 +89,7 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Backend module restructure completion \u2014 Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference",
+    "Backend module restructure completion \u2014 Consolidated workflow/ imports to pipelines/ directory (pipeline_runner, pipeline_graph_runner, pipeline_work_items); updated routers/workflows.py, routers/work_items.py, routers/graph_workflows.py with corrected import paths",
     "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
     "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
     "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
@@ -126,11 +126,11 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T16:15:08Z",
+  "last_memory_run": "2026-04-14T16:19:00Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
-      "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)",
+      "Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features",
       "JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients \u2192 Users",
       "LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) \u2192 str contract",
       "Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development",
@@ -146,7 +146,7 @@
       "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order"
     ],
     "in_progress": [
-      "Backend module restructure completion \u2014 Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference",
+      "Backend module restructure completion \u2014 Consolidated workflow/ imports to pipelines/ directory (pipeline_runner, pipeline_graph_runner, pipeline_work_items); updated routers/workflows.py, routers/work_items.py, routers/graph_workflows.py with corrected import paths",
       "Backend startup race condition fix \u2014 Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug",
       "Memory items and project_facts table population \u2014 Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism",
       "Data persistence issue triage \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow",
@@ -162,16 +162,14 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector extensions",
-      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth",
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "config_management": "config.py + YAML pipelines + pyproject.toml"
+      "database_version": "PostgreSQL 15+ with pgvector extensions"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI for managing project context, workflows, and AI-driven memory synthesis. It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items) with smart code chunking, semantic search, and async DAG-based workflow execution. Current focus is stabilizing backend initialization, fixing data persistence issues, and completing memory table population logic.",
-    "memory_digest": "**[2026-03-21]** `backend` \u2014 Completed backend module restructure: agents/tools/ and agents/mcp/ moved to correct locations with all imports verified; stray auth.py reference fixed. **[2026-03-21]** `backend` \u2014 Startup race condition partially mitigated with retry logic for empty project list on first load; AiCli project visibility bug requires further root cause diagnosis. **[2026-03-21]** `schema` \u2014 Memory items and project_facts tables defined but update logic not yet implemented; needed for improved memory/context mechanisms in 4-layer architecture. **[2026-03-21]** `frontend` \u2014 Data persistence bug identified: tags saved in UI disappearing on session switch; unclear if frontend rendering or database save failure in tag serialization workflow. **[2026-03-21]** `backend` \u2014 Port binding stability issue: intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation implemented but needs testing. **[2026-03-21]** `database` \u2014 SQL optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce load."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, Electron desktop UI, and PostgreSQL semantic storage to capture, synthesize, and search development context across teams. The project implements a 4-layer memory architecture (session \u2192 raw capture \u2192 LLM digests \u2192 work items) with async DAG workflow execution, dual-layer Claude synthesis, and provider-agnostic LLM adapters. Current focus is completing the backend module restructure from workflow/ to pipelines/, resolving startup race conditions affecting project visibility, and implementing pending memory persistence logic.",
+    "memory_digest": "**[2026-03-14]** `routers/workflows.py, routers/work_items.py, routers/graph_workflows.py` \u2014 Completed backend module restructure by consolidating workflow/ imports into pipelines/ directory: updated all references from `workflow.workflow_runner`, `workflow.graph_runner`, `workflow.work_item_pipeline` to `pipelines.pipeline_runner`, `pipelines.pipeline_graph_runner`, `pipelines.pipeline_work_items` across core router endpoints. **[In Progress]** `backend startup` \u2014 Diagnosing intermittent empty project list visibility on first load; race condition retry logic in place but root cause of AiCli project non-registration still under investigation. **[In Progress]** `memory_items & project_facts` \u2014 Schema tables defined but population logic not yet implemented; blocking improved memory/context mechanism. **[In Progress]** `tag persistence` \u2014 Tags saved in UI disappearing on session switch; tracing whether failure is in UI rendering or database save during tag serialization. **[In Progress]** `backend port stability` \u2014 Port 127.0.0.1:8000 binding conflicts on restart causing intermittent failures; freePort() mitigation deployed pending test validation. **[Backlog]** `sql optimization` \u2014 Row-by-row INSERT during event migration and unbounded fetchall() in memory synthesis identified as performance bottlenecks requiring batch refactor and pagination."
   }
 }

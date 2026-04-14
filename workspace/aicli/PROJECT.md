@@ -375,7 +375,7 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Backend module restructure completion — Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference
+- Backend module restructure completion — Consolidated workflow/ imports to pipelines/ directory (pipeline_runner, pipeline_graph_runner, pipeline_work_items); updated routers/workflows.py, routers/work_items.py, routers/graph_workflows.py with corrected import paths
 - Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
 - Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
 - Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow

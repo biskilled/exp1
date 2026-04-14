@@ -1260,16 +1260,6 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                 `<option value="${s}"${wi.status_user===s?' selected':''}>${s}</option>`).join('')}
             </select>
           </div>
-          <div style="display:flex;flex-direction:column;gap:0.2rem">
-            <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
-                        letter-spacing:.06em">AI Status</div>
-            <span style="font-size:0.62rem;padding:0.18rem 0.5rem;border-radius:10px;
-                         color:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'};
-                         background:${{active:'#27ae60',in_progress:'#e67e22',done:'#4a90e2',paused:'#888'}[wi.status_ai]||'#888'}22;
-                         border:1px solid currentColor;opacity:.8" title="AI-suggested status based on progress">
-              ${_esc(wi.status_ai || 'active')}
-            </span>
-          </div>
         </div>
 
         <!-- Stats row -->
@@ -1378,16 +1368,6 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;
                       background:var(--surface2);padding:0.35rem 0.45rem;
                       border-radius:var(--radius)">${_esc(wi.summary_ai)}</div>
-        </div>` : ''}
-
-        ${wi.code_summary ? `
-        <!-- Code Summary (read-only) -->
-        <div>
-          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Code Summary</div>
-          <div style="font-size:0.65rem;color:var(--text2);line-height:1.5;font-family:monospace;
-                      background:var(--surface2);padding:0.35rem 0.45rem;
-                      border-radius:var(--radius);white-space:pre-wrap">${_esc(wi.code_summary)}</div>
         </div>` : ''}
 
         <!-- Linked Commits (loaded async) -->

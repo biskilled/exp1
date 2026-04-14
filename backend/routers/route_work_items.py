@@ -59,8 +59,8 @@ _SQL_LIST_WORK_ITEMS_BASE = (
          GROUP BY 1
        )
        SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
-              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary_ai,
+              w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
+              w.summary_ai,
               w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
@@ -83,7 +83,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
     WITH wi AS (
         -- Base filter; get origin session from the earliest directly-linked event
         SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
-               w.status_user, w.status_ai, w.summary_ai, w.tags, w.tags_ai,
+               w.status_user, w.summary_ai, w.tags, w.tags_ai,
                w.start_date, w.created_at, w.updated_at, w.seq_num,
                w.tag_id_ai, w.project_id,
                e.event_type  AS src_event_type,
@@ -137,7 +137,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
         GROUP BY 1
     )
     SELECT wi.id, wi.category_ai, wi.name_ai, wi.desc_ai,
-           wi.status_user, wi.status_ai, wi.summary_ai, wi.tags, wi.tags_ai,
+           wi.status_user, wi.summary_ai, wi.tags, wi.tags_ai,
            wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
            wi.tag_id_ai,
            pt.name   AS ai_tag_name,
@@ -161,16 +161,16 @@ _SQL_INSERT_WORK_ITEM = (
     """INSERT INTO mem_ai_work_items
            (project_id, category_ai, name_ai, desc_ai,
             acceptance_criteria_ai, action_items_ai,
-            code_summary, summary_ai, tags, status_user, status_ai, seq_num)
-       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)
+            summary_ai, tags, status_user, seq_num)
+       VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)
        ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
        RETURNING id, name_ai, category_ai, created_at, seq_num"""
 )
 
 _SQL_GET_WORK_ITEM = (
     """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
-              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary_ai,
+              w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
+              w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -190,8 +190,8 @@ _SQL_DELETE_WORK_ITEM = (
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
     """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
-              w.status_user, w.status_ai, w.acceptance_criteria_ai, w.action_items_ai,
-              w.code_summary, w.summary_ai,
+              w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
+              w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
               w.created_at, w.updated_at, w.seq_num
        FROM mem_ai_work_items w
@@ -284,7 +284,6 @@ async def _trigger_memory_regen(project: str) -> None:
 async def _embed_work_item(
     project_id: int, item_id: str,
     name_ai: str, desc_ai: str, summary_ai: str,
-    code_summary: str = "",
 ) -> None:
     """Embed work item content and store the vector on the row."""
     from core.pipeline_log import pipeline_run
@@ -292,7 +291,7 @@ async def _embed_work_item(
         ctx["items_in"] = 1
         try:
             from memory.memory_embedding import _embed
-            text = f"{name_ai} {desc_ai} {summary_ai} {code_summary}".strip()
+            text = f"{name_ai} {desc_ai} {summary_ai}".strip()
             vec = await _embed(text)
             if vec and db.is_available():
                 vec_str = f"[{','.join(str(x) for x in vec)}]"
@@ -461,10 +460,8 @@ class WorkItemCreate(BaseModel):
     desc_ai:             str = ""
     project:             Optional[str] = None
     status_user:         str = "active"
-    status_ai:           str = "active"
     acceptance_criteria_ai: str = ""
     action_items_ai:        str = ""
-    code_summary:        str = ""
     summary_ai:          str = ""
     tags:                dict = {}
 
@@ -477,10 +474,8 @@ class WorkItemPatch(BaseModel):
     name_ai:             Optional[str] = None
     desc_ai:             Optional[str] = None
     status_user:         Optional[str] = None   # set by user: active / paused / done
-    status_ai:           Optional[str] = None   # set by AI: active / in_progress / done
     acceptance_criteria_ai: Optional[str] = None
     action_items_ai:        Optional[str] = None
-    code_summary:        Optional[str] = None
     summary_ai:          Optional[str] = None
     tags:                Optional[dict] = None
     tags_ai:             Optional[dict] = None
@@ -585,8 +580,8 @@ async def create_work_item(
                 _SQL_INSERT_WORK_ITEM,
                 (p_id, body.category_ai, body.name_ai, body.desc_ai,
                  body.acceptance_criteria_ai, body.action_items_ai,
-                 body.code_summary, body.summary_ai,
-                 _json.dumps(body.tags), body.status_user, body.status_ai, seq),
+                 body.summary_ai,
+                 _json.dumps(body.tags), body.status_user, seq),
             )
             r = cur.fetchone()
     if not r:
@@ -767,10 +762,8 @@ async def patch_work_item(
     if body.name_ai             is not None: fields.append("name_ai=%s");             params.append(body.name_ai)
     if body.desc_ai             is not None: fields.append("desc_ai=%s");             params.append(body.desc_ai)
     if body.status_user         is not None: fields.append("status_user=%s");         params.append(body.status_user)
-    if body.status_ai           is not None: fields.append("status_ai=%s");           params.append(body.status_ai)
     if body.acceptance_criteria_ai is not None: fields.append("acceptance_criteria_ai=%s"); params.append(body.acceptance_criteria_ai)
     if body.action_items_ai        is not None: fields.append("action_items_ai=%s");        params.append(body.action_items_ai)
-    if body.code_summary        is not None: fields.append("code_summary=%s");        params.append(body.code_summary)
     if body.summary_ai             is not None: fields.append("summary_ai=%s");             params.append(body.summary_ai)
     if body.tags                is not None:
         import json as _json
@@ -811,7 +804,7 @@ async def patch_work_item(
                 raise HTTPException(404, "Work item not found")
 
     body_dict = body.model_dump(exclude_none=True)
-    content_fields = {"name_ai", "desc_ai", "summary_ai", "code_summary"}
+    content_fields = {"name_ai", "desc_ai", "summary_ai"}
     if any(f in body_dict for f in content_fields):
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -1016,8 +1009,8 @@ async def merge_work_item_into(
             cur.execute(
                 """INSERT INTO mem_ai_work_items
                        (project_id, category_ai, name_ai, desc_ai,
-                        action_items_ai, acceptance_criteria_ai, tag_id_user, status_user, status_ai, seq_num)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,'active','active',%s)
+                        action_items_ai, acceptance_criteria_ai, tag_id_user, status_user, seq_num)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,'active',%s)
                    ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
                    RETURNING id""",
                 (p_id, new_category, new_name, new_desc,

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 16:15 UTC — do not edit manually.
+> Auto-generated 2026-04-14 16:39 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 520
-- **Last active**: 2026-04-14T16:14:41Z
+- **Sessions**: 521
+- **Last active**: 2026-04-14T16:18:31Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -57,7 +57,7 @@
 
 ## In Progress
 
-- Backend module restructure completion — Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference
+- Backend module restructure completion — Consolidated workflow/ imports to pipelines/ directory (pipeline_runner, pipeline_graph_runner, pipeline_work_items); updated routers/workflows.py, routers/work_items.py, routers/graph_workflows.py with corrected import paths
 - Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
 - Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
 - Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
@@ -67,7 +67,7 @@
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development

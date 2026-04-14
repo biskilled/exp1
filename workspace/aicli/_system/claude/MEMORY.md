@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 16:14 UTC by aicli /memory_
+_Generated: 2026-04-14 16:18 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector) with an Electron desktop UI for managing project context, workflows, and AI-driven memory synthesis. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items) with smart code chunking, semantic search, and async DAG-based workflow execution. Current focus is stabilizing backend initialization, fixing data persistence issues, and completing memory table population logic.
+aicli is a shared AI memory platform combining a Python FastAPI backend, Electron desktop UI, and PostgreSQL semantic storage to capture, synthesize, and search development context across teams. The project implements a 4-layer memory architecture (session → raw capture → LLM digests → work items) with async DAG workflow execution, dual-layer Claude synthesis, and provider-agnostic LLM adapters. Current focus is completing the backend module restructure from workflow/ to pipelines/, resolving startup race conditions affecting project visibility, and implementing pending memory persistence logic.
 
 ## Project Facts
 
@@ -214,7 +214,7 @@ Reviewer: ```json
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
@@ -231,7 +231,7 @@ Reviewer: ```json
 
 ## In Progress
 
-- Backend module restructure completion — Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference
+- Backend module restructure completion — Consolidated workflow/ imports to pipelines/ directory (pipeline_runner, pipeline_graph_runner, pipeline_work_items); updated routers/workflows.py, routers/work_items.py, routers/graph_workflows.py with corrected import paths
 - Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
 - Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
 - Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
@@ -290,96 +290,145 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-14
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 422c9dd..335d54f 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+diff --git a/backend/routers/workflows.py b/backend/routers/workflows.py
+index 07f1aa8..c085dca 100644
+--- a/backend/routers/workflows.py
++++ b/backend/routers/workflows.py
+@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
+ from pydantic import BaseModel
  
- ## Recent Work
+ from core.config import settings
+-from workflow.workflow_runner import (
++from pipelines.pipeline_runner import (
+     start_run, decide, load_run, list_runs,
+ )
  
--- Pipeline engine refactoring (2026-03-21) — Consolidate pipeline engine under workflows/ with pipeline_ prefix on all files for consistency and better visibility; verify zero stale imports across all modules
--- File naming convention refactor (2026-03-21) — Completed rename of provider files to pr_ prefix under agents/providers/ and mem_ prefix under memory/; clarified config.py as primary for externalized backend settings
--- Agent tool separation clarification (2026-03-21) — Confirmed `apply_code_and_commit` and `git_tool` are distinct handlers with different entry points; former writes files then commits, latter commits existing working tree changes
--- Backend module organization audit (2026-03-21) — Clarified routers/ for API endpoints and models/ for data structures; workflow logic centralized
--- SQL query optimization — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-+- Backend module restructure completion (2026-03-21) — Moved agents/tools/ and agents/mcp/ from tools/ folder; verified all imports resolve cleanly; fixed stray auth.py import
-+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
- - Project visibility bug investigation — AiCli project appearing in Recent but not main project list; backend startup race condition partially fixed with retry logic but root cause requires further diagnosis
-+- Memory items and project_facts table population — Tables defined but update logic not yet implemented; required for improved memory/context mechanism
-+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure
-+- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
 
 
 ### `commit` — 2026-04-14
 
-diff --git a/backend/agents/tools/git_tool.py b/backend/agents/tools/tool_git.py
+diff --git a/backend/routers/work_items.py b/backend/routers/work_items.py
+index a244eda..10422a5 100644
+--- a/backend/routers/work_items.py
++++ b/backend/routers/work_items.py
+@@ -374,7 +374,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
+                     )
+ 
+             # Run in background via graph_runner
+-            from workflow.graph_runner import run_graph_workflow
++            from pipelines.pipeline_graph_runner import run_graph_workflow
+ 
+             async def _run_graph():
+                 try:
+@@ -401,7 +401,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
+                         pass
+                     # Fallback: standalone pipeline
+                     try:
+-                        from workflow.work_item_pipeline import trigger_work_item_pipeline
++                        from pipelines.pipeline_work_items import trigger_work_item_pipeline
+                         await trigger_work_item_pipeline(item_id, p, name, desc, existing_ac)
+                     except Exception as fb_exc:
+                         log.error(f"Standalone fallback also failed: {fb_exc}")
+@@ -420,7 +420,7 @@ async def run_pipeline(item_id: str, project: str | None = Query(None)):
+                 "UPDATE pr_work_items SET agent_status='running', updated_at=NOW() WHERE id=%s::uuid",
+                 (item_id,),
+             )
+-    from workflow.work_item_pipeline import trigger_work_item_pipeline
++    from pipelines.pipeline_work_items import trigger_work_item_pipeline
+     asyncio.create_task(trigger_work_item_pipeline(item_id, p, name, desc, existing_ac))
+     return {"status": "pipeline started", "work_item_id": item_id, "project": p}
+ 
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/routers/graph_workflows.py b/backend/routers/graph_workflows.py
+index 6fa9c14..4f6c3fa 100644
+--- a/backend/routers/graph_workflows.py
++++ b/backend/routers/graph_workflows.py
+@@ -654,7 +654,7 @@ async def start_run(
+     user=Depends(get_optional_user),
+ ):
+     _require_db()
+-    from workflow.graph_runner import run_graph_workflow
++    from pipelines.pipeline_graph_runner import run_graph_workflow
+ 
+     p = _active_project(body.project)
+     run_id = str(uuid.uuid4())
+@@ -712,7 +712,7 @@ async def make_run_decision(
+     approved=False → stop the run
+     """
+     _require_db()
+-    from workflow.graph_runner import resume_graph_workflow
++    from pipelines.pipeline_graph_runner import resume_graph_workflow
+ 
+     p = _active_project(project)
+ 
+@@ -781,7 +781,7 @@ async def make_run_decision(
+         return {"status": "resuming", "from_node": waiting_node_id, "run_id": run_id}
+ 
+     # Save approved output to documents/ with versioning (latest vs old/)
+-    from workflow.graph_runner import save_approved_output as _save_approved
++    from pipelines.pipeline_graph_runner import save_approved_output as _save_approved
+     work_item = ctx.get("_work_item")
+     approved_node_name = waiting.get("node_name", "")
+     approved_output = str(ctx.get(approved_node_name, waiting.get("output", "")))
+@@ -930,7 +930,7 @@ async def approval_chat(
+ 
+     # ── Also update the in-memory LangGraph state so the next node sees the revised output ─
+     try:
+-        from workflow.graph_runner import _APP_REGISTRY
++        from pipelines.pipeline_graph_runner import _APP_REGISTRY
+         if run_id in _APP_REGISTRY:
+             app, _ = _APP_REGISTRY[run_id]
+             config = {"configurable": {"thread_id": run_id}}
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/routers/chat.py b/backend/routers/chat.py
+index 92af526..6078e20 100644
+--- a/backend/routers/chat.py
++++ b/backend/routers/chat.py
+@@ -474,7 +474,7 @@ async def _handle_run_command(pipeline_name: str, project: str, session_id: str)
+                     (run_id, project, workflow_id, f"/run {pipeline_name}"),
+                 )
+ 
+-        from workflow.graph_runner import run_graph_workflow
++        from pipelines.pipeline_graph_runner import run_graph_workflow
+ 
+         async def _bg():
+             try:
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/workflow/work_item_pipeline.py b/backend/pipelines/pipeline_work_items.py
+similarity index 98%
+rename from backend/workflow/work_item_pipeline.py
+rename to backend/pipelines/pipeline_work_items.py
+index b74c871..7c999ea 100644
+--- a/backend/workflow/work_item_pipeline.py
++++ b/backend/pipelines/pipeline_work_items.py
+@@ -248,7 +248,7 @@ async def trigger_work_item_pipeline(
+         rev_sys, rev_provider, rev_model = _load_role("Code Reviewer")
+ 
+         # Import code-commit helpers from graph_runner (reuse, don't duplicate)
+-        from gitops.git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
++        from pipelines.pipeline_git import parse_code_changes as _parse_code_changes, apply_code_and_commit as _apply_code_and_commit, get_project_code_dir as _get_project_code_dir
+ 
+         dev_output = ""
+         reviewer_feedback = ""
+
+
+### `commit` — 2026-04-14
+
+diff --git a/backend/workflow/workflow_runner.py b/backend/pipelines/pipeline_runner.py
 similarity index 100%
-rename from backend/agents/tools/git_tool.py
-rename to backend/agents/tools/tool_git.py
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/agents/tools/file_tool.py b/backend/agents/tools/tool_file.py
-similarity index 100%
-rename from backend/agents/tools/file_tool.py
-rename to backend/agents/tools/tool_file.py
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/agents/tools/__init__.py b/backend/agents/tools/__init__.py
-index bd0ad98..6cbf2c1 100644
---- a/backend/agents/tools/__init__.py
-+++ b/backend/agents/tools/__init__.py
-@@ -6,8 +6,8 @@ invoke_tool(name, args) dispatches a tool call and returns a string result.
- """
- from __future__ import annotations
- 
--from agents.tools.git_tool import GIT_TOOL_DEFS, GIT_HANDLERS
--from agents.tools.file_tool import FILE_TOOL_DEFS, FILE_HANDLERS
-+from agents.tools.tool_git import GIT_TOOL_DEFS, GIT_HANDLERS
-+from agents.tools.tool_file import FILE_TOOL_DEFS, FILE_HANDLERS
- 
- # Master registry
- AGENT_TOOLS: dict[str, dict] = {}
-
-
-### `commit` — 2026-04-14
-
-diff --git a/backend/agents/mcp/tools/__init__.py b/backend/agents/mcp/tools/__init__.py
-deleted file mode 100644
-index e69de29..0000000
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 0d6fd88..c89e497 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-21 22:52 UTC
-+> Generated by aicli 2026-03-21 23:00 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -45,6 +45,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
- - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT)
- - Agent providers in agents/providers/ with pr_ prefix; memory providers in memory/ with mem_ prefix; config.py centralizes externalized settings
--- Pipelines (formerly workflow engine) centralized under workflows/ with pipeline_ prefix for consistency and visibility
--- Work item pipeline respects configured LLM provider and model per role via mng_agent_roles table
--- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-\ No newline at end of file
-+- Pipelines centralized under workflows/ with pipeline_ prefix; respects configured LLM provider/model per role via mng_agent_roles table
-+- Graph runner commits via `_apply_code_and_commit` distinct from `git_tool` for existing working tree changes
-+- Backend module organization: routers/ for API endpoints, models/ for data structures, agents/tools/ for agent implementations, agents/mcp/ for MCP tooling
-\ No newline at end of file
+rename from backend/workflow/workflow_runner.py
+rename to backend/pipelines/pipeline_runner.py
 
 
 ## AI Synthesis
 
-**[2026-03-21]** `backend` — Completed backend module restructure: agents/tools/ and agents/mcp/ moved to correct locations with all imports verified; stray auth.py reference fixed. **[2026-03-21]** `backend` — Startup race condition partially mitigated with retry logic for empty project list on first load; AiCli project visibility bug requires further root cause diagnosis. **[2026-03-21]** `schema` — Memory items and project_facts tables defined but update logic not yet implemented; needed for improved memory/context mechanisms in 4-layer architecture. **[2026-03-21]** `frontend` — Data persistence bug identified: tags saved in UI disappearing on session switch; unclear if frontend rendering or database save failure in tag serialization workflow. **[2026-03-21]** `backend` — Port binding stability issue: intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation implemented but needs testing. **[2026-03-21]** `database` — SQL optimization backlog: row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce load.
+**[2026-03-14]** `routers/workflows.py, routers/work_items.py, routers/graph_workflows.py` — Completed backend module restructure by consolidating workflow/ imports into pipelines/ directory: updated all references from `workflow.workflow_runner`, `workflow.graph_runner`, `workflow.work_item_pipeline` to `pipelines.pipeline_runner`, `pipelines.pipeline_graph_runner`, `pipelines.pipeline_work_items` across core router endpoints. **[In Progress]** `backend startup` — Diagnosing intermittent empty project list visibility on first load; race condition retry logic in place but root cause of AiCli project non-registration still under investigation. **[In Progress]** `memory_items & project_facts` — Schema tables defined but population logic not yet implemented; blocking improved memory/context mechanism. **[In Progress]** `tag persistence` — Tags saved in UI disappearing on session switch; tracing whether failure is in UI rendering or database save during tag serialization. **[In Progress]** `backend port stability` — Port 127.0.0.1:8000 binding conflicts on restart causing intermittent failures; freePort() mitigation deployed pending test validation. **[Backlog]** `sql optimization` — Row-by-row INSERT during event migration and unbounded fetchall() in memory synthesis identified as performance bottlenecks requiring batch refactor and pagination.

@@ -1013,6 +1013,19 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
     )
 
 
+def m043_drop_status_ai_code_summary(conn) -> None:
+    """Drop status_ai and code_summary from mem_ai_work_items.
+
+    status_ai: AI-predicted status — stale, noisy, never used for decisions.
+    code_summary TEXT: structured version lives in tags_ai.code_summary JSONB;
+                       feature-level code context belongs on planner_tags snapshot.
+    """
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS status_ai")
+        cur.execute("ALTER TABLE mem_ai_work_items DROP COLUMN IF EXISTS code_summary")
+    conn.commit()
+
+
 def m042_drop_source_event_id(conn) -> None:
     """Drop redundant source_event_id from mem_ai_work_items.
 
@@ -1057,4 +1070,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m040_backfill_event_cnt_and_tags", m040_backfill_event_cnt_and_tags),
     ("m041_drop_diff_file_chunks", m041_drop_diff_file_chunks),
     ("m042_drop_source_event_id", m042_drop_source_event_id),
+    ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
 ]

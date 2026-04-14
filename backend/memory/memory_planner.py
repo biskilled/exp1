@@ -35,7 +35,7 @@ _SQL_GET_TAG = """
 """
 
 _SQL_GET_WORK_ITEMS = """
-    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.status_ai,
+    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user,
            wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary_ai,
            wi.seq_num, wi.start_date
     FROM mem_ai_work_items wi

@@ -53,7 +53,7 @@ _SQL_GET_WORK_ITEM = """
 
 _SQL_GET_WORK_ITEM_BY_NAME = """
     SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user, wi.acceptance_criteria_ai,
-           wi.action_items_ai, wi.status_ai, wi.tag_id_user
+           wi.action_items_ai, wi.tag_id_user
     FROM mem_ai_work_items wi
     WHERE wi.project_id=%s AND wi.name_ai=%s
     LIMIT 1
@@ -84,10 +84,6 @@ _SQL_GET_LINKED_EVENTS = """
     LIMIT 5
 """
 
-_SQL_UPDATE_WORK_ITEM_STATUS_AI = """
-    UPDATE mem_ai_work_items SET status_ai=%s, updated_at=NOW()
-    WHERE id=%s AND project_id=%s
-"""
 
 _SQL_UPDATE_WORK_ITEM_EMBEDDING = """
     UPDATE mem_ai_work_items SET embedding=%s::vector, updated_at=NOW()
@@ -341,7 +337,7 @@ class MemoryPromotion:
     ) -> Optional[dict]:
         """
         Refresh all 4 AI text fields for a work item from its linked events + commits.
-        Returns {work_item_id, name_ai, summary_ai, status_ai} or None on failure.
+        Returns {work_item_id, name_ai, summary_ai} or None on failure.
         """
         if not db.is_available():
             return None
@@ -356,7 +352,7 @@ class MemoryPromotion:
             log.debug(f"promote_work_item: no work item found for '{name_ai}'")
             return None
 
-        wi_id, wi_name, desc, status_user, ac, action_items, status_ai, tag_id_user = row
+        wi_id, wi_name, desc, status_user, ac, action_items, tag_id_user = row
 
         # Fetch up to 5 linked event summaries for richer context
         linked_events: list[str] = []
@@ -375,7 +371,7 @@ class MemoryPromotion:
             "Given a work item, produce a structured PM update. "
             "Return JSON only: {\"desc_ai\": \"...\", \"acceptance_criteria_ai\": \"...\", "
             "\"action_items_ai\": \"...\", \"summary_ai\": \"...\", "
-            "\"status_ai\": \"active|in_progress|done\"}"
+            "}"
         )
 
         events_section = ""
@@ -403,9 +399,7 @@ class MemoryPromotion:
         new_ac              = (parsed.get("acceptance_criteria_ai") or "").strip()
         new_action_items    = (parsed.get("action_items_ai") or "").strip()
         new_summary_ai      = (parsed.get("summary_ai") or "").strip()
-        new_status_ai       = (parsed.get("status_ai") or status_ai).strip()
 
-        # Persist all 4 text fields + status
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -419,11 +413,6 @@ class MemoryPromotion:
                             str(wi_id),       project_id,
                         ),
                     )
-                    if new_status_ai != status_ai:
-                        cur.execute(
-                            _SQL_UPDATE_WORK_ITEM_STATUS_AI,
-                            (new_status_ai, str(wi_id), project_id),
-                        )
         except Exception as e:
             log.debug(f"promote_work_item: DB update failed: {e}")
 
@@ -437,7 +426,6 @@ class MemoryPromotion:
             "work_item_id": str(wi_id),
             "name_ai":      name_ai,
             "summary_ai":   new_summary_ai,
-            "status_ai":    new_status_ai,
         }
 
     async def promote_all_work_items(self, project: str) -> dict:
