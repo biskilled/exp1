@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 15:08 UTC — do not edit manually.
+> Auto-generated 2026-04-14 15:35 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 517
-- **Last active**: 2026-04-14T15:07:13Z
+- **Sessions**: 518
+- **Last active**: 2026-04-14T15:35:16Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,7 +30,7 @@
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
 - **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
-- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
+- **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -38,10 +38,10 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database**: PostgreSQL 15+ with pgvector extensions
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
-- **build_tooling**: npm 8+ + Electron-builder; Vite dev server
+- **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -57,18 +57,18 @@
 
 ## In Progress
 
-- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
-- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
-- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
+- Backend startup race condition fix: retry logic handles empty project list on first load during initialization
+- PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds
+- Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow
+- Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2
 - Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
-- Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
+- AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
 - Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
@@ -76,11 +76,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+- Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 
 ---
 

@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 14:46 UTC by aicli /memory_
+_Generated: 2026-04-14 15:35 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL vector database (pgvector 1536-dim), and Electron desktop UI to capture, synthesize, and retrieve project development history via semantic search and workflow automation. The system processes code commits and user sessions through a 4-layer memory pipeline (ephemeral → raw → digested events → work items/project facts) with Claude-powered synthesis, DAG-based workflow execution, and integrated MCP server for external tool access.
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI for semantic project context capture, work item management, and AI-powered workflow execution. Currently at v2.2.0, the project is addressing backend initialization robustness, PostgreSQL role management, and Planner UI tag display while maintaining a dual-layer memory synthesis system (Claude Haiku) that converts raw events into semantic work items and project facts.
 
 ## Project Facts
 
@@ -186,7 +186,7 @@ Reviewer: ```json
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
 - **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
-- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
+- **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -194,10 +194,10 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database**: PostgreSQL 15+ with pgvector extensions
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+
-- **build_tooling**: npm 8+ + Electron-builder; Vite dev server
+- **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
 - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -215,7 +215,7 @@ Reviewer: ```json
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files
 - Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users with login_as_first_level_hierarchy pattern
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
@@ -223,20 +223,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
-- Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
 - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+- Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
 
 ## In Progress
 
-- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
-- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
-- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
+- Backend startup race condition fix: retry logic handles empty project list on first load during initialization
+- PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds
+- Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow
+- Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2
 - Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
-- Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
+- AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements
 
 ## Active Features / Bugs / Tasks
 
@@ -288,163 +288,159 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: 2a6b600e-9046-4d7b-88e9-ddb136d6ed65` — 2026-04-14
+
+Commits: chore: remove legacy flat _system context files after claude session 2a6 | chore: remove legacy _system root files and consolidate context into sub | chore: clean up legacy _system context files after claude cli session 2a | chore: clean up legacy _system root files and consolidate into claude/ s | chore: clean up legacy _system context files after claude cli session 2a | chore: clean up legacy _system files after claude cli session 2a6b600e
+Stats:  .../aicli/_system/claude/features/UI/CLAUDE.md     |    5 -
+ .../features/architecture-decision/CLAUDE.md       |    5 -
+ .../_system/claude/features/billing/CLAUDE.md      |    5 -
+ .../claude/featu
+
 ### `commit` — 2026-04-14
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index ccb765e..e46dcd2 100644
+index 0630a14..23c9167 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:41 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:42 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:44 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:51 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -48,6 +48,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
- - **embeddings**: text-embedding-3-small (1536-dim vectors)
- - **deployment_backend**: Railway (Dockerfile + railway.toml)
-+- **schema_migrations**: m001-m041 framework with db_schema.sql as source of truth
+@@ -16,7 +16,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **storage_primary**: JSONL (history.jsonl with rotation to history_YYMMDDHHSS.jsonl, commit_log.jsonl), JSON, CSV
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+ - **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys (encrypted)
+-- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free; encrypted API keys
++- **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+@@ -25,7 +25,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **mcp**: Stdio MCP server with 12+ tools; env var configured (BACKEND_URL, ACTIVE_PROJECT)
+ - **deployment**: Railway (Dockerfile + railway.toml); local: bash ui/start.sh; desktop: Electron-builder
+ - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+-- **config_management**: config.py with externalized backend_url, haiku_model, db_pool_max, MCP settings; YAML for pipeline definitions; pyproject.toml for IDE support
++- **config_management**: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support
+ - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **billing_storage**: data/provider_usage/ (provider_costs.json, runtime data); pricing, coupons, user_logs in SQL tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch config (.vscode/launch.json); PyCharm: Mark backend/ as Sources Root
+-- **database**: PostgreSQL 15+ with agent roles initialized; per-project and shared schema tables
++- **database**: PostgreSQL 15+ with per-project and shared schema tables; agent roles initialized
  
  ## Key Decisions
  
-@@ -62,7 +63,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
- - Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 0a6da29..79ca795 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-23 00:12 UTC
-+> Generated by aicli 2026-03-23 00:26 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -51,4 +51,4 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+@@ -43,20 +43,20 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; 3-tier roles (admin/paid/free); per-user encrypted API keys in database
+ - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends none
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization
+-- Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
++- Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); smart chunking per language/section
  - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
- - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+-- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
++- Per-project tables: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; shared tables for users/usage/auth
  - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
--- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
-\ No newline at end of file
-+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
-\ No newline at end of file
-
+-- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); moved to agents/mcp/
++- MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+ - SQL queries as module-level constants (_SQL_VERB_ENTITY pattern); dynamic query building via build_update() for safe parameterization
+-- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds needed
+-- File-based configuration (api_keys.json) external to backend; sensitive data in .env; pricing/coupons/promotions managed in SQL tables
+-- Thin UI client: settings.json backed by Electron userData; remote server URL support; spawns backend only for local connections
++- PostgreSQL agent roles properly initialized with real IDs; router mapping queries correct tables per project; no fallback workarounds
++- File-based configuration (api_keys.json) external to backend; sensitive data in .env; p
 
 ### `commit` — 2026-04-14
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index b067896..ccb765e 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 144dcc9..d3ab483 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:41 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:30 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-22 02:37 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -55,8 +55,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-03-22] I have created pyproject.toml manualy. can you update that file again ? also I do see error in stop hook which preventin
+ - [2026-03-22] I do see that backend is failing to start (it also take quite a while to load )
+ - [2026-03-22] looks better. planner is loading well. Also there is an issue with Roles (PostgreSQL required agent roles) Also Pipeline
+ - [2026-03-22] I still do not see All Planner tags (categroeis, existing tags...) also Pipelines are not loading
+-- [2026-03-22] PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
+\ No newline at end of file
++- [2026-03-22] PostgreSql is up and running, why do you build a workaround. it looks like router mappig not query the proper tables
++- [2026-03-22] I do see categroeis uploaded in Planner tab, but I do not see all the tags in each categroy. Also I do got an error when
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-14
 
-Commit: chore: clean up legacy _system context files after claude cli session 2a
-Hash: ab47c27c
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 83a2160..cbd7f19 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
+ ## Recent Work
+ 
+-- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
++- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
++- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
++- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
++- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
+ - Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
+-- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
+-- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
+-- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
+-- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
++- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
+
+
+### `commit` — 2026-04-14
+
+Commit: chore: update ai context files and system state after claude session
+Hash: 27d0cba0
 Code files (4):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
+  - ui/frontend/views/entities.js
 Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+Symbols changed: _plannerSelectCat, _initPlanner
 
 ### `commit` — 2026-04-14
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index ae2b838..142286b 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:12 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:26 UTC
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index 856d6e8..7370b6c 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
- # aicli — Shared AI Memory Platform
+ ## Recent Work
  
-@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
- - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
- - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
--- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
-+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
- - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
- - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
- - [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
--- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-\ No newline at end of file
-+- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-+- [2026-03-23] It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
-\ No newline at end of file
-
-
-### `commit` — 2026-04-14
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index ae2b838..142286b 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:12 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-23 00:26 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -51,12 +51,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Backend modular organization: core/ for infrastructure, data/ (dl_ prefix) for data access, routers/ for HTTP endpoints, agents/ for business logic
- - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
- - Encrypted API key storage in data layer (dl_api_keys.py); server-side key management only; clients never send API credentials
--- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'Active' (green) when fully described; lifecycle tags optional and candidate for deprecation
-+- Feature/task/bug lifecycle: Status 'add_info' (red) when missing description; transitions to 'active' (green) when fully described; lifecycle tags optional and candidate for deprecation
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-03-22] I would like to make sure each agent works same as you are - not hilusinsating, and have a defined system role and promt
- - [2026-03-22] I would like to start to test the Sr. Architect role. assume the pipeleine start from feature Auth. can you tell me what
- - [2026-03-22] please fix the embedding. also I would like to understand the feutre as the test will be running the full workflow from 
- - [2026-03-22] Yes implememt 2 and 3. About section 1 - I think feutre , tasks, bugs without a description should be in a status red (a
--- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-\ No newline at end of file
-+- [2026-03-23] Why you fix files in old ? this is not suppose to be used. I also dont see any change in the UI - I do see all feature a
-+- [2026-03-23] It is still not working . I thought to have new status (before active) - preq where all new features/bugs are in that st
-\ No newline at end of file
+-- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'Active' status when complete; lifecycle tags deprecated; user questioned why features show Active without proper descriptions—clarifying status enforcement logic
+-- Deprecated old/ directory usage (2026-03-23) — Confirmed old/ should not be modified; update memory to reflect this is legacy code; focus development on current directory structure
+-- Tags loading and cache invalidation (2026-03-22) — Force-reload logic with cache validation; confirmed _plannerShowNewWorkItem calls _renderWorkItemTable() directly (correct path), not _renderTagTableFromCache()
+-- Agent role standardization (2026-03-22) — Per-agent system roles, prompts, input/output schemas, and ReAct mode execution to eliminate hallucination; Sr. Architect role testing
++- Feature/task/bug status workflow (2026-03-23) — Implement red 'add_info' status when description missing; green 'active' status when complete; user reports status not visible in UI Planner tab; enforce missing data detection at creation and sync with database
++- Tag visibility and review (2026-03-23) — User requested review of current tags (bug/feature priority); implement tag management UI in Planner tab to surface and edit tags directly; confirm tag hierarchy persists across sessions
++- Project visibility bug (2026-03-18) — AiCli appears in Recent projects but not displaying as current active project in main project view; timing issue during backend initialization; requires further investigation and fix
++- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism and MCP data retrieval
+ - Frontend code optimization (2026-03-22) — XSS fixes in markdown.js; 30s timeout in api.js; JSDoc documentation; setInterval cleanup in graph_workflow.js
+-- Memory items and project_facts table population (pending) — Tables exist in schema but update logic not implemented; required for improved memory/context mechanism
++- Database startup race condition (2026-03-18) — Modified retry logic to handle empty project list on first load; confirmed _ensure_shared_schema pattern replaces old ensure_project_schema method
 
 
 ## AI Synthesis
 
-**[2026-04-14]** `schema-consolidation` — Completed m038-m041 migrations removing legacy embedding columns and streamlining event/commit processing; unified event_type filtering to ('prompt_batch', 'session_summary') for mem_ai_events aggregation.
-
-**[2026-04-14]** `memory-synthesis-refactor` — Refactored Claude Haiku dual-layer processing (_haiku and MemoryEmbedding.process_item) to eliminate legacy diff_file_chunks and extract_commit_code code paths; implemented _embed_work_item() vector persistence for semantic search on name_ai/desc_ai fields.
-
-**[2026-04-14]** `context-file-migration` — Consolidated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking for better project-level organization.
-
-**[2026-04-14]** `work-item-merge` — Implemented POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries to support work item consolidation in the planner UI.
-
-**[2026-04-14]** `ui-panel-completion` — Built persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI for bottom-panel work item management.
-
-**[2026-04-14]** `tag-system-cleanup` — Completed metadata cleanup Pass 0-2 across 1441 events, repaired 6 corrupt session_summary records, and removed system metadata (llm, chunk_type, commit_hash) while preserving user-facing tags (phase, feature, bug, source).
+**[2026-03-22]** PostgreSQL initialization issue resolved: agent roles now properly initialized with real IDs; router mapping queries correct tables per project, eliminating fallback workarounds. **[2026-03-22]** Backend startup race condition fixed: retry logic handles empty project list during first load to prevent initialization failures. **[2026-03-22]** Planner tags UI progressing: categories successfully uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow. **[2026-03-22]** Tag system metadata cleanup completed: user-facing tags (phase, feature, bug, source) retained; system metadata (llm, event, chunk_type, commit_hash) stripped from 1441+ events across Passes 0-2. **[2026-03-22]** Work item merge functionality implemented: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries for planner bottom panel. **[2026-03-22]** AI tag suggestion UX refined: approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference; tooltip improved from 'No existing tag' to 'Does not exist yet'. **[2026-03-14]** Project version updated to 2.2.0 with memory synthesis improvements and unified database schema consolidation.

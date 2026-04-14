@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
-- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
-- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
+- Backend startup race condition fix: retry logic handles empty project list on first load during initialization
+- PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds
+- Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow
+- Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2
 - Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
-- Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
+- AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements
