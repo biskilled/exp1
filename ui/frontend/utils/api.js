@@ -485,6 +485,7 @@ api.documents = {
 
 api.pipeline = {
   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
+  dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),

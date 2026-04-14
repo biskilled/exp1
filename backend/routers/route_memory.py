@@ -487,6 +487,225 @@ async def get_pipeline_status(project: str):
     }
 
 
+@router.get("/{project}/data-dashboard")
+async def get_data_dashboard(project: str):
+    """Data Dashboard: mirror layer counts, AI layer counts, pipeline health, pending."""
+    if not db.is_available():
+        return {"mirror": {}, "ai": {}, "pipeline": {}, "pending": {}, "recent_errors": [], "fallback": True}
+
+    project_id = db.get_or_create_project_id(project)
+    mirror: dict = {}
+    ai: dict = {}
+    pipeline: dict = {}
+    pending: dict = {}
+    recent_errors: list = []
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+
+                # ── Mirror layer ──────────────────────────────────────────
+                for table, key in [
+                    ("mem_mrr_commits",  "commits"),
+                    ("mem_mrr_prompts",  "prompts"),
+                    ("mem_mrr_items",    "items"),
+                    ("mem_mrr_messages", "messages"),
+                ]:
+                    try:
+                        cur.execute(
+                            f"""SELECT COUNT(*),
+                                       COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
+                                       MAX(created_at)
+                                FROM {table} WHERE project_id = %s""",
+                            (project_id,),
+                        )
+                        r = cur.fetchone()
+                        mirror[key] = {
+                            "total": r[0] or 0,
+                            "last_24h": r[1] or 0,
+                            "last_at": r[2].isoformat() if r[2] else None,
+                        }
+                    except Exception:
+                        conn.rollback()
+                        mirror[key] = {"total": 0, "last_24h": 0, "last_at": None}
+
+                # Commits: pending embed
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
+                        (project_id,),
+                    )
+                    mirror["commits"]["pending_embed"] = cur.fetchone()[0] or 0
+                except Exception:
+                    conn.rollback()
+                    mirror["commits"]["pending_embed"] = 0
+
+                # Prompts: pending embed
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NULL",
+                        (project_id,),
+                    )
+                    mirror["prompts"]["pending_embed"] = cur.fetchone()[0] or 0
+                except Exception:
+                    conn.rollback()
+                    mirror["prompts"]["pending_embed"] = 0
+
+                # ── AI layer ──────────────────────────────────────────────
+                # Events
+                try:
+                    cur.execute(
+                        """SELECT COUNT(*),
+                                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
+                                  MAX(created_at)
+                           FROM mem_ai_events WHERE project_id = %s""",
+                        (project_id,),
+                    )
+                    r = cur.fetchone()
+                    ai["events"] = {
+                        "total": r[0] or 0,
+                        "last_24h": r[1] or 0,
+                        "last_at": r[2].isoformat() if r[2] else None,
+                        "by_type": {},
+                    }
+                    cur.execute(
+                        "SELECT event_type, COUNT(*) FROM mem_ai_events WHERE project_id=%s GROUP BY event_type ORDER BY 2 DESC",
+                        (project_id,),
+                    )
+                    ai["events"]["by_type"] = {row[0]: row[1] for row in cur.fetchall()}
+                except Exception:
+                    conn.rollback()
+                    ai["events"] = {"total": 0, "last_24h": 0, "last_at": None, "by_type": {}}
+
+                # Work items
+                try:
+                    cur.execute(
+                        """SELECT COUNT(*),
+                                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
+                                  MAX(created_at),
+                                  COUNT(*) FILTER (WHERE status_user NOT IN ('done','archived')),
+                                  COUNT(*) FILTER (WHERE status_user = 'done'),
+                                  COUNT(*) FILTER (WHERE tag_id_user IS NOT NULL)
+                           FROM mem_ai_work_items WHERE project_id = %s""",
+                        (project_id,),
+                    )
+                    r = cur.fetchone()
+                    ai["work_items"] = {
+                        "total": r[0] or 0,
+                        "last_24h": r[1] or 0,
+                        "last_at": r[2].isoformat() if r[2] else None,
+                        "active": r[3] or 0,
+                        "done": r[4] or 0,
+                        "linked": r[5] or 0,
+                    }
+                except Exception:
+                    conn.rollback()
+                    ai["work_items"] = {"total": 0, "last_24h": 0, "last_at": None,
+                                        "active": 0, "done": 0, "linked": 0}
+
+                # Feature snapshots (planner_tags with AI content)
+                try:
+                    cur.execute(
+                        """SELECT COUNT(*),
+                                  COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
+                                  MAX(updated_at)
+                           FROM planner_tags
+                           WHERE project_id = %s
+                             AND (description IS NOT NULL OR acceptance_criteria IS NOT NULL)""",
+                        (project_id,),
+                    )
+                    r = cur.fetchone()
+                    ai["feature_snapshots"] = {
+                        "total": r[0] or 0,
+                        "last_24h": r[1] or 0,
+                        "last_at": r[2].isoformat() if r[2] else None,
+                    }
+                except Exception:
+                    conn.rollback()
+                    ai["feature_snapshots"] = {"total": 0, "last_24h": 0, "last_at": None}
+
+                # ── Pipeline runs (last 24h) ───────────────────────────────
+                pl_keys = ["commit_embed", "commit_store", "commit_code_extract",
+                           "session_summary", "tag_match", "work_item_embed"]
+                try:
+                    cur.execute(
+                        """SELECT pipeline, status, COUNT(*), MAX(started_at)
+                           FROM mem_pipeline_runs
+                           WHERE project_id = %s AND started_at > NOW() - INTERVAL '24 hours'
+                           GROUP BY pipeline, status""",
+                        (project_id,),
+                    )
+                    agg: dict = {}
+                    for pl, st, cnt, last_run in cur.fetchall():
+                        if pl not in agg:
+                            agg[pl] = {"ok": 0, "error": 0, "skipped": 0, "last_run": None}
+                        key = st if st in ("ok", "error", "skipped") else "error"
+                        agg[pl][key] += cnt
+                        if last_run:
+                            ex = agg[pl]["last_run"]
+                            if not ex or last_run.isoformat() > ex:
+                                agg[pl]["last_run"] = last_run.isoformat()
+                    for pl in pl_keys:
+                        pipeline[pl] = agg.get(pl, {"ok": 0, "error": 0, "skipped": 0, "last_run": None})
+                except Exception:
+                    conn.rollback()
+                    for pl in pl_keys:
+                        pipeline[pl] = {"ok": 0, "error": 0, "skipped": 0, "last_run": None}
+
+                # ── Pending ───────────────────────────────────────────────
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
+                        (project_id,),
+                    )
+                    pending["commits_not_embedded"] = cur.fetchone()[0] or 0
+                except Exception:
+                    conn.rollback()
+                    pending["commits_not_embedded"] = 0
+
+                try:
+                    cur.execute(
+                        """SELECT COUNT(*) FROM mem_ai_work_items
+                           WHERE project_id=%s AND tag_id_ai IS NULL AND tag_id_user IS NULL
+                             AND status_user != 'done'""",
+                        (project_id,),
+                    )
+                    pending["work_items_unmatched"] = cur.fetchone()[0] or 0
+                except Exception:
+                    conn.rollback()
+                    pending["work_items_unmatched"] = 0
+
+                # ── Recent errors ─────────────────────────────────────────
+                try:
+                    cur.execute(
+                        """SELECT pipeline, source_id, error_msg, started_at
+                           FROM mem_pipeline_runs
+                           WHERE project_id=%s AND status='error'
+                           ORDER BY started_at DESC LIMIT 5""",
+                        (project_id,),
+                    )
+                    recent_errors = [
+                        {"pipeline": r[0], "source_id": r[1] or "",
+                         "error_msg": r[2] or "", "at": r[3].isoformat() if r[3] else None}
+                        for r in cur.fetchall()
+                    ]
+                except Exception:
+                    conn.rollback()
+
+    except Exception as e:
+        log.warning(f"get_data_dashboard error: {e}")
+        return {"mirror": mirror, "ai": ai, "pipeline": pipeline,
+                "pending": pending, "recent_errors": recent_errors, "error": str(e)}
+
+    return {
+        "mirror": mirror,
+        "ai": ai,
+        "pipeline": pipeline,
+        "pending": pending,
+        "recent_errors": recent_errors,
+    }
+
+
 @router.get("/{project}/workflow-templates")
 async def get_workflow_templates(project: str):
     """Return delivery-type → workflow mapping + available workflows for this project."""

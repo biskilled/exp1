@@ -74,7 +74,7 @@ const PROJECT_TABS = [
   { id: 'code',      icon: '</>',label: 'Code'      },
   { id: 'documents', icon: '📋', label: 'Documents' },
   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
-  { id: 'pipeline',  icon: '⊕',  label: 'Pipeline'  },
+  { id: 'pipeline',  icon: '◫',  label: 'Data'      },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
