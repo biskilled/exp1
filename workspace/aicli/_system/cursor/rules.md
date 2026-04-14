@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 18:48 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 22:51 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,11 +68,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id → project_id → created_at/processed_at/embedding at end
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-
-## Recent Context (last 5 changes)
-
-- [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta
-- [2026-04-13] In events table is there is any point to have importance ? I think its more relevant for work_items
-- [2026-04-13] yes
-- [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
-- [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
