@@ -91,7 +91,7 @@
   ],
   "in_progress": [
     "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
-    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline now uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
+    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
     "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup",
     "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
     "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation",
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T23:23:19Z",
+  "last_memory_run": "2026-04-14T23:25:03Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -148,7 +148,7 @@
     ],
     "in_progress": [
       "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
-      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline now uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
+      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides",
       "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup",
       "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
       "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation",
@@ -160,17 +160,18 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
       "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector for semantic search, and an Electron desktop UI for persistent project context and AI-assisted workflows. The system orchestrates multi-stage work item pipelines via agent roles (PM\u2192Architect\u2192Developer\u2192Reviewer), synthesizes memory via Claude, and provides tagging, embeddings, and real-time collaboration features. Currently enhancing agent role management, improving tag suggestion workflows, and refactoring pipeline execution UI for proper state rendering.",
-    "memory_digest": "**[2026-04-14]** `routers/agent_roles.py` \u2014 Agent roles enhancement: auto_commit boolean column added to mng_agent_roles schema and RoleCreate/RoleUpdate models to support pipeline automation flags. **[2026-04-14]** `core/work_item_pipeline.py` \u2014 Work item pipeline refactor: 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) now loads agent roles from DB via _load_role() function with comprehensive _FALLBACK_PROMPTS dict for offline fallback; roles support provider/model overrides. **[2026-04-14]** `db_migrations` \u2014 Memory mirror tables refactor: mem_mrr_prompts column reordering (project_id/event_id positioned after client_id) completed via m037-m039 migrations for schema standardization. **[2026-04-13]** `ui/work_items` \u2014 Tag suggestion UX refinement: ai_tag_suggestion column with clickable approve/remove buttons; chip markup simplified, category inference added to tag creation flow. **[2026-03-20]** `ui/pipeline` \u2014 Pipeline approval panel rendering issue identified: old markdown version displayed instead of current output/progress logs; requires chat panel state management investigation. **[2026-03-20]** `ui/home` \u2014 Project startup race condition fixed: sequential await api.listProjects() prevents empty home screen by properly handling edge case where API succeeds but returns empty list."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and Electron desktop UI to capture, analyze, and synthesize development work into actionable insights. The system uses async DAG workflows, Claude-based memory synthesis, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw code commits and session events into structured work items, project facts, and tagged memories. Currently stabilizing agent role automation, memory schema organization, tag suggestion workflows, and pipeline UI rendering to improve development team coordination.",
+    "memory_digest": "**[2026-04-14]** `agent_roles` \u2014 Enhanced agent roles with auto_commit boolean column to improve pipeline automation; RoleCreate/RoleUpdate models updated and all 4-stage work item pipeline phases support provider/model overrides. **[2026-04-14]** `memory_schema` \u2014 Refactored mem_mrr_prompts columns (project_id/event_id reordered after client_id) with m037-m039 migrations applied for schema cleanup and consistency. **[2026-04-13]** `tag_suggestion` \u2014 Implemented ai_tag_suggestion column with approve/remove button handlers; simplified chip markup with category inference; investigating missing suggested_new tags rendering in UI. **[2026-03-20]** `pipeline_ui` \u2014 Identified issue where approval panel displays old MD version instead of current output/progress logs; requires chat panel state management and step sequencing investigation. **[2026-03-20]** `project_startup` \u2014 Fixed race condition with empty home screen by implementing sequential await api.listProjects(); handles edge case where API succeeds but returns empty list. **[2026-03-19]** `pipeline_queries` \u2014 Resolved UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; backend handler now converts strings to UUID objects."
   }
 }

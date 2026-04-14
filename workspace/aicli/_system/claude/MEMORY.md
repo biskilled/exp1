@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-14 23:22 UTC by aicli /memory_
+_Generated: 2026-04-14 23:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector for semantic search, and an Electron desktop UI for persistent project context and AI-assisted workflows. The system orchestrates multi-stage work item pipelines via agent roles (PM→Architect→Developer→Reviewer), synthesizes memory via Claude, and provides tagging, embeddings, and real-time collaboration features. Currently enhancing agent role management, improving tag suggestion workflows, and refactoring pipeline execution UI for proper state rendering.
+aicli is a shared AI memory platform that combines a Python FastAPI backend, PostgreSQL semantic storage (pgvector), and Electron desktop UI to capture, analyze, and synthesize development work into actionable insights. The system uses async DAG workflows, Claude-based memory synthesis, and multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok) to transform raw code commits and session events into structured work items, project facts, and tagged memories. Currently stabilizing agent role automation, memory schema organization, tag suggestion workflows, and pipeline UI rendering to improve development team coordination.
 
 ## Project Facts
 
@@ -233,7 +233,7 @@ Reviewer: ```json
 ## In Progress
 
 - Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; 4-stage pipeline now uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides
 - Memory mirror tables refactor (2026-04-14) — mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup
 - Tag suggestion and approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
 - Pipeline execution UI rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation
@@ -288,6 +288,21 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit` — 2026-04-14
+
+Commit: chore: clean up stale system context files after claude cli session 2a6b
+Hash: 77ddc19d
+Generated/internal files: workspace/aicli/_system/dev_runtime_state.json
+
+### `commit: 2a6b600e-9046-4d7b-88e9-ddb136d6ed65` — 2026-04-14
+
+Commits: chore: restructure _system memory files after claude cli session 2a6b600 | chore: consolidate and reorganize _system context/memory files after cla | chore: clean up stale agent context and consolidated system documentatio | chore: remove stale agent context and consolidated CLAUDE.md files after | chore: clean up stale system context files after claude cli session 2a6b
+Changed: embed_prompts, _openWorkItemDrawer, _wiRenderRows, rowFor, MemoryFiles.get_top_events, MemoryPromotion, MemoryFiles, MemoryPromotion.extract_work_items_from_events
+Stats:  backend/memory/memory_files.py  |   5 +-
+ backend/routers/route_memory.py |  52 +++++++
+ ui/frontend/views/entities.js   |  19 +++
+ 8 files changed, 384 insertions(+), 16 deletions(-)
 
 ### `commit` — 2026-04-14
 
@@ -559,131 +574,6 @@ index 50cb8e3..751e1dd 100644
                      "approval_msg": r[9] if len(r) > 9 else "",
 
 
-### `commit` — 2026-04-14
-
-diff --git a/ui/backend/core/database.py b/ui/backend/core/database.py
-index e20e283..20dbd22 100644
---- a/ui/backend/core/database.py
-+++ b/ui/backend/core/database.py
-@@ -196,6 +196,7 @@ ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS inputs        JSONB
- ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS outputs       JSONB        DEFAULT '[]';
- ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS role_type     VARCHAR(50)  NOT NULL DEFAULT 'agent';
- ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS output_schema JSONB        DEFAULT NULL;
-+ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS auto_commit   BOOLEAN      NOT NULL DEFAULT FALSE;
- CREATE UNIQUE INDEX IF NOT EXISTS idx_mar_cid_proj_name
-     ON mng_agent_roles(client_id, project, name);
- CREATE INDEX IF NOT EXISTS idx_mar_cp ON mng_agent_roles(client_id, project);
-@@ -633,9 +634,10 @@ class _Database:
-             _Database._run_ddl_statements(conn, sql, label)
-             log.debug(f"✅ {label} DDL done")
- 
--        # Seed built-in global agent roles + system roles (idempotent)
-+        # Seed built-in global agent roles + system roles + links (idempotent)
-         _Database._seed_agent_roles(conn)
-         _Database._seed_system_roles(conn)
-+        _Database._seed_role_system_links(conn)
- 
-     def _ensure_shared_schema(self, conn) -> None:
-         """Create all 15 pr_* flat tables. Runs once per process lifetime."""
-@@ -1196,101 +1198,144 @@ class _Database:
- 
-     @staticmethod
-     def _seed_agent_roles(conn) -> None:
--        """Insert the 10 built-in global roles (client_id=1). Idempotent."""
-+        """Upsert the 10 built-in global roles (client_id=1).
-+
-+        Uses DO UPDATE so improved prompts take effect on server restart.
-+        auto_commit=True is set on developer roles so pipeline nodes that
-+        link to them automatically commit+push their file changes.
-+        """
-+        # (name, description, system_prompt, provider, model, role_type, auto_commit)
-         _ROLES = [
-             (
-                 "Product Manager",
--                "Translates feature descriptions into acceptance criteria and user stories.",
--                "You are a senior product manager. Given a feature description, write 3-8 "
--                "acceptance criteria as bullet points starting with '- [ ]'. Each must be "
--                "specific, measurable, and testable. Also identify 2-3 user stories in "
--                "'As a [user], I want [goal]' format. Respond in plain text.",
--                "claude", "claude-haiku-4-5-20251001",
-+                "Produces a concise task spec with acceptance criteria.",
-+                "You are a senior product manager. Given a work item, produce ONLY:\n\n"
-+                "## Task\n<one-sentence task statement>\n\n"
-+                "## Description\n<2-3 sentences: goal, user value, scope>\n\n"
-+                "## Acceptance Criteria\n"
-+                "- [ ] <specific, testable criterion 1>\n"
-+                "- [ ] <specific, testable criterion 2>\n"
-+                "- [ ] <specific, testable criterion 3 (max 5 total)>\n\n"
-+                "Rules: under 250 words total. No preamble. No user stories unless asked.",
-+                "claude", "claude-haiku-4-5-20251001", "agent", False,
-             ),
-             (
-                 "Sr. Architect",
--                "Designs technical architecture and numbered implementation plans.",
--                "You are a senior software architect. Given a feature and acceptance criteria, "
--                "write a numbered technical implementation plan. Include: specific files to "
--                "create or modify, functions/methods to add, database schema changes, and "
--                "integration points. Be precise about HOW to implement, not just WHAT.",
--                "claude", "claude-sonnet-4-6",
-+                "Produces a concise numbered implementation plan with file paths.",
-+                "You are a senior software architect. Given a task and acceptance criteria, "
-+                "produce ONLY:\n\n"
-+                "## Plan\n1. <concrete step>\n2. <concrete step>\n...(max 6 steps)\n\n"
-+                "## Files to Change\n"
-+                "- `path/to/file.py` — <what to add/modify>\n\n"
-+                "## Notes\n<2-3 sentences: key decisions, patterns to follow, risks>\n\n"
-+                "Rules: under 300 words. Be precise about file paths and function names. "
-+                "No lengthy prose.",
-+                "claude", "claude-sonnet-4-6", "system_designer", False,
-             ),
-             (
-                 "Web Developer",
--                "Implements full-stack features against a technical plan.",
-+                "Implements full-stack features; outputs complete files ready to commit.",
-                 "You are a senior full-stack developer. Given an implementation plan and "
--                "acceptance criteria, write the actual code. Include complete file contents "
--                "or clear code diffs. Cover both frontend and backend changes. Add inline "
--                "comments for non-obvious logic. Ensure all acceptance criteria are met.",
--                "claude", "claude-sonnet-4-6",
-+                "acceptance criteria, write the actual code changes.\n\n"
-+                "For EACH file you create or modify, use this EXACT format:\n\n"
-+                "### File: path/to/file.ext\n```language\n<complete file content>\n```\n\n"
-+                "After all files, add:\n"
-+                "## Summary\n- <bullet: what changed>\n- <bullet: why>\n\n"
-+                "Rules:\n"
-+                "- Write COMPLETE file content (not partial diffs)\n"
-+                "- Cover both frontend and backend if needed\n"
-+                "- All acceptance criteria must be met\n"
-+                "- Add inline comments for non-obvious logic",
-+                "claude", "claude-sonnet-4-6", "developer", True,
-             ),
-             (
-                 "Backend Develop
-
-### `commit` — 2026-04-14
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index de3fcfe..eca8ccf 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-20 19:38 UTC
-+> Generated by aicli 2026-03-20 19:53 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -36,7 +36,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - JWT authentication via python-jose + bcrypt; DEV_MODE toggle; 3-tier roles (admin/paid/free); login as first-level hierarchy
- - All LLM providers as independent adapters (Claude, OpenAI, DeepSeek, Gemini, Grok); server holds API keys; client sends no keys
- - Nested tag hierarchy via parent_id FK with unlimited depth; tags synced across Chat/History/Commits on explicit save
--- Load-once-on-access pattern: eliminate redundant SQL by caching tags/workflows/runs in memory; update DB only on explicit save
-+- Load-once-on-access pattern: cache tags/workflows/runs in memory; update DB only on explicit save to eliminate redundant SQL
- - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js + cytoscape-dagre visualization
- - Memory synthesis: Claude Haiku for dual-layer output (raw JSONL → interaction_tags → 5 files); smart chunking per language/section
- - Port binding safety via freePort() to kill stale uvicorn; Electron cleanup via process.exit()
-
-
 ## AI Synthesis
 
-**[2026-04-14]** `routers/agent_roles.py` — Agent roles enhancement: auto_commit boolean column added to mng_agent_roles schema and RoleCreate/RoleUpdate models to support pipeline automation flags. **[2026-04-14]** `core/work_item_pipeline.py` — Work item pipeline refactor: 4-stage pipeline (PM→Architect→Developer→Reviewer) now loads agent roles from DB via _load_role() function with comprehensive _FALLBACK_PROMPTS dict for offline fallback; roles support provider/model overrides. **[2026-04-14]** `db_migrations` — Memory mirror tables refactor: mem_mrr_prompts column reordering (project_id/event_id positioned after client_id) completed via m037-m039 migrations for schema standardization. **[2026-04-13]** `ui/work_items` — Tag suggestion UX refinement: ai_tag_suggestion column with clickable approve/remove buttons; chip markup simplified, category inference added to tag creation flow. **[2026-03-20]** `ui/pipeline` — Pipeline approval panel rendering issue identified: old markdown version displayed instead of current output/progress logs; requires chat panel state management investigation. **[2026-03-20]** `ui/home` — Project startup race condition fixed: sequential await api.listProjects() prevents empty home screen by properly handling edge case where API succeeds but returns empty list.
+**[2026-04-14]** `agent_roles` — Enhanced agent roles with auto_commit boolean column to improve pipeline automation; RoleCreate/RoleUpdate models updated and all 4-stage work item pipeline phases support provider/model overrides. **[2026-04-14]** `memory_schema` — Refactored mem_mrr_prompts columns (project_id/event_id reordered after client_id) with m037-m039 migrations applied for schema cleanup and consistency. **[2026-04-13]** `tag_suggestion` — Implemented ai_tag_suggestion column with approve/remove button handlers; simplified chip markup with category inference; investigating missing suggested_new tags rendering in UI. **[2026-03-20]** `pipeline_ui` — Identified issue where approval panel displays old MD version instead of current output/progress logs; requires chat panel state management and step sequencing investigation. **[2026-03-20]** `project_startup` — Fixed race condition with empty home screen by implementing sequential await api.listProjects(); handles edge case where API succeeds but returns empty list. **[2026-03-19]** `pipeline_queries` — Resolved UUID validation error (psycopg2 InvalidTextRepresentation) when string 'recent' passed to UUID field; backend handler now converts strings to UUID objects.

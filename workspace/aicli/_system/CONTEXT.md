@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 23:23 UTC — do not edit manually.
+> Auto-generated 2026-04-14 23:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 534
-- **Last active**: 2026-04-14T23:23:11Z
+- **Sessions**: 536
+- **Last active**: 2026-04-14T23:24:27Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -59,7 +59,7 @@
 ## In Progress
 
 - Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; 4-stage pipeline now uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; 4-stage pipeline uses _load_role() and _FALLBACK_PROMPTS; all stages support provider/model overrides
 - Memory mirror tables refactor (2026-04-14) — mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup
 - Tag suggestion and approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
 - Pipeline execution UI rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation
