@@ -458,7 +458,7 @@ async def get_pipeline_status(project: str):
     project_id = db.get_or_create_project_id(project)
 
     pipelines = ["commit_embed", "commit_store", "commit_code_extract",
-                 "session_summary", "tag_match", "work_item_embed"]
+                 "session_summary", "tag_match", "work_item_embed", "work_item_promote"]
     last_24h: dict = {}
 
     try:
@@ -637,23 +637,44 @@ async def get_data_dashboard(project: str):
                                   MAX(created_at),
                                   COUNT(*) FILTER (WHERE status_user NOT IN ('done','archived')),
                                   COUNT(*) FILTER (WHERE status_user = 'done'),
-                                  COUNT(*) FILTER (WHERE tag_id_user IS NOT NULL)
+                                  COUNT(*) FILTER (WHERE tag_id_user IS NOT NULL),
+                                  COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
+                                  MAX(updated_at),
+                                  COUNT(*) FILTER (WHERE tag_id_user IS NULL AND tag_id_ai IS NULL),
+                                  COUNT(*) FILTER (WHERE tag_id_user IS NULL AND tag_id_ai IS NOT NULL),
+                                  COUNT(*) FILTER (WHERE score_ai = 0),
+                                  COUNT(*) FILTER (WHERE score_ai = 1),
+                                  COUNT(*) FILTER (WHERE score_ai = 2),
+                                  COUNT(*) FILTER (WHERE score_ai = 3),
+                                  COUNT(*) FILTER (WHERE score_ai = 4),
+                                  COUNT(*) FILTER (WHERE score_ai = 5)
                            FROM mem_ai_work_items WHERE project_id = %s""",
                         (project_id,),
                     )
                     r = cur.fetchone()
                     ai["work_items"] = {
-                        "total": r[0] or 0,
-                        "last_24h": r[1] or 0,
-                        "last_at": r[2].isoformat() if r[2] else None,
-                        "active": r[3] or 0,
-                        "done": r[4] or 0,
-                        "linked": r[5] or 0,
+                        "total":           r[0] or 0,
+                        "last_24h":        r[1] or 0,
+                        "last_at":         r[2].isoformat() if r[2] else None,
+                        "active":          r[3] or 0,
+                        "done":            r[4] or 0,
+                        "linked":          r[5] or 0,
+                        "promoted_24h":    r[6] or 0,
+                        "last_promoted_at": r[7].isoformat() if r[7] else None,
+                        "unlinked_ai_only": r[8] or 0,
+                        "ai_suggested":    r[9] or 0,
+                        "by_score": {
+                            "0": r[10] or 0, "1": r[11] or 0, "2": r[12] or 0,
+                            "3": r[13] or 0, "4": r[14] or 0, "5": r[15] or 0,
+                        },
                     }
                 except Exception:
                     conn.rollback()
                     ai["work_items"] = {"total": 0, "last_24h": 0, "last_at": None,
-                                        "active": 0, "done": 0, "linked": 0}
+                                        "active": 0, "done": 0, "linked": 0,
+                                        "promoted_24h": 0, "last_promoted_at": None,
+                                        "unlinked_ai_only": 0, "ai_suggested": 0,
+                                        "by_score": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0}}
 
                 # Feature snapshots (planner_tags with AI content)
                 try:
@@ -678,7 +699,8 @@ async def get_data_dashboard(project: str):
 
                 # ── Pipeline runs (last 24h) ───────────────────────────────
                 pl_keys = ["commit_embed", "commit_store", "commit_code_extract",
-                           "session_summary", "tag_match", "work_item_embed"]
+                           "session_summary", "tag_match", "work_item_embed",
+                           "work_item_promote"]
                 try:
                     cur.execute(
                         """SELECT pipeline, status, COUNT(*), MAX(started_at)

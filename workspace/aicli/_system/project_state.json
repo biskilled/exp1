@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+ with pgvector + m001-m039 migration framework",
+    "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+ with pgvector extensions",
     "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
@@ -57,9 +57,9 @@
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)",
-    "Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items",
-    "Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater",
-    "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding at end",
+    "Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)",
+    "Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB)",
+    "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding at end",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
   ],
@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Feature snapshot implementation (2026-04-12) \u2014 mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking",
-    "UI work items & planner refactor (2026-04-13) \u2014 Fixed duplicate `const cats` declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow",
-    "Events table restructuring (2026-04-13) \u2014 Dropped importance column; reordered columns (client_id \u2192 project_id \u2192 created_at/processed_at/embedding); removed old table after migration to save space",
-    "Tag cleanup & consolidation (2026-04-13) \u2014 Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events",
-    "Memory mirror tables refactor (2026-04-14) \u2014 Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m039 migrations for schema cleanup",
-    "Dashboard + pipeline UI planning (2026-04-12) \u2014 New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (in design phase)"
+    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) now uses _load_role() and _FALLBACK_PROMPTS; auto_commit flag added to role schema",
+    "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
+    "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; requires chat panel state management investigation",
+    "Project startup race condition fix (2026-03-20) \u2014 Sequential await api.listProjects() prevents empty home screen; edge case handling implemented",
+    "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; missing suggested_new tags issue under investigation",
+    "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T18:27:39Z",
+  "last_memory_run": "2026-04-14T19:05:04Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -140,19 +140,19 @@
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped (llm, event, chunk_type, commit_hash retained only phase/feature/bug/source tags)",
-      "Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt), and mapping to work items",
-      "Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table now clean with name, status, description, creator, requirements, action_items, deliveries (JSONB), updater",
-      "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m039); column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding at end",
+      "Feature snapshot layer (mem_ai_feature_snapshot) merges user requirements with work items: summaries, use cases, delivery types (code/document/architecture/ppt)",
+      "Tag system: retained only user-facing tags (phase, feature, bug, source); planner_tags table with name, status, description, creator, requirements, action_items, deliveries (JSONB)",
+      "Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding at end",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)"
     ],
     "in_progress": [
-      "Feature snapshot implementation (2026-04-12) \u2014 mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking",
-      "UI work items & planner refactor (2026-04-13) \u2014 Fixed duplicate `const cats` declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow",
-      "Events table restructuring (2026-04-13) \u2014 Dropped importance column; reordered columns (client_id \u2192 project_id \u2192 created_at/processed_at/embedding); removed old table after migration to save space",
-      "Tag cleanup & consolidation (2026-04-13) \u2014 Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events",
-      "Memory mirror tables refactor (2026-04-14) \u2014 Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m039 migrations for schema cleanup",
-      "Dashboard + pipeline UI planning (2026-04-12) \u2014 New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (in design phase)"
+      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) now uses _load_role() and _FALLBACK_PROMPTS; auto_commit flag added to role schema",
+      "Agent roles enhancement (2026-04-14) \u2014 auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow",
+      "Pipeline execution UI rendering (2026-03-20) \u2014 Old MD version displayed on approval panel instead of current output/progress logs; requires chat panel state management investigation",
+      "Project startup race condition fix (2026-03-20) \u2014 Sequential await api.listProjects() prevents empty home screen; edge case handling implemented",
+      "Tag suggestion and approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; missing suggested_new tags issue under investigation",
+      "Memory mirror tables refactor (2026-04-14) \u2014 mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,19 +160,16 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector + m001-m039 migration framework",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching",
-      "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables"
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform that solves context loss across AI tools in software development by maintaining persistent project memory across sessions. It captures events from CLI, git commits, and user interactions, synthesizes them through Claude Haiku into work items and project facts, and exposes this memory via semantic search and workflow pipelines. Current state: schema refinement and UI stabilization complete; moving toward feature snapshot layer for user requirement tracking and dashboard-driven pipeline execution.",
-    "memory_digest": "**[2026-04-12]** `feature_snapshot` \u2014 Created mem_ai_feature_snapshot table to merge user requirements with work items; includes summaries, use cases, delivery types (code/document/architecture/ppt), and work item mappings. **[2026-04-12]** `planner_tags_refactor` \u2014 Cleaned planner_tags schema: dropped seq_num (never used), consolidated creator/source to creator only, added updater column, reordered columns (project_id after client_id). **[2026-04-13]** `ui_work_items_fix` \u2014 Fixed Electron crash from duplicate const declaration; planner now properly displays categories (bug/feature/task) and work items; tag acceptance flow updates item visibility correctly. **[2026-04-13]** `events_schema_cleanup` \u2014 Dropped importance column from mem_ai_events (work_items responsibility); reordered columns with created_at/processed_at/embedding at end; dropped old table to save space. **[2026-04-13]** `tag_consolidation` \u2014 Stripped system metadata (llm, event, chunk_type, commit_hash) from 1441 events; retained only user-facing tags (phase, feature, bug, source); fixed 6 corrupt session_summary events with malformed JSON. **[2026-04-14]** `mirror_tables_reorder` \u2014 Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id for consistency); applied m037-m039 migrations for unified schema structure."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with Electron desktop UI, enabling teams to capture, organize, and synthesize development knowledge through semantic search, event tagging, and LLM-driven work item pipelines. Currently in active development with focus on workflow automation (4-stage agent pipelines with DB-driven roles), memory synthesis refinement, and UI stabilization for tag suggestions and project management.",
+    "memory_digest": "**[2026-04-14]** `work_item_pipeline.py` \u2014 Agent roles now loaded from mng_agent_roles DB table via _load_role() function with fallback prompts; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) refactored to use DB-driven system prompts and provider/model settings.\n\n**[2026-04-14]** `agent_roles.py` \u2014 Added auto_commit boolean column to mng_agent_roles; RoleCreate and RoleUpdate Pydantic models updated; supports automated pipeline execution on role approval.\n\n**[2026-04-13]** `planner UI` \u2014 Tag suggestion and approval flow stabilized; ai_tag_suggestion column with approve/remove button handlers; category inference on tag creation; improved tooltip messaging.\n\n**[2026-04-13]** `Events table` \u2014 Dropped importance column; reordered to follow schema convention (client_id \u2192 project_id \u2192 created_at/processed_at/embedding); stripped system metadata (llm, event, chunk_type, commit_hash) from 1441 events; retained only user-facing tags (phase, feature, bug, source).\n\n**[2026-04-12]** `Feature snapshot layer` \u2014 mem_ai_feature_snapshot table created; merges user requirements/tags with work items; tracks summaries, use cases, and delivery types (code/document/architecture/ppt).\n\n**[2026-03-20]** `Pipeline approval workflow` \u2014 Rendering issue identified: old MD version displayed on approval panel instead of current output/progress logs; requires chat panel state management and step sequencing investigation.\n\n**[2026-03-20]** `Project startup` \u2014 Race condition fixed via sequential await api.listProjects(); prevents empty home screen when API returns success but empty project list.\n\n**[2026-03-19]** `Pipeline run queries` \u2014 UUID validation issue fixed; string 'recent' was causing psycopg2 InvalidTextRepresentation error; backend now converts to UUID object before DB lookup."
   }
 }

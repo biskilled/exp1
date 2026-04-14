@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
 
 ## Recent Work
 
-- Feature snapshot implementation (2026-04-12) — mem_ai_feature_snapshot table created; merges user requirements/tags with work items; includes summaries, use cases, and delivery type tracking
-- UI work items & planner refactor (2026-04-13) — Fixed duplicate const cats declaration breaking Electron load; planner now shows categories (bug/feature/task) with proper work item linking and tag acceptance flow
-- Events table restructuring (2026-04-13) — Dropped importance column; reordered columns (client_id → project_id → created_at/processed_at/embedding); removed old table after migration
-- Tag cleanup & consolidation (2026-04-13) — Stripped system metadata from 1441 events (llm, event, chunk_type, commit_hash); retained only user-facing tags (phase, feature, bug, source); fixed corrupt session_summary events
-- Memory mirror tables refactor (2026-04-14) — Reordered mem_mrr_prompts columns (project_id/event_id moved after client_id); applying m037-m041 migrations for schema cleanup
-- Dashboard + pipeline UI planning (2026-04-12) — New dashboard tab for pipeline visibility; pipeline triggerable from planner/docs/chat; approval panel for workflow execution (design phase)
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage pipeline (PM→Architect→Developer→Reviewer) now uses _load_role() and _FALLBACK_PROMPTS; auto_commit flag added to role schema
+- Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
+- Pipeline execution UI rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output/progress logs; requires chat panel state management investigation
+- Project startup race condition fix (2026-03-20) — Sequential await api.listProjects() prevents empty home screen; edge case handling implemented
+- Tag suggestion and approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; missing suggested_new tags issue under investigation
+- Memory mirror tables refactor (2026-04-14) — mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup

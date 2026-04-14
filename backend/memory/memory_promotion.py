@@ -802,6 +802,11 @@ class MemoryPromotion:
                     name = (item.get("name") or "").strip().lower()[:200]
                     if not name:
                         continue
+                    # Confidence gate: skip low-confidence extractions to reduce hallucination
+                    confidence = float(item.get("confidence") or 0.0)
+                    if confidence < 0.75:
+                        log.debug(f"extract_work_items: skipping '{name}' (confidence={confidence:.2f} < 0.75)")
+                        continue
                     category = item.get("category", "task")
                     ac = (item.get("acceptance_criteria") or "").strip()[:1000]
                     ai_actions = (item.get("action_items") or "").strip()[:1000]

@@ -231,7 +231,7 @@ function _renderAI(container, ai) {
     .join('');
 
   const cards = [
-    // Events
+    // Events  (row 1, col 1)
     `<div class="dd-card">
       <div class="dd-card-hdr">
         <span class="dd-card-icon">⚡</span>
@@ -254,34 +254,7 @@ function _renderAI(container, ai) {
       <div class="dd-card-footer" style="margin-top:0.2rem">${typeLines}</div>
     </div>`,
 
-    // Work Items
-    `<div class="dd-card">
-      <div class="dd-card-hdr">
-        <span class="dd-card-icon">▦</span>
-        <span class="dd-card-title">Work Items</span>
-        <div class="dd-dot" style="background:${_dot(wi.total, wi.last_24h, false)}"></div>
-      </div>
-      <div class="dd-stats">
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(wi.total)}</div>
-          <div class="dd-stat-lbl">Total</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val" style="color:${wi.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(wi.last_24h)}</div>
-          <div class="dd-stat-lbl">24h</div>
-        </div>
-      </div>
-      <div class="dd-card-footer">
-        <span>Last: ${_fmtTime(wi.last_at)}</span>
-      </div>
-      <div class="dd-card-footer" style="margin-top:0.2rem">
-        <span class="dd-tag">active: ${wi.active ?? 0}</span>
-        <span class="dd-tag">done: ${wi.done ?? 0}</span>
-        <span class="dd-tag" style="color:${wi.linked > 0 ? 'var(--green,#27ae60)' : 'var(--muted)'}">linked: ${wi.linked ?? 0}</span>
-      </div>
-    </div>`,
-
-    // Feature Snapshots
+    // Feature Snapshots  (row 1, col 2)
     `<div class="dd-card">
       <div class="dd-card-hdr">
         <span class="dd-card-icon">◉</span>
@@ -302,6 +275,76 @@ function _renderAI(container, ai) {
         <span>Last: ${_fmtTime(fs.last_at)}</span>
       </div>
     </div>`,
+
+    // Work Items  (row 2, full-width)
+    `<div class="dd-card" style="grid-column:1/-1">
+      <div class="dd-card-hdr">
+        <span class="dd-card-icon">▦</span>
+        <span class="dd-card-title">Work Items</span>
+        <div class="dd-dot" style="background:${_dot(wi.total, wi.promoted_24h ?? wi.last_24h, false)}"></div>
+      </div>
+
+      <!-- Row 1: volume stats -->
+      <div class="dd-stats">
+        <div class="dd-stat">
+          <div class="dd-stat-val">${_fmtNum(wi.total)}</div>
+          <div class="dd-stat-lbl">Total</div>
+        </div>
+        <div class="dd-stat">
+          <div class="dd-stat-val" style="color:${(wi.last_24h??0) > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(wi.last_24h)}</div>
+          <div class="dd-stat-lbl">New 24h</div>
+        </div>
+        <div class="dd-stat" title="Items whose AI summary was refreshed in the last 24h (via /memory or Refresh AI)">
+          <div class="dd-stat-val" style="color:${(wi.promoted_24h??0) > 0 ? '#27ae60' : 'var(--text)'}">${_fmtNum(wi.promoted_24h)}</div>
+          <div class="dd-stat-lbl">Promoted 24h</div>
+        </div>
+        <div class="dd-stat">
+          <div class="dd-stat-val">${_fmtNum(wi.active)}</div>
+          <div class="dd-stat-lbl">Open</div>
+        </div>
+        <div class="dd-stat">
+          <div class="dd-stat-val">${_fmtNum(wi.done)}</div>
+          <div class="dd-stat-lbl">Done</div>
+        </div>
+      </div>
+
+      <!-- Row 2: linkage quality (hallucination guard) -->
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.4rem 0 0.2rem;align-items:center">
+        <span style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-right:0.2rem">Linkage</span>
+        <span class="dd-tag" style="color:#27ae60;border-color:#27ae6044"
+              title="User confirmed the planner tag link">✓ user-linked: ${wi.linked ?? 0}</span>
+        <span class="dd-tag" style="color:#f39c12;border-color:#f39c1244"
+              title="AI suggested a tag match, waiting for user confirmation">✦ ai-suggested: ${wi.ai_suggested ?? 0}</span>
+        <span class="dd-tag" style="color:${(wi.unlinked_ai_only??0) > 20 ? '#e74c3c' : 'var(--muted)'};border-color:${(wi.unlinked_ai_only??0) > 20 ? '#e74c3c44' : 'var(--border)'}"
+              title="No tag link at all — fully AI-managed, may include hallucinated items">⚠ unlinked: ${wi.unlinked_ai_only ?? 0}</span>
+      </div>
+
+      <!-- Row 3: AI score distribution -->
+      ${(() => {
+        const bs = wi.by_score || {};
+        const total = Object.values(bs).reduce((s,v)=>s+(v||0), 0) || 1;
+        const cols = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#27ae60','#1abc9c'];
+        const labels = ['0 – not started','1 – early','2 – in progress','3 – good progress','4 – nearly done','5 – complete'];
+        const bars = [0,1,2,3,4,5].map(i => {
+          const cnt = bs[String(i)] || 0;
+          const pct = Math.round(cnt/total*100);
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;min-width:28px" title="${labels[i]}: ${cnt}">
+            <div style="font-size:0.55rem;color:${cols[i]};font-weight:600">${cnt}</div>
+            <div style="width:22px;height:${Math.max(2,Math.round(pct*0.32))}px;background:${cols[i]};border-radius:2px;opacity:0.85"></div>
+            <div style="font-size:0.48rem;color:var(--muted)">${i}</div>
+          </div>`;
+        }).join('');
+        return `<div style="display:flex;gap:0;align-items:flex-end;margin-top:0.35rem">
+          <span style="font-size:0.5rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-right:0.5rem;align-self:center">Score</span>
+          ${bars}
+        </div>`;
+      })()}
+
+      <div class="dd-card-footer" style="margin-top:0.4rem">
+        <span>Created: ${_fmtTime(wi.last_at)}</span>
+        <span style="margin-left:0.5rem">Promoted: ${_fmtTime(wi.last_promoted_at)}</span>
+      </div>
+    </div>`,
   ];
 
   el.innerHTML = cards.join('');
@@ -316,6 +359,7 @@ const _PL_LABELS = {
   session_summary:     'session',
   tag_match:           'tag_match',
   work_item_embed:     'wi_embed',
+  work_item_promote:   'wi_promote',
 };
 
 function _renderPipeline(container, pipeline) {
