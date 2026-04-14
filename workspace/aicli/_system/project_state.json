@@ -88,11 +88,11 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param",
-    "Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI",
-    "Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback",
-    "Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)",
-    "Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)",
+    "Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param",
+    "Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI",
+    "Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback",
+    "Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)",
+    "Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)",
     "Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline"
   ],
   "next_phase_plan": {
@@ -125,7 +125,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T13:24:58Z",
+  "last_memory_run": "2026-04-14T14:42:05Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -145,11 +145,11 @@
       "Tag system metadata cleanup: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)"
     ],
     "in_progress": [
-      "Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param",
-      "Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI",
-      "Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback",
-      "Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)",
-      "Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)",
+      "Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param",
+      "Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI",
+      "Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback",
+      "Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)",
+      "Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)",
       "Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline"
     ],
     "tech_stack": {
@@ -158,6 +158,7 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
@@ -166,9 +167,10 @@
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
       "config_management": "config.py + YAML pipelines + pyproject.toml + aicli.yaml",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)"
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "build_tooling": "npm 8+ + Electron-builder; Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector semantic storage and an Electron desktop UI. It captures development events (commits, code changes, prompts) into a unified mem_ai_* schema with LLM-powered synthesis, work item management, and async DAG-based workflows. Currently in active development focusing on work item merge functionality, tag system cleanup, and data integrity repairs.",
-    "memory_digest": "**[2026-03-14]** `entities.js + route_work_items.py` \u2014 Implemented work item merge functionality with POST /work-items/{id}/merge endpoint; added merged_into UUID column to schema with list filtering to exclude absorbed items. **[2026-03-14]** `entities.js` \u2014 Built persistent 210px bottom panel (planner-wi-panel) for work items with drag-drop merge UX, unlink button, and new item creation via modal prompts. **[2026-03-14]** `api.js` \u2014 Wired api.workItems.merge() fetch method and integrated _loadWiPanel() auto-refresh after merge/creation operations with toast feedback. **[2026-03-14]** `route_work_items.py` \u2014 Merge endpoint creates new combined work item with concatenated requirements/actions/criteria, marks both originals as merged_into=new_id and status_user='done', triggers embedding + memory regen. **[Recent]** Tag system metadata cleanup \u2014 Completed Pass 0-2 removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source). **[Recent]** Event corruption fix \u2014 Repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline for consistent state."
+    "project_summary": "aicli is a shared AI memory platform that captures, synthesizes, and retrieves development context using Claude Haiku dual-layer processing and PostgreSQL vector embeddings. The system combines a FastAPI backend, PostgreSQL 15+ with pgvector, and an Electron desktop UI (Vanilla JS + Cytoscape.js) to provide semantic search, workflow automation, and collaborative memory across projects. Current focus: finalizing work item merge infrastructure, cleaning up event tag metadata, and preparing production deployment via Railway + Electron-builder.",
+    "memory_digest": "**[2026-03-14]** `project-state` \u2014 aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL 15+ with pgvector semantic search, and an Electron desktop UI. Core architecture uses a 4-layer memory system (ephemeral session \u2192 raw capture \u2192 LLM-digested events + embeddings \u2192 structured work items). Successfully completed tag system metadata cleanup (Pass 0-2), removing system-only tags from 1441 events while retaining user-facing tags (phase, feature, bug, source). Repaired 6 corrupt session_summary events with malformed JSON. Implemented work item merge functionality with merged_into column tracking, drag-drop UI in bottom panel, and API integration. Database schema remains single source of truth via db_schema.sql with 37 migrations. Deployment ready via Railway (backend) and Electron-builder (desktop: Mac/Windows/Linux). LLM provider adapters support Claude/OpenAI/DeepSeek/Gemini/Grok. DAG workflow executor with Cytoscape visualization enables approval-based task automation."
   }
 }

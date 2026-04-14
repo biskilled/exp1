@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 14:32 UTC — do not edit manually.
+> Auto-generated 2026-04-14 14:42 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 510
-- **Last active**: 2026-04-14T13:24:29Z
+- **Sessions**: 512
+- **Last active**: 2026-04-14T14:41:59Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -56,11 +56,11 @@
 
 ## In Progress
 
-- Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
-- Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI
-- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback
-- Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
-- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
+- Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
+- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
+- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
+- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
 - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
 
 ## Key Decisions
