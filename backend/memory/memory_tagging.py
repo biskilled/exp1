@@ -300,14 +300,14 @@ class MemoryTagging:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT id, name_ai, desc_ai, summary_ai, category_ai
+                    SELECT id, name_ai, summary_ai, category_ai
                     FROM mem_ai_work_items WHERE id = %s
                 """, (work_item_id,))
                 row = cur.fetchone()
                 if not row:
                     return None
-                return {'id': str(row[0]), 'name': row[1], 'description': row[2] or '',
-                        'summary': row[3] or '', 'category_name': row[4] or ''}
+                return {'id': str(row[0]), 'name': row[1],
+                        'summary': row[2] or '', 'category_name': row[3] or ''}
 
     def _find_exact_tag(self, project: str, name: str) -> dict | None:
         project_id = db.get_or_create_project_id(project)

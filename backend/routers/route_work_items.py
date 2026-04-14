@@ -136,7 +136,7 @@ _SQL_UNLINKED_WORK_ITEMS = """
         WHERE project_id = %s AND merged_into IS NOT NULL
         GROUP BY 1
     )
-    SELECT wi.id, wi.category_ai, wi.name_ai, wi.desc_ai,
+    SELECT wi.id, wi.category_ai, wi.name_ai,
            wi.status_user, wi.summary_ai, wi.tags, wi.tags_ai,
            wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
            wi.tag_id_ai,
@@ -168,7 +168,7 @@ _SQL_INSERT_WORK_ITEM = (
 )
 
 _SQL_GET_WORK_ITEM = (
-    """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
+    """SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
               w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
@@ -189,7 +189,7 @@ _SQL_DELETE_WORK_ITEM = (
 )
 
 _SQL_GET_WORK_ITEM_BY_SEQ = (
-    """SELECT w.id, w.category_ai, w.name_ai, w.desc_ai,
+    """SELECT w.id, w.category_ai, w.name_ai,
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
               w.summary_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
@@ -283,7 +283,7 @@ async def _trigger_memory_regen(project: str) -> None:
 
 async def _embed_work_item(
     project_id: int, item_id: str,
-    name_ai: str, desc_ai: str, summary_ai: str,
+    name_ai: str, summary_ai: str = "",
 ) -> None:
     """Embed work item content and store the vector on the row."""
     from core.pipeline_log import pipeline_run
@@ -291,7 +291,7 @@ async def _embed_work_item(
         ctx["items_in"] = 1
         try:
             from memory.memory_embedding import _embed
-            text = f"{name_ai} {desc_ai} {summary_ai}".strip()
+            text = f"{name_ai} {summary_ai}".strip()
             vec = await _embed(text)
             if vec and db.is_available():
                 vec_str = f"[{','.join(str(x) for x in vec)}]"
@@ -457,7 +457,6 @@ async def _backlink_tag_to_events(project_id: int, work_item_id: str, tag_id_use
 class WorkItemCreate(BaseModel):
     category_ai:         str
     name_ai:             str
-    desc_ai:             str = ""
     project:             Optional[str] = None
     status_user:         str = "active"
     acceptance_criteria_ai: str = ""
@@ -472,7 +471,6 @@ class WorkItemMerge(BaseModel):
 
 class WorkItemPatch(BaseModel):
     name_ai:             Optional[str] = None
-    desc_ai:             Optional[str] = None
     status_user:         Optional[str] = None   # set by user: active / paused / done
     acceptance_criteria_ai: Optional[str] = None
     action_items_ai:        Optional[str] = None
@@ -578,7 +576,7 @@ async def create_work_item(
             seq = next_seq(cur, p_id, body.category_ai)
             cur.execute(
                 _SQL_INSERT_WORK_ITEM,
-                (p_id, body.category_ai, body.name_ai, body.desc_ai,
+                (p_id, body.category_ai, body.name_ai,
                  body.acceptance_criteria_ai, body.action_items_ai,
                  body.summary_ai,
                  _json.dumps(body.tags), body.status_user, seq),
@@ -587,7 +585,7 @@ async def create_work_item(
     if not r:
         raise HTTPException(409, f"Work item '{body.name_ai}' already exists in category '{body.category_ai}'")
     item_id = str(r[0])
-    asyncio.create_task(_embed_work_item(p_id, item_id, body.name_ai, body.desc_ai, body.summary_ai))
+    asyncio.create_task(_embed_work_item(p_id, item_id, body.name_ai, body.summary_ai))
     asyncio.create_task(_trigger_memory_regen(p))
     background_tasks.add_task(_run_matching, p, item_id)
     return {
@@ -623,7 +621,7 @@ async def search_work_items(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"""SELECT id, name_ai, category_ai, desc_ai, status_user,
+                f"""SELECT id, name_ai, category_ai, status_user,
                            acceptance_criteria_ai, seq_num,
                            1 - (embedding <=> %s::vector) AS score
                     FROM mem_ai_work_items
@@ -637,10 +635,9 @@ async def search_work_items(
         "results": [
             {
                 "id": str(r[0]), "name_ai": r[1], "category": r[2],
-                "desc_ai": (r[3] or "")[:300],
-                "status_user": r[4],
-                "criteria_preview": (r[5] or "")[:200],
-                "seq_num": r[6], "score": round(float(r[7]), 4),
+                "status_user": r[3],
+                "criteria_preview": (r[4] or "")[:200],
+                "seq_num": r[5], "score": round(float(r[6]), 4),
             }
             for r in rows
         ],
@@ -760,7 +757,6 @@ async def patch_work_item(
     p_id = db.get_or_create_project_id(p)
     fields, params = [], []
     if body.name_ai             is not None: fields.append("name_ai=%s");             params.append(body.name_ai)
-    if body.desc_ai             is not None: fields.append("desc_ai=%s");             params.append(body.desc_ai)
     if body.status_user         is not None: fields.append("status_user=%s");         params.append(body.status_user)
     if body.acceptance_criteria_ai is not None: fields.append("acceptance_criteria_ai=%s"); params.append(body.acceptance_criteria_ai)
     if body.action_items_ai        is not None: fields.append("action_items_ai=%s");        params.append(body.action_items_ai)
@@ -804,17 +800,17 @@ async def patch_work_item(
                 raise HTTPException(404, "Work item not found")
 
     body_dict = body.model_dump(exclude_none=True)
-    content_fields = {"name_ai", "desc_ai", "summary_ai"}
+    content_fields = {"name_ai", "summary_ai"}
     if any(f in body_dict for f in content_fields):
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name_ai, desc_ai, summary_ai FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
+                    "SELECT name_ai, summary_ai FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s",
                     (item_id, p_id),
                 )
                 row = cur.fetchone()
         if row:
-            asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1] or "", row[2] or ""))
+            asyncio.create_task(_embed_work_item(p_id, item_id, row[0], row[1] or ""))
         background.add_task(_run_matching, p, item_id)
 
     # When tag_id_user is set, back-link that tag to all events in the same session
@@ -979,7 +975,7 @@ async def merge_work_item_into(
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, category_ai, name_ai, desc_ai, action_items_ai, "
+                "SELECT id, category_ai, name_ai, action_items_ai, "
                 "acceptance_criteria_ai, summary_ai, tag_id_user, seq_num "
                 "FROM mem_ai_work_items WHERE project_id=%s AND id=ANY(%s::uuid[])",
                 (p_id, [item_id, body.merge_with]),
@@ -989,15 +985,14 @@ async def merge_work_item_into(
     if len(rows) < 2:
         raise HTTPException(404, "One or both work items not found")
 
-    a = dict(zip(["id","category_ai","name_ai","desc_ai","action_items_ai",
+    a = dict(zip(["id","category_ai","name_ai","action_items_ai",
                   "acceptance_criteria_ai","summary_ai","tag_id_user","seq_num"], rows[0]))
-    b = dict(zip(["id","category_ai","name_ai","desc_ai","action_items_ai",
+    b = dict(zip(["id","category_ai","name_ai","action_items_ai",
                   "acceptance_criteria_ai","summary_ai","tag_id_user","seq_num"], rows[1]))
 
     # Build merged item — combine fields, prefer non-empty values
     import json as _json
     new_name        = f"{a['name_ai']} + {b['name_ai']}"
-    new_desc        = f"{a['desc_ai'] or ''}\n{b['desc_ai'] or ''}".strip()
     new_actions     = f"{a['action_items_ai'] or ''}\n{b['action_items_ai'] or ''}".strip()
     new_criteria    = f"{a['acceptance_criteria_ai'] or ''}\n{b['acceptance_criteria_ai'] or ''}".strip()
     new_category    = a['category_ai']  # use first item's category
@@ -1008,12 +1003,12 @@ async def merge_work_item_into(
             seq = next_seq(cur, p_id, new_category)
             cur.execute(
                 """INSERT INTO mem_ai_work_items
-                       (project_id, category_ai, name_ai, desc_ai,
+                       (project_id, category_ai, name_ai,
                         action_items_ai, acceptance_criteria_ai, tag_id_user, status_user, seq_num)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,'active',%s)
+                   VALUES (%s,%s,%s,%s,%s,%s,'active',%s)
                    ON CONFLICT (project_id, category_ai, name_ai) DO NOTHING
                    RETURNING id""",
-                (p_id, new_category, new_name, new_desc,
+                (p_id, new_category, new_name,
                  new_actions, new_criteria,
                  str(linked_tag_id_user) if linked_tag_id_user else None, seq),
             )

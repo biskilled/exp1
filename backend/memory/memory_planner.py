@@ -35,7 +35,7 @@ _SQL_GET_TAG = """
 """
 
 _SQL_GET_WORK_ITEMS = """
-    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user,
+    SELECT wi.id, wi.name_ai, wi.status_user,
            wi.acceptance_criteria_ai, wi.action_items_ai, wi.summary_ai,
            wi.seq_num, wi.start_date
     FROM mem_ai_work_items wi
@@ -313,7 +313,7 @@ class MemoryPlanner:
             lines.append(f"\n--- Work Item #{wi.get('seq_num', '?')}: {wi['name_ai']} ---")
             lines.append(f"ID: {wi['id']}")
             lines.append(f"Status: {wi.get('status_user', 'active')}")
-            lines.append(f"Description: {wi.get('desc_ai') or '—'}")
+            lines.append(f"Summary: {wi.get('summary_ai') or '—'}")
             lines.append(f"Requirements: —")
             lines.append(f"Action items: {wi.get('action_items_ai') or '—'}")
             lines.append(f"Acceptance criteria: {wi.get('acceptance_criteria_ai') or '—'}")
@@ -387,7 +387,7 @@ class MemoryPlanner:
                 f"### #{wi.get('seq_num', '?')} {wi['name_ai']} · {wi.get('status_user', 'active')}\n"
                 f"_Prompts: {wi['n_prompts']} · ~{wi['words']:,} words · "
                 f"{wi['n_commits']} commits · Started: {start_str}_\n\n"
-                f"{wi.get('summary_ai') or wi.get('desc_ai') or ''}\n\n"
+                f"{wi.get('summary_ai') or ''}\n\n"
                 + (
                     f"**Remaining:** {wi.get('action_items_ai') or '—'}\n"
                     if wi.get("action_items_ai")

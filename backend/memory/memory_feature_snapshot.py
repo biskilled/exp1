@@ -40,7 +40,7 @@ _SQL_GET_TAG = """
 """
 
 _SQL_GET_WORK_ITEMS = """
-    SELECT wi.id, wi.name_ai, wi.desc_ai, wi.status_user,
+    SELECT wi.id, wi.name_ai, wi.status_user,
            wi.action_items_ai, wi.acceptance_criteria_ai, wi.summary_ai
     FROM mem_ai_work_items wi
     WHERE wi.tag_id_user = %s::uuid AND wi.project_id = %s
@@ -323,11 +323,10 @@ class MemoryFeatureSnapshot:
             {
                 "id":                    str(r[0]),
                 "name_ai":               r[1] or "",
-                "desc_ai":               r[2] or "",
-                "status_user":           r[3] or "active",
-                "action_items_ai":       r[4] or "",
-                "acceptance_criteria_ai": r[5] or "",
-                "summary_ai":            r[6] or "",
+                "status_user":           r[2] or "active",
+                "action_items_ai":       r[3] or "",
+                "acceptance_criteria_ai": r[4] or "",
+                "summary_ai":            r[5] or "",
             }
             for r in rows
         ]
@@ -409,7 +408,6 @@ class MemoryFeatureSnapshot:
                     f"- ID: {wi['id']}\n"
                     f"  Name: {wi['name_ai']}\n"
                     f"  Status: {wi['status_user']}\n"
-                    f"  Desc: {wi['desc_ai'][:300]}\n"
                     f"  Summary: {wi['summary_ai'][:300]}\n"
                     f"  Actions: {wi['action_items_ai'][:200]}\n"
                     f"  Acceptance: {wi['acceptance_criteria_ai'][:200]}"

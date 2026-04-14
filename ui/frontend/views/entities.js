@@ -677,7 +677,7 @@ function _renderWiPanel(items, project) {
   const rows = sorted.map(wi => {
     const icon = CAT_ICON[wi.category_ai] || '📋';
     const sc   = STATUS_C[wi.status_user] || '#888';
-    const desc = (wi.desc_ai || '').replace(/\n/g,' ').trim();
+    const desc = (wi.summary_ai || '').replace(/\n/g,' ').trim();
     // AI(EXISTS) — matched to an existing planner tag
     const aiTagColor = wi.ai_tag_color || '#27ae60';
     const aiTagLabel = wi.ai_tag_name
@@ -860,7 +860,7 @@ async function _loadTagLinkedWorkItems(project, catName) {
               <span style="font-size:0.7rem;flex-shrink:0">${icon}</span>
               <span style="font-size:0.63rem;color:var(--text);flex:1;overflow:hidden;
                            text-overflow:ellipsis;white-space:nowrap"
-                    title="${_esc(wi.desc_ai||'')}">${_esc(wi.name_ai)}</span>
+                    title="${_esc(wi.summary_ai||'')}">${_esc(wi.name_ai)}</span>
               <span style="font-size:0.52rem;color:${sc};background:${sc}22;
                            padding:0.02rem 0.25rem;border-radius:8px;flex-shrink:0">${wi.status_user||'active'}</span>
               <button title="Delete work item"
@@ -927,7 +927,7 @@ async function _renderWorkItemsPane(pane, project) {
                               border-bottom:1px solid var(--border);cursor:grab;user-select:none">
                     <span style="font-size:0.75rem">${CAT_ICON[wi.category_ai] || '📋'}</span>
                     <span style="font-size:0.68rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                          title="${_esc(wi.desc_ai || '')}">${_esc(wi.name_ai)}</span>
+                          title="${_esc(wi.summary_ai || '')}">${_esc(wi.name_ai)}</span>
                     ${hintBadge}
                     <span style="font-size:0.6rem;color:var(--muted);flex-shrink:0">[drag to link ↓]</span>
                   </div>`;
@@ -1142,7 +1142,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
   function rowFor(wi) {
     const su  = wi.status_user || 'active';
     const sc  = STATUS_C[su] || '#888';
-    const desc = (wi.desc_ai||'').replace(/\n/g,' ');
+    const desc = (wi.summary_ai||'').replace(/\n/g,' ');
     const descClip = desc.length > 90 ? desc.slice(0,90)+'…' : desc;
     const date = fmtDate(wi.updated_at || wi.created_at);
     const linked = wi.tag_id_user
@@ -1303,19 +1303,6 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                    border-radius:var(--radius);outline:none"
             onchange="api.workItems.patch('${id}','${project}',{start_date:this.value||''})
                         .catch(e=>toast(e.message,'error'))" />
-        </div>
-
-        <!-- Description -->
-        <div>
-          <div style="font-size:0.55rem;text-transform:uppercase;color:var(--muted);
-                      letter-spacing:.06em;margin-bottom:0.3rem">Description</div>
-          <textarea rows="3"
-            style="width:100%;background:var(--bg);border:1px solid var(--border);
-                   color:var(--text);font-family:var(--font);font-size:0.68rem;
-                   padding:0.35rem 0.45rem;border-radius:var(--radius);outline:none;
-                   resize:vertical;box-sizing:border-box;line-height:1.5"
-            onblur="api.workItems.patch('${id}','${project}',{desc_ai:this.value}).catch(e=>toast(e.message,'error'))"
-          >${_esc(wi.desc_ai || '')}</textarea>
         </div>
 
         <!-- Requirements -->

@@ -49,7 +49,7 @@ _SQL_FACTS = """
 """
 
 _SQL_ACTIVE_WORK_ITEMS = """
-    SELECT wi.name_ai, wi.desc_ai, wi.category_ai,
+    SELECT wi.name_ai, wi.summary_ai, wi.category_ai,
            wi.seq_num, t.name AS tag_name
     FROM mem_ai_work_items wi
     LEFT JOIN planner_tags t ON t.id = wi.tag_id_user
@@ -167,9 +167,9 @@ class MemoryFiles:
 
                     # Active work items
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for ai_name, ai_desc, ai_category, seq_num, tag_name in cur.fetchall():
+                    for ai_name, ai_summary, ai_category, seq_num, tag_name in cur.fetchall():
                         ctx["active_work"].append({
-                            "name": ai_name, "desc": (ai_desc or "")[:120],
+                            "name": ai_name, "desc": (ai_summary or "")[:120],
                             "lifecycle": "active", "category": ai_category,
                             "seq_num": seq_num, "tag_name": tag_name or ai_name,
                         })

@@ -7,7 +7,6 @@ Return JSON only:
     {
       "category": "bug|feature|task",
       "name": "short-slug",
-      "description": "1-2 sentence explanation of what this is and why it matters",
       "acceptance_criteria": "- [ ] Specific, testable outcome 1\n- [ ] Specific, testable outcome 2",
       "action_items": "- First concrete step to take\n- Second concrete step\n- Third step if needed"
     }
@@ -19,7 +18,7 @@ Return JSON only:
 }
 
 Rules:
-- items: at most 5 entries. Use lowercase-hyphenated slugs for name. Empty array if nothing actionable.
+- items: at most 5 entries. Use lowercase-hyphenated slugs for name. Empty array if nothing actionable. No description field needed.
 - acceptance_criteria: 1-3 bullet lines, each starting with "- [ ]". Must be specific and testable. Short.
 - action_items: 1-4 bullet lines, each starting with "-". Concrete next steps. Short imperative phrases.
 - suggested_tags.phase: pick the most fitting phase from the list above based on the activity.

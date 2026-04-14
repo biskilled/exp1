@@ -192,7 +192,7 @@ def _handle_search_memory(args: dict) -> str:
                     # ── Work items vector search ───────────────────────────
                     if vec:
                         cur.execute(
-                            """SELECT category_ai, name_ai, desc_ai,
+                            """SELECT category_ai, name_ai,
                                       status_user, acceptance_criteria_ai, summary_ai
                                FROM mem_ai_work_items
                                WHERE project_id=%s
@@ -203,8 +203,8 @@ def _handle_search_memory(args: dict) -> str:
                             (project_id, vs, max(2, limit // 2)),
                         )
                         for wi_row in cur.fetchall():
-                            cat, name, desc, st, ac, smry = wi_row
-                            body = (smry or desc or "")[:300]
+                            cat, name, st, ac, smry = wi_row
+                            body = (smry or "")[:300]
                             ac_line = f" | ac: {ac[:150]}" if ac else ""
                             results.append(
                                 f"[work_item:{cat}] {name} (status: {st}): {body}{ac_line}"
