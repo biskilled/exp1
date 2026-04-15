@@ -4,9 +4,9 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Active Features
 
-- review-router-expanded-functionality [task]: Review and test expanded functionality in project router after major refactoring
-- validate-prompt-loader [task]: Test refactored prompt loader initialization and database caching mechanisms wor
-- test-memory-promotion-logic [task]: Validate improvements to memory embeddings and memory promotion logic work as in
+- cleanup-database-py [task]: cleanup-database-py is a database schema refactoring effort to remove deprecated
+- refactor-db-schema-columns [task]: This work item involves refactoring the database schema to add a new llem_source
+- track-multi-project-support-development [task]: This work item tracks development of multi-project support capabilities by impro
 
 ## Last Session
-• Retry table migration using specified column order • Monitor migration progress with fresh log file • Drop _old table upon successful completion to free disk space.
+• Database migration m050 implemented to fix silent errors in hook-log endpoint — prompts now correctly persist to DB • UI not displaying latest changes due to missing real-time refresh logic; cache invalidation needed • Chat display not updating with new prompts because frontend isn't polling/listening for updates • User experiencing stale data in both CLI responses and web UI after prompts are submitted.

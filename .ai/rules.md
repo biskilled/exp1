@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:23 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:32 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -33,7 +33,7 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta
 - [2026-04-13] In events table is there is any point to have importance ? I think its more relevant for work_items
 - [2026-04-13] yes
 - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
 - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
+- [2026-04-15] test: is hook-log working now after m050?

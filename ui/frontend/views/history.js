@@ -41,8 +41,42 @@ export class HistoryView {
     this._histFilter    = { source: '', phase: '', query: '' };
     this._commitFilter  = { phase: '' };
 
+    // Auto-refresh: poll every 15s for new prompts while chat tab is active
+    this._pollTimer     = null;
+
     this._render();
     this._loadTab("chat");
+  }
+
+  /** Start polling for new prompts every 15 seconds. */
+  _startPoll() {
+    this._stopPoll();
+    this._pollTimer = setInterval(() => this._checkForNewPrompts(), 15000);
+  }
+
+  _stopPoll() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+  }
+
+  async _checkForNewPrompts() {
+    if (this.activeTab !== 'chat') return;
+    const project = state.currentProject?.name || '';
+    if (!project) return;
+    try {
+      const r = await fetch(_histUrl(`/history/chat?limit=1&_t=${Date.now()}`)).then(r => r.json());
+      const newTotal = r.total || 0;
+      const oldTotal = this._histData?.total || 0;
+      if (newTotal > oldTotal) {
+        const diff = newTotal - oldTotal;
+        // Show banner and auto-refresh immediately
+        const banner = document.getElementById('hist-new-banner');
+        if (banner) {
+          banner.textContent = `🔴 ${diff} new prompt${diff > 1 ? 's' : ''} — refreshing…`;
+          banner.style.display = '';
+        }
+        await this._refreshHistory();
+      }
+    } catch (_) {}
   }
 
   _render() {
@@ -101,8 +135,9 @@ export class HistoryView {
       return;
     }
 
-    // Clear nav bar when switching away from chat
+    // Stop polling when leaving chat tab
     if (tab !== 'chat') {
+      this._stopPoll();
       const nav = document.getElementById('hist-nav-bar');
       if (nav) nav.innerHTML = '';
     }
@@ -129,6 +164,7 @@ export class HistoryView {
   }
 
   async _renderChat(container) {
+    this._startPoll();
     const project = state.currentProject?.name || '';
 
     // Step 1: fetch history, config, and source tags in parallel
@@ -205,8 +241,15 @@ export class HistoryView {
         ${untagged > 0 ? `<span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : `<span style="color:green">All tagged ✓</span>`}
         <button onclick="window._historyView._refreshHistory()"
           style="padding:2px 7px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--muted)"
-          title="Reload from server">↻</button>
+          title="Reload from server">↻ refresh</button>
+        <button onclick="window.location.reload()"
+          style="padding:2px 7px;border:1px solid var(--accent);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--accent)"
+          title="Hard-reload the Electron window to pick up UI code changes">⟳ reload UI</button>
       </div>
+      <div id="hist-new-banner"
+           style="display:none;padding:5px 10px;background:#27ae6022;color:#27ae60;
+                  border-radius:4px;font-size:11px;font-weight:600;margin-bottom:4px;
+                  cursor:pointer" onclick="window._historyView._refreshHistory()"></div>
       <div id="hist-chat-groups"></div>`;
 
     // Restore filter state (default = All phases, no auto-populate)

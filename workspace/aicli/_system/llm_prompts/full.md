@@ -4,12 +4,19 @@ When working on a specific feature, ask for its snapshot before making decisions
 
 ## Project Notes
 
+- **ai_context_consolidation_status**: legacy _system directory removed; context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed from repository root
+- **ai_context_file_locations**: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory deprecated
 - **ai_event_filtering_logic**: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events; excludes per-commit and diff_file noise from event_count aggregation
+- **ai_event_tags_schema**: mem_ai_events.tags JSONB object; preserved keys: phase, feature, bug, source; system metadata stripped during backfill
+- **ai_rules_file_version**: Version 3.0.0, last updated 2026-04-15
+- **ai_rules_generation_mechanism**: aicli tool manages rule files; `/memory` command refreshes; auto-generated with UTC timestamp
+- **ai_rules_generation_timestamp**: 2026-04-15 01:13 UTC
 - **ai_tag_color_default**: #4a90e2 replaces var(--accent), applied when wi.ai_tag_color not set
 - **ai_tag_label_format**: category:name when both present, falls back to name-only, empty string if neither
 - **ai_tag_suggestion_debugging_status**: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
 - **ai_tag_suggestion_feature**: ai_tag_suggestion column with approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag), refactored to simplified chip markup without category prefix display in non-category mode
 - **ai_tag_suggestion_ux**: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip improved from 'No existing tag' to 'Does not exist yet'
+- **approval_workflow_pattern**: single source of truth for pipeline execution; routes multi-source triggers through unified approval before execution
 - **auth_pattern**: login_as_first_level_hierarchy
 - **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
 - **code_extraction_configuration**: min_lines: 5 (per-symbol threshold), min_diff_lines: 5 (commit-level threshold), only_on_commits_with_tags: false
@@ -17,6 +24,8 @@ When working on a specific feature, ask for its snapshot before making decisions
 - **commit_processing_flag**: exec_llm boolean column replaces tags->>'llm' NULL check
 - **commit_tracking_exec_llm_deprecation**: exec_llm boolean column replaced by event_id IS NULL sentinel (event_id set by process_commit() on completion)
 - **commit_tracking_schema**: mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column
+- **creator_field_convention**: planner_tags.creator: username string for users, 'ai' literal for system-generated tags
+- **dashboard_module_architecture**: independent tab for real-time workflow visibility; separate from planner interface to prevent navigation friction
 - **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **date_format_frontend**: YY/MM/DD-HH:MM format in work item panel
@@ -24,26 +33,45 @@ When working on a specific feature, ask for its snapshot before making decisions
 - **db_migration_m027**: planner_tags_drop_ai_cols removes summary/design/embedding/extra via ALTER TABLE DROP IF EXISTS pattern
 - **db_migration_m029**: mem_ai_feature_snapshot table: per-tag per-use-case feature snapshots with version='ai' (overwritten on each run) and version='user' (promoted, never overwritten); unique constraint on (project_id, tag_id, use_case_num, version); 3 indexes on project_id, tag_id, tag_id+version
 - **db_migration_m031**: m031_commits_cleanup: drops tags_ai and exec_llm from mem_mrr_commits; renames commit_short_hash to commit_hash_short; uses DROP COLUMN IF EXISTS pattern
+- **db_migration_m037**: dropped importance column from mem_ai_events table; deprecated as semantically relevant only for work_items
 - **db_migration_sequence**: m031_commits_cleanup follows m030_pipeline_runs in MIGRATIONS list
 - **db_schema_management**: db_schema.sql as single source of truth + db_migrations.py with safe rename→recreate→copy pattern (migrations m001-m019)
 - **db_schema_method_convention**: _ensure_shared_schema_replaces_ensure_project_schema
+- **deployment_electron_builder_scope**: Electron-builder for desktop; Mac dmg, Windows nsis, Linux AppImage+deb removed from explicit enumeration
 - **deployment_target**: Railway for cloud (Dockerfile + railway.toml); Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **email_verification_integration**: incremental_enhancement_to_existing_signin_register_forms
 - **event_count_column_semantics**: counts prompt_batch + session_summary events only; now displayed after commit_count (moved from position 2 to position 4)
+- **event_tag_backfill_endpoint**: POST /admin/backfill-event-tags with project and dry_run params; returns per-pass counts; requires admin auth
+- **event_tag_backfill_process**: three-pass idempotent operation: Pass 1 strip system metadata, Pass 2 backfill commit events from mem_mrr_commits via source_id or event_id, Pass 3 backfill prompt_batch events from mem_mrr_prompts via event_id
+- **event_tags_corrupt_recovery**: Pass 0 detects and resets non-object JSONB tags (arrays/scalars) to {} before backfill
+- **feature.auth.design**: {'high_level': "4-phase architecture: (1) Database & Core Token Infrastructure — mng_verification_tokens table with single-use token storage and expiry tracking; mng_resend_cooldown table for rate-limiting; users.verified_at column for lifecycle tracking. (2) Backend Token & Email Logic — TokenService generates cryptographically secure tokens (crypto.randomBytes(32).toString('hex')), EmailService sends verification emails via AWS SES (or configured provider), background job queues async delivery with retry/backoff. (3) Authentication Flow Integration — Existing POST /auth/register endpoint calls token generation and email sending after user creation; new POST /auth/verify-email validates token, marks user as verified, invalidates token; new POST /auth/resend-verification enforces 60s cooldown. (4) Frontend & Access Control — EmailVerificationBanner shows on Sign In screen for unverified users with resend button and cooldown timer; VerifyEmailPage handles token extraction and verification; requireVerified middleware checks verified_at before granting access to protected routes; AwaitingVerificationScreen blocks unverified access with clear instructions.", 'low_level': "Token generation: crypto.randomBytes(32).toString('hex') stored in mng_verification_tokens with uuid, user_id, expires_at=NOW()+24h, redeemed_at=NULL. Token verification: lookup by token string, check expires_at > NOW() (return 410 if expired), check redeemed_at IS NULL (return 409 if used), set users.verified_at = NOW(), set mng_verification_tokens.redeemed_at = NOW(). Resend endpoint: check user already verified (return 400), check cooldown via mng_resend_cooldown.last_resend_at > NOW()-60s (return 429 with remaining_seconds), invalidate unused tokens, generate new token, send email, update cooldown. Email template: plain-text + HTML with verification link {baseUrl}/verify-email?token={token}, subject 'Confirm Your Email Address'. Background job: Bull/Celery/SQS integration, retry up to 3 times with exponential backoff, fire-and-forget (non-blocking HTTP response). Route guards: requireVerified middleware checks user.verified_at IS NOT NULL before resource access, redirects to AwaitingVerificationScreen if null.", 'patterns_used': ['cryptographically_secure_token_generation', 'single_use_token_with_expiry', 'rate_limiting_via_cooldown_table', 'background_job_async_email_delivery', 'soft_deletion_via_redeemed_at_timestamp', 'middleware_based_access_control', 'non_blocking_user_flow_with_verification_prompt']}
+- **feature.billing.design**: {'high_level': '4-layer billing architecture: (1) Payment Provider Integration Layer (Stripe/PayPal adapters with webhook handlers), (2) Subscription & Quota Management (manage active plans, enforce limits per client), (3) Usage Tracking & Metering (capture events via middleware, aggregate to billing_events table), (4) Revenue & Reporting (invoices, receipts, admin analytics dashboards). All tables follow mng_/cl_/pr_ naming convention. Integration with existing mng_clients and auth system.', 'low_level': 'Database tables: mng_billing_plans (id, name, tier, price_usd, features_json), mng_subscriptions (id, client_id, plan_id, status, current_period_start/end, stripe_subscription_id), mng_invoices (id, client_id, period_start/end, total_usd, status, stripe_invoice_id), mng_billing_events (id, client_id, event_type, resource_count, cost_usd, created_at—for usage tracking). Backend: PaymentService (create_subscription, process_webhook), UsageTracker (record_event, get_usage_summary), QuotaValidator (check_limits). Frontend: BillingDashboard component showing subscription, invoices, usage charts.', 'patterns_used': ['Adapter pattern for payment providers (StripeAdapter, PayPalAdapter)', 'Middleware pattern for usage tracking (attach to API routes)', 'Event sourcing for billing events (immutable log of charges)', 'Webhook handler pattern for async payment confirmations', 'Tiered pricing with feature flags per subscription tier', 'Soft quota (warn users) → hard quota (block access) progression']}
+- **feature.embeddings.design**: {'high_level': '4-layer memory architecture with embeddings as the enrichment step: (1) ephemeral session layer captures raw user interactions (prompts, messages, commits), (2) mem_mrr_* mirror tables normalize and deduplicate raw events with session_id FK, (3) mem_ai_events layer runs LLM Haiku synthesis on batches of prompts/commits/summaries to generate semantic digests + 1536-dim embeddings, (4) mem_ai_work_items/project_facts layer promotes high-confidence events into actionable work items and durable facts. Embeddings enable semantic search, context ranking, and feature snapshot synthesis. Incremental batch processing via background tasks (Bull/SQS) to avoid token exhaustion. All vectors stored in pgvector for fast cosine similarity queries.', 'low_level': "MemoryEmbedding class orchestrates embedding pipeline: (a) process_prompt_batch(project, session_id, count) queries mem_mrr_prompts with event_id IS NULL, chunks prompts by session, calls LLM (Haiku via configured provider) to generate digest + embedding, stores result in mem_ai_events with event_type='prompt_batch', back-propagates event_id to mem_mrr_prompts. (b) process_commit_batch(project, min_commits) groups unembedded commits by repo, chunks diffs per-file, synthesizes summary + embedding, stores in mem_ai_events with event_type='commit', back-propagates to mem_mrr_commits. (c) process_session_summary(project, session_id) synthesizes all tagged events in session into single mem_ai_events row with event_type='session_summary' and embedding. Column ordering: client_id → project_id → created_at/processed_at/event_type/llm_source → embedding (last). Vectors indexed via IVFFLAT (vector_cosine_ops) for O(1) approximate nearest-neighbor search. Incremental flag checks embedding IS NULL before processing. Retry logic with exponential backoff (1s, 2s, 4s) on transient LLM errors.", 'patterns_used': ['Incremental batch processing — skip already-embedded events via WHERE embedding IS NULL', 'Background async tasks — /memory/{project}/embed-prompts and /memory/{project}/embed-commits queued to Bull/SQS', 'Smart chunking — per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs) to manage token budget', 'Event-driven mirroring — mem_mrr_* tables updated on session, mem_ai_events updated on synthesis, mem_ai_work_items on promotion', 'Dual-storage (JSONL + PostgreSQL) — JSONL for durability, pgvector for semantic search', 'Semantic ranking — cosine similarity on embeddings to score work_item relevance for feature snapshots', 'Fallback providers — support Anthropic, OpenAI, DeepSeek with adapter pattern (client selection at runtime)', 'Transactional back-propagation — set event_id on mirror tables in same transaction as mem_ai_events INSERT']}
+- **feature.entity-routing.design**: {'high_level': 'Multi-layer entity routing system: (1) Type detection layer reads entity_kind from request (user/project/client/workspace/work_item) and session context; (2) Authorization layer checks role-based access (admin/manager/owner/viewer); (3) Processor registry maps entity types to handler functions; (4) Handler delegates to specialized route files (route_users.py, route_projects.py, etc.); (5) Unified response envelope ensures consistent contract across entity types. Integrates with MCP tools for programmatic entity management and work_item_pipeline for cross-entity linking.', 'low_level': 'Middleware chain: detect_entity_type() → authorize_entity_access() → dispatch_to_processor(). Type detection checks request path, JSON body, query params, or session state to infer entity_kind. Authorization uses mng_agent_roles + role enforcement via RoleCreate/RoleUpdate models. Processor registry (dict mapping entity_kind to handler) delegates to appropriate route module. Response envelope includes { entity_kind, entity_id, data, relations, work_items_linked }. Error handling returns 403 for access denied, 404 for not found, 422 for validation failure.', 'patterns_used': ['Chain of Responsibility (middleware stack for type detection → auth → dispatch)', 'Registry Pattern (entity_kind → processor function mapping)', 'Strategy Pattern (entity-specific handlers as interchangeable strategies)', 'Factory Pattern (processor creation based on entity type)', 'Decorator Pattern (role-based authorization wrapping handler functions)']}
+- **feature.graph-workflow.design**: {'high_level': 'graph-workflow is a 3-layer system: (1) DAG data model (workflows, nodes, edges) stored in PostgreSQL with project_id scoping; (2) async execution engine (asyncio.gather, loop-back support, max_iterations cap) with per-node retry + continue_on_fail semantics; (3) UI layer (Cytoscape visualization + 2-pane approval panel) connected to work_item_pipeline 4-stage approval flow. Auto-commit layer parses LLM output for code blocks and applies git operations. Role system (mng_agent_roles) centralized in DB with fallback prompts. All outputs versioned in documents/ tree with old/ subfolder for history.', 'low_level': 'Execution model: _make_node_fn() returns async node function that calls LLM provider (Claude/OpenAI), handles retries (up to max_retry), applies continue_on_fail logic, calls save_approved_output() on approval, and (if auto_commit=true) calls _parse_code_changes() + _apply_code_and_commit() to write code and commit. Database: 4 tables (pr_graph_runs, pr_graph_nodes, pr_graph_edges, pr_graph_workflows) + mng_agent_roles global table. API routes: /graph-workflows/ (CRUD workflows), /graph-workflows/{id}/runs/ (CRUD runs), /graph-workflows/{id}/runs/{run_id}/execute (POST to start), /graph-workflows/{id}/runs/{run_id}/approve/{node} (approve node output). Frontend: Cytoscape instance renders DAG with drag-to-connect nodes; click node opens approval panel; status colors (pending/running/approved/failed) update in real-time. Work item integration: trigger_work_item_pipeline() creates pr_graph_run record, executes 4-stage DAG (PM→Architect→Dev→Reviewer), returns final work_item with populated acceptance_criteria/implementation_plan/output.', 'patterns_used': ['AsyncDAG: asyncio.gather with loop-back detection (set(prev_ran) tracking), max_iterations cap, fail-fast on critical errors', 'Provider abstraction: client factory pattern for Claude/OpenAI/DeepSeek/Gemini; node config specifies provider/model override', 'Database multi-tenancy: project_id foreign keys across all tables; mng_agent_roles global for role templates', 'Dual-layer versioning: current output in documents/{category}/{slug}/{node}.md; timestamped backups in old/; on re-run, move current to old before overwriting', "Auto-commit safety: path traversal prevention (resolve() + startswith check); background push (Popen, don't block HTTP); error logging only, no failure propagation", 'Approval workflow: save_approved_output() on user click; status tracked in pr_graph_runs; missing auto_commit implementation in developer node']}
+- **feature.hooks.design**: {'high_level': 'Hooks architecture follows a fire-and-forget event-driven pattern integrated into existing aicli routers. Core HookManager class queries mng_hooks table for enabled hooks matching an event_type, evaluates optional condition filters (JSONPath or simple tag matching), and executes action sequences asynchronously via background job queue (Bull/Celery). Actions are modular (embed, promote_work_item, regenerate_memory, run_pipeline, webhook_post) and composable—a single hook can run multiple actions in sequence with error handling (continue_on_error flag). Time-based hooks (cron or at-specific times) use APScheduler integrated into backend startup. Hook state tracked in mng_hook_runs table (hook_id, project_id, triggered_at, status, result_summary) for audit trail and debugging.', 'low_level': "Database schema: mng_hooks (id UUID PK, client_id INT FK, project_id INT FK, name TEXT, event_type TEXT IN ('prompt_batch','commit','session_start','session_end','work_item_patch','memory_regen'), condition_filter JSONB, actions JSONB[], enabled BOOLEAN, created_at TIMESTAMP, updated_at TIMESTAMP); mng_hook_runs (id UUID PK, hook_id UUID FK, project_id INT FK, triggered_at TIMESTAMP, status TEXT, result_summary TEXT, duration_ms INT). HookManager methods: fire(event_type: str, payload: dict) → async executes matching hooks; create(client_id, project_id, hook_def: dict) → validates actions and inserts; list(project_id) → queries mng_hooks with eager load of action details; test_dry_run(hook_id, sample_payload) → executes actions without side effects. Action executor: each action type (embed, promote, webhook) implemented as async coroutine with timeout (30s default), retry logic (exponential backoff up to 3x), and error logging to mng_hook_runs.result_summary. Trigger points: route_history.sync_commits() calls fire('commit', {commit_hash, files_changed, author}); route_memory.embed_prompts() calls fire('prompt_batch', {session_id, prompt_count}); route_sessions.end_session() calls fire('session_end', {session_id, duration_s, summary}).", 'patterns_used': ['event-driven architecture (fire-and-forget with async execution)', 'observer/publisher-subscriber (hooks subscribe to event_type)', 'command pattern (actions as composable, serializable objects)', 'factory pattern (action executor dispatches on action.type)', 'job queue pattern (background job for hook execution with retry)', 'audit trail (mng_hook_runs table tracks all executions)']}
+- **feature.memory.design**: {'high_level': "4-layer memory pyramid: Session (ephemeral state) → Mirrors (mem_mrr_prompts/commits/tags for raw capture) → Events (mem_ai_events with LLM digests + embeddings + tagging) → Work Items/Facts (mem_ai_work_items, mem_ai_project_facts for semantic distillation). Each layer progressively refines raw data: mirrors capture everything, events apply LLM synthesis and semantic embedding, work items extract actionable tasks linked to code/docs. Tagging system unified: event_tags_{project} JSONB column holds phase/feature/bug/source only; system metadata stripped. Multi-client/project architecture: all tables use (client_id, project_id) composite keys; mng_projects FK centralizes project config. Backfill support: commits without active sessions create work items via AI extraction (event_type='commit'); prompts from live sessions create work items via human tagging + AI matching (event_type='prompt_batch'); session summaries provide context digest (event_type='session_summary'). /memory endpoint orchestrates regeneration: loads raw events → filters by type (prompt_batch, session_summary) → synthesizes via Haiku → updates work items/facts → regenerates context files.", 'low_level': "mem_ai_events table structure (final): id | client_id | project_id | created_at | processed_at | event_type (prompt_batch|commit|session_summary) | llm_source (anthropic|openai|etc) | content (full text) | tags (JSONB: {phase, feature, bug, source}) | session_id (FK mem_sessions) | work_item_id (FK mem_ai_work_items, nullable) | source_id (UUID back-ref to mrr table) | embedding (VECTOR 1536, nullable). Indexes: (project_id, event_type), (project_id, created_at), (work_item_id), (session_id). mem_mrr_prompts columns after reorder: client_id | project_id | session_id | prompt_number | prompt_text | response_text | model_used | event_id (back-propagated FK) | created_at. mem_ai_work_items columns: id | client_id | project_id | seq_num | category_ai (feature|bug|task) | name_ai | summary_ai | acceptance_criteria_ai | action_items_ai | score_ai (0–5) | tags (user JSONB) | tags_ai (AI-generated metadata) | tag_id_ai (FK planner_tags, suggested) | tag_id_user (FK planner_tags, confirmed) | status_user (active|in_progress|paused|done) | merged_into (self-FK for dedup). Event filtering: only 'prompt_batch' and 'session_summary' events trigger work item extraction (commits skipped unless explicitly tagged); system metadata (llm, chunk_type, commit_hash) removed from tags. Tag system: event-level tagging via MRR union, work_item-level tagging via user confirm + AI suggest flow. Back-propagation: event_id written to mem_mrr_* after event creation for audit trail.", 'patterns_used': ['Mirror Layer Pattern — raw capture tables (mem_mrr_*) separate from processed tables (mem_ai_*) for append-only history', 'Event Sourcing — all state changes recorded as immutable event rows; work items derived from event stream via projection', 'Composite Foreign Keys — multi-client isolation via (client_id, project_id) pairs; single mng_projects table', 'Dual-Status Design — status_user (user-managed lifecycle) vs status_ai (AI suggestions) keep human and system views separate', 'Incremental Aggregation — /memory endpoint processes only unprocessed rows (processed_at IS NULL) for efficiency', 'Tagging by Convergence — prompts+commits+sessions generate work items only if tagged (human or AI with confidence > 0.70)', 'Backpropagation Links — source_id on mem_ai_events links back to originating mirror row; event_id on mem_mrr_* links forward', 'JSONB Metadata — flexible tags and metadata stored as JSON to avoid schema sprawl and support dynamic attributes', 'Lazy Embedding — embeddings computed only for high-relevance events; NULL for noise or archive entries']}
+- **feature.shared-memory.design**: {'high_level': '5-layer memory architecture: (L1) Mirror Tables (mem_mrr_prompts, mem_mrr_commits) capture raw user/system activity with source tracking; (L2) Event Ingestion (mem_ai_events) synthesizes L1 data via LLM (Claude Haiku), stores embeddings, classifies via event_type (prompt_batch, commit, session_summary); (L3) Work Item Extraction (mem_ai_work_items) promotes events to actionable items (feature/bug/task) with AI names/categories/acceptance criteria + user tagging; (L4) Project Facts (mem_ai_project_facts) extracts durable insights (architecture decisions, constraints, tech stack); (L5) Context Regeneration auto-generates CLAUDE.md, MEMORY.md, rules.md from L3+L4 via Haiku synthesis. Each layer maintains backward references to source layer via source_id/event_id for audit trail. User tags (phase, feature, bug, source) flow through all layers; system metadata stripped at L2.', 'low_level': "Data flow: (1) Prompt/commit ingested → mem_mrr_* with session_id, source_id, timestamps; (2) Periodic batch: query mem_mrr_* where event_id IS NULL, pass to MemoryEmbedding.process_prompt_batch/process_commit_batch, generates mem_ai_events row with embedding + LLM digest, back-propagates event_id to mem_mrr_*; (3) MemoryPromotion.promote_work_item scans mem_ai_events where tag matches (phase/feature/bug), extracts code/requirements, updates mem_ai_work_items (name_ai, category_ai, acceptance_criteria_ai, action_items_ai, score_ai, summary_ai); (4) MemoryPromotion.promote_project_facts extracts durable patterns (decision, constraint, architecture) into mem_ai_project_facts; (5) MemoryFiles.render_* queries top 50 events by relevance (exponential decay on age), formats as markdown sections, returns combined context. SQL joins: mem_ai_events.work_item_id → mem_ai_work_items; mem_ai_events.tag_id → planner_tags; mem_mrr_*.event_id → mem_ai_events; work_item.tag_id_user → planner_tags (user link). Tag filtering: event_type IN ('prompt_batch', 'session_summary') for work item extraction; commit events skipped unless matched by tag.", 'patterns_used': ['Mirror pattern (L1): Raw tables capture immutable source data; foreign key (event_id) links to synthesized layer.', 'Event sourcing (L2): All changes tracked as timestamped events; embeddings stored for semantic search.', 'Promotion pipeline (L3-L5): Successive LLM passes refine abstractions; each promotes tagged events to higher layer.', 'Bidirectional linking: source_id tracks origin; work_item_id back-references synthesized artifacts.', 'Load-once-on-access: Tags/workflows cached in memory on project load, updated only on explicit save.', 'Async background jobs: Embedding/synthesis runs via Bull/Celery, non-blocking HTTP response.', "Tag-driven filtering: User tags (phase, feature, bug) act as 'topics'; events grouped/promoted by matching tags.", 'Exponential time decay: Relevance score = exp(-0.01 * days_old); recent events prioritized in context.', 'Soft deletes: Tokens/old events marked redeemed_at/archived rather than hard-deleted for audit trail.']}
 - **feature_snapshot_schema**: 19 columns: id (UUID PK), client_id (default 1), project_id (FK), tag_id (FK), use_case_num, name, category, status, priority, due_date, summary, use_case_summary, use_case_type, use_case_delivery_category, use_case_delivery_type, related_work_items (JSONB), requirements (JSONB), action_items (JSONB), version (default 'ai'), created_at, updated_at
 - **feature_snapshot_versioning**: two-tier: version='ai' auto-overwritten on snapshot runs; version='user' promoted from AI snapshot, never overwritten by subsequent AI runs
+- **feature.tagging.design**: {'high_level': '4-tier tag architecture: (1) Ephemeral—user-initiated tag creation via chat picker (root level) or Planner UI (nested); (2) Mirror capture—prompts/commits/entities tagged via mem_mrr_* tables with event_id back-propagation; (3) AI event layer—mem_ai_events stores synthesized event summaries with user-facing tags only; (4) Work item promotion—mem_ai_work_items linked to planner_tags via tag_id_user (user-confirmed) and tag_id_ai (AI-suggested with confidence). Tag suggestions evaluated by AI with confidence > 0.70 threshold, category inference (task/bug/feature first, then others), and UI display with approve/remove/delete controls. Caching strategy: load all project tags into memory on project open via _pickerPopulateCats(), zero DB calls during picker interaction, save only on explicit action.', 'low_level': 'Database schema: mem_ai_tags (id, project_id, name, category, parent_id FK for nesting, created_at, updated_at, creator, updater); mem_ai_tags_relations (id, project_id, from_tag_id FK, to_tag_id FK, relation_type enum, note); planner_tags (id, project_id, name, category, status, creator, requirements JSONB, action_items JSONB, deliveries JSONB, updater); mem_mrr_prompts/commits/entities (project_id, event_id, source_id FK). Backend: MemoryTagging class handles AI suggestions via _vector_search_tags() and confidence scoring; tag_event_by_source_id/untag_event_by_source_id for bidirectional sync; merge_tags() consolidates duplicates via work_items linking. Frontend: tag picker caches tags in JavaScript object, displays with color-coding (green=EXISTS user tag, red=NEW AI suggestion, blue=USER self-created), sticky headers for category navigation, increased font sizes for Electron visibility. UI components: TagChip with approve/delete buttons, CategoryFilter, NestedTagBrowser for multi-level display.', 'patterns_used': ['cache-on-load', 'lazy-evaluation', 'composite-foreign-keys', 'self-referential-nesting', 'back-propagation-linking', 'event-driven-sync', 'confidence-scoring', 'bidirectional-relationship', 'soft-delete-via-status']}
+- **feature.UI.design**: {'high_level': 'Electron desktop application with FastAPI backend and Vanilla JS frontend (no frameworks). 4-tier architecture: (1) CLI Engine (aicli/) with Python asyncio, LLM provider adapters, prompt_toolkit; (2) Backend (ui/backend/) with FastAPI routers, PostgreSQL 15+ with pgvector, memory synthesis pipeline; (3) UI (ui/frontend/) with xterm.js terminal, Monaco editor, Cytoscape DAG visualization, responsive HTML/CSS; (4) Workspace (workspace/) with YAML prompts, JSONL history, per-project state. Memory system: ephemeral session → mem_mrr_* raw capture (commits, prompts) → mem_ai_events LLM digests+embeddings → mem_ai_work_items/project_facts/features. Work item pipeline: 4-stage approval (PM requirements → Architect plan → Developer code → Reviewer testing) with loop-back on rejection. Tag system: unified planner_tags table with user/AI dual status (tag_id_user, tag_id_ai), category-based hierarchy (bug/feature/task), and nested parents via parent_id FK.', 'low_level': 'Frontend: renderEntities() module handles tag/work_item display; drag-and-drop via _loadTagLinkedWorkItems() with visual feedback on hover; tag cache in memory on project open (_pickerPopulateCats()). History view singleton pattern to preserve state across tab switches. Work item drawer with collapsible sections (acceptance criteria, action items, linked events, context tags). Backend: route_memory.py /memory endpoint orchestrates 4-layer synthesis (raw JSONL → tagged events → AI digests → work items); route_work_items.py manages CRUD+tagging with event back-propagation; mem_embeddings.py runs async Haiku batch processing with UUID validation. Database: mem_ai_work_items stores AI-generated definitions (name_ai, category_ai, summary_ai) plus user edits (status_user, tag_id_user); mem_ai_events with event_type filter (prompt_batch/session_summary only); mem_mrr_prompts/commits mirror tables with back-propagated event_id; planner_tags unified tag table with JSONB deliveries. Migrations: m037-m046 handle column reordering, deprecation (importance, embedding in commits), and schema cleanup.', 'patterns_used': ['Load-once-on-access caching (tags, workflows, runs cached in memory; DB updated only on explicit save)', 'Provider contract pattern (every LLM provider: send(prompt, system)→str, stream()→Generator)', 'Event-driven memory synthesis (prompts/commits→events→work_items→facts via async jobs)', 'DAG workflow executor (asyncio.gather with loop-back semantics; max_iterations cap; Cytoscape visualization)', 'Dual-status entity tracking (status_ai for system-suggested, status_user for user-confirmed)', 'Back-propagation linking (events linked to prompts/commits via source_id; event_id back-propagated to mirror tables)', 'Smart chunking (per-class/function Python/JS/TS; per-section Markdown; per-file diffs)', 'Composite indexing for performance (project_id+category_ai+name_ai UNIQUE; project_id+seq_num WHERE seq_num IS NOT NULL)', 'Soft-delete with timestamp tracking (merged_into for work items; redeemed_at for tokens; valid_until for facts)', 'UUID validation in queries (coerce string literals to UUID before SQL bind to prevent psycopg2 errors)', 'Batch processing with transactional safety (explicit BEGIN/COMMIT/ROLLBACK for concurrent requests)', 'Fallback configuration (agent roles fallback to _FALLBACK_PROMPTS; code_dir from project.yaml else settings.code_dir)']}
 - **frontend_sticky_header_pattern**: CSS position:sticky;top:0;z-index:1 on table headers for work_items panel
 - **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states via onmouseenter/onmouseleave, escaped string interpolation in onclick via _esc()
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **mcp_tools_count**: 12+ tools including semantic search with work_items vector search, work item management, session tagging
+- **mem_ai_work_items_schema_updates**: removed status_ai dual-status design, seq_num reordered near id, explicit FOREIGN KEY for merged_into, ivfflat embedding index added
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_sync_workflow**: /memory endpoint executes embedding pipeline refresh to sync prompts with work_items and detect new tags
+- **memory_synthesis_output_format**: 5 files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) with LLM response summarization instead of full output
 - **memory_system_update_status**: updated_with_latest_context_and_session_tags
+- **mng_deliveries_planned**: lookup table for delivery categories: code, document, architecture, ppt with subtypes; not yet implemented
 - **pending_feature**: tags display under work_items in shared memory context
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
+- **performance_instrumentation_pattern**: time.monotonic() tracking in _run_promote_all_work_items; _finish_run calls include t0 parameter for measurement
 - **performance_issue_active**: route_work_items latency ~60s; investigating _SQL_UNLINKED_WORK_ITEMS indexing and mem_ai_events join optimization
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
@@ -68,24 +96,37 @@ Reviewer: ```json
 - **pipeline_run_status_values**: status column accepts 'running', 'ok', 'error'
 - **pipeline_run_table_schema**: mem_pipeline_runs: project_id, pipeline, source_id, status, items_in, items_out, duration_ms, error_msg (max 500 chars), finished_at, id (uuid)
 - **pipeline_run_timing_method**: time.monotonic() for duration calculation, stored as integer duration_ms
+- **pipeline_trigger_sources**: three paths: planner interface, docs module (feature-based), direct chat execution; consolidated into unified approval/execution flow
+- **planned_refactoring_database_py**: remove outdated table definitions and reduce file length
+- **planned_schema_change_llm_source_column**: llm_source column to be added after project column in tables; embedding columns appended to end of tables containing them
 - **planner_tag_schema_consolidation_proposed**: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
 - **planner_tags_core_columns**: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
+- **planner_tags_schema**: flat string keys: requirements, action_items, design, code_summary; JSON parsing via JSONDecoder.raw_decode
 - **planner_tags_schema_cleanup**: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
+- **planner_tags_schema_refactored**: dropped seq_num, source, summary, design, embedding, extra; merged source into creator (username for users, 'ai' default); added updater and deliveries (JSONB); reordered with project_id after client_id, timestamps last
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **prompt_work_item_trigger_automation**: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
+- **rel:aicli_tool:agent_context**: generates
+- **rel:ai_context_files:legacy_system_dir**: replaces
+- **rel:ai_rules_md:cursor_rules**: related_to
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:background_tasks:pipeline_logging**: depends_on
 - **rel:commit_processing:exec_llm_flag**: replaces
+- **rel:dashboard_module:pipeline_controller**: implements
 - **rel:db_migrations:planner_tags**: implements
+- **rel:docs_module:pipeline_trigger**: depends_on
 - **rel:embedding_integration:prompt_work_item_trigger**: implements
 - **rel:embedding_vectors:semantic_search**: enables
 - **rel:event_filtering:noise_reduction**: implements
 - **rel:exec_llm:event_id**: replaces
 - **rel:frontend_ui_pattern:ai_tag_suggestion_feature**: implements
+- **rel:m037:importance_column**: replaces
 - **rel:mcp_tool_memory:work_items_table**: depends_on
+- **rel:mem_ai_events:mem_mrr_commits**: backfill_depends_on
+- **rel:mem_ai_events:mem_mrr_prompts**: backfill_depends_on
 - **rel:mem_ai_events:work_items**: depends_on
 - **rel:mem_ai_feature_snapshot:mng_clients**: depends_on
 - **rel:mem_ai_feature_snapshot:mng_projects**: depends_on
@@ -95,6 +136,7 @@ Reviewer: ```json
 - **rel:memory_endpoint:tag_detection**: implements
 - **rel:memory_system:session_tags**: implements
 - **rel:pipeline_run:mem_pipeline_runs**: implements
+- **rel:planner_tags:mng_deliveries**: depends_on
 - **rel:planner_tags:vector_embedding**: replaces
 - **rel:prompt_loader:mng_system_roles**: replaces
 - **rel:route_memory:prompt_loader**: depends_on
@@ -104,6 +146,7 @@ Reviewer: ```json
 - **rel:route_snapshots:prompt_loader**: depends_on
 - **rel:route_work_items:sql_parameter_binding**: depends_on
 - **rel:session_context:prompt_counter**: implements
+- **rel:snapshot_generation:haiku**: depends_on
 - **rel:stag_command:tag_command**: replaces
 - **rel:sticky_header:work_items_panel**: implements
 - **rel:tag_reminder:session_context**: depends_on
@@ -116,9 +159,11 @@ Reviewer: ```json
 - **rel:work_item_embedding:prompt_work_item_trigger**: implements
 - **rel:work_item_panel_sort:prompt_count**: implements
 - **rel:work_item_panel:state_management**: implements
+- **rel:work_item_pipeline:agent_roles_db**: depends_on
 - **rel:work_item_vector_search:mcp_tools**: implements
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **session_context_prompt_counter**: prompt_count field added to session context JSON, initialized to 0, incremented on each prompt validation
+- **snapshot_generation_llm_model**: Claude Haiku (cost-optimized from Sonnet)
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
 - **tag_command_alias**: /stag replaces /tag due to Claude Code skill name conflict; identical functionality with immediate availability
@@ -129,6 +174,7 @@ Reviewer: ```json
 - **tag_reminder_display_format**: soft: '┄ Prompt #{N} ╌ still on: {tags}'; hard: multi-line box with current tags and re-send/update instructions
 - **tag_reminder_feature**: soft reminder every N prompts (default 8, configurable via TAG_REMINDER_INTERVAL), hard check at 3× interval with tag confirmation requirement
 - **tags_ai_deprecation**: tags_ai column in mem_mrr_commits removed; data now stored in mem_mrr_commits_code (per-symbol) and mem_ai_events (commit digest)
+- **tag_suggestion_workflow**: auto-saved to session via _acceptSuggestedTag; tag management flows through Chat tab (+) with category selection and deduplication
 - **ui_action_menu_pattern**: 3_dot_menu_for_action_visibility
 - **ui_library**: 3_dot_menu_pattern
 - **ui_toast_notification**: toast() function displays error messages with 'error' severity level
@@ -147,6 +193,7 @@ Reviewer: ```json
 - **work_item_panel_column_widths**: prompt_count:46px, commit_count:46px, event_count:46px (resized from 52px event_count + 52px commit_count)
 - **work_item_panel_sortable_fields**: prompt_count, event_count, commit_count, seq_num (prompt_count added to sort handler)
 - **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
+- **work_item_pipeline_stages**: 4-stage pipeline with DB-loaded agent roles, fallback prompts, provider/model overrides, auto_commit boolean support
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
 - **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
 - **work_item_unlink_handler**: _wiUnlink uses _wiRowLoading(id, true) for loading state during patch operation
@@ -154,384 +201,90 @@ Reviewer: ```json
 
 ## Active Features
 
-- `#20514 review-router-expanded-functionality` [task]: Review and test expanded functionality in project router after major refactoring to ensure stability.
-- `#20513 validate-prompt-loader` [task]: Test refactored prompt loader initialization and database caching mechanisms work reliably.
-- `#20512 test-memory-promotion-logic` [task]: Validate improvements to memory embeddings and memory promotion logic work as intended after refactoring.
-- `#20511 verify-hooks-integration` [task]: Ensure refactored hook system integrates correctly with project router and assistant configs after major refactoring.
-- `#20510 duplicate-cats-variable-scope` [bug]: Resolved a variable scope bug where duplicate `const cats` declarations in `_wiPanelCreateTag` caused the Electron UI to
-- `#20509 backend-state-verification` [task]: Systematic investigation into backend errors and data state issues causing category filters and AI tag acceptance to fai
-- `#20508 ai-tag-accepted-disappears-item` [bug]: Bug where accepting an AI tag on a work item causes it to disappear from the UI, breaking the user workflow. Requires fi
-- `#20507 planner-category-filters-missing` [bug]: The planner UI is missing category filter buttons for bug, feature, and task types, showing only work_item filters. This
-- `#20506 deployment-lineage-visualization` [task]: A dashboard visualizing complete traceability from requirements through events, work items, and deployments to productio
-- `#20505 mcp-state-sync-endpoints` [task]: Expose project state management through MCP endpoints to enable external tools safe, auditable access to project context
-- `#20504 implement-project-history-queries` [task]: Build query interfaces to retrieve complete project history across features, requirements, deployments, and work items u
-- `#20503 feature-snapshot-tag` [feature]: Add a 'feature_snapshot' tag to the work item system to organize and filter development work by feature state, improving
-- `#20502 consolidate-descriptor-fields` [task]: Consolidate four redundant descriptor fields (short_desc, full_desc, summary, requirements) into a unified schema to eli
-- `#20501 remove-redundant-planner-tag-columns` [task]: Remove redundant seq_num and source columns from planner_tag schema by consolidating their logic into the creator field.
-- `#20500 audit-planner-tag-schema` [task]: Audit and consolidate the planner_tag table schema by removing redundant columns (seq_num, source) and duplicate descrip
-- `#20499 history-ui-testing` [task]: Comprehensive testing suite for the new history navigation system, ensuring all navigation paths work correctly and the 
-- `#20498 history-router-navigation` [feature]: History router feature enables seamless navigation between different chat history views with enhanced UI components to i
-- `#20497 validate-system-config-changes` [task]: Validates system configuration file updates to ensure consistency with codebase, prevent breaking changes, and confirm d
-- `#20496 review-chat-view-component` [task]: Comprehensive review and validation of the chat view component across all device sizes (mobile, tablet, desktop) to ensu
-- `#20495 ui-components-styling-audit` [task]: Comprehensive audit and standardization of UI components across the platform to ensure consistent styling, responsive de
-- `#20494 entities-view-feature` [feature]: Unified entities view feature enabling full CRUD operations on project entities with consistent styling. Closes entity m
-- `#20493 history-export-download` [feature]: Feature that allows users to download their historical data in CSV, JSON, and PDF formats to comply with data portabilit
-- `#20492 history-filter-controls` [feature]: Interactive filter UI for the history view enabling users to filter by status, date, category, and other attributes. Red
-- `#20491 history-search-capability` [feature]: A search capability enabling users to quickly retrieve historical records via keywords, date ranges, and metadata filter
-- `#20490 history-display-ux-review` [task]: UX review of conversation history display to ensure it efficiently renders 100+ messages with clear visual hierarchy and
-- `#20489 session-persistence-verification` [feature]: Verification that session management correctly persists conversation state across browser refreshes and tab closures, en
-- `#20488 integrate-api-with-ui` [task]: Integrate new CRUD APIs for entity/project management into the chat UI, allowing users to create, read, update, and dele
-- `#20487 chat-ui-message-rendering` [feature]: Enhanced message rendering system for the chat UI that improves visual presentation and interaction responsiveness. Crit
-- `#20486 entity-project-crud-apis` [feature]: Backend CRUD API implementation for entities and projects, enabling complete lifecycle management of organizational unit
-- `#20485 embedding-model-optimization` [task]: Fine-tune and optimize the embedding model to deliver fast, accurate vectorization for semantic search. Ensures consiste
-- `#20484 semantic-search-integration` [feature]: Semantic search integration replaces keyword matching with embedding-based retrieval to improve document discovery by un
-- `#20483 database-schema-migration` [task]: Critical database schema migration introducing new data structures with rollback safeguards. Unblocks upcoming feature r
-- `#20482 history-ui-improvements` [feature]: Initiative to enhance the history UI with improved discovery mechanisms, search/filtering capabilities, responsive desig
-- `#20481 enhanced-entities-router` [feature]: Enhanced routing system for entity navigation that improves data flow and UX across all entity types while maintaining b
-- `#20480 update-workflow-access-patterns` [task]: Refactor workflow data access by replacing legacy methods with a filesystem-based storage API to improve consistency, pe
-- `#20479 validate-filesystem-storage-performance` [task]: Performance validation suite for filesystem-based workflow storage that ensures the system meets throughput, latency, an
-- `#20478 migrate-workflow-storage-db-to-filesystem` [task]: Migrate workflow storage from database to filesystem to reduce operational overhead and improve scalability by eliminati
-- `#20477 remove-unused-database-api-code` [task]: Remove unused database and API code to reduce technical debt and simplify the codebase. This cleanup eliminates dead fun
-- `#20476 expanded-router-endpoints` [feature]: Expand the projects router with complete CRUD and workflow management endpoints to enable programmatic project lifecycle
-- `#20475 expand-projects-router` [feature]: Expand the projects router with new endpoints and improved route handling to support comprehensive project management op
-- `#20474 log-session-stop-hook` [feature]: A session termination logging hook that enables custom handlers to track session end events without modifying core code.
-- `#20473 ai-assistant-config` [feature]: Enable persistent, per-project AI assistant configuration through UI/API to allow workflow customization without code ch
-- `#20472 project-routing-logic` [feature]: Enhanced routing logic that manages project navigation and state transitions with role-aware controls. Ensures consisten
-- `#20471 react-hooks-management` [feature]: Refactors React hooks, routing, and AI assistant configuration into reusable, customizable components. This improves mai
-- `#20470 projects-router` [feature]: Centralized HTTP router consolidating all project-related endpoints to improve code organization and maintainability. Re
-- `#20469 history-view-layout-refactor` [feature]: Restructure the history view's presentation layer to improve information architecture and reduce cognitive load for bett
-- `#20468 entities-router` [feature]: A dedicated router module that consolidates all entity-related routes into a single, organized module to improve code ma
-- `#20467 history-ui-layout-improvements` [feature]: Redesign history UI layout to improve usability, visual clarity, and accessibility across all devices while achieving WC
-- `#20466 history-ui-filtering` [feature]: Add filtering and search capabilities to the history UI to help users discover and navigate historical records in large 
-- `#20465 cleanup-artifact-files` [task]: Cleanup task to remove temporary build and runtime artifact files from the aicli repository, reducing clutter and improv
-- `#20464 database-query-handling` [feature]: Enhance database query handling with comprehensive exception management, structured logging, and performance metrics. Th
-- `#20463 entity-routing` [feature]: Implementation of RESTful CRUD endpoints (POST, GET, PUT, DELETE) with enhanced database layer for robust query handling
-- `#20462 test-picker-feature` [task]: Comprehensive test suite validating work item movement and linking across all three confirmation workflow paths (existin
-- `#20461 tagging` [task]: Comprehensive testing suite validating tag confirmation workflows across three scenarios: confirming existing tags, crea
-- `#20460 development` [task]: Restart Claude Code IDE to load the /stag skill alias, which enables tag operations in staging by bypassing /tag command
-- `#20459 development` [task]: Refactoring chat.js to eliminate code duplication and reduce complexity, improving maintainability and extensibility of 
-- `#20458 UI` [feature]: Enhancement to the history UI that displays entity metadata (name, type, status) alongside chat messages, providing user
-- `#20457 UI` [feature]: Refactor chat view state management to prevent stale state and data leaks during project/session transitions, ensuring c
-- `#20456 improved-routing-logic` [feature]: Enhanced routing system that eliminates navigation friction between project and chat views while preserving application 
-- `#20455 UI` [feature]: Enhancement of chat UI focused on visual layout, readability, and interaction patterns. Improves user engagement through
-- `#20454 development` [feature]: Enhance the history view UI with improved layout, sorting, filtering, and navigation to reduce friction when reviewing d
-- `#20453 entity-routing` [feature]: Entity routing system provides direct navigation to specific entities with enhanced display patterns across history and 
-- `#20452 development` [task]: Enhancement to the git router to reduce latency in version control operations and improve system integration. This impro
-- `#20451 development` [task]: Modernize the state management layer to adopt current best practices, reducing technical debt and improving code maintai
-- `#20450 development` [task]: Refactor database core logic to reduce cyclomatic complexity and improve maintainability. This work streamlines core dat
-- `#20449 development` [task]: Remove outdated router code and implementation from the project codebase.
-- `#20448 ai-tag-approval-workflow` [task]: Review and document user ability to approve or remove AI-generated tags on work items to ensure proper permission contro
-- `#20447 session-context-historical-commits` [feature]: Consider adding session context to historical commit backfill process to enable future code generation and improve trace
-- `#20446 architecture-decision` [task]: Document the expected zero-prompt pattern for historical commits processed via backfill without active CLI sessions, ver
-- `#20445 work-item-commit-linking` [bug]: Fixed SQL join from event_id to commit_short_hash via source_id to properly link work items to commits. Verify all work 
-- `#20444 development` [feature]: Add extended functionality to prompts feature including UI enhancements and database layer improvements for managing add
-- `#20443 workflow-api-layer-update` [feature]: Updated API layer to support new workflow features and data structures for enhanced graph workflow capabilities.
-- `#20442 graph-workflow` [feature]: Improved navigation and visual components in the graph workflow interface for better usability and clarity.
-- `#20441 entity-views-upgrade` [feature]: Upgraded entity views to improve overall user experience and system usability.
-- `#20440 graph-runner-improvements` [feature]: Enhanced graph runner functionality for better performance and reliability.
-- `#20439 work-items-management-enhancements` [feature]: Improved work items management functionality to enhance system capabilities and user experience.
-- `#20438 workflow-graph-frontend-visualization` [feature]: Enhanced frontend view with improved visualization and interaction capabilities for workflow graphs, providing better UX
-- `#20437 graph-workflow-backend-router` [feature]: Implemented new backend router to handle API endpoints for graph operations, enabling server-side support for workflow g
-- `#20436 backend-routing-graph-operations` [task]: Updated backend routing logic to enhance support for graph-based operations and improve overall workflow architecture.
-- `#20435 graph-workflow-history-tracking` [feature]: Implemented improved history tracking mechanism for graph workflow system to better capture and manage state transitions
-- `#20434 system-documentation-update` [task]: Updated system documentation to reflect backend changes and improve clarity for developers. Ensure documentation is curr
-- `#20433 backend-database-pipeline-optimization` [task]: Enhanced database handling and pipeline logic to improve data processing efficiency and maintainability. Review implemen
-- `#20432 verify-legacy-code-removal` [task]: Ensure all references to removed legacy storage and embeddings code are cleaned up across the codebase and tests continu
-- `#20431 add-sql-query-comments` [task]: Add SQL query comments at the top of each file/class per coding standards for documentation and maintainability.
-- `#20430 verify-composite-indexes-deployed` [task]: Confirm migration m020 composite indexes are live and query performance improved on planner/work_items tabs.
-- `#20429 activate-tag-skill-new-session` [task]: Start a new session to load the `/tag` skill for tagging mechanism with periodic reminders.
-- `#20428 extended-project-routing` [feature]: Add new endpoints and routing logic to project router for expanded API functionality and granular control over project o
-- `#20427 verify-system-config-updates` [task]: Test system configuration changes to ensure they don't introduce regressions or break deployment pipelines.
-- `#20426 review-unused-frontend-views` [task]: Audit and document which frontend view files were removed and verify no active features depend on them.
-- `#20425 update-ai-context-documentation` [task]: Updated documentation files to improve AI assistant context handling and conversation state management.
-- `#20424 session-based-work-item-tracking` [feature]: Implemented session-based change tracking for work items router and entity views to enable better modification managemen
-- `#20423 test-context-preservation` [task]: Test that context is properly preserved and accessible in subsequent sessions.
-- `#20422 validate-session-state-tracking` [task]: Ensure session state management maintains consistency across multiple CLI invocations.
-- `#20421 review-context-file-updates` [task]: Verify AI context files are properly updated and persisted after CLI session execution.
-- `#20420 document-env-setup` [task]: Document the development environment setup changes to ensure team consistency and reproducibility.
-- `#20419 review-config-changes` [task]: Review and validate system configuration updates to build scripts and dependencies applied during Claude CLI session.
-- `#20418 update-system-state-config` [task]: Update system state and memory configurations based on learnings from Claude session fa5883c1. Review and integrate any 
-- `#20417 standardize-session-state-files` [task]: Update session state file formats and structures to align with current operational standards.
-- `#20416 improve-memory-management` [task]: Optimize memory management implementation across system components for better resource efficiency.
-- `#20415 update-ai-configuration-rules` [task]: Review and update AI configuration rules to reflect current operational standards and ensure system consistency.
-- `#20414 codebase-maintenance-update` [task]: Large-scale maintenance commit updating 34 files across the codebase. Review dependencies, configurations, and related c
-- `#20413 migrate-system-files-to-claude-directory` [task]: Removed legacy flat _system files and reorganized into structured claude/ directory for improved maintainability and fil
-- `#20412 cleanup-stale-system-files` [task]: Removed auto-generated system context and CLAUDE.md files from repository to reduce clutter and improve maintainability.
-- `#20411 dependency-and-config-updates` [task]: Updated 33 files across codebase for maintenance and dependency alignment. Review changes to ensure compatibility and st
-- `#20410 validate-knowledge-base-organization` [task]: Audit knowledge base structure to ensure organization aligns with updated configuration and supports efficient retrieval
-- `#20407 project-api-routes` [feature]: Implemented new project-related API endpoints to handle project operations and data management.
-- `#20402 add-event-counter-field` [feature]: Add an event counter field to the work_item display to show how many events are associated with each work item.
-- `#20401 propagate-tags-to-linked-events` [feature]: Add logic to propagate user-assigned tags to all events linked to the work_item for consistency across related items.
-- `#20400 replace-new-item-with-refresh-button` [feature]: Replace the 'new work_item' UI option with a 'refresh' button to reload latest work_items and update AI tags without cre
-- `#20399 ai-tags-query-missing-suggested-new` [bug]: The ui_tags query does not include or display suggested_new tags for AI(NEW) suggestions, preventing users from seeing A
-- `#20397 refactor-system-docs-structure` [task]: Reorganized _system documentation from monolithic structure into modular, feature-based layout to improve maintainabilit
-- `#20382 verify-state-persistence` [task]: Test and validate that workspace state correctly persists across multiple sessions without data loss or corruption.
-- `#20378 backend-route-refactor` [task]: Reorganized backend route structure to improve code maintainability and streamline request handling across the applicati
-- `#20376 verify-session-persistence` [task]: Test that conversation history and model state properly persist across multiple sessions after the recent state tracking
-- `#20375 audit-configuration-references` [task]: Review codebase for any dependencies on removed legacy configuration files to ensure no broken imports or missing contex
-- `#20373 maintain-session-history-logs` [task]: Updated session history logs to maintain accurate historical records. Review log retention and archival policies.
-- `#20368 verify-build-pipeline` [task]: Run full test suite and build pipeline to validate that large-scale updates haven't introduced regressions or breaking c
-- `#20367 review-dependency-updates` [task]: Review and test the 38 file updates across codebase to ensure compatibility and stability after dependency or configurat
-- `#20365 review-claude-session-17cd46bd-changes` [task]: Review and validate updates to AI system files and memory from Claude session 17cd46bd to ensure configurations and patt
-- `#20363 routing-stability` [bug]: Resolved routing stability problems that were affecting system consistency. Enhanced reliability of message routing and 
-- `#20361 refactor-database-module` [task]: Refactored database.py for improved code organization and maintainability with structural improvements.
-- `#20360 update-workspace-config-docs` [task]: Updated AI workspace configuration files and memory documentation to reflect previous session changes. Ensures configura
-- `#20358 refactor-core-backend-modules` [task]: Reorganized core backend modules to improve code organization and maintainability.
-- `#20356 verify-background-matching-persistence` [task]: Verify background matching is completing and persisting all suggested_new tags correctly.
-- `#20355 drag-drop-user-tags` [feature]: Enable drag-and-drop functionality for USER tag assignment.
-- `#20354 add-table-left-padding` [task]: Add left padding to table for improved visual spacing and layout.
-- `#20353 expand-updated-column` [feature]: Expand UPDATED column width to display full datetime in yyyy-mm-dd HH:mm:ss format.
-- `#20352 color-coded-tag-labels` [feature]: Implement AI(EXISTS) green, AI(NEW) red, USER blue color coding in tag labels for visual distinction.
-- `#20350 refactor-backend-module-structure` [task]: Reorganized backend module dependencies and structure to improve code maintainability and system initialization patterns
-- `#20348 remove-database-boilerplate` [task]: Removed unnecessary database boilerplate code from the aicli workspace to streamline the codebase and reduce redundancy.
-- `#20347 ai-config-standardization` [task]: Updated AI system configuration files as part of architecture improvements. Verify all environments use updated configs 
-- `#20344 improve-context-management` [task]: Enhanced AI context configuration files to better handle context tracking and memory management.
-- `#20341 organize-session-history` [task]: Organized and maintained session history records to improve project memory and development continuity.
-- `#20339 fix-backend-routing` [bug]: Fixed minor routing issues in the backend system to ensure correct request handling.
-- `#20335 documentation-update-clarity` [task]: Updated system documentation to improve clarity and consistency across the codebase.
-- `#20333 entities-view-api-integration` [feature]: Update entities view to integrate with API changes, including tag-based filtering and display capabilities.
-- `#20332 tag-based-routing` [feature]: Implement tag-based routing functionality to enable dynamic navigation and filtering based on entity tags.
-- `#20330 document-behavior-pattern-adjustments` [task]: Document the specific behavior pattern adjustments and lessons learned that prompted the rule updates.
-- `#20326 system-rules-review` [task]: Administrative review and update of system rules configuration without user-facing changes.
-- `#20324 entities-ui-visualization` [feature]: Improved entities UI with better visualization and interaction patterns. Enhances user experience for entity management 
-- `#20323 mcp-server-protocol-upgrade` [feature]: Upgraded MCP server with additional capabilities and improved protocol compliance. Extends server functionality and stan
-- `#20321 tag-suggestion-testing` [task]: Test tag suggestion accuracy and filtering logic to ensure AI recommendations are relevant and user tags integrate corre
-- `#20320 mirror-events-tag-merge` [bug]: Verify all mirror events properly merge user tags through to work items in UI.
-- `#20319 user-tags-info-pills` [feature]: Fetch and display user-created tags as informational pills on work item details.
-- `#20318 category-name-tag-display` [feature]: Implement category:name format for AI tag suggestions with visual differentiation between new and existing tags.
-- `#20317 update-project-rules-docs` [task]: Refresh project rules documentation based on latest session findings to ensure alignment with current practices.
-- `#20314 sync-system-files` [task]: System files synchronized to persist Claude session state and memory/chat context configuration.
-- `#20311 review-session-6ffb562b-changes` [task]: Review and validate system files and memory state updates from Claude session 6ffb562b to ensure conversation context an
-- `#20309 system-directory-restructure` [task]: Reorganized _system directory structure for better organization and developer experience.
-- `#20306 refactor-database-complexity` [task]: Refactored database.py to reduce complexity and improve maintainability of database operations.
-- `#20305 context-persistence-validation` [task]: Validate that system context is properly maintained and restored after CLI session execution completes.
-- `#20303 review-bulk-changes-235-files` [task]: Review and validate automated bulk changes across 235 files from AI CLI session to ensure code quality and correctness.
-- `#20302 verify-date-format-yy-mm-dd` [task]: Confirm date format changed to yy/mm/dd-hh:mm displays consistently across all panels.
-- `#20301 filter-non-work-item-tags` [task]: Remove non-work_item tags (Shared-memory, billing) from tag display in work_items panel.
-- `#20300 test-tag-approval-patch-calls` [task]: Test tag approval/removal PATCH calls update linked status correctly in the panel.
-- `#20299 verify-ai-tag-suggestions-population` [task]: Verify ai_tag_name suggestions populate correctly in work_items panel rows and display as expected.
-- `#20298 list-work-items-mcp-server-error` [bug]: Debug list_work_items MCP tool returning server-side errors. Investigate tool configuration and response handling.
-- `#20296 system-role-routing-refactor` [task]: Reorganized system files and refactored agent/system role routing endpoints to improve configuration management and rout
-- `#20295 audit-system-config-changes` [task]: Audit system configuration file changes made during CLI session to document modifications and verify correctness.
-- `#20293 audit-ai-workflow-commits` [task]: Audit the auto-commit mechanism to understand which files were changed and why, establishing clearer commit message docu
-- `#20292 review-automated-changes` [task]: Review and validate the 12 files modified in the automated AI session workflow from March 19. Ensure all changes align w
-- `#20291 audit-auto-capture-system` [task]: Audit the automatic change capture mechanism to verify all modifications are properly tracked and intentional.
-- `#20290 test-multi-file-persistence` [task]: Test the auto-save functionality across all 19 modified files to verify data integrity and proper synchronization.
-- `#20289 review-auto-save-implementation` [task]: Review and verify auto-save functionality that persists changes across multiple files during AI sessions.
-- `#20285 review-config-sync` [task]: Verify that all system configuration files are properly synchronized and reflect the current operational state.
-- `#20283 verify-refactor-integration` [task]: Verify that refactored backend components integrate correctly and that all routing paths function as expected post-refac
-- `#20282 backend-architecture-refactor` [task]: Refactored core backend architecture and router organization to improve code structure and maintainability. Review modul
-- `#20281 clear-aicli-system-state` [task]: Clean up leftover system state from previous operations after session 5b19c863 completes.
-- `#20280 review-session-5b19c863-state-changes` [task]: Verify that all state changes and configuration updates from session 5b19c863 were correctly persisted to system files a
-- `#20277 expanded-prompt-ui-views` [feature]: Added expanded functional UI views for prompts with improved visualization. Enables better prompt interaction and manage
-- `#20276 expanded-entity-ui-views` [feature]: Implemented enhanced visualization and interaction capabilities for entity UI views. Improves user experience for entity
-- `#20274 sync-docs-with-session-updates` [task]: Documentation files were updated to reflect changes to memory, rules, and context from recent Claude AI session. Verify 
-- `#20271 remove-stale-autogenerated-files` [task]: Cleaned up auto-generated context and system prompt files to reduce repository clutter and improve maintainability.
-- `#20270 refactor-system-context` [task]: Modified system context files to better support core application functionality and improve architectural foundation.
-- `#20269 improve-projects-view-ui` [feature]: Updated projects view with improved styling and layout for better presentation and usability.
-- `#20268 improve-history-view-ui` [feature]: Enhanced styling and layout for the history view component to improve user experience and visual consistency.
-- `#20267 workflow-ui-improvements` [feature]: Enhanced user interface with improved visual feedback and controls for better interactive experience during workflow man
-- `#20266 graph-workflow-persistence` [feature]: Implemented persistence layer with automatic saving capabilities for graph workflows. Users can now save and restore wor
-- `#20264 review-session-5b19c863-feedback` [task]: Review and document learnings from session 5b19c863 to identify patterns for future improvements.
-- `#20260 document-best-practices` [task]: Incorporate best practices insights into existing documentation based on session learnings.
-- `#20258 confirm-per-feature-docs-accessible` [task]: Verify that all per-feature documentation is properly accessible and complete under the new CLAUDE organization structur
-- `#20257 verify-documentation-links` [task]: Audit all documentation links after migration from flat _system structure to per-feature organization to ensure no broke
-- `#20256 update-project-structure-docs` [task]: Revise project structure documentation to accurately reflect current implementation and organization.
-- `#20255 clarify-project-rules` [task]: Revise project rules documentation to incorporate new clarifications and standards discovered during development session
-- `#20251 session-management-tools` [feature]: Added persistent session management tools to support maintaining user context across multiple interactions.
-- `#20250 entity-router-implementation` [feature]: Implemented entity operations routing in MCP server to manage entity-related request handling and dispatch.
-- `#20249 chat-router-implementation` [feature]: Added chat message routing capability to MCP server to handle message delivery across channels or endpoints.
-- `#20247 validate-backend-sql-propagation` [task]: Confirm backend restart successfully applied all SQL schema/data changes with no stale connections or caching issues.
-- `#20246 test-header-responsive-design` [task]: Test header styling with improved padding and visual separation across mobile, tablet, and desktop viewports.
-- `#20245 verify-column-widths` [task]: Ensure updated column widths (38px→wider) display all content properly without truncation or overflow.
-- `#20244 document-config-changes` [task]: Document the changes made to AI context configuration for team reference and future maintenance.
-- `#20243 review-claude-session-feedback` [task]: Review and validate feedback or changes from Claude session that prompted system state and memory configuration updates.
-- `#20242 review-system-context-updates` [task]: Verify that system context changes from CLI session are properly integrated with current development state.
-- `#20239 session-context-archival` [task]: Review and validate the session metadata and conversation logs that were recorded to ensure proper tracking and retrieva
-- `#20238 chat-router-db-integration` [feature]: Integrated database connectivity into chat router for persistent conversation storage and retrieval. Enables efficient d
-- `#20235 update-system-configuration` [task]: Updated system configuration files as part of general maintenance activities.
-- `#20233 simplify-state-management` [task]: Updated system state management as part of ongoing refactoring effort to enhance code clarity and reduce technical debt.
-- `#20232 refactor-db-core-module` [task]: Streamlined database core module initialization logic and removed unnecessary abstractions to improve maintainability an
-- `#20231 review-session-04d3b8ba-changes` [task]: Review and validate system file and memory configuration updates applied from Claude session 04d3b8ba to ensure they ali
-- `#20229 update-system-state-records` [task]: Maintain current context and conversation history by updating system state and memory records after Claude session inter
-- `#20226 history-expanded-view` [feature]: Implement expanded view option in history to display complete prompt and response text together in a readable format.
-- `#20225 history-text-copy-functionality` [feature]: Add ability to copy text from history UI entries for easier access and sharing of prompts and responses.
-- `#20223 session-stop-hooks-synchronization` [task]: Synchronized all four session-stop hooks (response logging, session summary, memory regeneration, bug detection) across 
-- `#20222 history-display-llm-responses` [feature]: Updated history display to capture both LLM responses and prompts. Configured hook-response background hook to properly 
-- `#20221 update-system-context-documentation` [task]: Updated system context and memory files to reflect changes made during Claude session. Ensures documentation stays synch
-- `#20220 update-documentation-post-cli-session` [task]: System context and memory documentation files were updated to reflect the current state after a CLI session. Ensure all 
-- `#20219 test-cli-workflows` [task]: Execute comprehensive testing of CLI workflows to ensure work items handling operates correctly after refactoring.
-- `#20218 update-dependent-code-for-refactor` [task]: Update all dependent code to align with the refactored work items handling structure.
-- `#20217 review-work-items-structure-compatibility` [task]: Review refactored work items structure for compatibility with CLI improvements and identify any breaking changes.
-- `#20216 map-table-data-flow` [task]: Create comprehensive documentation of column alignment and data flow patterns between mem_ai_work_items and mem_ai_event
-- `#20215 document-tags-merge-strategy` [task]: Document how tags column should consolidate and merge tags from mem_ai_events table into work items.
-- `#20214 define-content-columns-purpose` [task]: Define clear differentiation between content, summary, and requirements columns in mem_ai_work_items table to eliminate 
-- `#20213 clarify-source-session-id-usage` [task]: Document the purpose and usage patterns of source_session_id column in mem_ai_work_items table to establish parent sessi
-- `#20211 verify-doc-code-alignment` [task]: Review documentation updates against actual implementation of system context, memory, and hooks to ensure consistency is
-- `#20210 audit-documentation-accuracy` [task]: Review and validate remaining system context and documentation to ensure all information is current and accurate for fut
-- `#20209 review-undocumented-file-changes` [task]: Investigate the 2 modified files from the 2026-04-06 commit to understand their impact and document the changes retroact
-- `#20208 improve-commit-message-conventions` [task]: Establish and enforce meaningful commit message requirements to reduce ambiguity and improve project history tracking. C
-- `#20207 verify-dnd-compatibility` [task]: Verify that existing _attachWorkItemDnd logic remains compatible with new draggable row attributes and test end-to-end d
-- `#20206 implement-table-sorting` [feature]: Implement sorting functionality on prompts_count, commits_count, and last_update columns with appropriate SQL ordering.
-- `#20205 add-work-items-table-columns` [feature]: Add name, desc, prompts_count, commits_count, and last_update columns to work_items table with proper data aggregation f
-- `#20204 sync-cli-documentation` [task]: Update documentation to reflect memory state changes and rule adjustments from Claude CLI session b9e39fae. Ensure syste
-- `#20199 document-temp-file-management` [task]: Document the new approach to temporary artifact management and any manual cleanup requirements for aicli context files.
-- `#20196 verify-legacy-session-removal` [task]: Ensure all references to removed legacy session files are updated in imports and tests. Validate CLI functionality remai
-- `#20195 sync-docs-with-session-04974a99` [task]: Updated system context and memory documentation to reflect changes from Claude session 04974a99. Ensures documentation s
-- `#20194 window-plannersync-initialization` [task]: Ensure `window._plannerSync` initialization logic is robust and handles session merging without side effects or race con
-- `#20193 session-data-accumulation-tracking` [task]: Implement and verify data accumulation across merged sessions for `source_session_id`, `content`, `summary`, and `requir
-- `#20192 undefined-function-errors-fixed` [bug]: Resolved undefined function errors caused by stray initialization call. The `window._plannerSync` assignment now properl
-- `#20191 audit-system-behavior-changes` [task]: System behavior modifications were introduced in session 04974a99. Conduct audit to ensure changes are properly document
-- `#20189 update-claude-cli-documentation` [task]: Updated system context and instruction documentation files to reflect recent changes and improvements made during intera
-- `#20187 remove-committed-ai-files` [task]: Cleaned up accidentally committed temporary AI CLI system context and Claude session files from repository.
-- `#20186 sync-docs-with-implementation` [task]: Documentation files have been updated to reflect current implementation details and Claude AI session insights. Ensure a
-- `#20185 update-system-documentation` [task]: Updated system documentation to reflect chat router enhancements and database integration changes.
-- `#20183 review-rule-configuration-changes` [task]: Rule configuration handling has been modified. Ensure all related documentation, examples, and tests align with the new 
-- `#20180 update-documentation` [task]: Documentation files updated to reflect Claude AI session changes and learnings. Include memory notes and rule modificati
-- `#20179 sync-docs-cli-session-8b91f9d9` [task]: Documentation updates completed to reflect implementation changes from CLI session 8b91f9d9. Verify all system context a
-- `#20177 review-config-updates` [task]: Verify system configuration file changes are correct and don't introduce regressions.
-- `#20176 integrate-claude-session-findings` [task]: Apply improvements and changes discovered during Claude AI interactive development session to system configuration and m
-- `#20174 verify-dom-scoping-behavior` [task]: Validate that DOM selector scoping properly handles injected items and that the category filter removal doesn't introduc
-- `#20173 drag-drop-category-filter-fix` [bug]: Fixed drag-and-drop filtering logic in _loadTagLinkedWorkItems that was incorrectly using tag category instead of work i
-- `#20172 sync-docs-with-config` [task]: Update documentation to reflect recent system context and memory configuration changes from Claude session.
-- `#20165 sync-docs-with-session-context` [task]: Documentation has been updated to reflect system context and memory state from recent Claude session. Verify all finding
-- `#20164 audit-render-drawer-functions` [task]: Review other _renderDrawer functions across codebase for similar variable scope and field mapping issues.
-- `#20163 verify-drawer-ui-population` [task]: Test and verify that property drawer populates correctly for all tag types in the UI after backend restart.
-- `#20162 restart-backend-apply-sql-update` [task]: Restart backend service to apply the updated SQL query with newly cached fields.
-- `#20161 add-missing-cache-fields-sql` [task]: Updated SQL query to include missing cached fields (requirements, acceptance_criteria, priority) for tag properties.
-- `#20160 tag-property-drawer-variable-scope` [bug]: Fixed undefined catName variable and field name mismatch (short_desc vs description) in tag property drawer display logi
-- `#20158 sql-column-selection-route-work-items-288` [bug]: Review and complete incomplete column selection in merged work item query at line 288 of route_work_items function.
-- `#20157 sql-param-binding-route-work-items-249` [bug]: Fix missing parameter binding in cur.execute() call at line 249 for unlinked items query in route_work_items function.
-- `#20155 persist-configuration-changes` [task]: Configuration changes documented and committed to ensure future reference and consistency across sessions.
-- `#20154 document-system-context` [task]: Documentation files updated to capture system context and memory management insights from Claude AI session for knowledg
-- `#20153 audit-workspace-context-alignment` [task]: Audit workspace context files to confirm they reflect actual implementation details and current usage patterns.
-- `#20151 audit-commit-logging-hook` [task]: Review and validate the commit logging hook to ensure it's capturing the right code change metadata for the redesigned m
-- `#20150 redesign-delta-metrics` [task]: Refactor row delta (+/-) metrics in `mem_ai_commits` to capture meaningful code change statistics instead of current non
-- `#20145 auth` [task]: Update documentation for memory management to reflect current best practices and implementation details from recent Clau
-- `#20144 update-cli-documentation` [task]: Documentation files updated to reflect system context and memory state changes from recent CLI session work.
-- `#20143 update-system-context-docs` [task]: Updated system context documentation to reflect current project state and practices.
-- `#20141 update-system-prompts-documentation` [task]: System prompts have been updated and documentation needs to reflect these changes for consistency.
-- `#20140 verify-config-and-docs` [task]: Verify that configuration and documentation updates from automated workflow are accurate and complete.
-- `#20138 configuration-updates` [task]: Review and integrate configuration changes from collaborative development session.
-- `#20137 sync-ui-components` [task]: Apply interface modifications from Claude session fa708653 to UI components and system files.
-- `#20136 update-system-context` [task]: System context files have been updated to reflect current configuration. Verify all operational state changes are proper
-- `#20134 verify-diff-summary-schema` [task]: Validate that diff_summary field correctly captures human-readable git --stat output across all backfilled commits.
-- `#20133 populate-commit-file-tags` [task]: Extract and populate tags["files"] with actual file paths modified per commit once backfill embedding pipeline completes
-- `#20132 complete-commit-backfill` [task]: Finish backfilling remaining 196 commits in mem_ai_commits table with diff_summary and file path extraction via embeddin
-- `#20131 update-project-documentation` [task]: Documentation has been updated to reflect current context settings, memory configuration, and AI assistant parameters fo
-- `#20129 update-system-prompts` [task]: Review and update system prompts based on Claude conversation insights to improve clarity and effectiveness.
-- `#20125 ddl-runner-silent-failure` [bug]: Identified silent failure in DDL runner during initial migration, likely caused by timing issues and table locks during 
-- `#20124 complete-mem-mrr-commits-code-schema` [task]: Finalized `mem_mrr_commits_code` table with all 19 columns including `full_symbol` as a generated column.
-- `#20123 add-commit-short-hash-column` [task]: Added `commit_short_hash` column to database schema for the `mem_mrr_commits_code` table.
-- `#20122 audit-root-documentation` [task]: Review and remove outdated system documentation files (CLAUDE.md, CONTEXT.md) from project root to maintain clean reposi
-- `#20121 reorganize-context-structure` [task]: Migrated legacy flat context files into feature-scoped directories to improve code organization and maintainability.
-- `#20119 test-ui-optimistic-removal-failure-recovery` [task]: Confirm UI properly restores item state when optimistic removal is followed by API failure.
-- `#20118 monitor-query-performance-large-datasets` [task]: Performance test work-items endpoint with large datasets to verify CTE and LEFT JOIN optimizations are effective.
-- `#20117 validate-ai-tag-inference` [task]: Test AI tag inference logic when no user-provided tag exists on commits to ensure fallback behavior works correctly.
-- `#20116 test-event-aggregation-pipeline` [task]: Validate end-to-end event aggregation: trigger event from 5 prompts and verify remaining commits are properly linked to 
-- `#20115 verify-work-item-tag-on-commits` [task]: Ensure work-item tags are explicitly set on commits rather than auto-inferred from feature names to maintain data integr
-- `#20112 verify-commit-hash-column-integrity` [task]: Validate that the new `commit_short_hash` generated column in `mem_mrr_commits_code` is correctly populated and performa
-- `#20110 audit-documentation-structure` [task]: Review remaining documentation to ensure no orphaned references or duplicated content exist after legacy file removal.
-- `#20104 migrate-system-docs-to-subdirectories` [task]: Reorganize legacy flat _system documentation files into structured subdirectories to improve documentation organization 
-- `#20103 test-initial-migration-scenarios` [task]: Add test cases for initial database migration to catch timing issues and table lock scenarios that caused silent failure
-- `#20102 verify-mem-mrr-commits-code-schema` [task]: Validate that `mem_mrr_commits_code` table with all 19 columns including new `commit_short_hash` and generated `full_sym
-- `#20101 fix-ddl-runner-silent-failure` [bug]: Resolve silent failures in DDL runner during initial migration caused by timing issues and table locks. Add error handli
-- `#20100 query-commits-by-files-changed` [feature]: Build query capability to search commits by specific files modified using the extracted tags['files'] data.
-- `#20099 validate-file-tags-extraction` [task]: After backfill completion, verify that tags['files'] correctly captures all modified file paths for each commit.
-- `#20098 complete-commits-backfill` [task]: Finish backfilling remaining 196 commits in mem_ai_commits table to extract code changes via embedding pipeline.
-- `#20097 consolidate-tag-merging-logic` [task]: Review and document how tags consolidation from mem_ai_events works across merged sessions to ensure consistency.
-- `#20096 fix-window-planner-sync-initialization` [bug]: Confirm that window._plannerSync initialization stray call has been fully removed and proper assignment is occurring in 
-- `#20095 test-content-summary-requirements-accumulation` [task]: Validate that content, summary, and requirements fields properly accumulate across merged sessions without data loss or 
-- `#20094 verify-source-session-id-tracking` [task]: Audit source_session_id field to ensure it correctly tracks which session created/last modified each work item across me
-- `#20093 audit-commit-hook-logging` [task]: Verify the commit hook is correctly logging refined delta metrics and code change data after implementing the new column
-- `#20092 enhance-delta-metrics` [feature]: Redesign row delta (+/-) metrics in `mem_ai_commits` to capture meaningful code change statistics beyond raw counts, mak
-- `#20091 remove-diff-details-column` [task]: Remove `diff_details` column from `mem_ai_commits` table as it only stores documentation changes and doesn't capture act
-- `#20090 copy-text-from-history` [feature]: Add ability to copy text from history UI entries for easier access to previous prompts and responses.
-- `#20089 history-view-missing-llm-response` [bug]: History view regressed to showing only prompt text instead of both prompt and LLM response. Full response text is no lon
-- `#20088 document-hook-setup` [task]: Create comprehensive documentation on hook configuration requirements and maintenance procedures for the background resp
-- `#20087 hook-status-monitoring` [feature]: Implement monitoring/health checks for hook-response and session-stop hooks to proactively detect synchronization issues
-- `#20086 audit-hook-configurations` [task]: Audit all four session-stop hooks (response logging, session summary, memory regeneration, bug detection) to ensure they
-- `#20085 verify-history-display-coverage` [task]: Conduct end-to-end testing of history display to confirm both LLM responses and prompts are being captured and displayed
-- `#20084 implement-tags-merge-logic` [task]: Design and implement logic to merge tags from mem_ai_events table into mem_ai_work_items tags column.
-- `#20083 document-table-relationships` [task]: Create documentation for data flow and column alignment between mem_ai_work_items and mem_ai_events tables, including so
-- `#20082 clarify-content-column-purposes` [task]: Define the distinct purposes and usage patterns for content, summary, and requirements columns in mem_ai_work_items tabl
-- `#20081 add-drag-drop-persistence-tests` [task]: Add regression tests for drag-and-drop persistence when navigating away and returning to the screen to prevent future br
-- `#20080 review-tag-filtering-logic` [task]: Audit other tag-related filtering operations to ensure they use work item category rather than tag category to prevent s
-- `#20079 drag-drop-tag-category-filter` [bug]: Remove incorrect category filtering in `_loadTagLinkedWorkItems` that was preventing work items from being injected into
-- `#20078 incomplete-column-selection-merged-query-288` [bug]: Review and complete column selection in merged work item query on line 288 of route_work_items—ensure all required colum
-- `#20077 sql-parameter-binding-route-work-items-249` [bug]: Fix cur.execute() call on line 249 in route_work_items for unlinked items query—add proper parameter binding to prevent 
-- `#20076 embeddings` [bug]: Users cannot copy text from the history section in the UI, limiting usability for extracting conversation data.
-History 
-- `#20069 mcp` [bug]: History table contains numerous events that don't make sense and appear to be erroneous data. Needs cleanup of invalid e
-- `#20068 dropbox` [bug]: Users cannot copy text from the history UI, limiting usability of viewing historical prompts and responses
-- `#20067 auth` [bug]: Multiple events from history table don't make sense and appear to be erroneous data that should be removed
-- `#20065 auth` [bug]: aiCli_memory tables are not updated and don't match current schema. Some tables no longer exist, causing inconsistency b
-- `#20066 billing` [bug]: History view only shows prompts, not LLM responses. After fixes, only small text snippets are displayed instead of full 
-- `#20063 UI` [bug]: Users are unable to copy text from the history view in the UI, limiting the ability to export or reuse historical prompt
-- `#20062 mcp` [bug]: History view shows only prompts but not LLM responses, or displays only small text snippets instead of full prompt and L
-- `#20061 billing` [bug]: In route_history line 470, execute_values(cur, _SQL_BATCH_UPSERT, rows) throws 'ON CONFLICT DO UPDATE command cannot aff
-- `#20057 auth` [bug]: History view only displays small text snippets instead of full prompts and LLM responses. Users cannot see complete conv
-- `#20056 SQL execute syntax error` [bug]: Error in route_history line 470 with cur.execute(b''.join(parts)) call to execute_values(). Incomplete or malformed SQL 
-- `#20059 Spurious history events in database` [bug]: History table contains numerous nonsensical events from previous sessions that should not be there. Data integrity issue
-- `#20060 embeddings` [bug]: llm_source field contains invalid or inconsistent data that doesn't match expected values or schema requirements.
-- `#20055 Spurious event records in history table` [bug]: The event history table contains many events that don't make sense and appear to be leftover data from previous history 
-- `#20052 History UI only shows prompts, not LLM responses` [bug]: The history display is not showing LLM responses, only prompts. Additionally, full prompt and LLM response text is trunc
-- `#20054 Column order not applied in mem_ai_events table` [bug]: After requesting changes to mem_ai_events table structure (llm_source to be after project column, embedding at last colu
-- `#20053 Copy text functionality missing from history UI` [bug]: Users cannot copy text from the history section of the UI, which limits usability for reviewing and sharing past interac
-- `#20047 UI History Display Truncation` [bug]: Prompts and LLM responses in history are displaying as small text instead of showing the full content. Users cannot see 
-- `#20049 Unexpected Historical Events in Database` [bug]: The developer observed numerous events from history in the table that don't make sense and appear to be legacy/erroneous
-- `#20050 Column Order Not Applied in mem_ai_events` [bug]: After requesting changes to column order (llm_source after project, embedding at end), no changes were observed in the m
-- `#20048 Missing Copy Functionality in UI History` [bug]: Users are unable to copy text from the history section in the UI, indicating missing copy-to-clipboard functionality.
-- `#20045 Inconsistent data in mem_ai_events from history` [bug]: Developer observed many events from history in the table that don't make logical sense and questioned if they should be 
-- `#20046 database.py contains outdated table definitions` [bug]: database.py is noted as being very long and containing old table definitions that are no longer in use, causing maintena
-- `#20044 Column ordering not applied to mem_ai_events table` [bug]: Developer noted that llm_source column was supposed to be moved after project column and embedding at the end, but chang
-- `#20043 Tag persistence issue` [bug]: Tags attached to prompts and commits are not visible after being saved. Additionally, new tag attachments are failing si
-- `#20042 Undefined column 'work_item_id' in work_item query` [bug]: psycopg2.errors.UndefinedColumn error in route_work_i: column p.work_item_id does not exist. The query references 'p.wor
-- `#20039 Undefined column p.work_item_id in route_work_i` [bug]: psycopg2.errors.UndefinedColumn error - column 'p.work_item_id' does not exist. Query references this column in a WHERE 
-- `#20041 Tagging system not persisting data` [bug]: Tags attached to prompts and commits are not visible after being saved. No connection between tagging system and data re
-- `#20038 SQL execution error in /history/commits/sync endpoint` [bug]: Error occurred in route_history line 441 during execute_values() call with _SQL_BATCH_UPSERT. The cur.execute(b''.join(p
-- `#20040 Column ordering mismatch in mem_ai_events table` [bug]: llm_source column was not placed after project column as requested, and embedding column was not moved to the last posit
-- `#20031 Database changes not visible` [bug]: Developer reports inability to see changes in the database after DDL updates. The changes were supposedly applied but ar
-- `#20032 Missing llm_source column in mem_ai_events` [bug]: The llm_source field is missing from the mem_ai_events table, which is required for proper event tracking in the memory 
-- `#20034 Unused/irrelevant columns in schema` [bug]: Columns 'language' and 'file_path' exist in tables but developer questions their relevance and whether they are actually
-- `#20033 Incorrect table name in implementation` [bug]: Table referenced as 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'. This naming discrepancy will ca
-- `#20028 Unused columns in mem_ai_events table` [bug]: Table mem_ai_events contains deprecated columns (language, file_path) that are no longer used but haven't been removed o
-- `#20027 Missing llm_source field in mem_ai_events table` [bug]: Developer noted that llm_source column is missing from the mem_ai_events table where it should be present as part of the
-- `#20029 Incorrect table name mng_ai_tags_relations` [bug]: Table was incorrectly named mng_ai_tags_relations when it should be named mem_ai_tags_relations. Developer explicitly id
-- `#20025 Incorrect table naming convention` [bug]: Table was named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations' according to the memory structure naming c
-- `#20026 Schema merge incomplete` [bug]: pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table with an event_t
-- `#20022 Incorrect table name: mng_ai_tags_relations` [bug]: Developer explicitly identified that table is named 'mng_ai_tags_relations' but should be named 'mem_ai_tags_relations'.
-- `#20023 Tagging functionality not fully implemented` [bug]: Developer reports uncertainty that all tagging functionality is implemented as described in previous prompts, specifical
-- `#20020 Incorrect table name in tagging relations` [bug]: Developer explicitly identified that the table name should be 'mem_ai_tags_relations' but was incorrectly named 'mng_ai_
-- `#20018 Incorrect table name in tags relations` [bug]: Table is named 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. Developer explicitly identified this error
-- `#20019 Table merge not completed for embeddings and events` [bug]: pr_embeddings and pr_memory_events tables were supposed to be merged into a single 'mem_ai_events' table, but this appea
-- `#20017 Table consolidation not completed` [bug]: Developer references that 'pr_embeddings' and 'pr_memory_events' were supposed to be merged into a single event table ca
-- `#20016 Missing tagging functionality implementation` [bug]: Developer indicates that tagging functionality is not fully implemented. Specifically, 'mng_ai_tags_relations' table/fea
-- `#20013 Incorrect table name reference` [bug]: Table name mismatch: code references 'mng_ai_tags_relations' but should be 'mem_ai_tags_relations'. This naming inconsis
-- `#20015 Schema merge not completed for embeddings` [bug]: Previous design specified that pr_embeddings and pr_memory_events should be merged into a single 'mem_ai_events' table, 
-- `#20014 Incomplete tagging functionality implementation` [bug]: The mng_ai_tags_relations table/functionality appears to not be fully implemented. Developer notes indicate the tagging 
-- `#20011 Missing tagging relations table implementation` [bug]: Developer reports that mng_ai_tags_relations table is not implemented. The tagging functionality appears incomplete as e
-- `#20012 Embedding table merge not completed` [bug]: pr_embeddings and pr_memory_events were supposed to be merged into a single mem_ai_events table, but this refactoring ap
-- `#20010 Ambiguous embedding method behavior` [bug]: Confusion about embedding and chunking methods - developer questions whether using 3 embedding methods creates 3 duplica
-- `#20007 Data source confusion - JSONL vs database` [bug]: Developer questions whether the system is loading history from pr_prompts table or from JSONL files, suggesting the appr
-- `#20009 Documentation accuracy issue` [bug]: The aicli_memory.md documentation file does not accurately reflect actual system flows. Developer asks if it 'shows the 
-- `#20008 Missing embeddings-to-tagging connection` [bug]: Developer states 'I would embedding to be connected to the tagging' indicating embeddings and tagging metadata are not p
-- `#20006 Potential duplicate tables in schema` [bug]: Developer mentions concerns about duplicate tables in the database (pr_events and pr_interactions), questioning whether 
-- `#20001 Missing table rename for junction table` [bug]: Associated junction table 'pr_interation_tags' was not renamed to 'pr_prompts_tags', creating inconsistency in the datab
-- `#20000 Database table naming inconsistency` [bug]: Table name 'pr_interation' (or 'pr_interaction') was not renamed to 'pr_prompts' in the database schema, causing mismatc
-- `#20003 Documentation out of sync with implementation` [bug]: File 'aicli_memory.md' does not reflect actual flows and recent changes made to the system, requiring complete rewrite a
-- `#20004 Ambiguous embedding and chunking behavior` [bug]: Unclear whether embedding with 3 different methods creates 3 separate database rows per prompt, and whether this only oc
-- `#20002 Unclear data loading source` [bug]: System behavior unclear regarding whether it loads history from 'pr_prompts' table or from JSONL files, with developer n
-- `shared-memory` [task]: memory
-- `hooks` [bug]: hooks
-- `pagination` [feature]: pagination
-- `dropbox` [feature]: dropbox
-- `UI` [feature]: UI
-- `implement-projects-tab` [task]: Build the UI for managing features/tasks/bugs
-- `test-picker-feature` [feature]: test-picker-feature
-- `workflow-runner` [feature]: workflow-runner
-- `auth` [feature]: auth
+- `#20523 cleanup-database-py` [task]: cleanup-database-py is a database schema refactoring effort to remove deprecated table definitions, standardize column o
+- `#20522 refactor-db-schema-columns` [task]: This work item involves refactoring the database schema to add a new llem_source column after the project column and rep
+- `#20521 track-multi-project-support-development` [task]: This work item tracks development of multi-project support capabilities by improving documentation, session traceability
+- `#20520 auto-tag-summarize-chat-responses` [feature]: This work item implements automatic tagging and summarization for chat responses to improve history readability and cate
+- `#20519 chat-response-condensing` [feature]: Chat-response-condensing enables users to view summarized chat responses with expand/collapse toggles while preserving f
+- `#20518 memory-tagging-system` [feature]: The memory-tagging system enables users to organize and retrieve memories via feature tags (e.g., #feature-install, #wor
+- `#20517 response-summarization-chat-history` [feature]: This work item implements automatic summarization of long responses (>100 words) in chat history to improve readability,
+- `#20516 automatic-tagging-system` [feature]: The automatic-tagging-system automatically categorizes conversation history items by topic/category and makes those tags
+- `#20515 evaluate-aicli-memory-dag-vs-agent-sdk` [task]: This work item evaluates whether aicli's 5-layer memory and DAG-based multi-agent pipeline (PM→Dev→Tester→Reviewer with 
+- `#20514 loop-back-scoring-thresholds-documentation` [task]: This work item involves documenting the quantitative scoring thresholds and routing logic for loop-back decisions in the
+- `#20513 claude-sdk-mcp-integration-feasibility` [task]: This work item evaluates the feasibility of integrating Claude SDK's Model Context Protocol (MCP) patterns into aicli's 
+- `#20512 document-loopback-scoring-thresholds` [task]: This work item aims to document and formalize the scoring thresholds (0-5) and review gate criteria used in PM update fe
+- `#20511 evaluate-claude-agent-sdk-mcp-integration` [task]: Evaluate integration of Claude Agent SDK's Model Context Protocol (MCP) with aicli's DAG pipeline to enable MCP-based to
+- `#20510 implement-default-client-assignment` [task]: This work item implements default client assignment for free/unregistered users in a unified schema architecture. Recent
+- `#20509 refactor-client-tables-to-unified-schema` [task]: This work item consolidates multiple client-prefixed tables (cl_*) into a unified schema using client_id foreign keys, r
+- `#20508 default-client-assignment-free-users` [task]: This work item implements automatic default client assignment for free and unregistered users on shared instances, ensur
+- `#20507 refactor-tables-client-id-schema` [task]: This work item refactors the database schema to consolidate client-prefixed tables (cl_*) into unified tables with a cli
+- `#20506 design-instance-segregation-strategy` [task]: This work item defines the instance segregation strategy for a multi-tenant SaaS product, separating free-tier customers
+- `#20505 refactor-schema-add-client-id-fk` [task]: This work item adds client_id foreign key columns to core tables (mng_users, history, commits) to enforce multi-tenant d
+- `#20504 refactor-work-item-chunk-fields-to-tags` [task]: This work item proposes refactoring work_item.chunk and work_item.chunk_type fields into a tags dictionary to improve or
+- `#20503 implement-layered-memory-retrieval` [task]: Implement layered memory retrieval to balance raw JSONL, distilled tables, and CLAUDE.md summary for efficient context r
+- `#20502 design-distilled-memory-layer-tables` [task]: This work item involves designing two intermediate database tables (session_summaries and decision_log) to support a dis
+- `#20501 implement-layered-memory-retrieval-strategy` [task]: This work item focuses on implementing a layered memory retrieval strategy that routes queries through intermediate proc
+- `#20500 design-intermediate-distilled-memory-layers` [task]: This work item designs intermediate distilled memory layers to optimize context retrieval through two new tables (sessio
+- `#20499 refactor-work-item-chunk-metadata` [task]: This work item addresses refactoring work item chunk metadata by consolidating chunk and chunk_type fields into a tags d
+- `#20498 shared-memory` [feature]: shared-memory is a data cleanup and validation initiative for a shared memory system's history table. A user identified 
+- `#20497 claude-cli-tag-enforcement` [task]: Claude CLI tag enforcement ensures all sessions are tagged with phase identifiers for tracking and organization. A taggi
+- `#20496 mirroring-records-tagging-system` [feature]: This work item implements a tagging system for mirroring records (MRR), replacing the 'ai_tags' column with a 'tags' col
+- `#20495 enhance-file-change-tracking` [task]: This work item enhances file change tracking by introducing a detailed files[] array with file_name and rows_changed met
+- `#20494 structured-file-change-tracking` [feature]: This work item implements structured file-change tracking by storing file-level modifications as tagged data with file n
+- `#20493 migrate-mem-ai-events-schema` [task]: This work item involves migrating the mem_ai_events database schema to reorder columns for better organization and add n
+- `#20492 enhance-file-change-tracking-metadata` [task]: This work item enhances file change tracking metadata by adding detailed file-level information and language tags to imp
+- `#20491 refactor-mem-ai-events-schema` [task]: This work item refactors the mem_ai_events database schema to correct column ordering (moving llm_source after project a
+- `#20490 mng-projects-table-creation` [task]: Create a mng_projects table to normalize project metadata and establish foreign key relationships across work_item and p
+- `#20489 aicli-project-current-display` [bug]: This work item addresses a UI display bug where the AiCli project fails to show as the current project in the Recent pro
+- `#20488 aicli-current-project-display` [bug]: This work item addresses displaying the AiCli project as current in the UI while it appears in the Recent projects list.
+- `#20487 backend-startup-race-condition` [bug]: backend-startup-race-condition
+- `#20486 create-mng-projects-table` [task]: create-mng-projects-table
+- `#20485 sho-llm-ui-visibility` [feature]: sho-llm-ui-visibility
+- `#20484 dual-aspect-memory-architecture` [feature]: dual-aspect-memory-architecture
+- `#20483 audit-memory-schema-documentation` [task]: audit-memory-schema-documentation
+- `#20482 update-memory-documentation-and-layer-design` [task]: update-memory-documentation-and-layer-design
+- `#20481 audit-memory-layer-schema-mismatch` [task]: audit-memory-layer-schema-mismatch
+- `#20480 work-item-merge-drawer` [feature]: work-item-merge-drawer
+- `#20479 work-item-drag-drop-persistence` [bug]: work-item-drag-drop-persistence
+- `#20478 restore-bidirectional-tag-sync` [feature]: restore-bidirectional-tag-sync
+- `#20477 undefined-column-errors-schema` [bug]: undefined-column-errors-schema
+- `#20476 planner-bug-counter-state-sync` [bug]: planner-bug-counter-state-sync
+- `#20475 nested-tag-hierarchy-drag-drop` [feature]: nested-tag-hierarchy-drag-drop
+- `#20474 update-extraction-flow-documentation` [task]: update-extraction-flow-documentation
+- `#20473 sql-based-artifact-extraction-pipeline` [feature]: sql-based-artifact-extraction-pipeline
+- `#20472 drag-drop-tag-merge-planner` [feature]: drag-drop-tag-merge-planner
+- `#20471 schema-billing-verification-and-docs` [task]: schema-billing-verification-and-docs
+- `#20470 complete-schema-naming-migration` [task]: complete-schema-naming-migration
+- `#20469 ai-tag-suggestions-category-aware` [feature]: ai-tag-suggestions-category-aware
+- `#20468 work-item-tag-display-with-counts` [feature]: work-item-tag-display-with-counts
+- `#20467 memory-usage-dashboard` [feature]: memory-usage-dashboard
+- `#20466 mcp-entity-creation-tool` [feature]: mcp-entity-creation-tool
+- `#20465 work_items` [feature]: work_items
+- `#20464 planner` [feature]: planner
+- `#20463 entity-routing` [feature]: api-crud is a CRUD API implementation requiring full integration testing, error handling validation, and database optimi
+- `#20459 development` [task]: This work item focuses on refactoring the chat view component to improve maintainability by reducing code complexity fro
+- `#20458 UI` [feature]: History UI component displays entity information and referenced objects alongside messages while maintaining clean layou
+- `#20457 UI` [feature]: This work item implements proper routing and navigation state management across project and session switches. Recent pro
+- `#20453 entity-routing` [feature]: Entity-routing establishes correct navigation paths for all supported entity types to their detail pages and ensures con
+- `#20452 development` [task]: The git-router enhancement project aims to improve routing performance and ensure system-wide compatibility. No linked e
+- `#20451 development` [task]: This work item aims to modernize the application's state management architecture by redesigning it to align with current
+- `#20450 development` [task]: This work item involves refactoring core database logic to reduce cyclomatic complexity and improve system state managem
+- `#20449 development` [task]: This work item focuses on cleaning up outdated router code from the project to improve maintainability and reduce techni
+- `#20444 development` [feature]: Extended prompts functionality adds new fields to the prompt management system to support richer user interactions. No l
+- `#20442 graph-workflow` [feature]: graph-workflows is a visualization component for displaying workflow states and transitions with intuitive navigation co
+- `#20145 auth` [task]: update-memory-management-docs
+- `#20076 embeddings` [bug]: Missing copy functionality in history UI + Nonsensical events in history table
+- `#20068 dropbox` [bug]: History UI lacks text selection/copy functionality
+- `#20067 auth` [bug]: Nonsensical history events in table
+- `#20065 auth` [bug]: aiCli_memory table schema out of sync
+- `#20066 billing` [bug]: History display incomplete - missing LLM responses
+- `#20063 UI` [bug]: Text copy functionality missing from history UI
+- `#20061 billing` [bug]: ON CONFLICT DO UPDATE duplicate row error
+- `#20062 mcp` [bug]: History display truncating LLM responses
+- `#20057 auth` [bug]: History display truncation
+- `#20060 embeddings` [bug]: Invalid llm_source column data
+- `shared-memory` [task]: Work item for implementing shared memory functionality enabling inter-process/inter-thread communication. Currently in e
 
-## Last Session (2026-04-13 17:55)
+## Last Session (2026-04-15 18:46)
 
-- • Retry table migration using specified column order • Monitor migration progress with fresh log file • Drop _old table upon successful completion to free disk space
+- • Database migration m050 implemented to fix silent errors in hook-log endpoint — prompts now correctly persist to DB • UI not displaying latest changes due to missing real-time refresh logic; cache invalidation needed • Chat display not updating with new prompts because frontend isn't polling/listening for updates • User experiencing stale data in both CLI responses and web UI after prompts are submitted

@@ -157,38 +157,18 @@ if updated:
 fi
 
 # ── Save response to DB via hook-response ────────────────────────────────────
-# Read the ts that was logged by log_user_prompt.sh for this session
-TS_FOR_SESSION=$(python3 -c "
-import json, sys
-from pathlib import Path
-
-hist_file  = Path(sys.argv[1])
-session_id = sys.argv[2]
-
-if not hist_file.exists():
-    sys.exit(0)
-
-lines = hist_file.read_text(encoding='utf-8').strip().split('\n')
-for i in range(len(lines) - 1, -1, -1):
-    try:
-        e = json.loads(lines[i])
-    except Exception:
-        continue
-    if e.get('source') == 'claude_cli' and e.get('session_id') == session_id:
-        print(e.get('ts', ''))
-        sys.exit(0)
-" "$HIST_FILE" "$SESSION" 2>/dev/null || echo "")
-
+# Send with empty ts — backend will find the latest empty-response row for this session.
+# (Previously read ts from history.jsonl but that file is no longer the primary store.)
 if [ -n "$RESPONSE_TEXT" ] && [ -n "$SESSION" ]; then
     PAYLOAD=$(python3 -c "
 import json, sys
 print(json.dumps({
-    'ts': sys.argv[1],
-    'session_id': sys.argv[2],
-    'response': sys.argv[3],
-    'stop_reason': sys.argv[4],
+    'ts': '',
+    'session_id': sys.argv[1],
+    'response': sys.argv[2],
+    'stop_reason': sys.argv[3],
 }))
-" "$TS_FOR_SESSION" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null)
+" "$SESSION" "$RESPONSE_TEXT" "$STOP_REASON" 2>/dev/null)
     if [ -n "$PAYLOAD" ]; then
         curl -sf --connect-timeout 2 --max-time 10 \
             -X POST "${BACKEND_URL}/chat/${ACTIVE_PROJECT}/hook-response" \

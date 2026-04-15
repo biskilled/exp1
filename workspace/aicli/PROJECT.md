@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- History view UI refactor — Added collapsible session grouping with toggleable headers, improved timestamp formatting (YY/MM/DD-HH:MM), session ID display with last-4-char preview, and prompt count aggregation
-- History API enhancement — Added created_at ISO timestamp to chat_history endpoint response for improved UI date/time handling
-- Agent context consolidation — Legacy _system/ files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed
-- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter
-- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; 4-stage pipeline with provider/model overrides and auto_commit boolean support
-- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation
+- Hook-log functionality verification — Testing hook-log behavior post-m050 migration; unclear if migration resolved core issues or if additional schema/logic changes required
+- Backend module restructure completion — agents/tools/ and agents/mcp/ moved to correct locations; imports verified; stray auth.py references cleaned up
+- Backend startup race condition mitigation — Retry logic handles empty project list on first load; root cause diagnosis ongoing for AiCli project visibility edge cases
+- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
+- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
