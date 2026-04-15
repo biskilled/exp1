@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 21:07 UTC by aicli /memory_
+_Generated: 2026-04-15 21:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and manage project memory across sessions. Built on PostgreSQL 15+ with pgvector embeddings, it features async DAG workflow orchestration, multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok), and a unified memory architecture (4-layer: session → raw capture → digested events → work items/facts). Currently refining Chat UX for session management, timestamp display, and per-prompt tagging while stabilizing the hook-log endpoint and cache invalidation patterns post-m050.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector embeddings), a CLI interface, and an Electron desktop UI for managing AI-assisted development workflows. It uses async DAG workflows, multi-provider LLM adapters (Claude/OpenAI/DeepSeek/Gemini/Grok), and 4-layer memory synthesis to consolidate project context, commits, and collaborative sessions into searchable, tagged work items and project facts.
 
 ## Project Facts
 
@@ -260,20 +260,20 @@ Reviewer: ```json
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
-- Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
+- Chat history data pipeline: live DB-sourced prompts with JSONL fallback merge; limit=500 sort descending by created_at ensures April entries appear first with 531 total (389 DB + ~142 JSONL)
 
 ## In Progress
 
-- Session ID display in Chat view tag bar — showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved
+- Chat history loading and sort stability — fixed incorrect sort order; verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; confirmed data pipeline working correctly post-migration
+- Session ID display in Chat/History views — implementing monospace badge (last 5 chars) between entity chips and +Tag button with click-to-copy full UUID; phase duplication removal in header
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
 - Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
 - Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
-- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved
 
 ## Active Features / Bugs / Tasks
 
@@ -323,6 +323,17 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Commits: chore: clean up stale agent context and legacy system documentation file | chore: remove stale agent context and generated system docs after claude | chore: remove stale agent context and auto-generated system files after 
+Stats:  ui/frontend/views/history.js    | 57 ++++++++++++++++++++++++-----------------
+ workspace/aicli/PROJECT.md      |  8 +++---
+ 7 files changed, 56 insertions(+), 62 deletions(-)
+
+### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Identified root cause of stale chat loading: system loads from cached/outdated _system/session JSON files instead of live data source. Need to verify data pipeline—either consolidate session storage to single source-of-truth or implement forced refresh on startup.
+
 ### `commit` — 2026-04-15
 
 Commit: chore: clean up legacy _system context files after claude cli session 2a
@@ -370,129 +381,16 @@ index a157ac9..156ecd7 100644
 +- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
 
 
-### `commit` — 2026-04-15
-
-diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
-index eeb2008..1d8a412 100644
---- a/ui/frontend/views/history.js
-+++ b/ui/frontend/views/history.js
-@@ -41,10 +41,44 @@ export class HistoryView {
-     this._histFilter    = { source: '', phase: '', query: '' };
-     this._commitFilter  = { phase: '' };
- 
-+    // Auto-refresh: poll every 15s for new prompts while chat tab is active
-+    this._pollTimer     = null;
-+
-     this._render();
-     this._loadTab("chat");
-   }
- 
-+  /** Start polling for new prompts every 15 seconds. */
-+  _startPoll() {
-+    this._stopPoll();
-+    this._pollTimer = setInterval(() => this._checkForNewPrompts(), 15000);
-+  }
-+
-+  _stopPoll() {
-+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
-+  }
-+
-+  async _checkForNewPrompts() {
-+    if (this.activeTab !== 'chat') return;
-+    const project = state.currentProject?.name || '';
-+    if (!project) return;
-+    try {
-+      const r = await fetch(_histUrl(`/history/chat?limit=1&_t=${Date.now()}`)).then(r => r.json());
-+      const newTotal = r.total || 0;
-+      const oldTotal = this._histData?.total || 0;
-+      if (newTotal > oldTotal) {
-+        const diff = newTotal - oldTotal;
-+        // Show banner and auto-refresh immediately
-+        const banner = document.getElementById('hist-new-banner');
-+        if (banner) {
-+          banner.textContent = `🔴 ${diff} new prompt${diff > 1 ? 's' : ''} — refreshing…`;
-+          banner.style.display = '';
-+        }
-+        await this._refreshHistory();
-+      }
-+    } catch (_) {}
-+  }
-+
-   _render() {
-     const tabs = ["chat", "commits", "runs", "evals"];
-     this.container.innerHTML = `
-@@ -101,8 +135,9 @@ export class HistoryView {
-       return;
-     }
- 
--    // Clear nav bar when switching away from chat
-+    // Stop polling when leaving chat tab
-     if (tab !== 'chat') {
-+      this._stopPoll();
-       const nav = document.getElementById('hist-nav-bar');
-       if (nav) nav.innerHTML = '';
-     }
-@@ -129,6 +164,7 @@ export class HistoryView {
-   }
- 
-   async _renderChat(container) {
-+    this._startPoll();
-     const project = state.currentProject?.name || '';
- 
-     // Step 1: fetch history, config, and source tags in parallel
-@@ -205,8 +241,15 @@ export class HistoryView {
-         ${untagged > 0 ? `<span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : `<span style="color:green">All tagged ✓</span>`}
-         <button onclick="window._historyView._refreshHistory()"
-           style="padding:2px 7px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--muted)"
--          title="Reload from server">↻</button>
-+          title="Reload from server">↻ refresh</button>
-+        <button onclick="window.location.reload()"
-+          style="padding:2px 7px;border:1px solid var(--accent);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--accent)"
-+          title="Hard-reload the Electron window to pick up UI code changes">⟳ reload UI</button>
-       </div>
-+      <div id="hist-new-banner"
-+           style="display:none;padding:5px 10px;background:#27ae6022;color:#27ae60;
-+                  border-radius:4px;font-size:11px;font-weight:600;margin-bottom:4px;
-+                  cursor:pointer" onclick="window._historyView._refreshHistory()"></div>
-       <div id="hist-chat-groups"></div>`;
- 
-     // Restore filter state (default = All phases, no auto-populate)
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index b66a625..96712f2 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-15 18:23 UTC
-+> Generated by aicli 2026-04-15 18:32 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -33,7 +33,7 @@ _Last updated: 2026-04-15 | Version 3.0.0_
- - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
- - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
- - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
--- database: PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework
-+- database: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
- - node_modules_build: npm 8+ with Electron-builder; Vite dev server
- - database_version: PostgreSQL 15+ with pgvector extensions
- - build_tooling: npm 8+ + Electron-builder + Vite dev server
-
-
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Consolidated AI context files to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; removed legacy _system directory and root-level CLAUDE.md/MEMORY.md. Established single source of truth for agent instructions (Version 3.0.0, UTC timestamp management via /memory command).
+**[2026-04-15]** `claude_cli` — Identified and resolved chat history loading issue: system was correctly loading 531 total prompts (389 from PostgreSQL DB + ~142 from JSONL fallback merge) with proper descending sort by created_at, placing April entries first. Confirmed data pipeline working post-migration m050.
 
-**[2026-04-15]** `claude_cli` — Refined Chat view session ID display: monospace badge showing last 5 chars (e.g., ab3f9) positioned in tag bar between entity chips and +Tag button; click-to-copy full UUID; eliminated phase duplication in header (phase shown only once in tab). Improves UX consistency with History view session rendering.
+**[2026-04-15]** `development` — Consolidated AI context files: removed legacy _system/ directory with stale CLAUDE.md, MEMORY.md, and context files. Established .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md as primary agent context sources (v3.0.0).
 
-**[Recent]** `development` — Migration m050 fixed silent database errors in prompt persistence via hook-log endpoint. Verified prompt storage/retrieval pipeline now stable and correctly integrated with backend persistence layer.
+**[2026-04-15]** `in_progress` — Session ID display feature: implementing monospace badge showing last 5 chars of UUID between entity chips and tag button; click copies full ID with no phase duplication in header.
 
-**[Recent]** `development` — Per-prompt tagging system simplified: inline ✓ button for message-level tag creation with category inference; refactored chip markup without redundant category prefix display in non-category mode; improved tooltip UX.
+**[2026-04-15]** `in_progress` — Per-prompt tagging refinement: inline ✓ button at message level creates missing ai_suggestion tags with category inference; simplified chip markup without category prefix in non-category mode.
 
-**[Recent]** `development` — Timestamp formatting standardized across Chat and History views: YY/MM/DD-HH:MM format displayed next to 'YOU' label for temporal context; aligns session rendering with source badges (CLI/UI/Workflow) and phase chips.
+**[2026-04-15]** `in_progress` — Timestamp formatting for user prompts: YY/MM/DD-HH:MM format next to 'YOU' label in Chat and History views for temporal context.
 
-**[In Progress]** `development` — Chat history rendering cache invalidation and real-time sync between backend and frontend; exploring polling vs. WebSocket mechanisms to ensure latest prompts and tags reflect immediately in UI.
+**[2026-04-15]** `development` — Migration m050 resolved silent database errors in prompt persistence; hook-log endpoint now correctly stores and retrieves prompts without data loss.

@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Session ID display in Chat view tag bar — showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved
+- Chat history loading and sort stability — fixed incorrect sort order; verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; confirmed data pipeline working correctly post-migration
+- Session ID display in Chat/History views — implementing monospace badge (last 5 chars) between entity chips and +Tag button with click-to-copy full UUID; phase duplication removal in header
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
 - Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
 - Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
-- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved

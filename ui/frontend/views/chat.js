@@ -57,6 +57,10 @@ const PHASE_OPTIONS = [
 
 export function renderChat(container) {
   _provider = state.currentProject?.default_provider || 'claude';
+  // Reset per-navigation state so stale session from a previous visit doesn't persist
+  _sessionId      = null;
+  _appliedEntities = [];
+  _pendingEntities = [];
 
   container.className  = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
@@ -1020,6 +1024,21 @@ async function _loadSessions(opts = {}) {
     const toCache = merged.slice(0, 60).map(s => ({ ...s, entries: null }));
     localStorage.setItem(cacheKey, JSON.stringify(toCache));
   } catch { /* quota exceeded — ignore */ }
+
+  // Auto-highlight the current CLI session in the sidebar.
+  // Fetch fresh project state to get latest last_session_id (may have changed since app open).
+  // Fall back to dev_runtime_state cached in state, then to newest session.
+  if (!_sessionId && merged.length) {
+    let lastKnown = state.currentProject?.dev_runtime_state?.last_session_id;
+    try {
+      const fresh = await api.getProject(projectName);
+      lastKnown = fresh?.dev_runtime_state?.last_session_id || lastKnown;
+    } catch { /* offline — use cached value */ }
+    const target = lastKnown
+      ? (merged.find(s => s.id === lastKnown) || merged[0])
+      : merged[0];
+    if (target) _sessionId = target.id;
+  }
 
   _renderSessionList(container);
 }
