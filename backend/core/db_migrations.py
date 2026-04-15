@@ -2387,6 +2387,55 @@ def m052_column_reorder(conn) -> None:  # noqa: C901
     log.info("m052_column_reorder: 18 tables rebuilt with consistent column ordering")
 
 
+def m053_pr_statistics(conn) -> None:
+    """Add pr_statistics aggregation cache table + performance indexes.
+
+    Creates a per-project-per-day statistics cache (pr_statistics) to replace
+    the ~15 individual COUNT queries in data_dashboard. Also fixes a stale index
+    on mem_mrr_commits and adds a composite index for the ev_count CTE.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pr_statistics (
+                id                  SERIAL PRIMARY KEY,
+                client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+                project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
+                stats               JSONB        NOT NULL DEFAULT '{}',
+                last_event_run_at   TIMESTAMPTZ,
+                last_fact_run_at    TIMESTAMPTZ,
+                last_wi_run_at      TIMESTAMPTZ,
+                created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (project_id, stat_date)
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date "
+            "ON pr_statistics(project_id, stat_date DESC)"
+        )
+        # Drop existing trigger first to ensure idempotency
+        cur.execute("DROP TRIGGER IF EXISTS set_pr_statistics_updated_at ON pr_statistics")
+        cur.execute("""
+            CREATE TRIGGER set_pr_statistics_updated_at
+            BEFORE UPDATE ON pr_statistics
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+        """)
+        # Fix stale index on mem_mrr_commits referencing dropped committed_at column
+        cur.execute("DROP INDEX IF EXISTS idx_mmrr_c_comm")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_created "
+            "ON mem_mrr_commits(project_id, created_at DESC)"
+        )
+        # Composite index for the ev_count CTE in work items list query
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_pid_wi "
+            "ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL"
+        )
+    conn.commit()
+    log.info("m053_pr_statistics: pr_statistics table + 3 indexes created")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2427,4 +2476,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m050_prompts_source_id_index", m050_prompts_source_id_index),
     ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
     ("m052_column_reorder", m052_column_reorder),
+    ("m053_pr_statistics", m053_pr_statistics),
 ]

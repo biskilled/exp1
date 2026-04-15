@@ -722,6 +722,28 @@ CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
 CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mpr_status ON mem_pipeline_runs(status) WHERE status = 'running';
 
+-- pr_statistics: per-project-per-day aggregation cache.
+-- Replaces ~15 individual COUNT queries in data_dashboard with a single
+-- cached JSONB row. Updated by _refresh_stats() in route_memory.py.
+CREATE TABLE IF NOT EXISTS pr_statistics (
+    id                  SERIAL PRIMARY KEY,
+    client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+    project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
+    stats               JSONB        NOT NULL DEFAULT '{}',
+    last_event_run_at   TIMESTAMPTZ,
+    last_fact_run_at    TIMESTAMPTZ,
+    last_wi_run_at      TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, stat_date)
+);
+CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date ON pr_statistics(project_id, stat_date DESC);
+
+-- Composite index for ev_count CTE in work items list query
+CREATE INDEX IF NOT EXISTS idx_mae_pid_wi
+    ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL;
+
 -- pr_seq_counters: atomic sequential ID generators (one row per project+category)
 -- Used to give work items human-readable numbers like #10001.
 CREATE TABLE IF NOT EXISTS pr_seq_counters (
@@ -758,7 +780,8 @@ DECLARE
         'mem_ai_events', 'mem_ai_work_items', 'mem_ai_project_facts',
         'mem_ai_feature_snapshot',
         'mem_pipeline_runs',
-        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges'
+        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges',
+        'pr_statistics'
     ];
     _t text;
 BEGIN

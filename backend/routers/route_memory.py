@@ -14,6 +14,8 @@ Endpoints:
     POST /memory/{project}/embed-prompts        — process all pending prompts across all sessions
     POST /memory/{project}/quality-check        — re-run quality gate on staging work items
     POST /memory/{project}/prune-tags           — delete planner_tags except keep_ids list
+    GET  /memory/{project}/data-dashboard       — aggregated statistics (uses pr_statistics cache)
+    POST /memory/{project}/sync-incremental     — propagate retroactive tag changes to linked events
 """
 from __future__ import annotations
 
@@ -80,6 +82,121 @@ _SQL_GET_EXISTING_SUMMARY = """
 def _require_db():
     if not db.is_available():
         raise HTTPException(status_code=503, detail="Database not available")
+
+
+# ── Statistics cache helpers ───────────────────────────────────────────────────
+
+_SQL_STATS_COUNTS = """
+    SELECT
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s) AS prompts_total,
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NULL) AS prompts_pending,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s) AS commits_total,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL) AS commits_pending,
+      (SELECT COUNT(*) FROM mem_ai_events WHERE project_id=%s) AS events_total,
+      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s) AS wi_total,
+      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
+         AND COALESCE(status_user,'active') NOT IN ('done','archived')) AS wi_active,
+      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s AND status_user='done') AS wi_done,
+      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
+         AND tag_id_user IS NULL AND tag_id_ai IS NULL) AS wi_unlinked,
+      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total
+"""
+
+_SQL_GET_CACHED_STATS = """
+    SELECT stats, updated_at FROM pr_statistics
+    WHERE project_id=%s AND stat_date=CURRENT_DATE
+"""
+
+_SQL_UPSERT_STATS = """
+    INSERT INTO pr_statistics (project_id, stat_date, stats)
+    VALUES (%s, CURRENT_DATE, %s::jsonb)
+    ON CONFLICT (project_id, stat_date)
+    DO UPDATE SET stats=EXCLUDED.stats, updated_at=NOW()
+"""
+
+_SQL_RECORD_PIPELINE_RUN = """
+    INSERT INTO pr_statistics (project_id, stat_date, {col})
+    VALUES (%s, CURRENT_DATE, NOW())
+    ON CONFLICT (project_id, stat_date)
+    DO UPDATE SET {col}=NOW(), updated_at=NOW()
+"""
+
+_STAGE_COL = {"event": "last_event_run_at", "fact": "last_fact_run_at", "wi": "last_wi_run_at"}
+
+
+def _get_stats(project_id: int) -> dict:
+    """Read cached stats for today from pr_statistics. Returns {} on miss."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_CACHED_STATS, (project_id,))
+                row = cur.fetchone()
+        return row[0] if row else {}
+    except Exception as e:
+        log.debug(f"_get_stats error: {e}")
+        return {}
+
+
+def _refresh_stats(project_id: int) -> dict:
+    """Recompute aggregated counts and upsert into pr_statistics. Returns computed stats."""
+    import datetime
+    try:
+        pid = project_id
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_STATS_COUNTS, (pid,) * 10)
+                r = cur.fetchone()
+                if not r:
+                    return {}
+
+                # Gather events_by_type separately
+                cur.execute(
+                    "SELECT event_type, COUNT(*) FROM mem_ai_events "
+                    "WHERE project_id=%s GROUP BY event_type",
+                    (pid,),
+                )
+                by_type = {row[0]: row[1] for row in cur.fetchall()}
+
+        stats: dict = {
+            "prompts_total":       r[0] or 0,
+            "prompts_pending":     r[1] or 0,
+            "commits_total":       r[2] or 0,
+            "commits_pending":     r[3] or 0,
+            "events_total":        r[4] or 0,
+            "events_by_type":      by_type,
+            "work_items_total":    r[5] or 0,
+            "work_items_active":   r[6] or 0,
+            "work_items_done":     r[7] or 0,
+            "work_items_unlinked": r[8] or 0,
+            "planner_tags_total":  r[9] or 0,
+            "updated_at":          datetime.datetime.utcnow().isoformat() + "Z",
+        }
+
+        import json as _json
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_UPSERT_STATS, (pid, _json.dumps(stats)))
+        return stats
+    except Exception as e:
+        log.warning(f"_refresh_stats error: {e}")
+        return {}
+
+
+def _record_pipeline_run(project_id: int, stage: str) -> None:
+    """Record the timestamp of a completed pipeline stage in pr_statistics.
+
+    stage: 'event' | 'fact' | 'wi'
+    """
+    col = _STAGE_COL.get(stage)
+    if not col:
+        return
+    try:
+        sql = _SQL_RECORD_PIPELINE_RUN.format(col=col)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (project_id,))
+    except Exception as e:
+        log.debug(f"_record_pipeline_run({stage}) error: {e}")
 
 
 async def _call_haiku(system_prompt: str, user_message: str, max_tokens: int = 600) -> str:
@@ -380,9 +497,12 @@ async def embed_commits(
     if not db.is_available():
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
 
+    project_id = db.get_or_create_project_id(project)
     from memory.memory_embedding import MemoryEmbedding
     emb = MemoryEmbedding()
     n = await emb.process_commit_batch(project, min_commits=1)
+    if n > 0:
+        _record_pipeline_run(project_id, "event")
     return {"events_created": n, "project": project}
 
 
@@ -429,12 +549,34 @@ async def embed_prompts(project: str):
         except Exception as _e:
             log.debug(f"embed_prompts: session {str(session_id)[:8]} error: {_e}")
 
+    if sessions_done > 0:
+        _record_pipeline_run(project_id, "event")
+
     return {
         "project": project,
         "sessions_processed": sessions_done,
         "sessions_found": len(sessions),
         "events_created": total_events,
     }
+
+@router.post("/{project}/sync-incremental")
+async def sync_incremental(project: str):
+    """Propagate retroactive tag changes from mirror rows to linked mem_ai_events.
+
+    Finds prompts/commits whose tags changed after the last embed run and merges
+    the updated phase/feature/bug values into the linked event rows. Work items
+    linked to updated events are re-matched against planner_tags.
+
+    Returns {prompts_synced, commits_synced, events_updated, work_items_rematched}.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    project_id = db.get_or_create_project_id(project)
+    from memory.memory_embedding import run_incremental_sync
+    result = await run_incremental_sync(project_id)
+    return {"project": project, **result}
+
 
 @router.post("/{project}/rebuild")
 async def rebuild_work_items(
@@ -794,12 +936,38 @@ async def get_pipeline_status(project: str):
 
 
 @router.get("/{project}/data-dashboard")
-async def get_data_dashboard(project: str):
-    """Data Dashboard: mirror layer counts, AI layer counts, pipeline health, pending."""
+async def get_data_dashboard(
+    project: str,
+    use_cache: bool = Query(False, description="Return cached stats if refreshed within 30 min"),
+):
+    """Data Dashboard: mirror layer counts, AI layer counts, pipeline health, pending.
+
+    Pass ?use_cache=true to serve today's pr_statistics row when it was computed
+    within the last 30 minutes instead of recomputing all counts from scratch.
+    """
     if not db.is_available():
         return {"mirror": {}, "ai": {}, "pipeline": {}, "pending": {}, "recent_errors": [], "fallback": True}
 
     project_id = db.get_or_create_project_id(project)
+
+    # ── Fast path: return cached stats if fresh enough ────────────────────────
+    if use_cache:
+        try:
+            import datetime
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT stats, updated_at FROM pr_statistics "
+                        "WHERE project_id=%s AND stat_date=CURRENT_DATE",
+                        (project_id,),
+                    )
+                    row = cur.fetchone()
+            if row and row[0] and row[1]:
+                age = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc) - row[1].replace(tzinfo=datetime.timezone.utc)
+                if age.total_seconds() < 1800:  # 30 minutes
+                    return {"cached": True, "project": project, **row[0]}
+        except Exception as _e:
+            log.debug(f"data-dashboard cache lookup error: {_e}")
     mirror: dict = {}
     ai: dict = {}
     pipeline: dict = {}

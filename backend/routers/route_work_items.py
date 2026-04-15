@@ -32,24 +32,14 @@ from data.dl_seq import next_seq
 
 _SQL_LIST_WORK_ITEMS_BASE = (
     """WITH ev_count AS (
-         -- Count all events linked to each work item via work_item_id FK
-         -- (populated by m022 backfill + ongoing backlink in memory_promotion.py)
+         -- Count events + prompt/commit breakdown directly from mem_ai_events.
+         -- Uses idx_mae_pid_wi (m053) for efficient lookup without session joins.
          SELECT work_item_id::text AS wi_id,
                 COUNT(*) AS event_count,
-                COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count
+                COUNT(*) FILTER (WHERE event_type = 'prompt_batch') AS prompt_count,
+                COUNT(*) FILTER (WHERE event_type = 'commit') AS commit_count
          FROM mem_ai_events
          WHERE project_id=%s AND work_item_id IS NOT NULL
-         GROUP BY 1
-       ),
-       cm_count AS (
-         -- Commits in the same session as linked events (session-based, consistent
-         -- with _SQL_UNLINKED_WORK_ITEMS; avoids relying on c.event_id which is sparse)
-         SELECT e.work_item_id::text AS wi_id, COUNT(DISTINCT c.commit_hash) AS commit_count
-         FROM mem_ai_events e
-         JOIN mem_mrr_commits c ON c.project_id = e.project_id
-                               AND c.session_id = e.session_id
-                               AND c.session_id IS NOT NULL
-         WHERE e.project_id=%s AND e.work_item_id IS NOT NULL
          GROUP BY 1
        ),
        mcount AS (
@@ -68,12 +58,11 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               tc.color, tc.icon,
               COALESCE(ev_count.event_count,  0) AS event_count,
               COALESCE(ev_count.prompt_count, 0) AS prompt_count,
-              COALESCE(cm_count.commit_count, 0) AS commit_count,
+              COALESCE(ev_count.commit_count, 0) AS commit_count,
               COALESCE(mcount.cnt, 0) AS merge_count
        FROM mem_ai_work_items w
        LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_ai
        LEFT JOIN ev_count ON ev_count.wi_id = w.id::text
-       LEFT JOIN cm_count ON cm_count.wi_id = w.id::text
        LEFT JOIN mcount ON mcount.wi_id = w.id::text
        WHERE {where}
        ORDER BY w.created_at DESC
@@ -542,8 +531,8 @@ async def list_work_items(
     sql = _SQL_LIST_WORK_ITEMS_BASE.format(where=" AND ".join(where))
     with db.conn() as conn:
         with conn.cursor() as cur:
-            # 3 extra p_id params for the ev_count/cm_count/mcount CTEs
-            cur.execute(sql, [p_id, p_id, p_id] + params + [limit])
+            # 2 extra p_id params for ev_count + mcount CTEs (cm_count removed in m053)
+            cur.execute(sql, [p_id, p_id] + params + [limit])
             cols = [d[0] for d in cur.description]
             rows = []
             for r in cur.fetchall():

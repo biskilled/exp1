@@ -1348,6 +1348,184 @@ async def backfill_entity_tags(project: str) -> None:
     pass
 
 
+# ── Incremental sync ───────────────────────────────────────────────────────────
+
+_SQL_GET_LAST_EVENT_RUN = """
+    SELECT last_event_run_at
+    FROM pr_statistics
+    WHERE project_id=%s AND last_event_run_at IS NOT NULL
+    ORDER BY stat_date DESC
+    LIMIT 1
+"""
+
+_SQL_STALE_PROMPTS = """
+    SELECT p.id AS source_id, p.tags, p.event_id
+    FROM mem_mrr_prompts p
+    WHERE p.project_id=%s AND p.event_id IS NOT NULL AND p.updated_at > %s
+"""
+
+_SQL_STALE_COMMITS = """
+    SELECT c.commit_hash AS source_id, c.tags, c.event_id
+    FROM mem_mrr_commits c
+    WHERE c.project_id=%s AND c.event_id IS NOT NULL AND c.updated_at > %s
+"""
+
+_SQL_GET_EVENT_TAGS_AND_WI = """
+    SELECT tags, work_item_id FROM mem_ai_events WHERE id=%s::uuid
+"""
+
+_SQL_UPDATE_EVENT_TAGS = """
+    UPDATE mem_ai_events SET tags=%s::jsonb WHERE id=%s::uuid
+"""
+
+_SQL_UPSERT_PIPELINE_RUN_AT = """
+    INSERT INTO pr_statistics (project_id, stat_date, last_event_run_at)
+    VALUES (%s, CURRENT_DATE, NOW())
+    ON CONFLICT (project_id, stat_date)
+    DO UPDATE SET last_event_run_at=NOW(), updated_at=NOW()
+"""
+
+_USER_INTENT_KEYS = frozenset({"phase", "feature", "bug"})
+
+
+async def run_incremental_sync(project_id: int) -> dict:
+    """Propagate retroactive tag changes to linked mem_ai_events rows.
+
+    Finds mirror rows (prompts + commits) updated after the last embed run
+    and merges changed phase/feature/bug tags into the linked event. If a
+    work item is linked to an updated event its tag matching is re-queued.
+
+    Returns {prompts_synced, commits_synced, events_updated, work_items_rematched}.
+    """
+    if not db.is_available():
+        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
+
+    # 1. Get last_event_run_at baseline
+    baseline = None
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_LAST_EVENT_RUN, (project_id,))
+                row = cur.fetchone()
+                if row:
+                    baseline = row[0]
+    except Exception as e:
+        log.debug(f"run_incremental_sync: could not read baseline: {e}")
+
+    if baseline is None:
+        return {
+            "prompts_synced": 0, "commits_synced": 0,
+            "events_updated": 0, "work_items_rematched": 0,
+            "message": "no baseline — run embed-prompts first",
+        }
+
+    # 2. Load stale linked rows
+    stale_prompts: list[tuple] = []
+    stale_commits: list[tuple] = []
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_STALE_PROMPTS, (project_id, baseline))
+                stale_prompts = cur.fetchall()
+                cur.execute(_SQL_STALE_COMMITS, (project_id, baseline))
+                stale_commits = cur.fetchall()
+    except Exception as e:
+        log.warning(f"run_incremental_sync: stale query error: {e}")
+        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
+
+    # 3. Merge tags and collect work items to re-match
+    events_updated = 0
+    re_match_set: set[str] = set()
+
+    def _sync_rows(rows: list[tuple]) -> int:
+        """Process (source_id, tags, event_id) rows; return count updated."""
+        updated = 0
+        for _source_id, row_tags, event_id in rows:
+            if not event_id:
+                continue
+            row_tags = row_tags or {}
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_GET_EVENT_TAGS_AND_WI, (str(event_id),))
+                        ev_row = cur.fetchone()
+                if not ev_row:
+                    continue
+                ev_tags, wi_id = ev_row
+                ev_tags = ev_tags or {}
+
+                # Merge only user-intent keys from mirror row into event tags
+                merged = {**ev_tags}
+                changed = False
+                for k, v in row_tags.items():
+                    if k in _USER_INTENT_KEYS and merged.get(k) != v:
+                        merged[k] = v
+                        changed = True
+
+                if not changed:
+                    continue
+
+                import json as _json
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(_SQL_UPDATE_EVENT_TAGS, (_json.dumps(merged), str(event_id)))
+                updated += 1
+
+                # Queue work item for re-matching if feature/bug changed
+                if wi_id:
+                    old_keys = {k: ev_tags.get(k) for k in _USER_INTENT_KEYS}
+                    new_keys = {k: merged.get(k) for k in _USER_INTENT_KEYS}
+                    if old_keys != new_keys:
+                        re_match_set.add(str(wi_id))
+            except Exception as e:
+                log.debug(f"run_incremental_sync: event {event_id} update error: {e}")
+        return updated
+
+    events_updated += _sync_rows(stale_prompts)
+    events_updated += _sync_rows(stale_commits)
+
+    # 4. Re-match queued work items
+    work_items_rematched = 0
+    if re_match_set:
+        try:
+            from memory.memory_tagging import MemoryTagging
+            mt = MemoryTagging()
+            # pass project name via project_id lookup
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT name FROM mng_projects WHERE id=%s", (project_id,))
+                    prow = cur.fetchone()
+            project_name = prow[0] if prow else str(project_id)
+            for wi_id in re_match_set:
+                try:
+                    await mt.match_work_item_to_tags(project_name, wi_id)
+                    work_items_rematched += 1
+                except Exception as e:
+                    log.debug(f"run_incremental_sync: rematch {wi_id[:8]} error: {e}")
+        except Exception as e:
+            log.warning(f"run_incremental_sync: re-match phase error: {e}")
+
+    # 5. Update last_event_run_at
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_UPSERT_PIPELINE_RUN_AT, (project_id,))
+    except Exception as e:
+        log.debug(f"run_incremental_sync: update last_event_run_at error: {e}")
+
+    log.info(
+        f"run_incremental_sync pid={project_id}: "
+        f"prompts={len(stale_prompts)} commits={len(stale_commits)} "
+        f"events_updated={events_updated} rematched={work_items_rematched}"
+    )
+    return {
+        "prompts_synced": len(stale_prompts),
+        "commits_synced": len(stale_commits),
+        "events_updated": events_updated,
+        "work_items_rematched": work_items_rematched,
+    }
+
+
 # Module-level smart chunking (backward compat)
 smart_chunk_code     = MemoryEmbedding.smart_chunk_code
 smart_chunk_markdown = MemoryEmbedding.smart_chunk_markdown
