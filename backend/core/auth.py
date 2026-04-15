@@ -28,6 +28,17 @@ _bearer = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 
+# Fixed UUID for the seeded admin user (m048 migration).
+# Used as a stable FK target in all mirror tables when no real user is authenticated.
+ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _resolve_user_id(uid: str | None) -> str:
+    """Return ADMIN_USER_ID when uid is None, 'dev-admin', or empty."""
+    if not uid or uid == "dev-admin":
+        return ADMIN_USER_ID
+    return uid
+
 
 # ── Password helpers ──────────────────────────────────────────────────────────
 
@@ -67,9 +78,9 @@ def decode_access_token(token: str) -> dict:
 # ── FastAPI dependencies ──────────────────────────────────────────────────────
 
 _DEV_ADMIN = {
-    "sub": "dev-admin",
-    "id": "dev-admin",
-    "email": "dev@localhost",
+    "sub": ADMIN_USER_ID,
+    "id": ADMIN_USER_ID,
+    "email": "admin@local",
     "role": "admin",
     "is_admin": True,
     "is_active": True,

@@ -396,6 +396,8 @@ api.workItems = {
   },
   extract:      (id, proj) => _post(`/work-items/${enc(id)}/extract?project=${enc(proj)}`),
   refresh:      (id, proj) => _post(`/work-items/${enc(id)}/refresh?project=${enc(proj)}`),
+  runPipeline:  (itemId, workflowId, project) =>
+    _post(`/work-items/${enc(itemId)}/run-pipeline?workflow_id=${enc(workflowId)}&project=${enc(project)}`, {}),
 };
 
 // ── Agent Roles API ───────────────────────────────────────────────────────────
@@ -488,6 +490,7 @@ api.pipeline = {
   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
   dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
+  llmCosts:        (project)                        => _get(`/memory/${enc(project)}/llm-costs`),
   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
 };

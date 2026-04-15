@@ -204,6 +204,42 @@ def _detect_language(filename: str) -> Optional[str]:
     return _EXT_LANG.get(Path(filename).suffix.lower())
 
 
+def _log_pipeline_usage(
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
+    """Fire-and-forget: log memory pipeline LLM/embedding costs to mng_usage_logs."""
+    try:
+        from core.auth import ADMIN_USER_ID
+        from core.database import db as _db
+        if not _db.is_available():
+            return
+        # Inline pricing (avoid circular import with agents/providers)
+        _COST_PER_1K: dict[tuple[str, str], tuple[float, float]] = {
+            ("claude", "claude-haiku-4-5-20251001"):     (0.00025, 0.00125),
+            ("claude", "claude-haiku-4-5"):              (0.00025, 0.00125),
+            ("openai", "text-embedding-3-small"):        (0.00002, 0.0),
+            ("openai", "text-embedding-3-large"):        (0.00013, 0.0),
+        }
+        key = (provider, model)
+        in_rate, out_rate = _COST_PER_1K.get(key, (0.001, 0.003))
+        cost_usd = (input_tokens * in_rate + output_tokens * out_rate) / 1000.0
+        with _db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_usage_logs
+                       (user_id, provider, model, input_tokens, output_tokens,
+                        cost_usd, charged_usd, source)
+                       VALUES (%s, %s, %s, %s, %s, %s, 0, 'memory')""",
+                    (ADMIN_USER_ID, provider, model,
+                     input_tokens, output_tokens, cost_usd),
+                )
+    except Exception as _e:
+        log.debug(f"_log_pipeline_usage error: {_e}")
+
+
 async def _embed(text: str) -> Optional[list[float]]:
     """Call OpenAI embeddings API. Returns None on failure."""
     key = _openai_key()
@@ -213,6 +249,8 @@ async def _embed(text: str) -> Optional[list[float]]:
         import openai
         client = openai.AsyncOpenAI(api_key=key)
         resp = await client.embeddings.create(model=_EMBEDDING_MODEL, input=text[:8000])
+        tok = getattr(resp.usage, "total_tokens", len(text) // 4)
+        _log_pipeline_usage("openai", _EMBEDDING_MODEL, tok, 0)
         return resp.data[0].embedding
     except Exception as e:
         log.debug(f"_embed error: {e}")
@@ -233,6 +271,12 @@ async def _haiku(system: str, user: str, max_tokens: int = 200) -> str:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        if hasattr(resp, "usage"):
+            _log_pipeline_usage(
+                "claude", settings.haiku_model,
+                getattr(resp.usage, "input_tokens", 0),
+                getattr(resp.usage, "output_tokens", 0),
+            )
         return (resp.content[0].text if resp.content else "").strip()
     except Exception as e:
         log.debug(f"_haiku error: {e}")

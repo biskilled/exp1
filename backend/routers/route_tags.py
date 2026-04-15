@@ -122,8 +122,8 @@ _SQL_INSERT_DELIVERY = """
 _SQL_DELETE_DELIVERY = "DELETE FROM mng_deliveries WHERE id = %s RETURNING id"
 
 _SQL_INSERT_TAG = """
-    INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, creator)
-    VALUES (%s, %s, %s, %s, %s, %s)
+    INSERT INTO planner_tags (project_id, name, category_id, parent_id, status, creator, user_id)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (project_id, name, category_id) DO NOTHING
     RETURNING id, name, created_at
 """
@@ -346,13 +346,14 @@ async def list_tags(project: str = Query(...)):
 @router.post("")
 async def create_tag(body: TagCreate):
     _require_db()
+    from core.auth import ADMIN_USER_ID
     project_id = db.get_or_create_project_id(body.project)
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_INSERT_TAG,
                 (project_id, body.name, body.category_id,
-                 body.parent_id, body.status, body.creator),
+                 body.parent_id, body.status, body.creator, ADMIN_USER_ID),
             )
             row = cur.fetchone()
     if not row:

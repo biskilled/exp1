@@ -742,6 +742,71 @@ async def get_memory_items(
     return {"memory_items": items, "project": p, "total": len(items)}
 
 
+# ── Run pipeline from work item ───────────────────────────────────────────────
+
+_SQL_INSERT_GRAPH_RUN = (
+    """INSERT INTO pr_graph_runs (id, project_id, workflow_id, status, user_input)
+       VALUES (%s, %s, %s::uuid, 'running', %s)"""
+)
+
+_SQL_GET_WORK_ITEM_FOR_RUN = (
+    "SELECT name_ai, summary_ai FROM mem_ai_work_items WHERE id=%s::uuid AND project_id=%s"
+)
+
+
+@router.post("/{item_id}/run-pipeline")
+async def run_work_item_pipeline(
+    item_id: str,
+    workflow_id: str = Query(...),
+    project: str | None = Query(None),
+):
+    """Start a graph workflow run seeded from a work item's name + summary."""
+    import uuid as _uuid
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+
+    # 1. Fetch work item
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_WORK_ITEM_FOR_RUN, (item_id, p_id))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Work item not found")
+    name_ai, summary_ai = row
+    user_input = f"{name_ai}: {summary_ai or ''}".strip().rstrip(":")
+
+    # 2. Insert run record
+    run_id = str(_uuid.uuid4())
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_INSERT_GRAPH_RUN, (run_id, p_id, workflow_id, user_input))
+
+    # 3. Spawn background execution
+    from pipelines.pipeline_graph_runner import run_graph_workflow
+
+    async def _run():
+        try:
+            await run_graph_workflow(workflow_id, user_input, run_id, p,
+                                     work_item_id=item_id)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(f"Graph run {run_id} failed: {exc}")
+            if db.is_available():
+                try:
+                    with db.conn() as conn2:
+                        with conn2.cursor() as cur2:
+                            cur2.execute(
+                                "UPDATE pr_graph_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
+                                (str(exc), run_id),
+                            )
+                except Exception:
+                    pass
+
+    asyncio.create_task(_run())
+    return {"run_id": run_id, "workflow_id": workflow_id, "status": "running"}
+
+
 # ── Single item CRUD (must come after all static routes) ──────────────────────
 
 @router.patch("/{item_id}")

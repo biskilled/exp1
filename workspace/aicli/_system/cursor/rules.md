@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 10:38 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 10:40 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,7 +67,7 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; category inference on tag creation; ai_tag_color_default (#4a90e2) when not set
+- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
 
 ## Recent Context (last 5 changes)
 

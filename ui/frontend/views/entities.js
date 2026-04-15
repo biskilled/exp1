@@ -2098,17 +2098,33 @@ async function _loadDrawerPipeline(catName, valName, project) {
   const el = document.getElementById('drawer-pipeline-content');
   if (!el) return;
   try {
-    const data = await api.workItems.list({ project, category: catName, name: valName });
-    const wi   = (data.work_items || []).find(w => w.name === valName);
-    const runBtn = `<button id="drawer-run-pipeline-btn"
+    const [data, wfData] = await Promise.all([
+      api.workItems.list({ project, category: catName, name: valName }),
+      api.graphWorkflows.list(project).catch(() => ({ workflows: [] })),
+    ]);
+    const wi        = (data.work_items || []).find(w => w.name === valName);
+    const workflows = wfData.workflows || [];
+
+    // Workflow listbox
+    const wfSelect = workflows.length
+      ? `<select id="wi-wf-select"
+           style="font-size:0.6rem;padding:0.15rem 0.3rem;border:1px solid var(--border);
+                  border-radius:var(--radius);background:var(--surface);color:var(--text);
+                  font-family:var(--font);max-width:140px">
+           ${workflows.map(w => `<option value="${_esc(w.id)}">${_esc(w.name)}</option>`).join('')}
+         </select>`
+      : `<span style="font-size:0.6rem;color:var(--muted)">No workflows</span>`;
+
+    const runDisabled = workflows.length === 0 ? 'disabled' : '';
+    const runBtn = `<button id="drawer-run-pipeline-btn" ${runDisabled}
       onclick="window._plannerDrawerRunPipeline('${_esc(catName)}','${_esc(valName)}','${_esc(project)}')"
       style="font-size:0.62rem;padding:0.2rem 0.55rem;background:var(--accent);border:none;
              color:#fff;border-radius:var(--radius);cursor:pointer;font-family:var(--font);
-             outline:none;white-space:nowrap">▶ Run Pipeline</button>`;
+             outline:none;white-space:nowrap;opacity:${workflows.length ? 1 : 0.4}">▶ Run Pipeline</button>`;
 
     if (!wi) {
-      el.innerHTML = `<div style="display:flex;gap:6px;align-items:center">
-        ${runBtn}
+      el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${wfSelect}${runBtn}
         <span style="font-size:0.6rem;color:var(--muted)">No run yet</span>
       </div>`;
       return;
@@ -2131,8 +2147,8 @@ async function _loadDrawerPipeline(catName, valName, project) {
                        max-height:100px;overflow-y:auto;background:var(--surface2);
                        padding:0.35rem 0.5rem;border-radius:var(--radius)">${_esc(wi.implementation_plan)}</div>
          </div>` : '';
-    el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:0.35rem">
-      ${runBtn} ${statusBadge}
+    el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:0.35rem">
+      ${wfSelect}${runBtn} ${statusBadge}
     </div>${acSection}${planSection}`;
   } catch (e) {
     if (el) el.innerHTML = `<span style="font-size:0.6rem;color:var(--red)">${_esc(e.message)}</span>`;
@@ -2141,6 +2157,9 @@ async function _loadDrawerPipeline(catName, valName, project) {
 
 window._plannerDrawerRunPipeline = async (catName, valName, project) => {
   const btn = document.getElementById('drawer-run-pipeline-btn');
+  const wfSel = document.getElementById('wi-wf-select');
+  const workflowId = wfSel?.value;
+  if (!workflowId) { toast('Select a workflow first', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     // Find or create the work_item linked to this entity_value by name
@@ -2149,7 +2168,7 @@ window._plannerDrawerRunPipeline = async (catName, valName, project) => {
     if (!wi) {
       wi = await api.workItems.create(project, { category_name: catName, name: valName });
     }
-    const res = await api.workItems.runPipeline(wi.id, project);
+    const res = await api.workItems.runPipeline(wi.id, workflowId, project);
     const runId = res.run_id ? String(res.run_id) : null;
     if (runId) {
       window._pendingRunOpen = runId;

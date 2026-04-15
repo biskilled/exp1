@@ -1152,6 +1152,51 @@ def m047_events_is_system(conn) -> None:
     conn.commit()
 
 
+def m048_user_id_mirror_tables(conn) -> None:
+    """Add user_id FK to mem_mrr_* and planner_tags; seed default admin user.
+
+    Adds user attribution to all Layer-1 mirror tables so per-user memory
+    consumption can be tracked. The seeded admin user (UUID all-zeros-1) is the
+    fallback for all DEV_MODE and hook-originated rows.
+    """
+    _ADMIN_ID = "00000000-0000-0000-0000-000000000001"
+    _TABLES = [
+        "mem_mrr_prompts",
+        "mem_mrr_commits",
+        "mem_mrr_items",
+        "mem_mrr_messages",
+        "planner_tags",
+    ]
+    with conn.cursor() as cur:
+        # 1. Seed default admin user (idempotent)
+        cur.execute("""
+            INSERT INTO mng_users (id, client_id, email, password_hash, is_admin, role)
+            VALUES (%s, 1, 'admin@local', '$2b$12$placeholder_hash_do_not_use', true, 'admin')
+            ON CONFLICT DO NOTHING
+        """, (_ADMIN_ID,))
+
+        # 2. Add user_id column to each table
+        for table in _TABLES:
+            cur.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS user_id VARCHAR(36)
+                REFERENCES mng_users(id) ON DELETE SET NULL
+            """)
+            short = table[:20]
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{short}_uid ON {table}(user_id)"
+            )
+
+        # 3. Backfill existing rows with admin user
+        for table in _TABLES:
+            cur.execute(
+                f"UPDATE {table} SET user_id=%s WHERE user_id IS NULL",
+                (_ADMIN_ID,),
+            )
+    conn.commit()
+    log.info("m048_user_id_mirror_tables: user_id added to 5 tables; admin user seeded")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1187,4 +1232,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m045_add_score_ai", m045_add_score_ai),
     ("m046_reorder_work_items", m046_reorder_work_items),
     ("m047_events_is_system", m047_events_is_system),
+    ("m048_user_id_mirror_tables", m048_user_id_mirror_tables),
 ]

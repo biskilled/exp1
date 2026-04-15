@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 10:38 UTC by aicli /memory_
+_Generated: 2026-04-15 10:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL 15+ with pgvector) with a desktop Electron UI, designed to synthesize development history into structured work items through 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items/facts). Currently refactoring memory synthesis to use Claude Haiku for cost efficiency, consolidating agent context files, and optimizing the work item pipeline with database-loaded agent roles and performance instrumentation.
+aicli is a shared AI memory platform combining CLI, desktop (Electron), and web interfaces with a PostgreSQL backend for storing events, work items, and project facts. It features a 4-layer memory architecture, multi-provider LLM support (Claude/OpenAI/DeepSeek), async DAG workflow execution with visual graph representation, and intelligent tag management with AI suggestions. The project is currently focused on consolidating context files, optimizing memory synthesis costs, and refining the work item pipeline with database-driven agent role configuration.
 
 ## Project Facts
 
@@ -255,16 +255,16 @@ Reviewer: ```json
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; category inference on tag creation; ai_tag_color_default (#4a90e2) when not set
+- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
 
 ## In Progress
 
+- Agent context consolidation (2026-04-15) — Consolidated legacy _system/ files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context; removed stale CLAUDE.md and MEMORY.md
+- Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
 - Snapshot generation refactor (2026-04-15) — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing robustness
 - Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
 - Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
-- Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
-- Agent context consolidation (2026-04-15) — Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from root
 
 ## Active Features / Bugs / Tasks
 
@@ -319,6 +319,82 @@ Reviewer: ```json
 ### `commit` — 2026-04-15
 
 diff --git a/.ai/rules.md b/.ai/rules.md
+index e65ba20..9dee67e 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:14 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:15 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -62,7 +62,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
+ - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
+ - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+
+
+### `commit` — 2026-04-15
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 948dacd..ebf7e01 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 08:22 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 10:07 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -62,17 +62,9 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
++- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
+ - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
+ - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
+-
+-## Recent Context (last 5 changes)
+-
+-- [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta
+-- [2026-04-13] In events table is there is any point to have importance ? I think its more relevant for work_items
+-- [2026-04-13] yes
+-- [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
+-- [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
+\ No newline at end of file
+
+
+### `commit` — 2026-04-15
+
+Commit: chore: restructure _system memory files after claude cli session 2a6b600
+Hash: a1bd4e9a
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up legacy system context files after claude cli session 2a6
+Hash: 4096e630
+Generated/internal files: workspace/aicli/_system/commit_log.jsonl
+
+### `commit` — 2026-04-15
+
+diff --git a/.ai/rules.md b/.ai/rules.md
 index 948dacd..ebf7e01 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
@@ -357,51 +433,16 @@ Commit: chore: consolidate and reorganize _system memory/context files after cla
 Hash: 6bf35dc7
 Generated/internal files: workspace/aicli/_system/commit_log.jsonl
 
-### `commit` — 2026-04-15
-
-Commit: chore: remove deprecated root-level system context files after claude cl
-Hash: d1c0e7b5
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl
-
-### `commit` — 2026-04-15
-
-Commit: chore: remove stale agent context and auto-generated system files after
-Hash: 18dc4454
-Code files (5):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/core/database.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-
-### `commit` — 2026-04-15
-
-Commit: chore: remove legacy _system flat files after claude cli session 2a6b600
-Hash: 59df7419
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
-
-### `commit` — 2026-04-15
-
-Commit: chore: remove stale agent context and system prompt files after claude c
-Hash: b209ad73
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
 ## AI Synthesis
 
-**[2026-04-15]** `snapshot-generation` — Switched Claude Sonnet to Haiku for cost efficiency in memory synthesis; simplified planner_tags to flat string keys (requirements, action_items, design, code_summary) and improved JSON parsing robustness with JSONDecoder.raw_decode.
+**[2026-04-15]** `agent_context` — Consolidated all legacy _system/ context files to three canonical locations: .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; removed stale CLAUDE.md and MEMORY.md from root and workspace directories for cleaner codebase organization.
 
-**[2026-04-15]** `performance` — Added time.monotonic() instrumentation to memory promotion pipeline (_run_promote_all_work_items) for performance measurement; updated _finish_run calls with t0 parameter tracking.
+**[2026-04-15]** `performance_instrumentation` — Added time.monotonic() tracking to memory promotion pipeline (_run_promote_all_work_items) and updated _finish_run call signatures to accept t0 parameter for measuring work item digestion latency.
 
-**[2026-04-14]** `schema-cleanup` — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, and added ivfflat embedding index for semantic search.
+**[2026-04-15]** `cost_optimization` — Downgraded memory synthesis from Claude Sonnet to Haiku to reduce operational costs while maintaining output quality; simplified planner_tags upsert logic to flat string keys (requirements, action_items, design, code_summary) and improved JSON parsing robustness.
 
-**[2026-04-14]** `work-item-pipeline` — Agent roles now loaded from DB (mng_agent_roles) with fallback prompts; RoleCreate/RoleUpdate models updated to support auto_commit boolean; 4-stage pipeline (PM→Architect→Developer→Reviewer) with provider/model overrides per role.
+**[2026-04-14]** `schema_consolidation` — Reorganized mem_ai_work_items table: removed dual status_ai design pattern, reordered columns with seq_num positioned near id, added explicit FOREIGN KEY constraint on merged_into, and created ivfflat embedding index for semantic search performance.
 
-**[2026-04-13]** `tag-suggestion-ux` — ai_tag_suggestion column with approve/remove buttons implemented; simplified chip markup and improved tooltip UX from 'No existing tag' to 'Does not exist yet'; category inference on tag creation.
+**[2026-04-14]** `agent_pipeline` — Refactored work item 4-stage pipeline (PM→Architect→Developer→Reviewer) to load agent roles from database (mng_agent_roles table) with fallback prompt support; added auto_commit boolean flag and provider/model overrides for flexible agent configuration.
 
-**[2026-04-15]** `context-consolidation` — Removed legacy _system flat files and stale generated files from repository; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; deprecated CLAUDE.md and MEMORY.md from root.
+**[2026-04-13]** `tag_suggestions_ux` — Implemented ai_tag_suggestion column with approve/remove button handlers; refactored chip markup to simplified format, added category inference on tag creation, and improved tooltip messaging from 'No existing tag' to 'Does not exist yet' for better user clarity.

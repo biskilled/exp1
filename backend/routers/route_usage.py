@@ -141,6 +141,69 @@ async def my_usage(current_user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/per-user-memory")
+async def per_user_memory_usage(
+    project: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return per-user prompt and commit counts for memory attribution.
+
+    Queries mem_mrr_prompts and mem_mrr_commits grouped by user_id,
+    joined with mng_users for email. Requires admin role.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    if not db.is_available():
+        return {"users": [], "project": project}
+
+    try:
+        project_id: int | None = None
+        if project:
+            project_id = db.get_project_id(project)
+
+        project_filter = "AND p.project_id=%s" if project_id else ""
+        project_params = [project_id] if project_id else []
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT u.id, u.email,
+                           COUNT(DISTINCT p.id) AS prompt_count
+                    FROM mng_users u
+                    LEFT JOIN mem_mrr_prompts p ON p.user_id = u.id {project_filter}
+                    GROUP BY u.id, u.email
+                    ORDER BY prompt_count DESC
+                    """,
+                    project_params,
+                )
+                prompt_rows = {r[0]: {"email": r[1], "prompt_count": r[2]} for r in cur.fetchall()}
+
+                cur.execute(
+                    f"""
+                    SELECT u.id, COUNT(DISTINCT c.commit_hash) AS commit_count
+                    FROM mng_users u
+                    LEFT JOIN mem_mrr_commits c ON c.user_id = u.id {project_filter}
+                    GROUP BY u.id
+                    """,
+                    project_params,
+                )
+                commit_rows = {r[0]: r[1] for r in cur.fetchall()}
+
+        users = [
+            {
+                "user_id": uid,
+                "email": data["email"],
+                "prompt_count": data["prompt_count"] or 0,
+                "commit_count": commit_rows.get(uid, 0) or 0,
+            }
+            for uid, data in prompt_rows.items()
+        ]
+        return {"users": users, "project": project}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/admin")
 async def admin_usage(current_user: dict = Depends(get_current_user)):
     user = find_by_id(current_user["sub"])

@@ -45,6 +45,11 @@ export async function renderPipeline(container, project) {
 
       <div id="dd-errors" style="margin-bottom:1.2rem"></div>
 
+      <div class="dd-section-label">LLM Pipeline Costs</div>
+      <div id="dd-costs" style="margin-bottom:1.5rem">
+        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
+      </div>
+
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
         <div class="dd-section-label" style="margin-bottom:0">Recent Workflow Runs</div>
         <button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="window._nav('workflow')">→ Pipelines</button>
@@ -144,14 +149,16 @@ async function _loadAll(container, project) {
     return;
   }
   try {
-    const [dash, runsData] = await Promise.all([
+    const [dash, runsData, costsData] = await Promise.all([
       api.pipeline.dashboard(project).catch(() => null),
       api.graphWorkflows.recentRuns(project, 8).catch(() => null),
+      api.pipeline.llmCosts(project).catch(() => null),
     ]);
     _renderMirror(container, dash?.mirror);
     _renderAI(container, dash?.ai);
     _renderPipeline(container, dash?.pipeline);
     _renderErrors(container, dash?.recent_errors);
+    _renderCosts(container, costsData);
     _renderRuns(container, runsData);
   } catch (e) {
     console.warn('Dashboard load error:', e);
@@ -406,6 +413,72 @@ function _renderErrors(container, errors) {
         <span style="flex-shrink:0">${_fmtTime(e.at)}</span>
       </div>
     `).join('')}
+  `;
+}
+
+// ── LLM Pipeline Costs ────────────────────────────────────────────────────────
+
+function _renderCosts(container, data) {
+  const el = container.querySelector('#dd-costs');
+  if (!el) return;
+  if (!data) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Cost data unavailable</div>';
+    return;
+  }
+
+  function _table(title, bucket) {
+    const rows = bucket?.by_model || [];
+    const total = bucket?.total_cost_usd ?? 0;
+    const calls = bucket?.total_calls ?? 0;
+    return `
+      <div style="flex:1;min-width:280px">
+        <div style="font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+                    letter-spacing:0.06em;margin-bottom:0.45rem">${title}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
+          <thead>
+            <tr style="color:var(--muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:.04em">
+              <th style="text-align:left;padding:0.1rem 0.4rem 0.1rem 0;font-weight:600">Provider</th>
+              <th style="text-align:left;padding:0.1rem 0.4rem;font-weight:600">Model</th>
+              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Calls</th>
+              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Tokens</th>
+              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(m => `
+              <tr style="border-top:1px solid var(--border)">
+                <td style="padding:0.2rem 0.4rem 0.2rem 0;color:var(--text)">${m.provider}</td>
+                <td style="padding:0.2rem 0.4rem;color:var(--muted);font-family:monospace;font-size:0.65rem"
+                  >${m.model}</td>
+                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right">${m.calls}</td>
+                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right"
+                  >${_fmtNum(m.input_tokens + m.output_tokens)}</td>
+                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right;color:var(--accent)"
+                  >$${m.cost_usd.toFixed(4)}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="5" style="color:var(--muted);padding:0.5rem 0">No data</td></tr>
+            `}
+            <tr style="border-top:2px solid var(--border);font-weight:700">
+              <td colspan="2" style="padding:0.25rem 0">Total</td>
+              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem">${calls}</td>
+              <td></td>
+              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem;color:var(--accent)">$${total.toFixed(4)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;
+                background:var(--surface2);border:1px solid var(--border);
+                border-radius:var(--radius);padding:0.85rem 1rem">
+      ${_table('Last 24h', data.last_24h)}
+      <div style="width:1px;background:var(--border);flex-shrink:0"></div>
+      ${_table('All Time', data.all_time)}
+    </div>
   `;
 }
 

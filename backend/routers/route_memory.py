@@ -942,6 +942,55 @@ async def get_data_dashboard(project: str):
     }
 
 
+@router.get("/{project}/llm-costs")
+async def llm_costs(project: str):
+    """Return LLM cost breakdown for memory pipeline calls (last 24h + all time).
+
+    Queries mng_usage_logs WHERE source='memory', grouped by provider and model.
+    Does NOT filter by project — pipeline costs are system-wide.
+    """
+    if not db.is_available():
+        return {"last_24h": {"total_calls": 0, "total_cost_usd": 0, "by_model": []},
+                "all_time":  {"total_calls": 0, "total_cost_usd": 0, "by_model": []}}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                        provider, model,
+                        COUNT(*) AS calls,
+                        SUM(cost_usd) AS cost_usd,
+                        SUM(input_tokens) AS input_tokens,
+                        SUM(output_tokens) AS output_tokens,
+                        (created_at > NOW() - INTERVAL '24 hours') AS is_24h
+                    FROM mng_usage_logs
+                    WHERE source = 'memory'
+                    GROUP BY provider, model, (created_at > NOW() - INTERVAL '24 hours')
+                    ORDER BY cost_usd DESC
+                """)
+                rows = cur.fetchall()
+
+        def _build(is_24h_flag: bool) -> dict:
+            models = [
+                {
+                    "provider": r[0], "model": r[1],
+                    "calls": r[2], "cost_usd": float(r[3] or 0),
+                    "input_tokens": r[4] or 0, "output_tokens": r[5] or 0,
+                }
+                for r in rows if r[6] == is_24h_flag
+            ]
+            return {
+                "total_calls":    sum(m["calls"] for m in models),
+                "total_cost_usd": round(sum(m["cost_usd"] for m in models), 6),
+                "by_model":       models,
+            }
+
+        return {"last_24h": _build(True), "all_time": _build(False), "project": project}
+    except Exception as e:
+        log.warning(f"llm_costs error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{project}/workflow-templates")
 async def get_workflow_templates(project: str):
     """Return delivery-type → workflow mapping + available workflows for this project."""

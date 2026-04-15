@@ -32,8 +32,8 @@ log = logging.getLogger(__name__)
 _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
            (project_id, session_id, source_id,
-            prompt, response, tags, created_at)
-       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+            prompt, response, tags, created_at, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz, %s)
        ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
@@ -41,8 +41,8 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (project_id, commit_hash, commit_msg, summary,
-            session_id, committed_at, tags)
-       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+            session_id, committed_at, tags, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
@@ -50,8 +50,8 @@ _SQL_INSERT_COMMIT = """
 _SQL_INSERT_ITEM = """
     INSERT INTO mem_mrr_items
            (project_id, item_type, title, meeting_at, attendees,
-            raw_text, summary, tags)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+            raw_text, summary, tags, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
     RETURNING id
 """
 
@@ -136,11 +136,13 @@ class MemoryMirroring:
         llm_source: str = "",  # backward-compat alias for source
         tags: Optional[list[str] | dict] = None,
         ts: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
         """Insert a prompt/response into mem_mrr_prompts. Returns the UUID string or None."""
         if not db.is_available():
             return None
         from datetime import datetime, timezone
+        from core.auth import _resolve_user_id
         if ts is None:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         # llm_source is kept for backward compat; source takes precedence
@@ -148,6 +150,7 @@ class MemoryMirroring:
         tags_dict = tags_to_dict(tags)
         tags_dict["source"] = effective_source
         project_id = db.get_or_create_project_id(project)
+        resolved_uid = _resolve_user_id(user_id)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -155,7 +158,7 @@ class MemoryMirroring:
                         _SQL_INSERT_PROMPT,
                         (project_id, session_id, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
-                         json.dumps(tags_dict), ts),
+                         json.dumps(tags_dict), ts, resolved_uid),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -174,21 +177,24 @@ class MemoryMirroring:
         session_id: Optional[str] = None,
         committed_at: Optional[str] = None,
         tags: Optional[list[str] | dict] = None,
+        user_id: Optional[str] = None,
         **_ignored,  # absorb any legacy kwargs (e.g. diff_details)
     ) -> Optional[str]:
         """Insert a commit into mem_mrr_commits. Returns commit_hash or None."""
         if not db.is_available():
             return None
+        from core.auth import _resolve_user_id
         tags_dict = tags_to_dict(tags)
         tags_dict["source"] = source
         project_id = db.get_or_create_project_id(project)
+        resolved_uid = _resolve_user_id(user_id)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_COMMIT,
                         (project_id, commit_hash, commit_msg, summary,
-                         session_id, committed_at, json.dumps(tags_dict)),
+                         session_id, committed_at, json.dumps(tags_dict), resolved_uid),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -207,18 +213,21 @@ class MemoryMirroring:
         attendees: Optional[list] = None,
         summary: Optional[str] = None,
         tags: Optional[list[str] | dict] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
         """Insert a document item into mem_mrr_items. Returns UUID string or None."""
         if not db.is_available():
             return None
+        from core.auth import _resolve_user_id
         project_id = db.get_or_create_project_id(project)
+        resolved_uid = _resolve_user_id(user_id)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_ITEM,
                         (project_id, item_type, title, meeting_at, attendees,
-                         raw_text, summary, json.dumps(tags_to_dict(tags))),
+                         raw_text, summary, json.dumps(tags_to_dict(tags)), resolved_uid),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None

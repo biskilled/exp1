@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
             (project_id, commit_hash, session_id, commit_msg, diff_summary,
-             author, author_email, committed_at, tags)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             author, author_email, committed_at, tags, user_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
@@ -41,7 +41,8 @@ _SQL_UPSERT_COMMIT = """
                                     ELSE mem_mrr_commits.author_email END,
                 committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
                 tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
-                                    ELSE mem_mrr_commits.tags END
+                                    ELSE mem_mrr_commits.tags END,
+                user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id)
 """
 
 # Link commit → most-recent prompt in the same session that occurred before the commit.
@@ -253,6 +254,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
         except Exception:
             pass
 
+        from core.auth import ADMIN_USER_ID
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -260,7 +262,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
                      author, author_email,
                      committed_at or datetime.now(timezone.utc),
-                     json.dumps(tags_dict)),
+                     json.dumps(tags_dict), ADMIN_USER_ID),
                 )
                 if session_id:
                     cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project_id, session_id, commit_hash))
