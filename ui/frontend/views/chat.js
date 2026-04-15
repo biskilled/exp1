@@ -959,6 +959,7 @@ async function _loadSessions() {
       : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing phase — load session and set it">⚠</span>`;
     const featureTxt = s.feature ? `<span style="font-size:0.5rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">#${_esc(s.feature)}</span>` : '';
     const borderL   = !hasPhase ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
+    const sid5      = s.id ? s.id.slice(-5) : '?????';
     return `
       <div onclick="window._chatLoadAny('${_esc(s.id)}')"
         style="padding:0.32rem 0.45rem;border-radius:var(--radius);cursor:pointer;
@@ -966,17 +967,17 @@ async function _loadSessions() {
                font-size:0.63rem;color:${isActive ? 'var(--text)' : 'var(--text2)'};
                background:${isActive ? 'var(--surface2)' : ''};
                transition:background 0.1s;margin-bottom:1px"
-        title="${_esc(s.title)}"
+        title="${_esc(s.id)}"
         onmouseenter="this.style.background='var(--surface2)'"
         onmouseleave="this.style.background='${isActive ? 'var(--surface2)' : ''}'">
         <div style="display:flex;align-items:center;gap:0.3rem;margin-bottom:2px">
-          <span style="font-size:0.52rem;color:var(--muted);flex-shrink:0">${idx + 1}.</span>
           <span style="font-size:0.5rem;color:${srcColor};background:${srcColor}1a;
                        padding:0 0.22rem;border-radius:2px;flex-shrink:0;letter-spacing:0.5px">${srcLabel}</span>
           ${tagDot}
           ${featureTxt}
+          <span style="margin-left:auto;font-family:monospace;font-size:0.48rem;color:var(--accent);flex-shrink:0">(${_esc(sid5)})</span>
         </div>
-        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(s.title)}</div>
+        <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.6rem">${_esc(s.title)}</div>
       </div>`;
   }).join('');
 }
@@ -993,11 +994,14 @@ window._chatLoadAny = async (id) => {
 
   // History-only session (claude_cli or workflow): render entries read-only
   _sessionId = id;
+  _chatTagCache = null;  // reset per-message tag cache
   // Restore phase for this session (from cache tags populated in _loadSessions)
   _restoreTagBar(session.tags || {});
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return;
   msgs.innerHTML = '';
+  // Show session ID + phase banner at top
+  _renderSessionHeader(id, session.phase || session.tags?.phase || '');
   if (!session.entries?.length) {
     _appendSystemMsg('No messages in this session.');
     return;
@@ -1009,7 +1013,7 @@ window._chatLoadAny = async (id) => {
     const inp = e.user_input || '';
     // Skip internal Claude Code tool noise entries
     if (_NOISE.some(p => inp.startsWith(p))) continue;
-    if (inp) _appendUserMsg(inp);
+    if (inp) _appendUserMsg(inp, { ts: e.created_at || e.ts, tags: e.tags || [], sourceId: e.ts });
     if (e.output) _appendAssistantMsg(e.output);
   }
   // Highlight active in sidebar
@@ -1139,6 +1143,7 @@ async function _renderSessionCommits(msgsContainer, sessionId, project) {
 
 window._chatLoad = async (id) => {
   _sessionId = id;
+  _chatTagCache = null;  // reset per-message tag cache for fresh session
   try {
     const session = await api.chatSession(id);
     const msgs = document.getElementById('chat-messages');
@@ -1150,6 +1155,9 @@ window._chatLoad = async (id) => {
     const cacheTags  = _sessionCache.find(s => s.id === id)?.tags || {};
     const effectiveTags = Object.keys(storedTags).length ? storedTags : cacheTags;
     _restoreTagBar(effectiveTags);
+    // Show session ID + phase banner at top of messages
+    const phase = effectiveTags.phase || storedTags.phase || '';
+    _renderSessionHeader(id, phase);
     for (const m of session.messages || []) {
       if (m.role === 'user')      _appendUserMsg(m.content);
       if (m.role === 'assistant') _appendAssistantMsg(m.content);
@@ -1609,13 +1617,41 @@ function _appendSystemMsg(md) {
   container.scrollTop = container.scrollHeight;
 }
 
-function _appendUserMsg(text) {
+function _appendUserMsg(text, opts = {}) {
+  // opts: { ts, tags, sourceId }
   const container = document.getElementById('chat-messages');
   if (!container) return;
   const el = document.createElement('div');
-  el.style.cssText = 'display:flex;flex-direction:column;gap:0.3rem;align-items:flex-end;animation:msgIn 0.2s ease-out';
+  el.style.cssText = 'display:flex;flex-direction:column;gap:0.25rem;align-items:flex-end;animation:msgIn 0.2s ease-out';
+
+  const tsStr   = opts.ts ? _fmtTs(opts.ts) : '';
+  const sid     = opts.sourceId || '';
+  const tags    = opts.tags || [];
+
+  // Tag chips (phase/feature/bug/source etc.)
+  const chipHtml = tags.map(t => {
+    const col = _tagColor(t);
+    return `<span style="font-size:0.5rem;background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 4px;border-radius:3px;white-space:nowrap">${_esc(t)}</span>`;
+  }).join('');
+
+  // + Tag button (only for CLI entries that have a sourceId for tagBySourceId)
+  const tagBtnHtml = sid
+    ? `<button onclick="window._chatMsgTagPicker('${_esc(sid)}',this)"
+         style="font-size:0.5rem;padding:1px 5px;border:1.5px solid var(--accent);border-radius:3px;
+                cursor:pointer;background:var(--surface);color:var(--accent);white-space:nowrap;font-weight:600">
+         ＋ Tag
+       </button>`
+    : '';
+
   el.innerHTML = `
-    <div style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase">you</div>
+    <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+      <span style="font-size:0.55rem;color:#27ae60;font-weight:600;letter-spacing:.5px">YOU${tsStr ? ' — ' + _esc(tsStr) : ''}</span>
+    </div>
+    <div class="chat-msg-chips" data-sid="${_esc(sid)}"
+         style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;min-height:${(chipHtml || tagBtnHtml) ? '16px' : '0'}">
+      ${chipHtml}
+      ${tagBtnHtml}
+    </div>
     <div style="max-width:78%;background:var(--surface2);border:1px solid var(--border);
                 border-radius:10px;padding:0.8rem 1rem;font-size:0.78rem;line-height:1.7;
                 word-break:break-word;user-select:text;-webkit-user-select:text;
@@ -1802,6 +1838,127 @@ function _esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/** Format ISO timestamp → YY/MM/DD-HH:MM (local time). */
+function _fmtTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const YY  = String(d.getFullYear()).slice(2);
+  const MM  = String(d.getMonth() + 1).padStart(2, '0');
+  const DD  = String(d.getDate()).padStart(2, '0');
+  const HH  = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${YY}/${MM}/${DD}-${HH}:${min}`;
+}
+
+/** Tag color by prefix (phase/feature/bug/source/task). */
+function _tagColor(tagStr) {
+  const prefix = (tagStr || '').split(':')[0];
+  const MAP = { phase: '#3b82f6', feature: '#22c55e', bug: '#ef4444', source: '#a78bfa', task: '#f59e0b' };
+  return MAP[prefix] || '#4a90e2';
+}
+
+/** Render a session ID + phase banner at the top of the messages container. */
+function _renderSessionHeader(sessionId, phase) {
+  const msgs = document.getElementById('chat-messages');
+  if (!msgs || !sessionId) return;
+  document.querySelectorAll('.chat-session-hdr').forEach(el => el.remove());
+  const hdr = document.createElement('div');
+  hdr.className = 'chat-session-hdr';
+  hdr.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 10px;' +
+    'background:var(--surface2);border-radius:6px;margin-bottom:10px;border-left:3px solid var(--accent);' +
+    'font-size:0.6rem;position:sticky;top:0;z-index:10';
+  hdr.innerHTML =
+    `<span style="color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap">Session</span>` +
+    `<span style="font-family:monospace;color:var(--accent);user-select:all;word-break:break-all;flex:1">${_esc(sessionId)}</span>` +
+    `<button onclick="navigator.clipboard.writeText('${_esc(sessionId)}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})"
+       style="font-size:0.5rem;padding:1px 5px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap;flex-shrink:0">⎘</button>` +
+    (phase ? `<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:1px 5px;border-radius:3px;flex-shrink:0">${_esc(phase)}</span>` : '');
+  msgs.insertBefore(hdr, msgs.firstChild);
+}
+
+/** Per-message tag cache — loaded once per session open. */
+let _chatTagCache = null;  // [{cat, values}] or null = not loaded yet
+
+/** Load + flatten planner_tags into _chatTagCache. */
+async function _ensureChatTagCache() {
+  if (_chatTagCache !== null) return;
+  const project = state.currentProject?.name;
+  if (!project) { _chatTagCache = []; return; }
+  try {
+    const res  = await api.tags.list(project);
+    const flat = [];
+    const flatten = items => { for (const t of (items||[])) { flat.push(t); if (t.children?.length) flatten(t.children); } };
+    flatten(Array.isArray(res) ? res : (res.tags || []));
+    const groups = {};
+    for (const t of flat) {
+      const cat = t.category_name || 'other';
+      if (!groups[cat]) groups[cat] = { cat: { name: cat, color: t.color || '#4a90e2', id: t.category_id }, values: [] };
+      groups[cat].values.push({ name: t.name, tagStr: `${cat}:${t.name}` });
+    }
+    _chatTagCache = Object.values(groups);
+  } catch { _chatTagCache = []; }
+}
+
+/** Open a mini per-message tag picker anchored to buttonEl (for CLI sessions). */
+window._chatMsgTagPicker = async (sourceId, buttonEl) => {
+  // Remove any existing pickers
+  document.querySelectorAll('.chat-msg-tag-picker').forEach(el => el.remove());
+  await _ensureChatTagCache();
+  const project = state.currentProject?.name || '';
+
+  const picker = document.createElement('div');
+  picker.className = 'chat-msg-tag-picker';
+  picker.style.cssText = 'position:absolute;right:0;top:100%;z-index:400;background:var(--bg);' +
+    'border:1px solid var(--border);border-radius:6px;padding:5px;min-width:170px;' +
+    'max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+
+  const groups = _chatTagCache || [];
+  picker.innerHTML = `<div style="font-size:0.55rem;color:var(--muted);padding:2px 4px;margin-bottom:3px">Add tag to this prompt:</div>` +
+    (groups.length
+      ? groups.map(({ cat, values }) =>
+          `<div style="font-size:0.5rem;color:var(--muted);padding:1px 4px;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">${_esc(cat.name)}</div>` +
+          values.map(v =>
+            `<div onclick="window._chatMsgTagApply('${_esc(sourceId)}','${_esc(v.tagStr)}',this)"
+               style="padding:2px 8px;cursor:pointer;border-radius:3px;font-size:0.65rem;color:${_esc(cat.color || 'var(--text)')}"
+               onmouseenter="this.style.background='var(--surface)'" onmouseleave="this.style.background=''">
+               ${_esc(v.name)}
+             </div>`
+          ).join('')
+        ).join('')
+      : `<div style="font-size:0.6rem;color:var(--muted);padding:4px 8px">No tags available.</div>`
+    );
+
+  const wrap = buttonEl.closest('[style*="position:relative"]') || buttonEl.parentElement;
+  wrap.style.position = 'relative';
+  wrap.appendChild(picker);
+  setTimeout(() => {
+    document.addEventListener('click', function _close(ev) {
+      if (!picker.contains(ev.target) && ev.target !== buttonEl) {
+        picker.remove(); document.removeEventListener('click', _close);
+      }
+    });
+  }, 10);
+};
+
+/** Apply a tag string to a prompt via tagBySourceId; update the chips div. */
+window._chatMsgTagApply = async (sourceId, tagStr, triggerEl) => {
+  document.querySelectorAll('.chat-msg-tag-picker').forEach(el => el.remove());
+  const project = state.currentProject?.name || '';
+  const col = _tagColor(tagStr);
+  // Find the chips container for this sourceId
+  const chipsDiv = document.querySelector(`.chat-msg-chips[data-sid="${CSS.escape(sourceId)}"]`);
+  if (chipsDiv) {
+    const chip = document.createElement('span');
+    chip.style.cssText = `font-size:0.55rem;background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 4px;border-radius:3px;white-space:nowrap`;
+    chip.textContent = tagStr;
+    chipsDiv.insertBefore(chip, chipsDiv.querySelector('button'));
+  }
+  try {
+    await api.entities.tagBySourceId({ source_id: sourceId, tag: tagStr, project });
+  } catch (e) { console.warn('tag prompt failed:', e.message); }
+};
 
 // ── CSS animations ────────────────────────────────────────────────────────────
 

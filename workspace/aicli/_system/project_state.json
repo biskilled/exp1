@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working",
-    "UI chat history rendering with session metadata \u2014 Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker",
-    "Per-prompt tagging system \u2014 Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity",
-    "Session ID and metadata visibility \u2014 Fixed session ID display in both left panel (\u2026xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending",
-    "Backend port binding stability \u2014 Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing",
-    "Memory items and project_facts table population \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism"
+    "Session header UI refactor \u2014 Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags",
+    "Hook-log endpoint stability post-m050 \u2014 Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint",
+    "Chat history rendering cache invalidation \u2014 UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend",
+    "Per-prompt tagging system implementation \u2014 Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity",
+    "Memory items and project_facts population logic \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis",
+    "Source label standardization \u2014 Source field mapping (claude_cli \u2192 CLI, ui \u2192 UI, workflow \u2192 Workflow) applied to session headers; phase extracted from tags and rendered as blue chip"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T18:56:27Z",
+  "last_memory_run": "2026-04-15T19:10:28Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -147,12 +147,12 @@
       "Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation"
     ],
     "in_progress": [
-      "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working",
-      "UI chat history rendering with session metadata \u2014 Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker",
-      "Per-prompt tagging system \u2014 Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity",
-      "Session ID and metadata visibility \u2014 Fixed session ID display in both left panel (\u2026xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending",
-      "Backend port binding stability \u2014 Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing",
-      "Memory items and project_facts table population \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism"
+      "Session header UI refactor \u2014 Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags",
+      "Hook-log endpoint stability post-m050 \u2014 Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint",
+      "Chat history rendering cache invalidation \u2014 UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend",
+      "Per-prompt tagging system implementation \u2014 Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity",
+      "Memory items and project_facts population logic \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis",
+      "Source label standardization \u2014 Source field mapping (claude_cli \u2192 CLI, ui \u2192 UI, workflow \u2192 Workflow) applied to session headers; phase extracted from tags and rendered as blue chip"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -163,11 +163,14 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector storage, a Python 3.12 CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) for managing AI-assisted development workflows. The system synthesizes prompts and commits into semantic memory layers (raw capture \u2192 digested events \u2192 work items/facts), supports multiple LLM providers, and enables tag-based filtering and project-level analytics. Currently stabilizing post-migration hook-log functionality, implementing per-prompt tagging, and ensuring session metadata visibility in the chat UI.",
-    "memory_digest": "**[2026-04-15 18:51]** `claude_cli` \u2014 Session ID visibility improved: left panel now shows last 5 characters (\u2026xxxxx format), right pane displays full ID with styled banner and copy button; timestamp display next to YOU prompt marker awaiting implementation. **[2026-04-15 19:31]** `claude_cli` \u2014 Hook-log endpoint testing post-m050 migration; migration fixed silent DB errors and prompt persistence is now confirmed working correctly. **[2025-04-14]** `system` \u2014 Migration m050 implemented fixing silent errors in hook-log endpoint; all prompts now correctly persist to database; UI refresh mechanism still requires real-time polling/event listener implementation. **[Previous]** `context` \u2014 Per-prompt tagging system architecture: add tag selection buttons to each prompt in chat history; store tags per message with category inference on tag creation and approve/remove handlers. **[Previous]** `context` \u2014 Database schema consolidation: mem_ai_events unified table with project_id, session_id, session_desc, event_summary; event filtering for work item digests uses event_type IN ('prompt_batch', 'session_summary'); system metadata stripped during backfill. **[Previous]** `context` \u2014 Tag suggestion UX refactored: ai_tag_suggestion column with clickable \u2713 button creating missing ai_suggestion tags; simplified chip markup without category prefix display."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL/pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js). It captures development context through prompts, commits, and sessions, synthesizes memory via Claude Haiku, and executes DAG workflows with LLM agents. Current state: hook-log endpoint stability verified post-m050, session UI headers refactored with full metadata display, but chat history real-time refresh and per-prompt tagging system still pending implementation.",
+    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Migration m050 implemented to fix silent DB errors in hook-log endpoint; prompts now correctly persist to PostgreSQL. Session header refactored to display source label (CLI/UI/Workflow), phase as blue chip, and session ID in (xxxxx) format at top of right pane. Full session ID with copy button added to metadata row. **[2026-04-15]** `claude_cli` \u2014 UI chat history not reflecting latest prompt changes; identified cache invalidation and real-time refresh as root cause. Frontend needs polling or WebSocket mechanism to sync new prompts submitted to hook-log endpoint. **[2026-04-15]** `claude_cli` \u2014 Per-prompt tagging system UI pending implementation; tag selection/creation buttons to be added per individual message. Tag suggestion column (ai_tag_suggestion) with approve/remove functionality refactored to simplified chip markup. **[2026-04-15]** `claude_cli` \u2014 Memory items and project_facts table population logic identified as gap; tables exist in schema but update/query operations not yet implemented for improved memory synthesis pipeline."
   }
 }

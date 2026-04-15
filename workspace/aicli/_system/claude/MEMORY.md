@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 18:55 UTC by aicli /memory_
+_Generated: 2026-04-15 19:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector storage, a Python 3.12 CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) for managing AI-assisted development workflows. The system synthesizes prompts and commits into semantic memory layers (raw capture → digested events → work items/facts), supports multiple LLM providers, and enables tag-based filtering and project-level analytics. Currently stabilizing post-migration hook-log functionality, implementing per-prompt tagging, and ensuring session metadata visibility in the chat UI.
+aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL/pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js). It captures development context through prompts, commits, and sessions, synthesizes memory via Claude Haiku, and executes DAG workflows with LLM agents. Current state: hook-log endpoint stability verified post-m050, session UI headers refactored with full metadata display, but chat history real-time refresh and per-prompt tagging system still pending implementation.
 
 ## Project Facts
 
@@ -268,12 +268,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working
-- UI chat history rendering with session metadata — Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker
-- Per-prompt tagging system — Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity
-- Session ID and metadata visibility — Fixed session ID display in both left panel (…xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending
-- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
-- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
+- Session header UI refactor — Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags
+- Hook-log endpoint stability post-m050 — Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint
+- Chat history rendering cache invalidation — UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend
+- Per-prompt tagging system implementation — Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity
+- Memory items and project_facts population logic — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis
+- Source label standardization — Source field mapping (claude_cli → CLI, ui → UI, workflow → Workflow) applied to session headers; phase extracted from tags and rendered as blue chip
 
 ## Active Features / Bugs / Tasks
 
@@ -322,6 +322,18 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+User reports UI changes not fully visible in chat tab: session ID display needs to be in CLI header format at top of right pane (where Phase/tags row is), tag-adding functionality missing from prompts, and existing tags not showing. Need to verify Vite rebuild and check history.js rendering.
+
+### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Commits: chore: remove stale agent context and system documentation files after c | chore: clean up stale agent context and generated system files after cla | chore: remove stale agent context and generated system docs after claude | chore: restructure _system context files after claude cli session f66487 | chore: remove stale agent-context and auto-generated system docs after c
+Changed: m050_prompts_source_id_index
+Stats: backend/routers/route_history.py |  1 +
+ ui/frontend/views/history.js     | 60 ++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 55 insertions(+), 6 deletions(-)
 
 ### `session_summary: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
 
@@ -373,142 +385,6 @@ index 55a56c5..87a31d2 100644
  
 
 
-### `commit` — 2026-04-15
-
-Commit: chore: clean up legacy _system files after claude cli session 2a6b600e
-Hash: b189c67e
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/routers/route_work_items.py
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-
-### `commit` — 2026-04-15
-
-diff --git a/ui/frontend/views/pipeline.js b/ui/frontend/views/pipeline.js
-index 59f5051..21f147d 100644
---- a/ui/frontend/views/pipeline.js
-+++ b/ui/frontend/views/pipeline.js
-@@ -1,160 +1,363 @@
- /**
-- * pipeline.js — Pipeline Health Dashboard view.
-+ * pipeline.js — Data Dashboard view.
-  *
-- * Renders background task health stats (commit_embed, session_summary, tag_match, etc.)
-- * with 30-second auto-refresh and links to recent workflow runs.
-+ * Three sections:
-+ *   1. Mirror Data  — mem_mrr_* counts (commits, prompts, items, messages)
-+ *   2. AI / LLM     — mem_ai_* counts (events, work_items, feature snapshots)
-+ *   3. Pipeline Runs — last-24h health per background job
-+ *   4. Recent Workflow Runs
-  */
- 
- import { api } from '../utils/api.js';
--import { toast } from '../utils/toast.js';
- 
- let _refreshTimer = null;
- let _currentProject = null;
- 
- export function destroyPipeline() {
--  if (_refreshTimer) {
--    clearInterval(_refreshTimer);
--    _refreshTimer = null;
--  }
-+  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
- }
- 
- export async function renderPipeline(container, project) {
-   destroyPipeline();
-   _currentProject = project;
-+
-   container.innerHTML = `
--    <div style="padding:1.5rem;max-width:900px;margin:0 auto;overflow-y:auto;height:100%">
--      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
--        <h2 style="margin:0;font-size:1.1rem">Pipeline Health</h2>
--        <button id="pipeline-refresh-btn" class="btn btn-ghost btn-sm" onclick="window._pipelineRefresh()">↻ Refresh</button>
-+    <div style="padding:1.5rem 1.5rem 2rem;max-width:1000px;margin:0 auto;overflow-y:auto;height:100%;box-sizing:border-box">
-+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.4rem">
-+        <h2 style="margin:0;font-size:1.05rem;font-weight:600">Data Dashboard</h2>
-+        <button id="dd-refresh-btn" class="btn btn-ghost btn-sm" style="font-size:0.78rem">↻ Refresh</button>
-+      </div>
-+
-+      <div class="dd-section-label">Mirror Data</div>
-+      <div id="dd-mirror" class="dd-grid dd-grid-4" style="margin-bottom:1.5rem">
-+        ${_skeleton(4)}
-       </div>
--      <div id="pipeline-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.5rem">
--        <div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Loading…</div>
-+
-+      <div class="dd-section-label">AI / LLM</div>
-+      <div id="dd-ai" class="dd-grid dd-grid-3" style="margin-bottom:1.5rem">
-+        ${_skeleton(3)}
-       </div>
--      <div id="pipeline-pending" style="margin-bottom:1.2rem"></div>
--      <div id="pipeline-errors" style="margin-bottom:1.5rem"></div>
--      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
--        <h3 style="margin:0;font-size:0.95rem">Recent Workflow Runs</h3>
--        <button class="btn btn-ghost btn-sm" onclick="window._nav('workflow')">→ Pipelines</button>
-+
-+      <div class="dd-section-label">Pipeline Runs <span style="font-weight:400;color:var(--muted)">(last 24h)</span></div>
-+      <div id="dd-pipeline" class="dd-grid dd-grid-6" style="margin-bottom:1.5rem">
-+        ${_skeleton(6)}
-       </div>
--      <div id="pipeline-runs">
--        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
-+
-+      <div id="dd-errors" style="margin-bottom:1.2rem"></div>
-+
-+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
-+        <div class="dd-section-label" style="margin-bottom:0">Recent Workflow Runs</div>
-+        <button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="window._nav('workflow')">→ Pipelines</button>
-       </div>
-+      <div id="dd-runs"><div style="color:var(--muted);font-size:0.8rem">Loading…</div></div>
-     </div>
-+
-+    <style>
-+      .dd-section-label {
-+        font-size:0.7rem;font-weight:700;text-transform:uppercase;
-+        letter-spacing:0.07em;color:var(--muted);margin-bottom:0.6rem
-+      }
-+      .dd-grid { display:grid;gap:0.65rem }
-+      .dd-grid-4 { grid-template-columns:repeat(4,1fr) }
-+      .dd-grid-3 { grid-template-columns:repeat(3,1fr) }
-+      .dd-grid-6 { grid-template-columns:repeat(6,1fr) }
-+      @media(max-width:780px){
-+        .dd-grid-4{grid-template-columns:repeat(2,1fr)}
-+        .dd-grid-6{grid-template-columns:repeat(3,1fr)}
-+      }
-+      .dd-card {
-+        background:var(--surface2);border:1px solid var(--border);
-+        border-radius:var(--radius);padding:0.8rem 0.85rem 0.65rem;
-+        display:flex;flex-direction:column;gap:0.4rem;min-width:0
-+      }
-+      .dd-card-hdr {
-+        display:flex;align-items:center;gap:0.4rem;
-+        font-size:0.72rem;font-weight:600;color:var(--muted);
-+        text-transform:uppercase;letter-spacing:0.04em
-+      }
-+      .dd-card-icon { font-size:0.85rem;flex-shrink:0 }
-+      .dd-card-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-+      .dd-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0 }
-+      .dd-stats { display:flex;gap:1rem;align-items:flex-end }
-+      .dd-stat { display:flex;flex-direction:column }
-+      .dd-stat-val { font-size:1.35rem;font-weight:700;color:var(--text);line-height:1 }
-+      .dd-stat-lbl { font-size:0.62rem;color:var(--muted);margin-top:0.15rem;text-transform:uppercase }
-+      .dd-card-footer {
-+        font-size:0.65rem;color:var(--muted);
-+        display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.1rem
-+      }
-+      .dd-tag { background:var(--surface3,rgba(128,128,128,.12));padding:0.1rem 0.35rem;
-+                border-radius:3px;white-space:nowrap }
-+      .dd-pipe-card {
-+        background:var(--surface2);border:1px solid var(--border);
-+        border-radius:var(--radius);padding:0.55rem 0.6rem;min-width:0
-+      }
-+      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
-+                      fon
-
 ## AI Synthesis
 
-**[2026-04-15 18:51]** `claude_cli` — Session ID visibility improved: left panel now shows last 5 characters (…xxxxx format), right pane displays full ID with styled banner and copy button; timestamp display next to YOU prompt marker awaiting implementation. **[2026-04-15 19:31]** `claude_cli` — Hook-log endpoint testing post-m050 migration; migration fixed silent DB errors and prompt persistence is now confirmed working correctly. **[2025-04-14]** `system` — Migration m050 implemented fixing silent errors in hook-log endpoint; all prompts now correctly persist to database; UI refresh mechanism still requires real-time polling/event listener implementation. **[Previous]** `context` — Per-prompt tagging system architecture: add tag selection buttons to each prompt in chat history; store tags per message with category inference on tag creation and approve/remove handlers. **[Previous]** `context` — Database schema consolidation: mem_ai_events unified table with project_id, session_id, session_desc, event_summary; event filtering for work item digests uses event_type IN ('prompt_batch', 'session_summary'); system metadata stripped during backfill. **[Previous]** `context` — Tag suggestion UX refactored: ai_tag_suggestion column with clickable ✓ button creating missing ai_suggestion tags; simplified chip markup without category prefix display.
+**[2026-04-15]** `claude_cli` — Migration m050 implemented to fix silent DB errors in hook-log endpoint; prompts now correctly persist to PostgreSQL. Session header refactored to display source label (CLI/UI/Workflow), phase as blue chip, and session ID in (xxxxx) format at top of right pane. Full session ID with copy button added to metadata row. **[2026-04-15]** `claude_cli` — UI chat history not reflecting latest prompt changes; identified cache invalidation and real-time refresh as root cause. Frontend needs polling or WebSocket mechanism to sync new prompts submitted to hook-log endpoint. **[2026-04-15]** `claude_cli` — Per-prompt tagging system UI pending implementation; tag selection/creation buttons to be added per individual message. Tag suggestion column (ai_tag_suggestion) with approve/remove functionality refactored to simplified chip markup. **[2026-04-15]** `claude_cli` — Memory items and project_facts table population logic identified as gap; tables exist in schema but update/query operations not yet implemented for improved memory synthesis pipeline.

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 18:58 UTC — do not edit manually.
+> Auto-generated 2026-04-15 20:26 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 570
-- **Last active**: 2026-04-15T18:55:49Z
+- **Sessions**: 571
+- **Last active**: 2026-04-15T19:06:03Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working
-- UI chat history rendering with session metadata — Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker
-- Per-prompt tagging system — Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity
-- Session ID and metadata visibility — Fixed session ID display in both left panel (…xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending
-- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
-- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
+- Session header UI refactor — Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags
+- Hook-log endpoint stability post-m050 — Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint
+- Chat history rendering cache invalidation — UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend
+- Per-prompt tagging system implementation — Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity
+- Memory items and project_facts population logic — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis
+- Source label standardization — Source field mapping (claude_cli → CLI, ui → UI, workflow → Workflow) applied to session headers; phase extracted from tags and rendered as blue chip
 
 ## Key Decisions
 
