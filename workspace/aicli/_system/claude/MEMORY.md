@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 10:34 UTC by aicli /memory_
+_Generated: 2026-04-15 10:36 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector semantic search, and an Electron desktop UI. It captures development activity (commits, sessions, prompts) into a 4-layer memory architecture that synthesizes raw events into work items and project facts via LLM agents. Current focus is on refactoring memory synthesis pipelines, optimizing schema design, improving work item promotion instrumentation, and debugging tag suggestion UI workflows.
 
 ## Project Facts
 
@@ -396,7 +392,3 @@ index ed04102..459cc85 100644
  # aicli — Shared AI Memory Platform
  
 
-
-## AI Synthesis
-
-**2026-04-15** `schema` — Simplified snapshot generation: consolidated planner_tags to flat string keys (requirements, action_items, design, code_summary); switched LLM from Sonnet to Haiku; enhanced JSON parsing robustness with JSONDecoder.raw_decode. **2026-04-15** `instrumentation` — Added time.monotonic() tracking to work item promotion pipeline (_run_promote_all_work_items) with t0 parameter passed to _finish_run for performance metrics. **2026-04-14** `database` — Reorganized mem_ai_work_items table: removed dual-status design (status_ai), reordered columns (seq_num near id), added explicit FOREIGN KEY for merged_into, created ivfflat embedding index. **2026-04-14** `agents` — Refactored work item pipeline: DB-loaded agent roles with fallback prompts, RoleCreate/RoleUpdate models updated, auto_commit flag support, 4-stage pipeline (PM→Architect→Developer→Reviewer) with _load_role() provider/model overrides. **2026-04-13** `ui` — Tag suggestion approval flow: ai_tag_suggestion column with ✓/× buttons, simplified chip markup, improved tooltip from 'No existing tag' to 'Does not exist yet', category inference on tag creation. **2026-04-06** `database` — Fixed Route history batch upsert PostgreSQL error: corrected JSONB merge operator (||) syntax in ON CONFLICT DO UPDATE clause.
