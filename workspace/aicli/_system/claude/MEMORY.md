@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 01:13 UTC by aicli /memory_
+_Generated: 2026-04-15 01:14 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI and FastAPI backend with an Electron desktop UI to capture, synthesize, and manage development context through semantic embeddings and multi-agent workflows. The system uses PostgreSQL with pgvector for semantic search, Claude-powered memory synthesis, and DAG-based workflow execution with approval gates. Currently stabilizing schema design, refactoring work item pipeline to use DB-loaded agent roles, and improving tag suggestion UX.
+aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI to capture, analyze, and synthesize project development history via semantic search and LLM-driven work item extraction. The platform uses PostgreSQL with pgvector for embeddings, supports multi-provider LLM integration (Claude/OpenAI/etc.), and provides workflow automation through async DAG execution with Cytoscape visualization, currently stabilizing the work item pipeline and tag suggestion workflows after recent schema refactoring.
 
 ## Project Facts
 
@@ -502,9 +502,14 @@ Symbols changed: m046_reorder_work_items, m045_add_score_ai
 
 ## AI Synthesis
 
-**[2026-04-14]** `schema` — mem_ai_work_items table reorganized: removed dual-status design (status_ai), reordered columns (seq_num near id), added explicit FOREIGN KEY for merged_into, replaced index on status_ai with ivfflat embedding index for vector search performance.
-**[2026-04-14]** `pipeline` — Work item pipeline refactored to load agent roles from DB (mng_agent_roles) with fallback prompts; 4-stage PM→Architect→Developer→Reviewer pipeline now supports provider/model overrides per stage; auto_commit boolean added.
-**[2026-04-13]** `tagging` — Tag suggestion UX improved: ai_tag_suggestion column with approve/remove button handlers; simplified chip markup without category prefix in non-category mode; tooltip changed from 'No existing tag' to 'Does not exist yet'.
-**[2026-04-06]** `history-ui` — History tab rendering issue identified: only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; awaiting implementation.
-**[2026-04-06]** `database` — PostgreSQL ON CONFLICT DO UPDATE error in route history batch upsert fixed via JSONB merge operator (||) syntax correction; testing pending on operational DB.
-**[2026-04-06]** `schema-sync` — aiCli_memory database out of sync with codebase; mem_session.py missing; schema documentation update and restoration investigation in progress.
+**[2026-04-14]** `schema` — mem_ai_work_items table refactored: removed dual-status design (status_ai removed), reordered columns with seq_num moved near id, added explicit FK constraint on merged_into, added ivfflat embedding index for semantic search.
+
+**[2026-04-14]** `work-items` — Work item pipeline refactored to load agent roles from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added to 4-stage pipeline (PM→Architect→Developer→Reviewer) with _load_role() provider/model overrides.
+
+**[2026-04-13]** `tagging` — Tag suggestion approval flow implemented with ai_tag_suggestion column; approve/remove button handlers refactored to simplified chip markup; category inference on tag creation; tooltip UX improved.
+
+**[2026-04-06]** `history-ui` — History panel rendering only prompts, not full LLM responses; copy-to-clipboard functionality missing; requires frontend implementation for response display.
+
+**[2026-04-06]** `api-fix` — PostgreSQL ON CONFLICT DO UPDATE error in route history batch upsert resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB.
+
+**[2026-04-06]** `schema-sync` — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation for m001-m041 migrations.
