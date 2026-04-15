@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-14T23:26:08Z",
+  "last_memory_run": "2026-04-14T23:58:53Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -163,14 +163,14 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
+      "mcp": "Stdio MCP server with 12+ tools",
       "deployment_backend": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "mcp": "Stdio MCP server with 12+ tools"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL + pgvector), Python CLI, and Electron desktop app to capture, synthesize, and manage development context across projects. It uses Claude Haiku for dual-layer memory synthesis, async DAG workflow execution for automation, and semantic search via embeddings to create intelligent project-wide documentation and work item tracking.",
-    "memory_digest": "**[2026-04-14]** `in_progress` \u2014 Agent roles enhancement: auto_commit boolean column added to mng_agent_roles table; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) refactored to load agent roles from DB with fallback prompts; all pipeline stages now support provider/model overrides for flexible LLM routing.\n\n**[2026-04-14]** `in_progress` \u2014 Work item pipeline refactor completed; RoleCreate/RoleUpdate Pydantic models updated to reflect schema changes; improved automation workflow with auto_commit flag enabling seamless pipeline progression without manual intervention.\n\n**[2026-04-14]** `in_progress` \u2014 Memory mirror tables refactor: mem_mrr_prompts columns reordered (project_id/event_id repositioned after client_id per naming convention); m037-m039 migrations applied for schema consistency and cleanup across unified and per-project tables.\n\n**[2026-04-13]** `in_progress` \u2014 Tag suggestion and approval flow: ai_tag_suggestion column integrated with UI approve/remove buttons; chip markup simplified to remove category prefix display in non-category mode; suggested_new tags rendering under investigation in ui_tags query.\n\n**[2026-03-20]** `in_progress` \u2014 Pipeline execution UI rendering: identified issue where old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation for live update flow.\n\n**[2026-03-20]** `bug_fix` \u2014 Project startup race condition: sequential await api.listProjects() prevents empty home screen on first load; edge case where list succeeds but returns empty array now properly handled with retry logic."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI), PostgreSQL 15+ with pgvector semantic search, and an Electron desktop frontend with Cytoscape workflow visualization. The project synthesizes code/commit history into structured work items through a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 actionable items) with pluggable LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), async DAG workflow execution, and agent role-based 4-stage pipelines supporting automatic commit flagging and provider overrides.",
+    "memory_digest": "**[2026-04-14]** `agent-roles` \u2014 Auto_commit boolean column added to mng_agent_roles table enabling 4-stage work item pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with automatic commit flagging and provider/model overrides per stage. **[2026-04-14]** `schema-refactor` \u2014 Memory mirror tables (mem_mrr_*) columns reordered with project_id/event_id positioned after client_id; migrations m037-m041 applied consolidating schema cleanup and achieving m001-m041 complete migration framework. **[2026-04-13]** `tag-suggestion-ux` \u2014 AI tag suggestion feature implemented with ai_tag_suggestion column, approve/remove button handlers, and simplified chip markup; category inference applied on tag creation with improved tooltips (\"Does not exist yet\"). **[2026-04-14]** `database-schema` \u2014 Unified schema finalized with mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features as canonical tables; per-project tables include commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}. **[2026-03-20]** `pipeline-ui` \u2014 Cytoscape.js DAG visualization deployed for async workflow executor with 2-pane approval panel for chat negotiation; identified issue with old markdown version rendering on approval panel requiring state management investigation. **[2026-03-20]** `startup-race-condition` \u2014 Fixed project list empty screen on first load by implementing sequential await api.listProjects() preventing race conditions where list succeeds but returns empty."
   }
 }
