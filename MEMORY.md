@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 00:01 UTC by aicli /memory_
+_Generated: 2026-04-15 01:13 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python FastAPI backend with an Electron desktop UI to provide semantic search, workflow automation, and agent-based work item processing. The system captures development context through commits and sessions, synthesizes insights via Claude Haiku, and routes work through a 4-stage pipeline (PM→Architect→Developer→Reviewer) with flexible LLM provider support. Current focus is stabilizing database schema synchronization, completing tag suggestion UI flows, and enabling history rendering with full LLM response visibility.
+aicli is a shared AI memory platform combining a Python CLI and FastAPI backend with an Electron desktop UI to capture, synthesize, and manage development context through semantic embeddings and multi-agent workflows. The system uses PostgreSQL with pgvector for semantic search, Claude-powered memory synthesis, and DAG-based workflow execution with approval gates. Currently stabilizing schema design, refactoring work item pipeline to use DB-loaded agent roles, and improving tag suggestion UX.
 
 ## Project Facts
 
@@ -16,6 +16,7 @@ aicli is a shared AI memory platform that combines a Python FastAPI backend with
 - **ai_tag_suggestion_debugging_status**: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
 - **ai_tag_suggestion_feature**: ai_tag_suggestion column with approve/remove button handlers (_wiPanelApproveTag/_wiPanelRemoveTag), refactored to simplified chip markup without category prefix display in non-category mode
 - **ai_tag_suggestion_ux**: clickable ✓ button creates missing ai_suggestion tags with category inference; tooltip improved from 'No existing tag' to 'Does not exist yet'
+- **approval_workflow_pattern**: single source of truth for pipeline execution; routes multi-source triggers through unified approval before execution
 - **auth_pattern**: login_as_first_level_hierarchy
 - **backend_startup_race_condition_fix**: retry_logic_handles_empty_project_list_on_first_load
 - **code_extraction_configuration**: min_lines: 5 (per-symbol threshold), min_diff_lines: 5 (commit-level threshold), only_on_commits_with_tags: false
@@ -23,6 +24,8 @@ aicli is a shared AI memory platform that combines a Python FastAPI backend with
 - **commit_processing_flag**: exec_llm boolean column replaces tags->>'llm' NULL check
 - **commit_tracking_exec_llm_deprecation**: exec_llm boolean column replaced by event_id IS NULL sentinel (event_id set by process_commit() on completion)
 - **commit_tracking_schema**: mem_mrr_commits_code table with 19 columns including commit_short_hash and full_symbol as generated column
+- **creator_field_convention**: planner_tags.creator: username string for users, 'ai' literal for system-generated tags
+- **dashboard_module_architecture**: independent tab for real-time workflow visibility; separate from planner interface to prevent navigation friction
 - **data_model_hierarchy**: clients_contain_multiple_users
 - **data_persistence_issue**: tags_disappear_on_session_switch
 - **date_format_frontend**: YY/MM/DD-HH:MM format in work item panel
@@ -41,8 +44,18 @@ aicli is a shared AI memory platform that combines a Python FastAPI backend with
 - **event_tag_backfill_endpoint**: POST /admin/backfill-event-tags with project and dry_run params; returns per-pass counts; requires admin auth
 - **event_tag_backfill_process**: three-pass idempotent operation: Pass 1 strip system metadata, Pass 2 backfill commit events from mem_mrr_commits via source_id or event_id, Pass 3 backfill prompt_batch events from mem_mrr_prompts via event_id
 - **event_tags_corrupt_recovery**: Pass 0 detects and resets non-object JSONB tags (arrays/scalars) to {} before backfill
+- **feature.auth.design**: {'high_level': "4-phase architecture: (1) Database & Core Token Infrastructure — mng_verification_tokens table with single-use token storage and expiry tracking; mng_resend_cooldown table for rate-limiting; users.verified_at column for lifecycle tracking. (2) Backend Token & Email Logic — TokenService generates cryptographically secure tokens (crypto.randomBytes(32).toString('hex')), EmailService sends verification emails via AWS SES (or configured provider), background job queues async delivery with retry/backoff. (3) Authentication Flow Integration — Existing POST /auth/register endpoint calls token generation and email sending after user creation; new POST /auth/verify-email validates token, marks user as verified, invalidates token; new POST /auth/resend-verification enforces 60s cooldown. (4) Frontend & Access Control — EmailVerificationBanner shows on Sign In screen for unverified users with resend button and cooldown timer; VerifyEmailPage handles token extraction and verification; requireVerified middleware checks verified_at before granting access to protected routes; AwaitingVerificationScreen blocks unverified access with clear instructions.", 'low_level': "Token generation: crypto.randomBytes(32).toString('hex') stored in mng_verification_tokens with uuid, user_id, expires_at=NOW()+24h, redeemed_at=NULL. Token verification: lookup by token string, check expires_at > NOW() (return 410 if expired), check redeemed_at IS NULL (return 409 if used), set users.verified_at = NOW(), set mng_verification_tokens.redeemed_at = NOW(). Resend endpoint: check user already verified (return 400), check cooldown via mng_resend_cooldown.last_resend_at > NOW()-60s (return 429 with remaining_seconds), invalidate unused tokens, generate new token, send email, update cooldown. Email template: plain-text + HTML with verification link {baseUrl}/verify-email?token={token}, subject 'Confirm Your Email Address'. Background job: Bull/Celery/SQS integration, retry up to 3 times with exponential backoff, fire-and-forget (non-blocking HTTP response). Route guards: requireVerified middleware checks user.verified_at IS NOT NULL before resource access, redirects to AwaitingVerificationScreen if null.", 'patterns_used': ['cryptographically_secure_token_generation', 'single_use_token_with_expiry', 'rate_limiting_via_cooldown_table', 'background_job_async_email_delivery', 'soft_deletion_via_redeemed_at_timestamp', 'middleware_based_access_control', 'non_blocking_user_flow_with_verification_prompt']}
+- **feature.billing.design**: {'high_level': '4-layer billing architecture: (1) Payment Provider Integration Layer (Stripe/PayPal adapters with webhook handlers), (2) Subscription & Quota Management (manage active plans, enforce limits per client), (3) Usage Tracking & Metering (capture events via middleware, aggregate to billing_events table), (4) Revenue & Reporting (invoices, receipts, admin analytics dashboards). All tables follow mng_/cl_/pr_ naming convention. Integration with existing mng_clients and auth system.', 'low_level': 'Database tables: mng_billing_plans (id, name, tier, price_usd, features_json), mng_subscriptions (id, client_id, plan_id, status, current_period_start/end, stripe_subscription_id), mng_invoices (id, client_id, period_start/end, total_usd, status, stripe_invoice_id), mng_billing_events (id, client_id, event_type, resource_count, cost_usd, created_at—for usage tracking). Backend: PaymentService (create_subscription, process_webhook), UsageTracker (record_event, get_usage_summary), QuotaValidator (check_limits). Frontend: BillingDashboard component showing subscription, invoices, usage charts.', 'patterns_used': ['Adapter pattern for payment providers (StripeAdapter, PayPalAdapter)', 'Middleware pattern for usage tracking (attach to API routes)', 'Event sourcing for billing events (immutable log of charges)', 'Webhook handler pattern for async payment confirmations', 'Tiered pricing with feature flags per subscription tier', 'Soft quota (warn users) → hard quota (block access) progression']}
+- **feature.embeddings.design**: {'high_level': '4-layer memory architecture with embeddings as the enrichment step: (1) ephemeral session layer captures raw user interactions (prompts, messages, commits), (2) mem_mrr_* mirror tables normalize and deduplicate raw events with session_id FK, (3) mem_ai_events layer runs LLM Haiku synthesis on batches of prompts/commits/summaries to generate semantic digests + 1536-dim embeddings, (4) mem_ai_work_items/project_facts layer promotes high-confidence events into actionable work items and durable facts. Embeddings enable semantic search, context ranking, and feature snapshot synthesis. Incremental batch processing via background tasks (Bull/SQS) to avoid token exhaustion. All vectors stored in pgvector for fast cosine similarity queries.', 'low_level': "MemoryEmbedding class orchestrates embedding pipeline: (a) process_prompt_batch(project, session_id, count) queries mem_mrr_prompts with event_id IS NULL, chunks prompts by session, calls LLM (Haiku via configured provider) to generate digest + embedding, stores result in mem_ai_events with event_type='prompt_batch', back-propagates event_id to mem_mrr_prompts. (b) process_commit_batch(project, min_commits) groups unembedded commits by repo, chunks diffs per-file, synthesizes summary + embedding, stores in mem_ai_events with event_type='commit', back-propagates to mem_mrr_commits. (c) process_session_summary(project, session_id) synthesizes all tagged events in session into single mem_ai_events row with event_type='session_summary' and embedding. Column ordering: client_id → project_id → created_at/processed_at/event_type/llm_source → embedding (last). Vectors indexed via IVFFLAT (vector_cosine_ops) for O(1) approximate nearest-neighbor search. Incremental flag checks embedding IS NULL before processing. Retry logic with exponential backoff (1s, 2s, 4s) on transient LLM errors.", 'patterns_used': ['Incremental batch processing — skip already-embedded events via WHERE embedding IS NULL', 'Background async tasks — /memory/{project}/embed-prompts and /memory/{project}/embed-commits queued to Bull/SQS', 'Smart chunking — per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs) to manage token budget', 'Event-driven mirroring — mem_mrr_* tables updated on session, mem_ai_events updated on synthesis, mem_ai_work_items on promotion', 'Dual-storage (JSONL + PostgreSQL) — JSONL for durability, pgvector for semantic search', 'Semantic ranking — cosine similarity on embeddings to score work_item relevance for feature snapshots', 'Fallback providers — support Anthropic, OpenAI, DeepSeek with adapter pattern (client selection at runtime)', 'Transactional back-propagation — set event_id on mirror tables in same transaction as mem_ai_events INSERT']}
+- **feature.entity-routing.design**: {'high_level': 'Multi-layer entity routing system: (1) Type detection layer reads entity_kind from request (user/project/client/workspace/work_item) and session context; (2) Authorization layer checks role-based access (admin/manager/owner/viewer); (3) Processor registry maps entity types to handler functions; (4) Handler delegates to specialized route files (route_users.py, route_projects.py, etc.); (5) Unified response envelope ensures consistent contract across entity types. Integrates with MCP tools for programmatic entity management and work_item_pipeline for cross-entity linking.', 'low_level': 'Middleware chain: detect_entity_type() → authorize_entity_access() → dispatch_to_processor(). Type detection checks request path, JSON body, query params, or session state to infer entity_kind. Authorization uses mng_agent_roles + role enforcement via RoleCreate/RoleUpdate models. Processor registry (dict mapping entity_kind to handler) delegates to appropriate route module. Response envelope includes { entity_kind, entity_id, data, relations, work_items_linked }. Error handling returns 403 for access denied, 404 for not found, 422 for validation failure.', 'patterns_used': ['Chain of Responsibility (middleware stack for type detection → auth → dispatch)', 'Registry Pattern (entity_kind → processor function mapping)', 'Strategy Pattern (entity-specific handlers as interchangeable strategies)', 'Factory Pattern (processor creation based on entity type)', 'Decorator Pattern (role-based authorization wrapping handler functions)']}
+- **feature.graph-workflow.design**: {'high_level': 'graph-workflow is a 3-layer system: (1) DAG data model (workflows, nodes, edges) stored in PostgreSQL with project_id scoping; (2) async execution engine (asyncio.gather, loop-back support, max_iterations cap) with per-node retry + continue_on_fail semantics; (3) UI layer (Cytoscape visualization + 2-pane approval panel) connected to work_item_pipeline 4-stage approval flow. Auto-commit layer parses LLM output for code blocks and applies git operations. Role system (mng_agent_roles) centralized in DB with fallback prompts. All outputs versioned in documents/ tree with old/ subfolder for history.', 'low_level': 'Execution model: _make_node_fn() returns async node function that calls LLM provider (Claude/OpenAI), handles retries (up to max_retry), applies continue_on_fail logic, calls save_approved_output() on approval, and (if auto_commit=true) calls _parse_code_changes() + _apply_code_and_commit() to write code and commit. Database: 4 tables (pr_graph_runs, pr_graph_nodes, pr_graph_edges, pr_graph_workflows) + mng_agent_roles global table. API routes: /graph-workflows/ (CRUD workflows), /graph-workflows/{id}/runs/ (CRUD runs), /graph-workflows/{id}/runs/{run_id}/execute (POST to start), /graph-workflows/{id}/runs/{run_id}/approve/{node} (approve node output). Frontend: Cytoscape instance renders DAG with drag-to-connect nodes; click node opens approval panel; status colors (pending/running/approved/failed) update in real-time. Work item integration: trigger_work_item_pipeline() creates pr_graph_run record, executes 4-stage DAG (PM→Architect→Dev→Reviewer), returns final work_item with populated acceptance_criteria/implementation_plan/output.', 'patterns_used': ['AsyncDAG: asyncio.gather with loop-back detection (set(prev_ran) tracking), max_iterations cap, fail-fast on critical errors', 'Provider abstraction: client factory pattern for Claude/OpenAI/DeepSeek/Gemini; node config specifies provider/model override', 'Database multi-tenancy: project_id foreign keys across all tables; mng_agent_roles global for role templates', 'Dual-layer versioning: current output in documents/{category}/{slug}/{node}.md; timestamped backups in old/; on re-run, move current to old before overwriting', "Auto-commit safety: path traversal prevention (resolve() + startswith check); background push (Popen, don't block HTTP); error logging only, no failure propagation", 'Approval workflow: save_approved_output() on user click; status tracked in pr_graph_runs; missing auto_commit implementation in developer node']}
+- **feature.hooks.design**: {'high_level': 'Hooks architecture follows a fire-and-forget event-driven pattern integrated into existing aicli routers. Core HookManager class queries mng_hooks table for enabled hooks matching an event_type, evaluates optional condition filters (JSONPath or simple tag matching), and executes action sequences asynchronously via background job queue (Bull/Celery). Actions are modular (embed, promote_work_item, regenerate_memory, run_pipeline, webhook_post) and composable—a single hook can run multiple actions in sequence with error handling (continue_on_error flag). Time-based hooks (cron or at-specific times) use APScheduler integrated into backend startup. Hook state tracked in mng_hook_runs table (hook_id, project_id, triggered_at, status, result_summary) for audit trail and debugging.', 'low_level': "Database schema: mng_hooks (id UUID PK, client_id INT FK, project_id INT FK, name TEXT, event_type TEXT IN ('prompt_batch','commit','session_start','session_end','work_item_patch','memory_regen'), condition_filter JSONB, actions JSONB[], enabled BOOLEAN, created_at TIMESTAMP, updated_at TIMESTAMP); mng_hook_runs (id UUID PK, hook_id UUID FK, project_id INT FK, triggered_at TIMESTAMP, status TEXT, result_summary TEXT, duration_ms INT). HookManager methods: fire(event_type: str, payload: dict) → async executes matching hooks; create(client_id, project_id, hook_def: dict) → validates actions and inserts; list(project_id) → queries mng_hooks with eager load of action details; test_dry_run(hook_id, sample_payload) → executes actions without side effects. Action executor: each action type (embed, promote, webhook) implemented as async coroutine with timeout (30s default), retry logic (exponential backoff up to 3x), and error logging to mng_hook_runs.result_summary. Trigger points: route_history.sync_commits() calls fire('commit', {commit_hash, files_changed, author}); route_memory.embed_prompts() calls fire('prompt_batch', {session_id, prompt_count}); route_sessions.end_session() calls fire('session_end', {session_id, duration_s, summary}).", 'patterns_used': ['event-driven architecture (fire-and-forget with async execution)', 'observer/publisher-subscriber (hooks subscribe to event_type)', 'command pattern (actions as composable, serializable objects)', 'factory pattern (action executor dispatches on action.type)', 'job queue pattern (background job for hook execution with retry)', 'audit trail (mng_hook_runs table tracks all executions)']}
+- **feature.memory.design**: {'high_level': "4-layer memory pyramid: Session (ephemeral state) → Mirrors (mem_mrr_prompts/commits/tags for raw capture) → Events (mem_ai_events with LLM digests + embeddings + tagging) → Work Items/Facts (mem_ai_work_items, mem_ai_project_facts for semantic distillation). Each layer progressively refines raw data: mirrors capture everything, events apply LLM synthesis and semantic embedding, work items extract actionable tasks linked to code/docs. Tagging system unified: event_tags_{project} JSONB column holds phase/feature/bug/source only; system metadata stripped. Multi-client/project architecture: all tables use (client_id, project_id) composite keys; mng_projects FK centralizes project config. Backfill support: commits without active sessions create work items via AI extraction (event_type='commit'); prompts from live sessions create work items via human tagging + AI matching (event_type='prompt_batch'); session summaries provide context digest (event_type='session_summary'). /memory endpoint orchestrates regeneration: loads raw events → filters by type (prompt_batch, session_summary) → synthesizes via Haiku → updates work items/facts → regenerates context files.", 'low_level': "mem_ai_events table structure (final): id | client_id | project_id | created_at | processed_at | event_type (prompt_batch|commit|session_summary) | llm_source (anthropic|openai|etc) | content (full text) | tags (JSONB: {phase, feature, bug, source}) | session_id (FK mem_sessions) | work_item_id (FK mem_ai_work_items, nullable) | source_id (UUID back-ref to mrr table) | embedding (VECTOR 1536, nullable). Indexes: (project_id, event_type), (project_id, created_at), (work_item_id), (session_id). mem_mrr_prompts columns after reorder: client_id | project_id | session_id | prompt_number | prompt_text | response_text | model_used | event_id (back-propagated FK) | created_at. mem_ai_work_items columns: id | client_id | project_id | seq_num | category_ai (feature|bug|task) | name_ai | summary_ai | acceptance_criteria_ai | action_items_ai | score_ai (0–5) | tags (user JSONB) | tags_ai (AI-generated metadata) | tag_id_ai (FK planner_tags, suggested) | tag_id_user (FK planner_tags, confirmed) | status_user (active|in_progress|paused|done) | merged_into (self-FK for dedup). Event filtering: only 'prompt_batch' and 'session_summary' events trigger work item extraction (commits skipped unless explicitly tagged); system metadata (llm, chunk_type, commit_hash) removed from tags. Tag system: event-level tagging via MRR union, work_item-level tagging via user confirm + AI suggest flow. Back-propagation: event_id written to mem_mrr_* after event creation for audit trail.", 'patterns_used': ['Mirror Layer Pattern — raw capture tables (mem_mrr_*) separate from processed tables (mem_ai_*) for append-only history', 'Event Sourcing — all state changes recorded as immutable event rows; work items derived from event stream via projection', 'Composite Foreign Keys — multi-client isolation via (client_id, project_id) pairs; single mng_projects table', 'Dual-Status Design — status_user (user-managed lifecycle) vs status_ai (AI suggestions) keep human and system views separate', 'Incremental Aggregation — /memory endpoint processes only unprocessed rows (processed_at IS NULL) for efficiency', 'Tagging by Convergence — prompts+commits+sessions generate work items only if tagged (human or AI with confidence > 0.70)', 'Backpropagation Links — source_id on mem_ai_events links back to originating mirror row; event_id on mem_mrr_* links forward', 'JSONB Metadata — flexible tags and metadata stored as JSON to avoid schema sprawl and support dynamic attributes', 'Lazy Embedding — embeddings computed only for high-relevance events; NULL for noise or archive entries']}
+- **feature.shared-memory.design**: {'high_level': '5-layer memory architecture: (L1) Mirror Tables (mem_mrr_prompts, mem_mrr_commits) capture raw user/system activity with source tracking; (L2) Event Ingestion (mem_ai_events) synthesizes L1 data via LLM (Claude Haiku), stores embeddings, classifies via event_type (prompt_batch, commit, session_summary); (L3) Work Item Extraction (mem_ai_work_items) promotes events to actionable items (feature/bug/task) with AI names/categories/acceptance criteria + user tagging; (L4) Project Facts (mem_ai_project_facts) extracts durable insights (architecture decisions, constraints, tech stack); (L5) Context Regeneration auto-generates CLAUDE.md, MEMORY.md, rules.md from L3+L4 via Haiku synthesis. Each layer maintains backward references to source layer via source_id/event_id for audit trail. User tags (phase, feature, bug, source) flow through all layers; system metadata stripped at L2.', 'low_level': "Data flow: (1) Prompt/commit ingested → mem_mrr_* with session_id, source_id, timestamps; (2) Periodic batch: query mem_mrr_* where event_id IS NULL, pass to MemoryEmbedding.process_prompt_batch/process_commit_batch, generates mem_ai_events row with embedding + LLM digest, back-propagates event_id to mem_mrr_*; (3) MemoryPromotion.promote_work_item scans mem_ai_events where tag matches (phase/feature/bug), extracts code/requirements, updates mem_ai_work_items (name_ai, category_ai, acceptance_criteria_ai, action_items_ai, score_ai, summary_ai); (4) MemoryPromotion.promote_project_facts extracts durable patterns (decision, constraint, architecture) into mem_ai_project_facts; (5) MemoryFiles.render_* queries top 50 events by relevance (exponential decay on age), formats as markdown sections, returns combined context. SQL joins: mem_ai_events.work_item_id → mem_ai_work_items; mem_ai_events.tag_id → planner_tags; mem_mrr_*.event_id → mem_ai_events; work_item.tag_id_user → planner_tags (user link). Tag filtering: event_type IN ('prompt_batch', 'session_summary') for work item extraction; commit events skipped unless matched by tag.", 'patterns_used': ['Mirror pattern (L1): Raw tables capture immutable source data; foreign key (event_id) links to synthesized layer.', 'Event sourcing (L2): All changes tracked as timestamped events; embeddings stored for semantic search.', 'Promotion pipeline (L3-L5): Successive LLM passes refine abstractions; each promotes tagged events to higher layer.', 'Bidirectional linking: source_id tracks origin; work_item_id back-references synthesized artifacts.', 'Load-once-on-access: Tags/workflows cached in memory on project load, updated only on explicit save.', 'Async background jobs: Embedding/synthesis runs via Bull/Celery, non-blocking HTTP response.', "Tag-driven filtering: User tags (phase, feature, bug) act as 'topics'; events grouped/promoted by matching tags.", 'Exponential time decay: Relevance score = exp(-0.01 * days_old); recent events prioritized in context.', 'Soft deletes: Tokens/old events marked redeemed_at/archived rather than hard-deleted for audit trail.']}
 - **feature_snapshot_schema**: 19 columns: id (UUID PK), client_id (default 1), project_id (FK), tag_id (FK), use_case_num, name, category, status, priority, due_date, summary, use_case_summary, use_case_type, use_case_delivery_category, use_case_delivery_type, related_work_items (JSONB), requirements (JSONB), action_items (JSONB), version (default 'ai'), created_at, updated_at
 - **feature_snapshot_versioning**: two-tier: version='ai' auto-overwritten on snapshot runs; version='user' promoted from AI snapshot, never overwritten by subsequent AI runs
+- **feature.tagging.design**: {'high_level': '4-tier tag architecture: (1) Ephemeral—user-initiated tag creation via chat picker (root level) or Planner UI (nested); (2) Mirror capture—prompts/commits/entities tagged via mem_mrr_* tables with event_id back-propagation; (3) AI event layer—mem_ai_events stores synthesized event summaries with user-facing tags only; (4) Work item promotion—mem_ai_work_items linked to planner_tags via tag_id_user (user-confirmed) and tag_id_ai (AI-suggested with confidence). Tag suggestions evaluated by AI with confidence > 0.70 threshold, category inference (task/bug/feature first, then others), and UI display with approve/remove/delete controls. Caching strategy: load all project tags into memory on project open via _pickerPopulateCats(), zero DB calls during picker interaction, save only on explicit action.', 'low_level': 'Database schema: mem_ai_tags (id, project_id, name, category, parent_id FK for nesting, created_at, updated_at, creator, updater); mem_ai_tags_relations (id, project_id, from_tag_id FK, to_tag_id FK, relation_type enum, note); planner_tags (id, project_id, name, category, status, creator, requirements JSONB, action_items JSONB, deliveries JSONB, updater); mem_mrr_prompts/commits/entities (project_id, event_id, source_id FK). Backend: MemoryTagging class handles AI suggestions via _vector_search_tags() and confidence scoring; tag_event_by_source_id/untag_event_by_source_id for bidirectional sync; merge_tags() consolidates duplicates via work_items linking. Frontend: tag picker caches tags in JavaScript object, displays with color-coding (green=EXISTS user tag, red=NEW AI suggestion, blue=USER self-created), sticky headers for category navigation, increased font sizes for Electron visibility. UI components: TagChip with approve/delete buttons, CategoryFilter, NestedTagBrowser for multi-level display.', 'patterns_used': ['cache-on-load', 'lazy-evaluation', 'composite-foreign-keys', 'self-referential-nesting', 'back-propagation-linking', 'event-driven-sync', 'confidence-scoring', 'bidirectional-relationship', 'soft-delete-via-status']}
+- **feature.UI.design**: {'high_level': 'Electron desktop application with FastAPI backend and Vanilla JS frontend (no frameworks). 4-tier architecture: (1) CLI Engine (aicli/) with Python asyncio, LLM provider adapters, prompt_toolkit; (2) Backend (ui/backend/) with FastAPI routers, PostgreSQL 15+ with pgvector, memory synthesis pipeline; (3) UI (ui/frontend/) with xterm.js terminal, Monaco editor, Cytoscape DAG visualization, responsive HTML/CSS; (4) Workspace (workspace/) with YAML prompts, JSONL history, per-project state. Memory system: ephemeral session → mem_mrr_* raw capture (commits, prompts) → mem_ai_events LLM digests+embeddings → mem_ai_work_items/project_facts/features. Work item pipeline: 4-stage approval (PM requirements → Architect plan → Developer code → Reviewer testing) with loop-back on rejection. Tag system: unified planner_tags table with user/AI dual status (tag_id_user, tag_id_ai), category-based hierarchy (bug/feature/task), and nested parents via parent_id FK.', 'low_level': 'Frontend: renderEntities() module handles tag/work_item display; drag-and-drop via _loadTagLinkedWorkItems() with visual feedback on hover; tag cache in memory on project open (_pickerPopulateCats()). History view singleton pattern to preserve state across tab switches. Work item drawer with collapsible sections (acceptance criteria, action items, linked events, context tags). Backend: route_memory.py /memory endpoint orchestrates 4-layer synthesis (raw JSONL → tagged events → AI digests → work items); route_work_items.py manages CRUD+tagging with event back-propagation; mem_embeddings.py runs async Haiku batch processing with UUID validation. Database: mem_ai_work_items stores AI-generated definitions (name_ai, category_ai, summary_ai) plus user edits (status_user, tag_id_user); mem_ai_events with event_type filter (prompt_batch/session_summary only); mem_mrr_prompts/commits mirror tables with back-propagated event_id; planner_tags unified tag table with JSONB deliveries. Migrations: m037-m046 handle column reordering, deprecation (importance, embedding in commits), and schema cleanup.', 'patterns_used': ['Load-once-on-access caching (tags, workflows, runs cached in memory; DB updated only on explicit save)', 'Provider contract pattern (every LLM provider: send(prompt, system)→str, stream()→Generator)', 'Event-driven memory synthesis (prompts/commits→events→work_items→facts via async jobs)', 'DAG workflow executor (asyncio.gather with loop-back semantics; max_iterations cap; Cytoscape visualization)', 'Dual-status entity tracking (status_ai for system-suggested, status_user for user-confirmed)', 'Back-propagation linking (events linked to prompts/commits via source_id; event_id back-propagated to mirror tables)', 'Smart chunking (per-class/function Python/JS/TS; per-section Markdown; per-file diffs)', 'Composite indexing for performance (project_id+category_ai+name_ai UNIQUE; project_id+seq_num WHERE seq_num IS NOT NULL)', 'Soft-delete with timestamp tracking (merged_into for work items; redeemed_at for tokens; valid_until for facts)', 'UUID validation in queries (coerce string literals to UUID before SQL bind to prevent psycopg2 errors)', 'Batch processing with transactional safety (explicit BEGIN/COMMIT/ROLLBACK for concurrent requests)', 'Fallback configuration (agent roles fallback to _FALLBACK_PROMPTS; code_dir from project.yaml else settings.code_dir)']}
 - **frontend_sticky_header_pattern**: CSS position:sticky;top:0;z-index:1 on table headers for work_items panel
 - **frontend_ui_pattern**: inline event handlers with event.stopPropagation(), CSS opacity/color hover states via onmouseenter/onmouseleave, escaped string interpolation in onclick via _esc()
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
@@ -53,6 +66,7 @@ aicli is a shared AI memory platform that combines a Python FastAPI backend with
 - **memory_sync_workflow**: /memory endpoint executes embedding pipeline refresh to sync prompts with work_items and detect new tags
 - **memory_synthesis_output_format**: 5 files (CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md) with LLM response summarization instead of full output
 - **memory_system_update_status**: updated_with_latest_context_and_session_tags
+- **mng_deliveries_planned**: lookup table for delivery categories: code, document, architecture, ppt with subtypes; not yet implemented
 - **pending_feature**: tags display under work_items in shared memory context
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
@@ -80,9 +94,11 @@ Reviewer: ```json
 - **pipeline_run_status_values**: status column accepts 'running', 'ok', 'error'
 - **pipeline_run_table_schema**: mem_pipeline_runs: project_id, pipeline, source_id, status, items_in, items_out, duration_ms, error_msg (max 500 chars), finished_at, id (uuid)
 - **pipeline_run_timing_method**: time.monotonic() for duration calculation, stored as integer duration_ms
+- **pipeline_trigger_sources**: three paths: planner interface, docs module (feature-based), direct chat execution; consolidated into unified approval/execution flow
 - **planner_tag_schema_consolidation_proposed**: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
 - **planner_tags_core_columns**: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
 - **planner_tags_schema_cleanup**: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
+- **planner_tags_schema_refactored**: dropped seq_num, source, summary, design, embedding, extra; merged source into creator (username for users, 'ai' default); added updater and deliveries (JSONB); reordered with project_id after client_id, timestamps last
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
 - **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
@@ -91,7 +107,9 @@ Reviewer: ```json
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:background_tasks:pipeline_logging**: depends_on
 - **rel:commit_processing:exec_llm_flag**: replaces
+- **rel:dashboard_module:pipeline_controller**: implements
 - **rel:db_migrations:planner_tags**: implements
+- **rel:docs_module:pipeline_trigger**: depends_on
 - **rel:embedding_integration:prompt_work_item_trigger**: implements
 - **rel:embedding_vectors:semantic_search**: enables
 - **rel:event_filtering:noise_reduction**: implements
@@ -110,6 +128,7 @@ Reviewer: ```json
 - **rel:memory_endpoint:tag_detection**: implements
 - **rel:memory_system:session_tags**: implements
 - **rel:pipeline_run:mem_pipeline_runs**: implements
+- **rel:planner_tags:mng_deliveries**: depends_on
 - **rel:planner_tags:vector_embedding**: replaces
 - **rel:prompt_loader:mng_system_roles**: replaces
 - **rel:route_memory:prompt_loader**: depends_on
@@ -232,12 +251,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; mem_session.py missing; pending schema documentation update and restoration investigation
+- Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline uses _load_role() with provider/model overrides
+- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
+- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation
 - History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
 - Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB
-- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added
-- Agent roles enhancement (2026-04-14) — 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides; memory mirror refactor applied
 
 ## Active Features / Bugs / Tasks
 
@@ -252,27 +271,27 @@ Reviewer: ```json
 ### Doc_type
 
 - **high-level-design** `[open]`
-- **architecture-decision** `[open]`
-- **customer-meeting** `[open]`
-- **Test** `[open]`
-- **retrospective** `[open]`
 - **low-level-design** `[open]`
+- **retrospective** `[open]`
+- **Test** `[open]`
+- **customer-meeting** `[open]`
+- **architecture-decision** `[open]`
 
 ### Feature
 
 - **pagination**
-- **shared-memory** `[open]`
-- **billing** `[open]`
-- **embeddings** `[open]`
-- **tagging** `[open]`
-- **mcp** `[open]`
+- **auth** `[open]`
 - **workflow-runner** `[open]`
 - **test-picker-feature** `[open]`
-- **UI** `[open]`
-- **auth** `[open]`
 - **dropbox** `[open]`
+- **billing** `[open]`
 - **entity-routing** `[open]`
+- **UI** `[open]`
+- **shared-memory** `[open]`
+- **mcp** `[open]`
 - **graph-workflow** `[open]`
+- **tagging** `[open]`
+- **embeddings** `[open]`
 
 ### Phase
 
@@ -282,131 +301,210 @@ Reviewer: ```json
 
 ### Task
 
-- **memory** `[open]`
 - **implement-projects-tab** `[open]`
+- **memory** `[open]`
 
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `memory_item` — 2026-04-15
+### `prompt_batch: test-schema-001` — 2026-04-15
 
-# Development Session Summary
+No substantive conversation provided - only a test prompt was submitted without detailed discussion or decisions.
 
-**Session Focus**: Implementing dashboard visibility for workflow management and flexible pipeline triggering from multiple sources.
+### `commit` — 2026-04-15
 
-**Key Implementations**:
-- **Dashboard Module**: New dedicated tab added to provide real-time visibility of all system flows and work items (addresses point 4 completeness)
-- **Multi-Entry Pipeline System**: Pipeline execution now supports three trigger paths:
-  1. Planner interface
-  2. Docs module (feature-based triggers)
-  3. Direct Chat execution
-- **Workflow Enhancement**: Extended existing approval-based workflow to route through new dashboard while maintaining feature approval as pipeline foundation (point 5)
-- **Prompt Management**: Confirmed existing separate prompt files architecture with enhanced visibility through dashboard
+Commit: chore: clean up stale agent context and system documentation files after
+Hash: 8d611dcd
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
 
-**Files Modified**: 
-- Dashboard module created with routing logic
-- Pipeline controller updated to handle three execution paths
-- Workflow orchestrator modified for multi-path approval routing
+### `commit` — 2026-04-15
 
-**Technical Decisions**:
-- Dashboard as independent tab prevents navigation friction
-- Approval workflow remains single source of truth for pipeline execution
-- Three trigger paths consolidate into unified approval/execution flow
+diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
+index 5ee4b7b..9374030 100644
+--- a/backend/core/db_schema.sql
++++ b/backend/core/db_schema.sql
+@@ -481,41 +481,42 @@ CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id,
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL;
+ 
+ -- mem_ai_work_items: AI-detected actionable items (tasks, bugs, features)
+--- Dual-status design:
+---   status_user = user-managed lifecycle (active|in_progress|paused|done)
+---   status_ai   = AI-suggested status (auto-updated by promote_work_item())
++-- status_user = user-managed lifecycle (active|in_progress|paused|done)
+ -- tag_id_user = user-confirmed link to planner_tags (drag-drop in Planner UI)
+ -- tag_id_ai   = AI-suggested best-match tag (confidence > 0.70)
+ -- tags_ai     = AI-generated metadata JSONB (populated by extract_work_item_code_summary)
+--- summary_ai  = PM digest: what was done, what remains, test coverage (written by promote_work_item)
++-- summary_ai  = definition + progress digest (written by promote_work_item)
++-- score_ai    = 0=not started … 5=done (written by promote_work_item)
+ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
+-    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+-    client_id           INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+-    project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+-    category_ai         TEXT        NOT NULL,                           -- 'feature'|'bug'|'task'
+-    name_ai             TEXT        NOT NULL,
+-    acceptance_criteria_ai TEXT     NOT NULL DEFAULT '',
+-    action_items_ai     TEXT        NOT NULL DEFAULT '',
+-    summary_ai          TEXT        NOT NULL DEFAULT '',
+-    score_ai            SMALLINT    NOT NULL DEFAULT 0,                  -- 0=not started … 5=done
+-    tags                JSONB       NOT NULL DEFAULT '{}',
+-    tags_ai             JSONB       NOT NULL DEFAULT '{}',
+-    tag_id_ai           UUID        REFERENCES planner_tags(id),
+-    tag_id_user         UUID        REFERENCES planner_tags(id),
+-    merged_into         UUID        REFERENCES mem_ai_work_items(id) ON DELETE SET NULL,
+-    status_user         VARCHAR(20) NOT NULL DEFAULT 'active',
+-    seq_num             INT,
+-    start_date          TIMESTAMPTZ,
+-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+-    embedding           VECTOR(1536),
+-    UNIQUE(project_id, category_ai, name_ai)
++    id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
++    client_id              INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
++    project_id             INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
++    seq_num                INT,
++    category_ai            TEXT        NOT NULL,                        -- 'feature'|'bug'|'task'
++    name_ai                TEXT        NOT NULL,
++    summary_ai             TEXT        NOT NULL DEFAULT '',
++    acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
++    action_items_ai        TEXT        NOT NULL DEFAULT '',
++    score_ai               SMALLINT    NOT NULL DEFAULT 0,
++    tags                   JSONB       NOT NULL DEFAULT '{}',
++    tags_ai                JSONB       NOT NULL DEFAULT '{}',
++    tag_id_ai              UUID        REFERENCES planner_tags(id),
++    tag_id_user            UUID        REFERENCES planner_tags(id),
++    status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
++    merged_into            UUID,
++    start_date             TIMESTAMPTZ,
++    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++    embedding              VECTOR(1536),
++    UNIQUE(project_id, category_ai, name_ai),
++    CONSTRAINT fk_wi_merged_into FOREIGN KEY (merged_into)
++        REFERENCES mem_ai_work_items(id) ON DELETE SET NULL
+ );
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id);
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai);
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
+-CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_sai   ON mem_ai_work_items(status_ai);
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
++CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
+ 
+ -- mem_ai_project_facts: durable facts extracted from project history
+ -- valid_until NULL = currently valid fact; set to NOW() when superseded.
 
-**Status**: Implementation reported complete with multi-source triggering functional and dashboard visibility operational.
 
-### `prompt_batch: d1b0a12a-44f7-406c-af6c-d7fc17c83e15` — 2026-04-15
+### `prompt_batch: 484c8545-5032-4d6f-a27d-b31f285d6993` — 2026-04-15
 
-# Development Session Summary
+Compared Claude Agent SDK (Anthropic's official multi-tool agent framework) with the user's existing aicli multi-agent pipeline (PM → Developer → Tester → Reviewer with feedback loops). Determined aicli architecture is better suited for the use case because it natively supports iterative loop-back (reviewer rejections trigger developer re-work), whereas Claude Agent SDK lacks native orchestration for custom DAG workflows.
 
-**Session Focus**: Implementing dashboard visibility for workflow management and flexible pipeline triggering from multiple sources.
+### `commit` — 2026-04-15
 
-**Key Implementations**:
-- **Dashboard Module**: New dedicated tab added to provide real-time visibility of all system flows and work items (addresses point 4 completeness)
-- **Multi-Entry Pipeline System**: Pipeline execution now supports three trigger paths:
-  1. Planner interface
-  2. Docs module (feature-based triggers)
-  3. Direct Chat execution
-- **Workflow Enhancement**: Extended existing approval-based workflow to route through new dashboard while maintaining feature approval as pipeline foundation (point 5)
-- **Prompt Management**: Confirmed existing separate prompt files architecture with enhanced visibility through dashboard
+diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
+index d3e2aed..1415bb3 100644
+--- a/backend/core/db_migrations.py
++++ b/backend/core/db_migrations.py
+@@ -1013,6 +1013,71 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
+     )
+ 
+ 
++def m046_reorder_work_items(conn) -> None:
++    """Reorder columns in mem_ai_work_items for logical grouping.
++
++    New order: id, client_id, project_id, seq_num, category_ai, name_ai,
++      summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
++      tags, tags_ai, tag_id_ai, tag_id_user, status_user,
++      merged_into, start_date, created_at, updated_at, embedding
++
++    (desc_ai was already dropped in m044)
++    """
++    with conn.cursor() as cur:
++        cur.execute("ALTER TABLE mem_ai_work_items RENAME TO _bak_046_mem_ai_work_items")
++        cur.execute("""
++            CREATE TABLE mem_ai_work_items (
++                id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
++                client_id              INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
++                project_id             INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
++                seq_num                INT,
++                category_ai            TEXT        NOT NULL,
++                name_ai                TEXT        NOT NULL,
++                summary_ai             TEXT        NOT NULL DEFAULT '',
++                acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
++                action_items_ai        TEXT        NOT NULL DEFAULT '',
++                score_ai               SMALLINT    NOT NULL DEFAULT 0,
++                tags                   JSONB       NOT NULL DEFAULT '{}',
++                tags_ai                JSONB       NOT NULL DEFAULT '{}',
++                tag_id_ai              UUID        REFERENCES planner_tags(id),
++                tag_id_user            UUID        REFERENCES planner_tags(id),
++                status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
++                merged_into            UUID,
++                start_date             TIMESTAMPTZ,
++                created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++                updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++                embedding              VECTOR(1536),
++                UNIQUE(project_id, category_ai, name_ai)
++            )
++        """)
++        cur.execute("""
++            INSERT INTO mem_ai_work_items
++              (id, client_id, project_id, seq_num, category_ai, name_ai,
++               summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
++               tags, tags_ai, tag_id_ai, tag_id_user, status_user,
++               merged_into, start_date, created_at, updated_at, embedding)
++            SELECT
++              id, client_id, project_id, seq_num, category_ai, name_ai,
++              summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
++              tags, tags_ai, tag_id_ai, tag_id_user, status_user,
++              merged_into, start_date, created_at, updated_at, embedding
++            FROM _bak_046_mem_ai_work_items
++        """)
++        # Add self-referential FK after data is fully loaded
++        cur.execute("""
++            ALTER TABLE mem_ai_work_items
++            ADD CONSTRAINT fk_wi_merged_into
++            FOREIGN KEY (merged_into) REFERENCES mem_ai_work_items(id)
++            ON DELETE SET NULL NOT VALID
++        """)
++        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id)")
++        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai)")
++        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user)")
++        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL")
++        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
++    conn.commit()
++
++
+ def m045_add_score_ai(conn) -> None:
+     """Add score_ai (0-5) to mem_ai_work_items.
+ 
+@@ -1101,4 +1166,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
+     ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
+     ("m044_drop_desc_ai", m044_drop_desc_ai),
+     ("m045_add_score_ai", m045_add_score_ai),
++    ("m046_reorder_work_items", m046_reorder_work_items),
+ ]
 
-**Files Modified**: 
-- Dashboard module created with routing logic
-- Pipeline controller updated to handle three execution paths
-- Workflow orchestrator modified for multi-path approval routing
 
-**Technical Decisions**:
-- Dashboard as independent tab prevents navigation friction
-- Approval workflow remains single source of truth for pipeline execution
-- Three trigger paths consolidate into unified approval/execution flow
+### `commit` — 2026-04-15
 
-**Status**: Implementation reported complete with multi-source triggering functional and dashboard visibility operational.
-
-### `memory_item` — 2026-04-15
-
-# Development Session Summary (2026-04-06)
-
-**Issues Identified:**
-- History UI only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing
-- PostgreSQL `ON CONFLICT DO UPDATE` error at `route_history` line 470 — duplicate constrained values in batch upsert
-- `aiCli_memory` database schema out of sync with current codebase; missing tables and outdated structure
-
-**Code Changes:**
-- Fixed JSONB merge operator (`||`) syntax in batch upsert query (line 466)
-- Applied three fixes to `route_history` conflict handling (details deferred pending DB testing)
-- Verified `BACKEND_URL` definition order and all four background hook calls present
-
-**Action Items:**
-- Update `aiCli_memory` schema documentation to reflect current tables
-- Investigate missing `mem_session.py` session management layer and determine if restoration needed
-- Test history sync endpoint once PostgreSQL is operational: `curl -X POST "http://localhost:8000/history/commits/sync?project=aicli"`
-
-### `prompt_batch: b9e39fae-45bf-482c-a3e9-fa65ed840b6c` — 2026-04-15
-
-# Development Session Summary (2026-04-06)
-
-**Issues Identified:**
-- History UI only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing
-- PostgreSQL `ON CONFLICT DO UPDATE` error at `route_history` line 470 — duplicate constrained values in batch upsert
-- `aiCli_memory` database schema out of sync with current codebase; missing tables and outdated structure
-
-**Code Changes:**
-- Fixed JSONB merge operator (`||`) syntax in batch upsert query (line 466)
-- Applied three fixes to `route_history` conflict handling (details deferred pending DB testing)
-- Verified `BACKEND_URL` definition order and all four background hook calls present
-
-**Action Items:**
-- Update `aiCli_memory` schema documentation to reflect current tables
-- Investigate missing `mem_session.py` session management layer and determine if restoration needed
-- Test history sync endpoint once PostgreSQL is operational: `curl -X POST "http://localhost:8000/history/commits/sync?project=aicli"`
-
-### `prompt_batch: dca94c94-c618-4866-89ce-7a3178adc777` — 2026-04-15
-
-User requested documentation of the aicli memory pipeline flow (mirror tables → project_fact → work_items) with trigger conditions, LLM prompts, column sources, and importance ratings. Also identified and fixed bugs in diff_details column handling and clarified that commit tag extraction should flow from pr_tags_map → linked commits → file analysis for code context.
-
-### `memory_item` — 2026-04-15
-
-# Development Session Summary (2026-03-18)
-
-## Issues Fixed
-
-• **Fixed AttributeError: '_Database' object has no attribute 'ensure_project_schema'** — Removed stale call `db.ensure_project_schema(settings.active_project)` from main.py that referenced non-existent method (correct method is `_ensure_shared_schema`)
-
-• **Fixed undefined `code_dir` variable in memory endpoint** — Line 1120 of CLAUDE.md path generation had unsubstituted `{code_dir}` placeholder, causing NameError when memory endpoint was called
-
-• **Improved backend startup resilience** — Added retry logic in `_continueToApp()` to handle race condition where initial projects fetch returns empty list before backend fully initializes
-
-## Unresolved Issues
-
-• **Current project not displayed as active** — AiCli project appears in Recent list but not shown as currently active project on project page; status of fix unclear
-
-• **Memory mechanism tables not populated** — `memory_items` and `project_facts` tables are not being updated per specification; no investigation completed on root cause
-
-## Data Structure Clarification
-
-• **User-Client relationship confirmed** — Users are nested under clients (one client has multiple users); unclear if code changes needed to implement this structure
+Commit: chore: clean up stale system context files after claude cli session 2a6b
+Hash: 4397d0fe
+Code files (2):
+  - backend/core/db_migrations.py
+  - backend/core/db_schema.sql
+Generated/internal files: workspace/aicli/_system/.agent-context, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
+Symbols changed: m046_reorder_work_items, m045_add_score_ai
 
 ## AI Synthesis
 
-**[2026-04-14]** `agent_roles` — Auto_commit boolean column added to mng_agent_roles; 4-stage pipeline refactored to load roles from DB with fallback prompts; all pipeline stages now support provider/model overrides for flexible LLM execution. **[2026-04-14]** `schema_refactor` — Memory mirror tables (mem_mrr_*) columns reordered with project_id/event_id normalized after client_id; m037-m039 migrations applied to align schema with unified architecture. **[2026-04-13]** `tag_suggestion_ux` — AI tag suggestion feature implemented with approve/remove button handlers; simplified chip markup deployed; category inference added on tag creation; suggested_new tags rendering under investigation for visibility. **[2026-04-06]** `database_sync` — aiCli_memory schema identified as out of sync with current codebase; mem_session.py missing; schema documentation update and restoration investigation deferred; history/commits/sync endpoint ready for testing. **[2026-04-06]** `history_rendering` — History UI identified as only displaying prompts without full LLM responses; copy-to-clipboard functionality missing; PostgreSQL ON CONFLICT DO UPDATE error in route_history line 470 resolved via JSONB merge operator (||) syntax correction. **[2026-03-20]** `project_startup_fix` — Sequential await api.listProjects() implemented to prevent empty home screen race condition; edge case handling for successful list queries returning empty results applied. **[2026-03-20]** `pipeline_ui_state` — Chat panel state management and old MD version display on approval panel identified as requiring investigation for proper execution output visibility. **[2026-03-14]** `project_release` — aicli v2.2.0 released; 23 active project entities (features/bugs/tasks/phases/doc_types) tracked; shared memory platform with multi-entry pipeline triggering operational across planner, docs, and chat interfaces.
+**[2026-04-14]** `schema` — mem_ai_work_items table reorganized: removed dual-status design (status_ai), reordered columns (seq_num near id), added explicit FOREIGN KEY for merged_into, replaced index on status_ai with ivfflat embedding index for vector search performance.
+**[2026-04-14]** `pipeline` — Work item pipeline refactored to load agent roles from DB (mng_agent_roles) with fallback prompts; 4-stage PM→Architect→Developer→Reviewer pipeline now supports provider/model overrides per stage; auto_commit boolean added.
+**[2026-04-13]** `tagging` — Tag suggestion UX improved: ai_tag_suggestion column with approve/remove button handlers; simplified chip markup without category prefix in non-category mode; tooltip changed from 'No existing tag' to 'Does not exist yet'.
+**[2026-04-06]** `history-ui` — History tab rendering issue identified: only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; awaiting implementation.
+**[2026-04-06]** `database` — PostgreSQL ON CONFLICT DO UPDATE error in route history batch upsert fixed via JSONB merge operator (||) syntax correction; testing pending on operational DB.
+**[2026-04-06]** `schema-sync` — aiCli_memory database out of sync with codebase; mem_session.py missing; schema documentation update and restoration investigation in progress.
