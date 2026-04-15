@@ -29,18 +29,18 @@ from core.tags import tags_to_list, parse_tag
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.session_id, c.committed_at,
+           c.session_id, c.created_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
     WHERE c.project_id=%s
-    ORDER BY c.committed_at DESC NULLS LAST, c.created_at DESC
+    ORDER BY c.created_at DESC NULLS LAST, c.created_at DESC
     LIMIT %s
 """
 
 _SQL_UPSERT_COMMIT_FROM_LOG = """
     INSERT INTO mem_mrr_commits
-        (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
+        (project_id, commit_hash, commit_msg, session_id, created_at, tags)
     VALUES (%s, %s, %s, %s, %s, '{}')
     ON CONFLICT (commit_hash) DO UPDATE SET
         session_id = CASE
@@ -55,22 +55,22 @@ _SQL_UPDATE_COMMIT_META = (
 )
 
 # Dynamic WHERE variant: add time-window filter when session timestamps are available.
-# Base form matches by session_id only; extended form adds a committed_at range.
+# Base form matches by session_id only; extended form adds a created_at range.
 # Build dynamically in the handler; see session_commits() below.
 _SQL_SESSION_COMMITS_BASE = """
-    SELECT commit_hash, commit_msg, tags, committed_at
+    SELECT commit_hash, commit_msg, tags, created_at
           FROM mem_mrr_commits
          WHERE project_id=%s AND session_id = %s
-         ORDER BY committed_at
+         ORDER BY created_at
 """
 
 _SQL_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, committed_at
+    SELECT commit_hash, commit_msg, tags, created_at
           FROM mem_mrr_commits
          WHERE project_id=%s
            AND (session_id = %s
-            OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
-         ORDER BY committed_at
+            OR (created_at BETWEEN %s::timestamptz AND %s::timestamptz))
+         ORDER BY created_at
 """
 
 _SQL_GET_SESSION_TAGS = (
@@ -372,8 +372,8 @@ async def commits_history(
                 rows = [dict(zip(cols, r)) for r in cur.fetchall()]
                 # Normalise types for JSON
                 for r in rows:
-                    if r.get("committed_at"):
-                        r["committed_at"] = r["committed_at"].isoformat()
+                    if r.get("created_at"):
+                        r["created_at"] = r["created_at"].isoformat()
                     if isinstance(r.get("tags"), dict):
                         r["tags"] = tags_to_list(r["tags"])
                 return {"commits": rows, "project": p, "source": "db"}
@@ -399,7 +399,7 @@ async def commits_history(
                     "source": raw.get("source", "git"),
                     "session_id": raw.get("session_id"),
                     "tags": [],
-                    "committed_at": raw.get("ts"),
+                    "created_at": raw.get("ts"),
                 })
             except json.JSONDecodeError:
                 pass
@@ -413,7 +413,7 @@ async def relink_commits(project: str | None = Query(None)):
     """Re-link all commits to their closest preceding prompt in the same session.
 
     Run this once to fix commits that were linked to wrong prompts.
-    Uses committed_at timestamp so each commit links to the prompt that was
+    Uses created_at timestamp so each commit links to the prompt that was
     most recent AT THE TIME of the commit, not the most recent prompt overall.
     """
     if not db.is_available():
@@ -427,7 +427,7 @@ async def relink_commits(project: str | None = Query(None)):
             SELECT p.id FROM mem_mrr_prompts p
             WHERE p.project_id = c.project_id
               AND p.session_id = c.session_id
-              AND p.created_at <= COALESCE(c.committed_at, c.created_at)
+              AND p.created_at <= c.created_at
             ORDER BY p.created_at DESC
             LIMIT 1
         )
@@ -539,7 +539,7 @@ async def sync_commits(project: str | None = Query(None)):
 
     _SQL_BATCH_UPSERT = """
         INSERT INTO mem_mrr_commits
-            (project_id, commit_hash, commit_msg, session_id, committed_at, tags)
+            (project_id, commit_hash, commit_msg, session_id, created_at, tags)
         VALUES %s
         ON CONFLICT (commit_hash) DO UPDATE SET
             session_id = CASE
@@ -862,8 +862,8 @@ async def session_commits(
                 cols = [d[0] for d in cur.description]
                 for row in cur.fetchall():
                     r = dict(zip(cols, row))
-                    if r.get("committed_at"):
-                        r["committed_at"] = r["committed_at"].isoformat()
+                    if r.get("created_at"):
+                        r["created_at"] = r["created_at"].isoformat()
                     commits.append(r)
     else:
         # Fallback: scan commit_log.jsonl
@@ -880,7 +880,7 @@ async def session_commits(
                         commits.append({
                             "commit_hash": c.get("hash", ""),
                             "commit_msg":  c.get("message", c.get("msg", "")),
-                            "committed_at": ts,
+                            "created_at": ts,
                             "tags":   c.get("tags", []),
                             "source": c.get("source", "git"),
                         })

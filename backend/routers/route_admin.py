@@ -703,9 +703,9 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
                     cur.execute(
                         """INSERT INTO mem_mrr_commits
                                (project_id, commit_hash, commit_msg, summary, phase, feature,
-                                bug_ref, source, session_id, tags, committed_at, created_at)
+                                bug_ref, source, session_id, tags, created_at)
                             SELECT %s, commit_hash, commit_msg, summary, phase, feature,
-                                   bug_ref, source, session_id, tags, committed_at, created_at
+                                   bug_ref, source, session_id, tags, COALESCE(committed_at, created_at)
                             FROM commits WHERE project=%s
                             ON CONFLICT (commit_hash) DO NOTHING""",
                         (project_id, project),

@@ -1168,7 +1168,7 @@ async function _renderSessionCommits(msgsContainer, sessionId, project) {
     const ghBase = (data.github_repo || '').replace(/\/$/, '');
     const rows = commits.map(c => {
       const hash  = (c.commit_hash || '').slice(0, 8);
-      const date  = (c.committed_at || '').slice(0, 16).replace('T', ' ');
+      const date  = (c.created_at || '').slice(0, 16).replace('T', ' ');
       const msg   = (c.commit_msg || '').slice(0, 80);
       const hashEl = ghBase
         ? `<a href="${ghBase}/commit/${_esc(c.commit_hash)}" target="_blank"

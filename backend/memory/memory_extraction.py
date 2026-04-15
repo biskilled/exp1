@@ -30,10 +30,10 @@ _SQL_GET_WORK_ITEM_NAME = """
 """
 
 _SQL_GET_LINKED_COMMITS = """
-    SELECT commit_hash, commit_msg, summary, tags, committed_at
+    SELECT commit_hash, commit_msg, summary, tags, created_at
     FROM mem_mrr_commits
     WHERE project_id=%s AND tags @> jsonb_build_object('work-item', %s)
-    ORDER BY committed_at
+    ORDER BY created_at
 """
 
 _SQL_AGGREGATE_CODE = """
@@ -181,8 +181,8 @@ class MemoryExtraction:
                     cols = [d[0] for d in cur.description]
                     for r in cur.fetchall():
                         row_d = dict(zip(cols, r))
-                        if row_d.get("committed_at"):
-                            row_d["committed_at"] = row_d["committed_at"].isoformat()
+                        if row_d.get("created_at"):
+                            row_d["created_at"] = row_d["created_at"].isoformat()
                         commits.append(row_d)
         except Exception as e:
             log.warning(f"extract_work_item_code_summary: commit fetch failed: {e}")
@@ -201,7 +201,7 @@ class MemoryExtraction:
         )
 
         commit_lines = "\n".join(
-            f"- [{c.get('committed_at','')[:10]}] {c.get('commit_msg','')}"
+            f"- [{c.get('created_at','')[:10]}] {c.get('commit_msg','')}"
             + (f" | files: {', '.join(list((c.get('tags') or {}).get('files', {}).keys())[:5])}" if (c.get('tags') or {}).get('files') else "")
             for c in commits
         )

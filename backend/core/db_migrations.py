@@ -1609,6 +1609,784 @@ def m051_schema_refactor_user_id_updated_at(conn) -> None:
     )
 
 
+def m052_column_reorder(conn) -> None:  # noqa: C901
+    """Recreate 18 tables with consistent column ordering.
+
+    Rules applied:
+      id → client_id → project_id → user_id → [business cols]
+      → created_at → updated_at → embedding (embedding always last)
+
+    Additional changes:
+      - mem_mrr_commits: remove committed_at (git timestamp moved into created_at)
+      - planner_tags.user_id: VARCHAR(36) → INT
+      - mng_users: id becomes first column (was 14th after m051)
+
+    Pattern: drop external FKs → rename → CREATE in dep order →
+             copy data → sequences → self-FKs → indexes → drop backups → commit
+    """
+    RECREATE = [
+        "mng_clients", "mng_users", "mng_usage_logs", "mng_transactions",
+        "mng_user_projects", "mng_user_api_keys", "mng_session_tags", "mng_agent_roles",
+        "mem_mrr_prompts", "mem_mrr_commits", "mem_mrr_commits_code",
+        "mem_mrr_items", "mem_mrr_messages",
+        "mem_ai_events", "mem_ai_work_items", "mem_ai_project_facts",
+        "mem_pipeline_runs", "planner_tags",
+    ]
+
+    with conn.cursor() as cur:
+        # ── Phase 1: Drop external FK constraints pointing TO our tables ─────────
+        # (from tables that are NOT in RECREATE — we'll recreate them at the end)
+        cur.execute("""
+            SELECT c.conname, c.conrelid::regclass::text AS src_tbl,
+                   pg_get_constraintdef(c.oid) AS condef
+            FROM pg_constraint c
+            WHERE c.contype = 'f'
+              AND c.confrelid::regclass::text = ANY(%s)
+              AND c.conrelid::regclass::text != ALL(%s)
+        """, (RECREATE, RECREATE))
+        ext_fks = cur.fetchall()  # [(conname, src_tbl, condef), ...]
+        for conname, src_tbl, _condef in ext_fks:
+            cur.execute(f'ALTER TABLE {src_tbl} DROP CONSTRAINT IF EXISTS "{conname}"')
+
+        # ── Phase 2: Rename all 18 tables to _bak_052_X ──────────────────────────
+        for tbl in RECREATE:
+            cur.execute(f"ALTER TABLE {tbl} RENAME TO _bak_052_{tbl}")
+
+        # ── Phase 3: Create new tables in FK-dependency order ────────────────────
+        # Tables may FK to mng_projects / mng_tags_categories (not in RECREATE, still exist)
+
+        # 1. mng_clients
+        cur.execute("""
+            CREATE TABLE mng_clients (
+                id                SERIAL        PRIMARY KEY,
+                slug              VARCHAR(50)   NOT NULL UNIQUE,
+                name              VARCHAR(255)  NOT NULL DEFAULT '',
+                plan              VARCHAR(20)   NOT NULL DEFAULT 'free',
+                pricing_config    JSONB,
+                provider_costs    JSONB,
+                provider_balances JSONB,
+                server_api_keys   JSONB,
+                created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 2. mng_users  (FK → mng_clients)
+        cur.execute("""
+            CREATE TABLE mng_users (
+                id                  SERIAL        PRIMARY KEY,
+                uuid_id             VARCHAR(36)   NOT NULL UNIQUE,
+                client_id           INT           NOT NULL DEFAULT 1
+                                    REFERENCES mng_clients(id),
+                email               VARCHAR(255)  NOT NULL UNIQUE,
+                password_hash       TEXT          NOT NULL,
+                is_admin            BOOLEAN       NOT NULL DEFAULT false,
+                is_active           BOOLEAN       NOT NULL DEFAULT true,
+                role                VARCHAR(20)   NOT NULL DEFAULT 'free',
+                last_login          TIMESTAMPTZ,
+                balance_added_usd   NUMERIC       NOT NULL DEFAULT 0,
+                balance_used_usd    NUMERIC       NOT NULL DEFAULT 0,
+                coupons_used        TEXT[]        NOT NULL DEFAULT '{}',
+                stripe_customer_id  VARCHAR(100)  NOT NULL DEFAULT '',
+                created_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                updated_at          TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 3. mng_session_tags  (FK → mng_clients, mng_projects)
+        cur.execute("""
+            CREATE TABLE mng_session_tags (
+                id         SERIAL       PRIMARY KEY,
+                client_id  INT          NOT NULL DEFAULT 1
+                           REFERENCES mng_clients(id),
+                project_id INT          NOT NULL UNIQUE
+                           REFERENCES mng_projects(id),
+                phase      VARCHAR(20),
+                feature    VARCHAR(255),
+                bug_ref    VARCHAR(255),
+                extra      JSONB        NOT NULL DEFAULT '{}',
+                updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 4. mng_agent_roles  (FK → mng_clients, mng_projects)
+        cur.execute("""
+            CREATE TABLE mng_agent_roles (
+                id             SERIAL        PRIMARY KEY,
+                client_id      INT           NOT NULL DEFAULT 1
+                               REFERENCES mng_clients(id),
+                project_id     INT           NOT NULL
+                               REFERENCES mng_projects(id),
+                name           TEXT          NOT NULL,
+                description    TEXT          NOT NULL DEFAULT '',
+                system_prompt  TEXT          NOT NULL DEFAULT '',
+                provider       TEXT          NOT NULL DEFAULT 'claude',
+                model          TEXT          NOT NULL DEFAULT '',
+                role_type      VARCHAR(50)   NOT NULL DEFAULT 'agent',
+                tags           TEXT[]        NOT NULL DEFAULT '{}',
+                is_active      BOOLEAN       NOT NULL DEFAULT true,
+                auto_commit    BOOLEAN       NOT NULL DEFAULT false,
+                react          BOOLEAN       NOT NULL DEFAULT true,
+                max_iterations INT           NOT NULL DEFAULT 10,
+                inputs         JSONB                  DEFAULT '[]',
+                outputs        JSONB                  DEFAULT '[]',
+                tools          JSONB                  DEFAULT '[]',
+                output_schema  JSONB,
+                created_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                updated_at     TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+                UNIQUE (project_id, name)
+            )
+        """)
+
+        # 5. mng_usage_logs  (FK → mng_users)
+        cur.execute("""
+            CREATE TABLE mng_usage_logs (
+                id           SERIAL        PRIMARY KEY,
+                user_id      INT           REFERENCES mng_users(id) ON DELETE SET NULL,
+                provider     VARCHAR(50),
+                model        VARCHAR(100),
+                input_tokens  INT          NOT NULL DEFAULT 0,
+                output_tokens INT          NOT NULL DEFAULT 0,
+                cost_usd     NUMERIC       NOT NULL DEFAULT 0,
+                charged_usd  NUMERIC       NOT NULL DEFAULT 0,
+                source       VARCHAR(50)   NOT NULL DEFAULT 'request',
+                metadata     JSONB,
+                period_start TIMESTAMPTZ,
+                period_end   TIMESTAMPTZ,
+                created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 6. mng_transactions  (FK → mng_users)
+        cur.execute("""
+            CREATE TABLE mng_transactions (
+                id            SERIAL       PRIMARY KEY,
+                user_id       INT          REFERENCES mng_users(id) ON DELETE SET NULL,
+                type          VARCHAR(50)  NOT NULL,
+                amount_usd    NUMERIC      NOT NULL DEFAULT 0,
+                base_cost_usd NUMERIC,
+                description   TEXT         NOT NULL DEFAULT '',
+                ref           VARCHAR(255) NOT NULL DEFAULT '',
+                created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 7. mng_user_projects  (FK → mng_users, mng_projects; composite PK)
+        cur.execute("""
+            CREATE TABLE mng_user_projects (
+                user_id    INT          NOT NULL REFERENCES mng_users(id)    ON DELETE CASCADE,
+                project_id INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                role       VARCHAR(20)  NOT NULL DEFAULT 'member',
+                joined_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (user_id, project_id)
+            )
+        """)
+
+        # 8. mng_user_api_keys  (FK → mng_users)
+        cur.execute("""
+            CREATE TABLE mng_user_api_keys (
+                id         SERIAL       PRIMARY KEY,
+                user_id    INT          NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
+                provider   VARCHAR(50)  NOT NULL,
+                key_enc    TEXT         NOT NULL,
+                updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, provider)
+            )
+        """)
+
+        # 9. mem_mrr_prompts  (FK → mng_clients, mng_projects, mng_users)
+        cur.execute("""
+            CREATE TABLE mem_mrr_prompts (
+                id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id  INT          NOT NULL DEFAULT 1
+                           REFERENCES mng_clients(id),
+                project_id INT          NOT NULL
+                           REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id    INT          REFERENCES mng_users(id) ON DELETE SET NULL,
+                event_id   UUID,
+                session_id TEXT,
+                source_id  TEXT,
+                prompt     TEXT         NOT NULL DEFAULT '',
+                response   TEXT         NOT NULL DEFAULT '',
+                tags       JSONB        NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 10. mem_mrr_commits  (FK → mng_clients, mng_projects, mng_users, mem_mrr_prompts)
+        #     committed_at REMOVED — git timestamp is stored in created_at
+        cur.execute("""
+            CREATE TABLE mem_mrr_commits (
+                commit_hash       VARCHAR(64)  PRIMARY KEY,
+                commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (left(commit_hash, 8)) STORED,
+                client_id         INT          NOT NULL DEFAULT 1
+                                  REFERENCES mng_clients(id),
+                project_id        INT          NOT NULL
+                                  REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id           INT          REFERENCES mng_users(id) ON DELETE SET NULL,
+                commit_msg        TEXT         NOT NULL DEFAULT '',
+                summary           TEXT         NOT NULL DEFAULT '',
+                diff_summary      TEXT         NOT NULL DEFAULT '',
+                tags              JSONB        NOT NULL DEFAULT '{}',
+                prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
+                event_id          UUID,
+                session_id        VARCHAR(255),
+                author            TEXT         NOT NULL DEFAULT '',
+                author_email      TEXT         NOT NULL DEFAULT '',
+                llm               TEXT,
+                created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 11. mem_mrr_commits_code  (FK → mng_clients, mng_projects, mng_users, mem_mrr_commits)
+        cur.execute("""
+            CREATE TABLE mem_mrr_commits_code (
+                id            UUID  PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id     INT   NOT NULL DEFAULT 1
+                              REFERENCES mng_clients(id),
+                project_id    INT   NOT NULL
+                              REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id       INT   REFERENCES mng_users(id) ON DELETE SET NULL,
+                commit_hash   VARCHAR(64) NOT NULL
+                              REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
+                file_path     TEXT  NOT NULL,
+                file_ext      TEXT  NOT NULL DEFAULT '',
+                file_language TEXT  NOT NULL DEFAULT '',
+                file_change   TEXT  NOT NULL CHECK (file_change IN ('added','modified','deleted','renamed')),
+                symbol_type   TEXT  NOT NULL CHECK (symbol_type IN ('class','method','function','import')),
+                class_name    TEXT,
+                method_name   TEXT,
+                full_symbol   TEXT  GENERATED ALWAYS AS (
+                    CASE WHEN class_name IS NOT NULL AND method_name IS NOT NULL
+                         THEN class_name || '.' || method_name
+                         WHEN class_name IS NOT NULL THEN class_name
+                         ELSE method_name END
+                ) STORED,
+                symbol_change TEXT  NOT NULL CHECK (symbol_change IN ('added','modified','deleted')),
+                rows_added    INT   NOT NULL DEFAULT 0,
+                rows_removed  INT   NOT NULL DEFAULT 0,
+                diff_snippet  TEXT,
+                llm_summary   TEXT,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 12. mem_mrr_items  (FK → mng_clients, mng_projects, mng_users)
+        cur.execute("""
+            CREATE TABLE mem_mrr_items (
+                id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id  INT         NOT NULL DEFAULT 1
+                           REFERENCES mng_clients(id),
+                project_id INT         NOT NULL
+                           REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id    INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+                item_type  TEXT        NOT NULL,
+                title      TEXT,
+                meeting_at TIMESTAMPTZ,
+                attendees  TEXT[],
+                raw_text   TEXT        NOT NULL,
+                summary    TEXT,
+                tags       JSONB       NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 13. mem_mrr_messages  (FK → mng_clients, mng_projects, mng_users)
+        cur.execute("""
+            CREATE TABLE mem_mrr_messages (
+                id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id  INT         NOT NULL DEFAULT 1
+                           REFERENCES mng_clients(id),
+                project_id INT         NOT NULL
+                           REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id    INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+                platform   TEXT        NOT NULL,
+                channel    TEXT,
+                thread_ref TEXT,
+                messages   JSONB       NOT NULL,
+                date_range TSTZRANGE,
+                tags       JSONB       NOT NULL DEFAULT '{}',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # 14. mem_ai_events  (FK → mng_clients, mng_projects)
+        #     event_system moved to after event_type
+        cur.execute("""
+            CREATE TABLE mem_ai_events (
+                id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id    INT         NOT NULL DEFAULT 1
+                             REFERENCES mng_clients(id),
+                project_id   INT         NOT NULL
+                             REFERENCES mng_projects(id) ON DELETE CASCADE,
+                event_type   TEXT        NOT NULL,
+                event_system BOOLEAN     NOT NULL DEFAULT false,
+                event_cnt    INT         NOT NULL DEFAULT 0,
+                source_id    TEXT        NOT NULL,
+                work_item_id UUID,
+                session_id   TEXT,
+                chunk        INT         NOT NULL DEFAULT 0,
+                chunk_type   TEXT        NOT NULL DEFAULT 'full',
+                content      TEXT        NOT NULL DEFAULT '',
+                summary      TEXT,
+                action_items TEXT        NOT NULL DEFAULT '',
+                tags         JSONB       NOT NULL DEFAULT '{}',
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ,
+                embedding    VECTOR(1536),
+                UNIQUE (project_id, event_type, source_id, chunk)
+            )
+        """)
+
+        # 15. planner_tags  (FK → mng_clients, mng_projects, mng_users, mng_tags_categories)
+        #     user_id: VARCHAR(36) → INT
+        #     NO self-FKs yet (added after copy)
+        cur.execute("""
+            CREATE TABLE planner_tags (
+                id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id            INT         NOT NULL DEFAULT 1
+                                     REFERENCES mng_clients(id),
+                project_id           INT         NOT NULL
+                                     REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id              INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+                name                 TEXT        NOT NULL,
+                category_id          INT         REFERENCES mng_tags_categories(id),
+                parent_id            UUID,
+                merged_into          UUID,
+                description          TEXT        NOT NULL DEFAULT '',
+                requirements         TEXT        NOT NULL DEFAULT '',
+                acceptance_criteria  TEXT        NOT NULL DEFAULT '',
+                action_items         TEXT        NOT NULL DEFAULT '',
+                status               TEXT        NOT NULL DEFAULT 'open',
+                priority             SMALLINT    NOT NULL DEFAULT 3,
+                due_date             DATE,
+                requester            TEXT,
+                creator              TEXT        NOT NULL DEFAULT 'user',
+                updater              TEXT        NOT NULL DEFAULT 'user',
+                deliveries           JSONB       NOT NULL DEFAULT '[]',
+                created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (project_id, name, category_id)
+            )
+        """)
+
+        # 16. mem_ai_work_items  (FK → mng_clients, mng_projects, planner_tags)
+        #     quality_stage/issues/dedup_status moved after status_user
+        #     NO self-FK (merged_into) yet — added after copy
+        cur.execute("""
+            CREATE TABLE mem_ai_work_items (
+                id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id              INT         NOT NULL DEFAULT 1
+                                       REFERENCES mng_clients(id),
+                project_id             INT         NOT NULL
+                                       REFERENCES mng_projects(id) ON DELETE CASCADE,
+                seq_num                INT,
+                category_ai            TEXT        NOT NULL,
+                name_ai                TEXT        NOT NULL,
+                summary_ai             TEXT        NOT NULL DEFAULT '',
+                acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
+                action_items_ai        TEXT        NOT NULL DEFAULT '',
+                score_ai               SMALLINT    NOT NULL DEFAULT 0,
+                tags                   JSONB       NOT NULL DEFAULT '{}',
+                tags_ai                JSONB       NOT NULL DEFAULT '{}',
+                tag_id_ai              UUID        REFERENCES planner_tags(id),
+                tag_id_user            UUID        REFERENCES planner_tags(id),
+                status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
+                quality_stage          VARCHAR(20) NOT NULL DEFAULT 'staging',
+                quality_issues         JSONB       NOT NULL DEFAULT '{}',
+                dedup_status           VARCHAR(20) NOT NULL DEFAULT 'new',
+                merged_into            UUID,
+                start_date             TIMESTAMPTZ,
+                created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                embedding              VECTOR(1536),
+                UNIQUE (project_id, category_ai, name_ai)
+            )
+        """)
+
+        # 17. mem_ai_project_facts  (FK → mng_clients, mng_projects)
+        #     project_id moved after client_id; embedding moved to end
+        cur.execute("""
+            CREATE TABLE mem_ai_project_facts (
+                id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id        INT         NOT NULL DEFAULT 1
+                                 REFERENCES mng_clients(id),
+                project_id       INT         NOT NULL
+                                 REFERENCES mng_projects(id) ON DELETE CASCADE,
+                fact_key         TEXT        NOT NULL,
+                fact_value       TEXT        NOT NULL,
+                valid_from       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                valid_until      TIMESTAMPTZ,
+                source_memory_id UUID,
+                category         TEXT,
+                conflict_status  TEXT,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                embedding        VECTOR(1536)
+            )
+        """)
+
+        # 18. mem_pipeline_runs  (FK → mng_projects, mng_users)
+        cur.execute("""
+            CREATE TABLE mem_pipeline_runs (
+                id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id  INT         NOT NULL
+                            REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id     INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+                pipeline    TEXT        NOT NULL,
+                source_id   TEXT        NOT NULL DEFAULT '',
+                status      TEXT        NOT NULL DEFAULT 'running',
+                items_in    INT         NOT NULL DEFAULT 0,
+                items_out   INT         NOT NULL DEFAULT 0,
+                error_msg   TEXT,
+                duration_ms INT,
+                started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at TIMESTAMPTZ,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+
+        # ── Phase 4: Copy data from backups ──────────────────────────────────────
+        # Same dependency order as CREATE
+
+        # mng_clients
+        cur.execute("""
+            INSERT INTO mng_clients
+              (id, slug, name, plan, pricing_config, provider_costs,
+               provider_balances, server_api_keys, created_at, updated_at)
+            SELECT id, slug, name, plan, pricing_config, provider_costs,
+                   provider_balances, server_api_keys, created_at, updated_at
+            FROM _bak_052_mng_clients
+        """)
+
+        # mng_users
+        cur.execute("""
+            INSERT INTO mng_users
+              (id, uuid_id, client_id, email, password_hash, is_admin, is_active,
+               role, last_login, balance_added_usd, balance_used_usd,
+               coupons_used, stripe_customer_id, created_at, updated_at)
+            SELECT id, uuid_id, client_id, email, password_hash, is_admin, is_active,
+                   role, last_login, balance_added_usd, balance_used_usd,
+                   coupons_used, stripe_customer_id, created_at, updated_at
+            FROM _bak_052_mng_users
+        """)
+
+        # mng_session_tags
+        cur.execute("""
+            INSERT INTO mng_session_tags
+              (id, client_id, project_id, phase, feature, bug_ref, extra, updated_at)
+            SELECT id, client_id, project_id, phase, feature, bug_ref, extra, updated_at
+            FROM _bak_052_mng_session_tags
+        """)
+
+        # mng_agent_roles
+        cur.execute("""
+            INSERT INTO mng_agent_roles
+              (id, client_id, project_id, name, description, system_prompt,
+               provider, model, role_type, tags, is_active, auto_commit, react,
+               max_iterations, inputs, outputs, tools, output_schema,
+               created_at, updated_at)
+            SELECT id, client_id, project_id, name, description, system_prompt,
+                   provider, model, role_type, tags, is_active, auto_commit, react,
+                   max_iterations, inputs, outputs, tools, output_schema,
+                   created_at, updated_at
+            FROM _bak_052_mng_agent_roles
+        """)
+
+        # mng_usage_logs
+        cur.execute("""
+            INSERT INTO mng_usage_logs
+              (id, user_id, provider, model, input_tokens, output_tokens,
+               cost_usd, charged_usd, source, metadata, period_start, period_end,
+               created_at)
+            SELECT id, user_id, provider, model, input_tokens, output_tokens,
+                   cost_usd, charged_usd, source, metadata, period_start, period_end,
+                   created_at
+            FROM _bak_052_mng_usage_logs
+        """)
+
+        # mng_transactions
+        cur.execute("""
+            INSERT INTO mng_transactions
+              (id, user_id, type, amount_usd, base_cost_usd, description, ref, created_at)
+            SELECT id, user_id, type, amount_usd, base_cost_usd, description, ref, created_at
+            FROM _bak_052_mng_transactions
+        """)
+
+        # mng_user_projects
+        cur.execute("""
+            INSERT INTO mng_user_projects (user_id, project_id, role, joined_at)
+            SELECT user_id, project_id, role, joined_at
+            FROM _bak_052_mng_user_projects
+        """)
+
+        # mng_user_api_keys
+        cur.execute("""
+            INSERT INTO mng_user_api_keys (id, user_id, provider, key_enc, updated_at)
+            SELECT id, user_id, provider, key_enc, updated_at
+            FROM _bak_052_mng_user_api_keys
+        """)
+
+        # mem_mrr_prompts
+        cur.execute("""
+            INSERT INTO mem_mrr_prompts
+              (id, client_id, project_id, user_id, event_id, session_id,
+               source_id, prompt, response, tags, created_at, updated_at)
+            SELECT id, client_id, project_id, user_id, event_id, session_id,
+                   source_id, prompt, response, tags, created_at, updated_at
+            FROM _bak_052_mem_mrr_prompts
+        """)
+
+        # mem_mrr_commits — committed_at → created_at (git timestamp)
+        cur.execute("""
+            INSERT INTO mem_mrr_commits
+              (commit_hash, client_id, project_id, user_id, commit_msg,
+               summary, diff_summary, tags, prompt_id, event_id,
+               session_id, author, author_email, llm,
+               created_at, updated_at)
+            SELECT commit_hash, client_id, project_id, user_id, commit_msg,
+                   summary, diff_summary, tags, prompt_id, event_id,
+                   session_id, author, author_email, llm,
+                   COALESCE(committed_at, created_at),
+                   updated_at
+            FROM _bak_052_mem_mrr_commits
+        """)
+
+        # mem_mrr_commits_code (skip GENERATED columns: full_symbol, commit_hash_short)
+        cur.execute("""
+            INSERT INTO mem_mrr_commits_code
+              (id, client_id, project_id, user_id, commit_hash,
+               file_path, file_ext, file_language, file_change,
+               symbol_type, class_name, method_name,
+               symbol_change, rows_added, rows_removed,
+               diff_snippet, llm_summary, created_at, updated_at)
+            SELECT id, client_id, project_id, user_id, commit_hash,
+                   file_path, file_ext, file_language, file_change,
+                   symbol_type, class_name, method_name,
+                   symbol_change, rows_added, rows_removed,
+                   diff_snippet, llm_summary, created_at, updated_at
+            FROM _bak_052_mem_mrr_commits_code
+        """)
+
+        # mem_mrr_items
+        cur.execute("""
+            INSERT INTO mem_mrr_items
+              (id, client_id, project_id, user_id, item_type, title,
+               meeting_at, attendees, raw_text, summary, tags, created_at, updated_at)
+            SELECT id, client_id, project_id, user_id, item_type, title,
+                   meeting_at, attendees, raw_text, summary, tags, created_at, updated_at
+            FROM _bak_052_mem_mrr_items
+        """)
+
+        # mem_mrr_messages
+        cur.execute("""
+            INSERT INTO mem_mrr_messages
+              (id, client_id, project_id, user_id, platform, channel,
+               thread_ref, messages, date_range, tags, created_at, updated_at)
+            SELECT id, client_id, project_id, user_id, platform, channel,
+                   thread_ref, messages, date_range, tags, created_at, updated_at
+            FROM _bak_052_mem_mrr_messages
+        """)
+
+        # mem_ai_events
+        cur.execute("""
+            INSERT INTO mem_ai_events
+              (id, client_id, project_id, event_type, event_system, event_cnt,
+               source_id, work_item_id, session_id, chunk, chunk_type,
+               content, summary, action_items, tags,
+               created_at, updated_at, embedding)
+            SELECT id, client_id, project_id, event_type, event_system, event_cnt,
+                   source_id, work_item_id, session_id, chunk, chunk_type,
+                   content, summary, action_items, tags,
+                   created_at, updated_at, embedding
+            FROM _bak_052_mem_ai_events
+        """)
+
+        # planner_tags — user_id VARCHAR → INT via mng_users lookup
+        cur.execute("""
+            INSERT INTO planner_tags
+              (id, client_id, project_id, user_id, name, category_id,
+               parent_id, merged_into, description, requirements,
+               acceptance_criteria, action_items, status, priority,
+               due_date, requester, creator, updater, deliveries,
+               created_at, updated_at)
+            SELECT b.id, b.client_id, b.project_id,
+                   u.id AS user_id,
+                   b.name, b.category_id,
+                   b.parent_id, b.merged_into, b.description, b.requirements,
+                   b.acceptance_criteria, b.action_items, b.status, b.priority,
+                   b.due_date, b.requester, b.creator, b.updater, b.deliveries,
+                   b.created_at, b.updated_at
+            FROM _bak_052_planner_tags b
+            LEFT JOIN mng_users u ON u.uuid_id = b.user_id::text
+        """)
+
+        # mem_ai_work_items
+        cur.execute("""
+            INSERT INTO mem_ai_work_items
+              (id, client_id, project_id, seq_num, category_ai, name_ai,
+               summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
+               tags, tags_ai, tag_id_ai, tag_id_user,
+               status_user, quality_stage, quality_issues, dedup_status,
+               merged_into, start_date, created_at, updated_at, embedding)
+            SELECT id, client_id, project_id, seq_num, category_ai, name_ai,
+                   summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
+                   tags, tags_ai, tag_id_ai, tag_id_user,
+                   status_user, quality_stage, quality_issues, dedup_status,
+                   merged_into, start_date, created_at, updated_at, embedding
+            FROM _bak_052_mem_ai_work_items
+        """)
+
+        # mem_ai_project_facts
+        cur.execute("""
+            INSERT INTO mem_ai_project_facts
+              (id, client_id, project_id, fact_key, fact_value, valid_from,
+               valid_until, source_memory_id, category, conflict_status,
+               created_at, updated_at, embedding)
+            SELECT id, client_id, project_id, fact_key, fact_value, valid_from,
+                   valid_until, source_memory_id, category, conflict_status,
+                   created_at, updated_at, embedding
+            FROM _bak_052_mem_ai_project_facts
+        """)
+
+        # mem_pipeline_runs
+        cur.execute("""
+            INSERT INTO mem_pipeline_runs
+              (id, project_id, user_id, pipeline, source_id, status,
+               items_in, items_out, error_msg, duration_ms,
+               started_at, finished_at, updated_at)
+            SELECT id, project_id, user_id, pipeline, source_id, status,
+                   items_in, items_out, error_msg, duration_ms,
+                   started_at, finished_at, updated_at
+            FROM _bak_052_mem_pipeline_runs
+        """)
+
+        # ── Phase 5: Advance sequences for SERIAL tables ──────────────────────────
+        for tbl, col in [
+            ("mng_clients",      "id"),
+            ("mng_users",        "id"),
+            ("mng_usage_logs",   "id"),
+            ("mng_transactions", "id"),
+            ("mng_user_api_keys","id"),
+            ("mng_session_tags", "id"),
+            ("mng_agent_roles",  "id"),
+        ]:
+            cur.execute(f"""
+                SELECT setval(pg_get_serial_sequence('{tbl}', '{col}'),
+                              COALESCE(MAX({col}), 1))
+                FROM {tbl}
+            """)
+
+        # ── Phase 6: Add self-FK constraints ─────────────────────────────────────
+        cur.execute("""
+            ALTER TABLE planner_tags
+              ADD CONSTRAINT planner_tags_parent_id_fkey
+                FOREIGN KEY (parent_id) REFERENCES planner_tags(id),
+              ADD CONSTRAINT planner_tags_merged_into_fkey
+                FOREIGN KEY (merged_into) REFERENCES planner_tags(id)
+        """)
+        cur.execute("""
+            ALTER TABLE mem_ai_work_items
+              ADD CONSTRAINT fk_wi_merged_into
+                FOREIGN KEY (merged_into) REFERENCES mem_ai_work_items(id)
+                ON DELETE SET NULL NOT VALID
+        """)
+
+        # ── Phase 7: Recreate indexes ─────────────────────────────────────────────
+        # mng_clients
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mng_clients_slug  ON mng_clients(slug)")
+        # mng_users
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_client ON mng_users(client_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_email  ON mng_users(email)")
+        # mng_usage_logs
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_usage_created_at ON mng_usage_logs(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_usage_provider   ON mng_usage_logs(provider)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_usage_user_id    ON mng_usage_logs(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_usage_source     ON mng_usage_logs(source)")
+        # mng_transactions
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_created_at ON mng_transactions(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_user_id    ON mng_transactions(user_id)")
+        # mng_user_projects
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mng_user_projects_proj ON mng_user_projects(project_id)")
+        # mng_user_api_keys
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_muak_user ON mng_user_api_keys(user_id)")
+        # mng_session_tags
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mst_pid ON mng_session_tags(project_id)")
+        # mng_agent_roles
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mar_pid ON mng_agent_roles(project_id)")
+        # mem_mrr_prompts
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING GIN(tags)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL")
+        # mem_mrr_commits
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid     ON mem_mrr_commits(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_session ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_created ON mem_mrr_commits(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags    ON mem_mrr_commits USING GIN(tags)")
+        # mem_mrr_commits_code
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmc_code_pid  ON mem_mrr_commits_code(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmc_code_hash ON mem_mrr_commits_code(commit_hash)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmc_code_sym  ON mem_mrr_commits_code(full_symbol) WHERE full_symbol IS NOT NULL")
+        cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_mmc_code_unique
+            ON mem_mrr_commits_code(commit_hash, file_path, symbol_type,
+               COALESCE(class_name,''), COALESCE(method_name,''))""")
+        # mem_mrr_items
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_items_pid  ON mem_mrr_items(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items USING GIN(tags)")
+        # mem_mrr_messages
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING GIN(tags)")
+        # mem_ai_events
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_pid           ON mem_ai_events(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_session       ON mem_ai_events(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_type          ON mem_ai_events(event_type)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_tags          ON mem_ai_events USING GIN(tags)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_event_system  ON mem_ai_events(event_system) WHERE event_system = true")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_pending       ON mem_ai_events(updated_at) WHERE updated_at IS NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mae_embed         ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
+        # planner_tags
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_planner_tags_uid  ON planner_tags(user_id)")
+        # mem_ai_work_items
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wi_quality       ON mem_ai_work_items(project_id, quality_stage)")
+        # mem_ai_project_facts
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_pf_pid ON mem_ai_project_facts(project_id) WHERE valid_until IS NULL")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_ai_pf_current ON mem_ai_project_facts(project_id, fact_key) WHERE valid_until IS NULL")
+        # mem_pipeline_runs
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mpr_status          ON mem_pipeline_runs(status) WHERE status = 'running'")
+
+        # ── Phase 8: Recreate updated_at triggers on rebuilt tables ──────────────
+        for _tbl in RECREATE:
+            cur.execute(f"DROP TRIGGER IF EXISTS trg_updated_at_{_tbl} ON {_tbl}")
+            cur.execute(f"""
+                CREATE TRIGGER trg_updated_at_{_tbl}
+                BEFORE UPDATE ON {_tbl}
+                FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+            """)
+
+        # ── Phase 9: Recreate external FK constraints ─────────────────────────────
+        for conname, src_tbl, condef in ext_fks:
+            cur.execute(f'ALTER TABLE {src_tbl} ADD CONSTRAINT "{conname}" {condef}')
+
+        # ── Phase 10: Drop backup tables ─────────────────────────────────────────
+        for tbl in RECREATE:
+            cur.execute(f"DROP TABLE IF EXISTS _bak_052_{tbl} CASCADE")
+
+    conn.commit()
+    log.info("m052_column_reorder: 18 tables rebuilt with consistent column ordering")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1648,4 +2426,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m049_work_item_quality_gate", m049_work_item_quality_gate),
     ("m050_prompts_source_id_index", m050_prompts_source_id_index),
     ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
+    ("m052_column_reorder", m052_column_reorder),
 ]

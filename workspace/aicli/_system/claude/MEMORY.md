@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 21:46 UTC by aicli /memory_
+_Generated: 2026-04-15 22:59 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that combines a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js) to track development sessions, capture AI interactions, and synthesize contextual memory across projects. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items) with async DAG workflows, multi-LLM provider support, and semantic search via embeddings. Current focus is on session state stability, database schema consolidation, and tagging refinement for improved chat history rendering.
+aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL/pgvector storage with an Electron desktop UI, providing semantic search, workflow automation, and collaborative memory synthesis across projects. Currently stabilizing database schema (m051: user_id INT refactor + updated_at tracking), implementing session-based tag backlinking for work item consistency, and enhancing work item panel UX with dynamic refresh and event count aggregation. Version 3.0.0 active as of 2026-04-15 with production and development phases in parallel.
 
 ## Project Facts
 
@@ -230,7 +230,7 @@ Reviewer: ```json
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -261,19 +261,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
-- Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state
+- Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events
 
 ## In Progress
 
-- Session ID startup loading — fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders
-- Importance column consolidation — deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries
-- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable
-- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null
-- Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps
+- Database refactor m051 — converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking
+- Work item panel refresh workflow — replaced static 'new work item' creation with dynamic ↺ refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry
+- Session-based tag backlinking — implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency
+- Event count aggregation — added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
+- Work item UI refinement — adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness
+- Migration framework validation — confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session
 
 ## Active Features / Bugs / Tasks
 
@@ -323,248 +323,122 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Commits: chore: clean up legacy _system context files after claude cli session f6 | chore: remove legacy _system/ agent context and documentation files | chore: remove legacy _system/ context files after claude cli session f66
+Changed: _normalize_jsonl_entry, chat_history, _loadSessions
+Stats:  backend/routers/route_history.py |  84 ++++++++---
+ workspace/aicli/PROJECT.md       |  12 +-
+ 7 files changed, 233 insertions(+), 189 deletions(-)
+
+### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Database refactor initiated: change user_id from string to int across all mirror tables, add user_id column after project_id for consistency, and add updated_at timestamp column after created_at for tracking row modifications.
+
 ### `commit` — 2026-04-15
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index f25288e..e8585d1 100644
+index a386242..6525135 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
-+- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
- - Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
- - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
- - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
- - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
- - Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
--- Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation
+-- Work item UI refresh button: replacing 'new work item' creation with refresh/reload functionality to fetch latest work items and update AI suggestions without requiring manual entry
+-- AI suggestion display fix: debugging why ai_tag_suggestion column shows empty (EXISTS) instead of actual suggested tags; investigating embedding pipeline trigger and suggestion query logic
+-- Work item tag aggregation: refining user_tags extraction from mem_ai_events by session_id and project_id instead of work_item_id to correctly surface feature/bug_ref/bug tags
+-- Work item counts accuracy: verifying prompt_count and commit_count calculations use session-based matching (same session as source_event_id) rather than direct work_item_id links
+-- Source event ID usage: confirming source_event_id field in mem_ai_work_items serves as anchor for session-based aggregation queries without requiring explicit SELECT visibility
+-- First event linkage guarantee: ensuring mem_ai_events.work_item_id updates only link to first work item (WHERE work_item_id IS NULL) to prevent overwrites on subsequent promotions
++- Work item refresh workflow: replaced 'new work item' button with ↺ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
++- Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
++- AI tag backlinking: implemented _backlink_tag_to_events() to propagate planner tag assignments back to all events in the source session, mapping category→tag_key (bug/phase/feature)
++- Work item panel UI refresh: added event_count column header, adjusted colgroup widths (52px per count column), updated empty state messaging to reflect 'refresh' paradigm
++- Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships
++- Test coverage: verifying rematchAll API correctness, event_count calculation accuracy, and tag backlinking side-effects on mem_ai_events JSONB tags field
 
 
 ### `commit` — 2026-04-15
 
-diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
-index dbdc65d..529d323 100644
---- a/backend/routers/route_snapshots.py
-+++ b/backend/routers/route_snapshots.py
-@@ -40,7 +40,7 @@ _SQL_GET_TAG_ID = """
- """
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 349c48d..cd847f4 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-09 09:56 UTC
++> Generated by aicli 2026-04-09 10:41 UTC
  
- _SQL_GET_MEMORY_EVENTS = """
--    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
-+    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content
-     FROM mem_ai_events me
-     WHERE me.project_id = %s
-     ORDER BY me.created_at
-@@ -166,9 +166,9 @@ async def generate_snapshot(project: str, tag_name: str):
+ # aicli — Shared AI Memory Platform
  
-     by_type: dict[str, list[str]] = {}
-     event_ids: list[str] = []
--    for ev_id, src_type, src_id, session_id, content, importance in events:
-+    for ev_id, src_type, src_id, session_id, content in events:
-         event_ids.append(str(ev_id))
--        by_type.setdefault(src_type, []).append(f"[importance={importance}] {content}")
-+        by_type.setdefault(src_type, []).append(content)
- 
-     sections = []
-     for stype, items in by_type.items():
+@@ -61,6 +61,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+ - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
+ - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+-- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
+\ No newline at end of file
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
++- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-15
 
-diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
-index 908e217..2e1ef36 100644
---- a/backend/routers/route_projects.py
-+++ b/backend/routers/route_projects.py
-@@ -57,8 +57,8 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index eeac744..baa69b0 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 09:56 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:41 UTC
  
- _SQL_INSERT_MEMORY_ITEM_SESSION = (
-     """INSERT INTO mem_ai_events
--           (project_id, event_type, source_id, session_id, content, importance)
--       VALUES (%s, 'prompt_batch', %s, %s, %s, %s)
-+           (project_id, event_type, source_id, session_id, content)
-+       VALUES (%s, 'prompt_batch', %s, %s, %s)
-        ON CONFLICT (project_id, event_type, source_id, chunk) DO NOTHING
-        RETURNING id"""
- )
-@@ -78,10 +78,10 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
+ # aicli — Shared AI Memory Platform
  
- _SQL_INSERT_MEMORY_ITEM_FEATURE = (
-     """INSERT INTO mem_ai_events
--           (project_id, event_type, source_id, session_id, content, importance)
--       VALUES (%s, 'feature_summary', %s::uuid, %s, %s, %s)
--       ON CONFLICT (project_id, event_type, source_id) DO UPDATE
--           SET content=EXCLUDED.content, importance=EXCLUDED.importance
-+           (project_id, event_type, source_id, session_id, content)
-+       VALUES (%s, 'feature_summary', %s::uuid, %s, %s)
-+       ON CONFLICT (project_id, event_type, source_id, chunk) DO UPDATE
-+           SET content=EXCLUDED.content
-        RETURNING id"""
- )
+@@ -61,9 +61,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+ - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
+ - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+-- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
++- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
  
-@@ -1178,13 +1178,11 @@ async def _summarize_session_memory(project: str) -> int:
-                 if not last_prompt_id:
-                     continue  # no source_id available, skip
- 
--                importance = min(5, max(1, (score + 1) // 2))  # convert 1-10 → 1-5
--
-                 with db.conn() as conn:
-                     with conn.cursor() as cur:
-                         cur.execute(
-                             _SQL_INSERT_MEMORY_ITEM_SESSION,
--                            (project_id, last_prompt_id, session_id, final_summary, importance),
-+                            (project_id, last_prompt_id, session_id, final_summary),
-                         )
-                         row = cur.fetchone()
-                         if row:
-@@ -1288,10 +1286,9 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
-         with db.conn() as conn:
-             with conn.cursor() as cur:
-                 # source_id = work_item UUID; session_id stores the feature/work-item name
--                importance = min(5, max(1, (score + 1) // 2))
-                 cur.execute(
-                     _SQL_INSERT_MEMORY_ITEM_FEATURE,
--                    (project_id, work_item_id, wi_name, final_summary, importance),
-+                    (project_id, work_item_id, wi_name, final_summary),
-                 )
-                 row = cur.fetchone()
-                 if not row:
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index 8cc400f..d4cef1a 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -44,10 +44,9 @@ _SQL_GET_SESSION_PROMPTS = """
- _SQL_UPSERT_SESSION_SUMMARY = """
-     INSERT INTO mem_ai_events
-         (project_id, event_type, source_id, session_id,
--         chunk, chunk_type, content, summary, action_items,
--         importance, tags, created_at)
-+         chunk, chunk_type, content, summary, action_items, tags, created_at)
-     VALUES (%s, 'session_summary', %s, %s,
--            0, 'full', %s, %s, %s, 2, %s::jsonb, NOW())
-+            0, 'full', %s, %s, %s, %s::jsonb, NOW())
-     ON CONFLICT (project_id, event_type, source_id, chunk)
-     DO UPDATE SET
-         content      = EXCLUDED.content,
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/routers/route_admin.py b/backend/routers/route_admin.py
-index 795aaca..9775870 100644
---- a/backend/routers/route_admin.py
-+++ b/backend/routers/route_admin.py
-@@ -740,7 +740,6 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
- @router.post("/trim-events")
- async def trim_events(
-     older_than_days: int = 90,
--    max_importance: int = 5,
-     event_types: str = "prompt_batch,commit",
-     dry_run: bool = False,
-     _: dict = Depends(_require_admin),
-@@ -750,7 +749,6 @@ async def trim_events(
-     Removes rows where:
-       - event_type IN (event_types)
-       - created_at < NOW() - older_than_days
--      - importance <= max_importance
- 
-     Safe to run: session_summary and item events are excluded by default.
-     After trimming, run /admin/db-vacuum to reclaim the freed pages.
-@@ -772,34 +770,31 @@ async def trim_events(
-         FROM mem_ai_events
-         WHERE event_type IN ({placeholders})
-           AND created_at < NOW() - INTERVAL '%s days'
--          AND importance <= %s
-     """
-     delete_sql = f"""
-         DELETE FROM mem_ai_events
-         WHERE event_type IN ({placeholders})
-           AND created_at < NOW() - INTERVAL '%s days'
--          AND importance <= %s
-     """
- 
-     with db.conn() as conn:
-         with conn.cursor() as cur:
--            cur.execute(count_sql, (*types, older_than_days, max_importance))
-+            cur.execute(count_sql, (*types, older_than_days))
-             row = cur.fetchone()
-             row_count = row[0] if row else 0
-             size_est  = row[1] if row else "0 bytes"
- 
-             if not dry_run and row_count > 0:
--                cur.execute(delete_sql, (*types, older_than_days, max_importance))
-+                cur.execute(delete_sql, (*types, older_than_days))
- 
-     return {
--        "dry_run":          dry_run,
--        "deleted":          row_count if not dry_run else 0,
--        "would_delete":     row_count,
--        "size_estimate":    size_est,
--        "event_types":      types,
--        "older_than_days":  older_than_days,
--        "max_importance":   max_importance,
--        "next_step":        "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
-+        "dry_run":         dry_run,
-+        "deleted":         row_count if not dry_run else 0,
-+        "would_delete":    row_count,
-+        "size_estimate":   size_est,
-+        "event_types":     types,
-+        "older_than_days": older_than_days,
-+        "next_step":       "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
-     }
- 
+ ## Recent Context (last 5 changes)
  
 
 
 ### `commit` — 2026-04-15
 
-diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
-index 016bb5a..df7bf1f 100644
---- a/backend/memory/memory_files.py
-+++ b/backend/memory/memory_files.py
-@@ -87,8 +87,8 @@ _SQL_BLOCKED_TAGS = """
- """
+diff --git a/.ai/rules.md b/.ai/rules.md
+index eeac744..baa69b0 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 09:56 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:41 UTC
  
- _SQL_TOP_EVENTS = """
--    SELECT content, event_type, importance, created_at,
--           importance * EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
-+    SELECT content, event_type, created_at,
-+           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
-     FROM mem_ai_events
-     WHERE project_id=%s
-     ORDER BY relevance DESC
-@@ -245,11 +245,10 @@ class MemoryFiles:
-                     cur.execute(_SQL_TOP_EVENTS, (project_id, limit))
-                     return [
-                         {
--                            "content":     r[0],
-+                            "content":    r[0],
-                             "event_type": r[1],
--                            "importance":  r[2],
--                            "created_at":  r[3].isoformat() if r[3] else "",
--                            "relevance":   float(r[4]) if r[4] else 0.0,
-+                            "created_at": r[2].isoformat() if r[2] else "",
-+                            "relevance":  float(r[3]) if r[3] else 0.0,
-                         }
-                         for r in cur.fetchall()
-                     ]
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,9 +61,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
+ - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
+ - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
+-- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
+ - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
++- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
+ 
+ ## Recent Context (last 5 changes)
+ 
 
 
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Fixed session ID startup loading: synchronously load last_session_id from dev_runtime_state in renderChat() entry to eliminate 15-second delay before correct session appears, preventing stale session display from persisting module-level _sessionId.
-
-**[2026-04-13]** `claude_cli` — Consolidated importance column removal from mem_ai_events table (m050 migration); deprecated importance as semantically more relevant for work_items only; removed importance parameters from memory item insertion queries in route_projects.py to simplify event schema.
-
-**[2026-04-13]** `claude_cli` — Completed table migration with column reordering using specified column order; dropped _old tables post-completion to reclaim space and finalized m050 migration for database schema consolidation.
-
-**[2026-04-06]** `claude_cli` — Verified chat history sort stability: confirmed 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with correct April-first ordering post-m050 migration.
-
-**[2026-04-06]** `claude_cli` — Fixed PostgreSQL JSONB operator conflict in route_history line 466-470 causing batch upsert failures; resolved `jsonb ||` precedence issue enabling reliable prompt persistence.
-
-**[2026-03-18]** `claude_cli` — Addressed backend startup race condition with retry logic for empty projects list during initial load; ensured aicli project visibility in main list.
+**[2026-04-15]** `claude_cli` — Database refactor m051 completed: converted user_id from UUID string to INT across all user/client/mirror tables, added updated_at timestamp columns for audit tracking, preserved legacy UUID in uuid_id column. **[2026-04-15]** `workspace` — Work item refresh workflow implemented: replaced static 'new work item' button with dynamic ↺ refresh triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions. **[2026-04-15]** `memory` — Session-based tag backlinking enabled: _backlink_tag_to_events() propagates planner tag assignments from work items back to all events in source session, ensuring tag consistency across event-to-work-item relationships. **[2026-04-15]** `ui` — Work item panel event count aggregation: added event_count column calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session. **[2026-04-15]** `schema` — Tag propagation system: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking with category→tag_key mapping (bug/phase/feature). **[2026-04-15]** `cleanup` — Legacy context consolidation: removed _system/ directory, verified agent context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; confirmed clean backend startup.

@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
             (project_id, commit_hash, session_id, commit_msg, diff_summary,
-             author, author_email, committed_at, tags, user_id)
+             author, author_email, created_at, tags, user_id)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
@@ -39,14 +39,14 @@ _SQL_UPSERT_COMMIT = """
                                     ELSE mem_mrr_commits.author END,
                 author_email = CASE WHEN EXCLUDED.author_email != '' THEN EXCLUDED.author_email
                                     ELSE mem_mrr_commits.author_email END,
-                committed_at = COALESCE(EXCLUDED.committed_at, mem_mrr_commits.committed_at),
+                created_at   = COALESCE(EXCLUDED.created_at, mem_mrr_commits.created_at),
                 tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
                                     ELSE mem_mrr_commits.tags END,
                 user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id)
 """
 
 # Link commit → most-recent prompt in the same session that occurred BEFORE the commit.
-# committed_at is passed as %s so we only link to prompts that predated the commit.
+# created_at is passed as %s so we only link to prompts that predated the commit.
 # Always updates (no IS NULL guard) so re-linking after backfill works correctly.
 _SQL_LINK_COMMIT_TO_PROMPT = """
     UPDATE mem_mrr_commits SET prompt_id = (
@@ -62,29 +62,29 @@ _SQL_LINK_COMMIT_TO_PROMPT = """
 
 _SQL_LIST_COMMITS = """
     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
-           c.session_id, c.committed_at,
+           c.session_id, c.created_at,
            p.source_id AS prompt_source_id
     FROM mem_mrr_commits c
     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
     WHERE c.project_id=%s
-    ORDER BY c.committed_at DESC NULLS LAST, c.created_at DESC
+    ORDER BY c.created_at DESC NULLS LAST, c.created_at DESC
     LIMIT %s
 """
 
 _SQL_GET_SESSION_COMMITS_WITH_WINDOW = """
-    SELECT commit_hash, commit_msg, tags, committed_at
+    SELECT commit_hash, commit_msg, tags, created_at
           FROM mem_mrr_commits
          WHERE project_id=%s
            AND (session_id = %s
-            OR (committed_at BETWEEN %s::timestamptz AND %s::timestamptz))
-         ORDER BY committed_at
+            OR (created_at BETWEEN %s::timestamptz AND %s::timestamptz))
+         ORDER BY created_at
 """
 
 _SQL_GET_SESSION_COMMITS_BY_ID = """
-    SELECT commit_hash, commit_msg, tags, committed_at
+    SELECT commit_hash, commit_msg, tags, created_at
           FROM mem_mrr_commits
          WHERE project_id=%s AND session_id = %s
-         ORDER BY committed_at
+         ORDER BY created_at
 """
 
 _SQL_GET_SESSION_TAGS = (
@@ -262,7 +262,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                     _SQL_UPSERT_COMMIT,
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
                      author, author_email,
-                     committed_at or datetime.now(timezone.utc),
+                     committed_at or datetime.now(timezone.utc),  # git timestamp → created_at
                      json.dumps(tags_dict), ADMIN_USER_ID),
                 )
                 if session_id:

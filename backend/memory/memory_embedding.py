@@ -164,7 +164,7 @@ _SQL_GET_PENDING_COMMITS_WITH_SYMBOLS = """
     LEFT JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
     WHERE c.project_id = %s AND c.event_id IS NULL
     GROUP BY c.commit_hash, c.commit_msg, c.summary, c.tags, c.session_id, c.diff_summary
-    ORDER BY c.committed_at ASC NULLS LAST
+    ORDER BY c.created_at ASC NULLS LAST
 """
 
 _SQL_GET_PENDING_PROMPTS = """

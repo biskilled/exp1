@@ -191,7 +191,7 @@ _SQL_GET_UNEMBEDDED_COMMITS = (
            WHERE e.project_id=%s
              AND e.event_type='commit' AND e.source_id=c.commit_hash
        )
-       ORDER BY c.committed_at DESC LIMIT 30"""
+       ORDER BY c.created_at DESC LIMIT 30"""
 )
 
 _SQL_COUNT_INTERACTIONS_TOTAL = (

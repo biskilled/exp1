@@ -368,7 +368,7 @@ export class HistoryView {
           ${unlinked.map(c => {
             const hash = (c.commit_hash || '').slice(0, 8);
             const msg  = (c.commit_msg  || '').slice(0, 60);
-            const date = (c.committed_at || '').slice(0, 10);
+            const date = (c.created_at || '').slice(0, 10);
             return ghBase && c.commit_hash
               ? `<a href="${ghBase}/commit/${this._escapeHtml(c.commit_hash)}" target="_blank"
                     style="font-family:monospace;color:var(--accent);text-decoration:none;white-space:nowrap"
@@ -443,7 +443,7 @@ export class HistoryView {
             ${linkedCommits.map(c => {
               const hash    = (c.commit_hash || '').slice(0, 8);
               const msg     = (c.commit_msg  || '').slice(0, 70);
-              const date    = (c.committed_at || '').slice(0, 10);
+              const date    = (c.created_at || '').slice(0, 10);
               const cTags   = (c.tags || []).map(t => {
                 const col = this._tagColor(t);
                 return `<span style="font-size:9px;background:${col}22;color:${col};border:1px solid ${col}44;padding:0 3px;border-radius:2px">${this._escapeHtml(t)}</span>`;
@@ -948,7 +948,7 @@ export class HistoryView {
   _commitRow(c, i) {
     const untagged   = !c.tags?.some(t => t.startsWith('phase:'));
     const rowBorder  = untagged ? 'border-left:3px solid #e74c3c' : 'border-left:3px solid transparent';
-    const dateStr    = c.committed_at ? c.committed_at.slice(0, 10) : '';
+    const dateStr    = c.created_at ? c.created_at.slice(0, 10) : '';
     const ghBase     = this._ghBase || '';
     const hashFull   = c.commit_hash || '';
     const hashShort  = hashFull.slice(0, 8);

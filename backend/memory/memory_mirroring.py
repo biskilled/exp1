@@ -41,7 +41,7 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (project_id, commit_hash, commit_msg, summary,
-            session_id, committed_at, tags, user_id)
+            session_id, created_at, tags, user_id)
        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash

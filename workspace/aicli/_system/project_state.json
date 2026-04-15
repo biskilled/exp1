@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
+    "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
     "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
@@ -58,10 +58,10 @@
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
     "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained",
     "AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed",
-    "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
+    "Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state"
+    "Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Session ID startup loading \u2014 fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders",
-    "Importance column consolidation \u2014 deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries",
-    "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable",
-    "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null",
-    "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
-    "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps"
+    "Database refactor m051 \u2014 converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking",
+    "Work item panel refresh workflow \u2014 replaced static 'new work item' creation with dynamic \u21ba refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry",
+    "Session-based tag backlinking \u2014 implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency",
+    "Event count aggregation \u2014 added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
+    "Work item UI refinement \u2014 adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness",
+    "Migration framework validation \u2014 confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T21:46:39Z",
+  "last_memory_run": "2026-04-15T22:59:31Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -141,18 +141,18 @@
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
       "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained",
       "AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed",
-      "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
+      "Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state"
+      "Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events"
     ],
     "in_progress": [
-      "Session ID startup loading \u2014 fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders",
-      "Importance column consolidation \u2014 deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries",
-      "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable",
-      "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null",
-      "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
-      "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps"
+      "Database refactor m051 \u2014 converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking",
+      "Work item panel refresh workflow \u2014 replaced static 'new work item' creation with dynamic \u21ba refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry",
+      "Session-based tag backlinking \u2014 implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency",
+      "Event count aggregation \u2014 added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
+      "Work item UI refinement \u2014 adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness",
+      "Migration framework validation \u2014 confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,17 +160,20 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
+      "prompt_management": "core.prompt_loader module with centralized prompt caching",
       "embeddings": "text-embedding-3-small (1536-dim vectors)"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js) to track development sessions, capture AI interactions, and synthesize contextual memory across projects. It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items) with async DAG workflows, multi-LLM provider support, and semantic search via embeddings. Current focus is on session state stability, database schema consolidation, and tagging refinement for improved chat history rendering.",
-    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Fixed session ID startup loading: synchronously load last_session_id from dev_runtime_state in renderChat() entry to eliminate 15-second delay before correct session appears, preventing stale session display from persisting module-level _sessionId.\n\n**[2026-04-13]** `claude_cli` \u2014 Consolidated importance column removal from mem_ai_events table (m050 migration); deprecated importance as semantically more relevant for work_items only; removed importance parameters from memory item insertion queries in route_projects.py to simplify event schema.\n\n**[2026-04-13]** `claude_cli` \u2014 Completed table migration with column reordering using specified column order; dropped _old tables post-completion to reclaim space and finalized m050 migration for database schema consolidation.\n\n**[2026-04-06]** `claude_cli` \u2014 Verified chat history sort stability: confirmed 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with correct April-first ordering post-m050 migration.\n\n**[2026-04-06]** `claude_cli` \u2014 Fixed PostgreSQL JSONB operator conflict in route_history line 466-470 causing batch upsert failures; resolved `jsonb ||` precedence issue enabling reliable prompt persistence.\n\n**[2026-03-18]** `claude_cli` \u2014 Addressed backend startup race condition with retry logic for empty projects list during initial load; ensured aicli project visibility in main list."
+    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL/pgvector storage with an Electron desktop UI, providing semantic search, workflow automation, and collaborative memory synthesis across projects. Currently stabilizing database schema (m051: user_id INT refactor + updated_at tracking), implementing session-based tag backlinking for work item consistency, and enhancing work item panel UX with dynamic refresh and event count aggregation. Version 3.0.0 active as of 2026-04-15 with production and development phases in parallel.",
+    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Database refactor m051 completed: converted user_id from UUID string to INT across all user/client/mirror tables, added updated_at timestamp columns for audit tracking, preserved legacy UUID in uuid_id column. **[2026-04-15]** `workspace` \u2014 Work item refresh workflow implemented: replaced static 'new work item' button with dynamic \u21ba refresh triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions. **[2026-04-15]** `memory` \u2014 Session-based tag backlinking enabled: _backlink_tag_to_events() propagates planner tag assignments from work items back to all events in source session, ensuring tag consistency across event-to-work-item relationships. **[2026-04-15]** `ui` \u2014 Work item panel event count aggregation: added event_count column calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session. **[2026-04-15]** `schema` \u2014 Tag propagation system: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking with category\u2192tag_key mapping (bug/phase/feature). **[2026-04-15]** `cleanup` \u2014 Legacy context consolidation: removed _system/ directory, verified agent context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; confirmed clean backend startup."
   }
 }

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 22:49 UTC — do not edit manually.
+> Auto-generated 2026-04-15 22:59 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 576
-- **Last active**: 2026-04-15T21:46:04Z
+- **Sessions**: 577
+- **Last active**: 2026-04-15T22:59:00Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Session ID startup loading — fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders
-- Importance column consolidation — deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries
-- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable
-- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null
-- Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps
+- Database refactor m051 — converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking
+- Work item panel refresh workflow — replaced static 'new work item' creation with dynamic ↺ refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry
+- Session-based tag backlinking — implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency
+- Event count aggregation — added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
+- Work item UI refinement — adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness
+- Migration framework validation — confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session
 
 ## Key Decisions
 
@@ -78,10 +78,10 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
-- Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state
+- Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events
 
 ---
 

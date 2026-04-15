@@ -694,9 +694,9 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
                     "created_at":    row[3].isoformat() if row[3] else None,
                 })
             cur.execute(
-                "SELECT commit_hash, LEFT(commit_msg,300), session_id, committed_at "
+                "SELECT commit_hash, LEFT(commit_msg,300), session_id, created_at "
                 "FROM mem_mrr_commits WHERE project_id=%s AND tags @> %s::jsonb "
-                "ORDER BY committed_at DESC LIMIT 100",
+                "ORDER BY created_at DESC LIMIT 100",
                 (project_id, tag_jsonb),
             )
             for row in cur.fetchall():
@@ -1038,9 +1038,9 @@ async def get_tag_context(
                 for r in cur.fetchall()
             ]
             cur.execute(
-                """SELECT commit_hash, 'commit', committed_at FROM mem_mrr_commits
+                """SELECT commit_hash, 'commit', created_at FROM mem_mrr_commits
                    WHERE project_id=%s AND tags @> %s::jsonb
-                   ORDER BY committed_at DESC LIMIT %s""",
+                   ORDER BY created_at DESC LIMIT %s""",
                 (project_id, tag_ctx_jsonb, limit),
             )
             sources += [

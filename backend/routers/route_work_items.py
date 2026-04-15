@@ -180,10 +180,10 @@ _SQL_GET_WORK_ITEM = (
 )
 
 _SQL_GET_COMMITS = (
-    """SELECT c.commit_hash, c.commit_msg, c.summary, c.committed_at
+    """SELECT c.commit_hash, c.commit_msg, c.summary, c.created_at
        FROM mem_mrr_commits c
        WHERE c.project_id=%s AND c.tags @> jsonb_build_object('work-item', %s::text)
-       ORDER BY c.committed_at DESC LIMIT %s"""
+       ORDER BY c.created_at DESC LIMIT %s"""
 )
 
 _SQL_DELETE_WORK_ITEM = (
@@ -1174,8 +1174,8 @@ async def get_work_item_commits(
             rows = []
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
-                if row.get("committed_at"):
-                    row["committed_at"] = row["committed_at"].isoformat()
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
                 rows.append(row)
     return {"commits": rows, "work_item_id": item_id, "project": p}
 

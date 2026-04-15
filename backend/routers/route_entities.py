@@ -148,7 +148,7 @@ _SQL_GET_EVENTS_FOR_VALUE = """
     WHERE pr.project_id=%s AND pr.tags @> %s::jsonb
     UNION ALL
     SELECT c.commit_hash, 'commit', c.commit_hash,
-           left(c.commit_msg, 120), c.committed_at
+           left(c.commit_msg, 120), c.created_at
     FROM mem_mrr_commits c
     WHERE c.project_id=%s AND c.tags @> %s::jsonb
     ORDER BY 5 DESC LIMIT %s
@@ -207,9 +207,9 @@ _SQL_WI_BY_CATEGORY = """
 
 # List commits for events endpoint
 _SQL_LIST_COMMIT_EVENTS = """
-    SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), committed_at
+    SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), created_at
     FROM mem_mrr_commits WHERE project_id=%s
-    ORDER BY committed_at DESC NULLS LAST LIMIT %s
+    ORDER BY created_at DESC NULLS LAST LIMIT %s
 """
 
 # List prompts for events endpoint

@@ -836,7 +836,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "purpose": "Git commits with diff stats and session links",
                     "key_columns": ["commit_hash VARCHAR(40) PK", "client_id INT", "project_id INT FK projects",
                                     "commit_msg TEXT", "summary TEXT", "diff_summary TEXT",
-                                    "tags JSONB", "session_id TEXT", "committed_at TIMESTAMPTZ"],
+                                    "tags JSONB", "session_id TEXT", "created_at TIMESTAMPTZ"],
                     "filter": "WHERE project_id=%s",
                 },
             },

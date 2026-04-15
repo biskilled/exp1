@@ -1648,7 +1648,7 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
         <div style="padding:0.25rem 0;border-bottom:1px solid var(--border)">
           <div style="color:var(--text);font-weight:500">${_esc((c.commit_msg||'').slice(0,60))}${(c.commit_msg||'').length>60?'…':''}</div>
           ${c.summary ? `<div style="color:var(--muted);font-size:0.58rem;margin-top:0.15rem">${_esc(c.summary.slice(0,80))}</div>` : ''}
-          <div style="color:var(--muted);font-size:0.55rem;margin-top:0.1rem">${c.commit_hash ? c.commit_hash.slice(0,8) : ''} · ${c.committed_at ? c.committed_at.slice(0,10) : ''}</div>
+          <div style="color:var(--muted);font-size:0.55rem;margin-top:0.1rem">${c.commit_hash ? c.commit_hash.slice(0,8) : ''} · ${c.created_at ? c.created_at.slice(0,10) : ''}</div>
         </div>`).join('');
 
       // Parse file stats from commits

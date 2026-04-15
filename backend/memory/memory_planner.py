@@ -48,7 +48,7 @@ _SQL_GET_WI_COMMITS = """
     SELECT commit_hash, commit_msg, summary, tags
     FROM mem_mrr_commits
     WHERE project_id = %s AND tags @> jsonb_build_object('work-item', %s::text)
-    ORDER BY committed_at DESC LIMIT 10
+    ORDER BY created_at DESC LIMIT 10
 """
 
 _SQL_GET_WI_INTERACTION_STATS = """
