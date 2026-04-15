@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Session header UI refactor — Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags
-- Hook-log endpoint stability post-m050 — Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint
-- Chat history rendering cache invalidation — UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend
-- Per-prompt tagging system implementation — Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity
-- Memory items and project_facts population logic — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis
-- Source label standardization — Source field mapping (claude_cli → CLI, ui → UI, workflow → Workflow) applied to session headers; phase extracted from tags and rendered as blue chip
+- Chat view session list UI alignment — matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency
+- Timestamp formatting on user prompts — adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint
+- Per-prompt tagging system implementation — tag selection/creation UI per individual prompt (inline ＋ Tag button) with storage and retrieval for message-level granularity
+- Session sticky banner in Chat — displaying 'SESSION <full-uuid> ⎘ <phase>' at top of right panel when session opened; full session ID with copy button for accessibility
+- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms

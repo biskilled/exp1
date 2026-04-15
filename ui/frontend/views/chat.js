@@ -133,6 +133,12 @@ export function renderChat(container) {
           <div id="chat-entity-chips"
                style="display:flex;gap:0.25rem;flex-wrap:wrap;align-items:center;flex:1;min-width:0;overflow:hidden"></div>
 
+          <!-- Session ID badge (last 5 chars; click = copy full ID) -->
+          <span id="chat-session-id-badge" style="display:none;font-family:monospace;font-size:0.52rem;
+               color:var(--accent);background:var(--surface);border:1px solid var(--border);
+               padding:1px 6px;border-radius:3px;cursor:pointer;white-space:nowrap;flex-shrink:0;
+               user-select:none" title="Click to copy full session ID"></span>
+
           <!-- Add tag button -->
           <button id="chat-add-tag-btn"
             onclick="window._toggleEntityPicker()"
@@ -283,6 +289,12 @@ export function renderChat(container) {
   _setupInput();
   _initChatResize();
   _loadSessions();
+  // Auto-refresh session list every 30s (picks up new CLI prompts without full page reload)
+  if (_sessRefreshTimer) clearInterval(_sessRefreshTimer);
+  _sessRefreshTimer = setInterval(() => {
+    if (!document.getElementById('chat-sessions')) { clearInterval(_sessRefreshTimer); _sessRefreshTimer = null; return; }
+    _loadSessions({ force: true });
+  }, 30000);
   // Load roles+workflows first, then render welcome screen so buttons are populated
   _loadRolesAndWorkflows().then(() => _showWelcome());
 }
@@ -867,104 +879,30 @@ function _setupInput() {
 
 // ── Sessions sidebar ──────────────────────────────────────────────────────────
 
-async function _loadSessions() {
-  const container = document.getElementById('chat-sessions');
+/** Render session list from _sessionCache into #chat-sessions container. */
+function _renderSessionList(container) {
   if (!container) return;
-
-  const projectName = state.currentProject?.name;
-  const merged = [];
-
-  // 1. UI sessions (have full message history loadable via chatSession)
-  try {
-    const uiData = await api.chatSessions();
-    const list = Array.isArray(uiData) ? uiData : uiData.sessions || [];
-    list.forEach(s => merged.push({
-      id: s.id,
-      title: s.title || s.id.slice(0, 14),
-      source: 'ui',
-      ts: s.created_at || s.id,   // sort by creation time, not updated_at (tag edits shouldn't reorder)
-      message_count: s.message_count || 0,
-      phase: s.phase || null,
-      feature: s.feature || null,
-      bug_ref: s.bug_ref || null,
-      tags: s.tags || {},
-      entries: null,  // load on demand
-    }));
-  } catch { /* backend offline */ }
-
-  // 2. Unified project history — claude_cli and workflow sources
-  if (projectName) {
-    try {
-      const histData = await api.historyChat(projectName, 300);
-      const bySession = new Map();
-      for (const e of (histData.entries || [])) {
-        const src = e.source || 'ui';
-        if (src === 'ui') continue;  // already in UI sessions above
-        const sid = e.session_id || ('hist_' + e.ts);
-        if (!bySession.has(sid)) {
-          bySession.set(sid, {
-            id: sid,
-            title: (e.user_input || '').slice(0, 60) || sid.slice(0, 14),
-            source: src,
-            ts: e.ts || '',
-            message_count: 0,
-            entries: [],
-          });
-        }
-        const s = bySession.get(sid);
-        s.message_count++;
-        s.entries.push(e);
-        // Capture phase from entry.tags array ["phase:discovery", "feature:auth"]
-        if (!s.phase) {
-          const entryPhase = (e.tags || []).find(t => t.startsWith('phase:'))?.split(':')[1];
-          if (entryPhase) { s.phase = entryPhase; s.tags = { ...(s.tags || {}), phase: entryPhase }; }
-        }
-      }
-      merged.push(...bySession.values());
-    } catch { /* silent */ }
-  }
-
-  // 3. Apply phase overrides from session_phases.json (for CLI/WF sessions without stored phase)
-  if (projectName) {
-    try {
-      const phases = await api.getSessionPhases(projectName);
-      for (const s of merged) {
-        const override = phases[s.id];
-        if (override?.phase) {
-          s.phase = override.phase;
-          s.tags = { ...(s.tags || {}), phase: override.phase };
-        }
-      }
-    } catch { /* silent */ }
-  }
-
-  // Sort newest first (#1 = most recent)
-  merged.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-  _sessionCache = merged;
-
-  if (!merged.length) {
+  if (!_sessionCache.length) {
     container.innerHTML = '<div style="font-size:0.65rem;color:var(--muted);padding:0.5rem 0.25rem">No sessions yet</div>';
     return;
   }
-
-  container.innerHTML = merged.slice(0, 60).map((s, idx) => {
+  container.innerHTML = _sessionCache.slice(0, 60).map((s) => {
     const isActive  = s.id === _sessionId;
     const srcColor  = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
     const srcLabel  = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
-    // Show phase badge for all sessions; flag missing phase with red ⚠ for all sources
     const hasPhase  = !!(s.phase);
     const phaseTxt  = s.phase || null;
     const tagDot    = hasPhase
       ? `<span style="font-size:0.5rem;background:var(--accent)22;color:var(--accent);padding:0 0.22rem;border-radius:2px;flex-shrink:0">${_esc(phaseTxt)}</span>`
-      : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing phase — load session and set it">⚠</span>`;
+      : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing phase">⚠</span>`;
     const featureTxt = s.feature ? `<span style="font-size:0.5rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">#${_esc(s.feature)}</span>` : '';
     const borderL   = !hasPhase ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
     const sid5      = s.id ? s.id.slice(-5) : '?????';
     return `
       <div onclick="window._chatLoadAny('${_esc(s.id)}')"
         style="padding:0.32rem 0.45rem;border-radius:var(--radius);cursor:pointer;
-               border-left:${borderL};
-               font-size:0.63rem;color:${isActive ? 'var(--text)' : 'var(--text2)'};
+               border-left:${borderL};font-size:0.63rem;
+               color:${isActive ? 'var(--text)' : 'var(--text2)'};
                background:${isActive ? 'var(--surface2)' : ''};
                transition:background 0.1s;margin-bottom:1px"
         title="${_esc(s.id)}"
@@ -980,6 +918,110 @@ async function _loadSessions() {
         <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.6rem">${_esc(s.title)}</div>
       </div>`;
   }).join('');
+}
+
+async function _loadSessions(opts = {}) {
+  const container = document.getElementById('chat-sessions');
+  if (!container) return;
+
+  const projectName = state.currentProject?.name;
+
+  // ── 1. Quick render from localStorage cache (avoids blank sidebar on load) ──
+  const cacheKey  = _sessCacheKey(projectName || '_');
+  const fromCache = !opts.force && !_sessionCache.length;
+  if (fromCache) {
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        // Restore entries map from live _sessionCache if available
+        _sessionCache = cached;
+        _renderSessionList(container);
+      }
+    } catch { /* corrupt cache — ignore */ }
+  }
+
+  // ── 2. Find the latest timestamp we already have (for delta hint to server) ──
+  const latestTs = _sessionCache.reduce((best, s) => s.ts > best ? s.ts : best, '');
+
+  const merged = [];
+
+  // ── 3. UI sessions ──────────────────────────────────────────────────────────
+  try {
+    const uiData = await api.chatSessions();
+    const list = Array.isArray(uiData) ? uiData : uiData.sessions || [];
+    list.forEach(s => merged.push({
+      id: s.id,
+      title: s.title || s.id.slice(0, 14),
+      source: 'ui',
+      ts: s.created_at || s.id,
+      message_count: s.message_count || 0,
+      phase: s.phase || null,
+      feature: s.feature || null,
+      bug_ref: s.bug_ref || null,
+      tags: s.tags || {},
+      entries: null,  // load on demand
+    }));
+  } catch { /* backend offline */ }
+
+  // ── 4. CLI / workflow sessions from history ─────────────────────────────────
+  if (projectName) {
+    try {
+      const histData = await api.historyChat(projectName, 300);
+      const bySession = new Map();
+      // Preserve existing entries for sessions already in cache (avoid re-fetching)
+      for (const s of _sessionCache) {
+        if (s.entries?.length) bySession.set(s.id, { ...s });
+      }
+      for (const e of (histData.entries || [])) {
+        const src = e.source || 'ui';
+        if (src === 'ui') continue;
+        const sid = e.session_id || ('hist_' + e.ts);
+        if (!bySession.has(sid)) {
+          bySession.set(sid, {
+            id: sid,
+            title: (e.user_input || '').slice(0, 60) || sid.slice(0, 14),
+            source: src,
+            ts: e.ts || '',
+            message_count: 0,
+            entries: [],
+          });
+        }
+        const s = bySession.get(sid);
+        if (!s.entries) s.entries = [];
+        s.message_count = (s.message_count || 0) + 1;
+        s.entries.push(e);
+        if (!s.phase) {
+          const entryPhase = (e.tags || []).find(t => t.startsWith('phase:'))?.split(':')[1];
+          if (entryPhase) { s.phase = entryPhase; s.tags = { ...(s.tags || {}), phase: entryPhase }; }
+        }
+      }
+      merged.push(...bySession.values());
+    } catch { /* silent */ }
+  }
+
+  // ── 5. Phase overrides ──────────────────────────────────────────────────────
+  if (projectName) {
+    try {
+      const phases = await api.getSessionPhases(projectName);
+      for (const s of merged) {
+        const override = phases[s.id];
+        if (override?.phase) { s.phase = override.phase; s.tags = { ...(s.tags || {}), phase: override.phase }; }
+      }
+    } catch { /* silent */ }
+  }
+
+  // Sort newest first
+  merged.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  _sessionCache = merged;
+
+  // Save to localStorage (without entries — keep it small)
+  try {
+    const toCache = merged.slice(0, 60).map(s => ({ ...s, entries: null }));
+    localStorage.setItem(cacheKey, JSON.stringify(toCache));
+  } catch { /* quota exceeded — ignore */ }
+
+  _renderSessionList(container);
 }
 
 // Load any session — UI sessions from store, CLI/WF sessions from history cache
@@ -1000,8 +1042,7 @@ window._chatLoadAny = async (id) => {
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return;
   msgs.innerHTML = '';
-  // Show session ID + phase banner at top
-  _renderSessionHeader(id, session.phase || session.tags?.phase || '');
+  _updateSessionIdBadge(id);
   if (!session.entries?.length) {
     _appendSystemMsg('No messages in this session.');
     return;
@@ -1054,6 +1095,8 @@ window._chatNew = () => {
   _appliedEntities = [];
   _pendingEntities = [];
   _suggestedTags = [];
+  _chatTagCache = null;
+  _updateSessionIdBadge(null);
   _closeEntityPicker();
   const msgs = document.getElementById('chat-messages');
   if (msgs) msgs.innerHTML = '';
@@ -1155,9 +1198,8 @@ window._chatLoad = async (id) => {
     const cacheTags  = _sessionCache.find(s => s.id === id)?.tags || {};
     const effectiveTags = Object.keys(storedTags).length ? storedTags : cacheTags;
     _restoreTagBar(effectiveTags);
-    // Show session ID + phase banner at top of messages
-    const phase = effectiveTags.phase || storedTags.phase || '';
-    _renderSessionHeader(id, phase);
+    // Update session ID badge in tag bar
+    _updateSessionIdBadge(id);
     for (const m of session.messages || []) {
       if (m.role === 'user')      _appendUserMsg(m.content);
       if (m.role === 'assistant') _appendAssistantMsg(m.content);
@@ -1879,7 +1921,25 @@ function _renderSessionHeader(sessionId, phase) {
 }
 
 /** Per-message tag cache — loaded once per session open. */
-let _chatTagCache = null;  // [{cat, values}] or null = not loaded yet
+let _chatTagCache    = null;  // [{cat, values}] or null = not loaded yet
+let _sessRefreshTimer = null; // auto-refresh interval for session sidebar
+
+const _sessCacheKey = (proj) => `aicli_sess_v1_${proj}`;
+
+/** Update session ID badge in tag bar — shows last 5 chars; click = copy full ID. */
+function _updateSessionIdBadge(id) {
+  const badge = document.getElementById('chat-session-id-badge');
+  if (!badge) return;
+  if (!id) { badge.style.display = 'none'; badge.dataset.fullId = ''; return; }
+  badge.dataset.fullId = id;
+  badge.textContent    = `(${id.slice(-5)})`;
+  badge.title          = `Session: ${id}\n(click to copy)`;
+  badge.style.display  = '';
+  badge.onclick = () => navigator.clipboard.writeText(id).then(() => {
+    badge.textContent = '✓ copied';
+    setTimeout(() => { badge.textContent = `(${id.slice(-5)})`; }, 1400);
+  });
+}
 
 /** Load + flatten planner_tags into _chatTagCache. */
 async function _ensureChatTagCache() {

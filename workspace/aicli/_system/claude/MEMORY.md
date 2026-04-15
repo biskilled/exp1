@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 19:06 UTC by aicli /memory_
+_Generated: 2026-04-15 20:51 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python 3.12 CLI backend (FastAPI + PostgreSQL/pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js). It captures development context through prompts, commits, and sessions, synthesizes memory via Claude Haiku, and executes DAG workflows with LLM agents. Current state: hook-log endpoint stability verified post-m050, session UI headers refactored with full metadata display, but chat history real-time refresh and per-prompt tagging system still pending implementation.
+aicli is a shared AI memory platform combining a Python CLI backend, PostgreSQL vector database, and Electron desktop UI to capture, synthesize, and surface project context across development workflows. The platform uses Claude for memory synthesis, multi-LLM provider support (OpenAI/DeepSeek/Gemini/Grok), and async DAG workflows for intelligent task routing. Currently stabilizing post-migration (m050), with focus on Chat/History UI alignment, real-time prompt persistence, and per-prompt tagging for fine-grained memory organization.
 
 ## Project Facts
 
@@ -212,7 +212,7 @@ Reviewer: ```json
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
 - **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -245,7 +245,7 @@ Reviewer: ```json
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
 - **embeddings**: text-embedding-3-small (1536-dim vectors)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
-- **schema_migrations**: m001-m041 framework with db_schema.sql as source of truth
+- **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/
 
 ## Key Decisions
@@ -264,16 +264,16 @@ Reviewer: ```json
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
+- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
 
 ## In Progress
 
-- Session header UI refactor — Session ID now displayed in CLI header format (last 5 chars in parentheses) at top of right pane; full session ID with copy button in metadata row above phase/tags
-- Hook-log endpoint stability post-m050 — Migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved in hook-log endpoint
-- Chat history rendering cache invalidation — UI not displaying latest prompt changes; frontend needs real-time refresh logic or polling mechanism to sync with backend
-- Per-prompt tagging system implementation — Tag selection/creation UI per individual prompt pending; tag storage and retrieval for message-level granularity
-- Memory items and project_facts population logic — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis
-- Source label standardization — Source field mapping (claude_cli → CLI, ui → UI, workflow → Workflow) applied to session headers; phase extracted from tags and rendered as blue chip
+- Chat view session list UI alignment — matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency
+- Timestamp formatting on user prompts — adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint
+- Per-prompt tagging system implementation — tag selection/creation UI per individual prompt (inline ＋ Tag button) with storage and retrieval for message-level granularity
+- Session sticky banner in Chat — displaying 'SESSION <full-uuid> ⎘ <phase>' at top of right panel when session opened; full session ID with copy button for accessibility
+- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms
 
 ## Active Features / Bugs / Tasks
 
@@ -323,33 +323,102 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+### `commit` — 2026-04-15
 
-User reports UI changes not fully visible in chat tab: session ID display needs to be in CLI header format at top of right pane (where Phase/tags row is), tag-adding functionality missing from prompts, and existing tags not showing. Need to verify Vite rebuild and check history.js rendering.
-
-### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
-
-Commits: chore: remove stale agent context and system documentation files after c | chore: clean up stale agent context and generated system files after cla | chore: remove stale agent context and generated system docs after claude | chore: restructure _system context files after claude cli session f66487 | chore: remove stale agent-context and auto-generated system docs after c
-Changed: m050_prompts_source_id_index
-Stats: backend/routers/route_history.py |  1 +
- ui/frontend/views/history.js     | 60 ++++++++++++++++++++++++++++++++++++----
- 2 files changed, 55 insertions(+), 6 deletions(-)
-
-### `session_summary: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
-
-Summary:
-• Database migration m050 implemented to fix silent errors in hook-log endpoint — prompts now correctly persist to DB • UI not displaying latest changes due to missing real-time refresh logic; cache invalidation needed • Chat display not updating with new prompts because frontend isn't polling/listening for updates • User experiencing stale data in both CLI responses and web UI after prompts are submitted
+diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
+index 429eed7..4bfc7cd 100644
+--- a/ui/frontend/views/history.js
++++ b/ui/frontend/views/history.js
+@@ -385,7 +385,16 @@ export class HistoryView {
+         const anchorId    = `ha-${entryId}`;
+         const sourceId    = e.ts || '';
+ 
+-        // Pre-existing tag chips from DB (string array)
++        // Seed _entryTags from e.tags so system tags (phase/source/feature) always render.
++        // User-added tags from getSourceTags() are merged in on top (loaded earlier).
++        if (e.tags?.length) {
++          const cached = this._entryTags[sourceId] || [];
++          // Keep user-added tags that may not be in e.tags, but ensure e.tags are present
++          const merged = [...new Set([...e.tags, ...cached])];
++          this._entryTags[sourceId] = merged;
++        }
++
++        // Tag chips with remove buttons (system + user-added)
+         const existing = this._entryTags[sourceId] || [];
+         const existingChips = existing.map(tag => {
+           const color = this._tagColor(tag);
+@@ -453,22 +462,17 @@ export class HistoryView {
+         <div class="history-entry" data-ts="${this._escapeHtml(e.ts || '')}"
+              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
+                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
+-          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
+-            <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
+-            <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
+-            ${(e.tags||[]).map(t => {
+-              const col = this._tagColor(t);
+-              const prefix = t.split(':')[0];
+-              const label  = t.includes(':') ? t : t;
+-              return `<span style="background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 5px;border-radius:3px;font-size:10px">${this._escapeHtml(label)}</span>`;
+-            }).join('')}
+-            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
+-            <span id="${anchorId}" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
++          <div style="display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;margin-bottom:6px;font-size:11px">
++            <span style="font-weight:600;color:#27ae60;white-space:nowrap">YOU${this._fmtTs(e.created_at || e.ts) ? ' — ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
++            <span style="background:var(--surface2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:10px;white-space:nowrap">${this._escapeHtml(e.source || 'ui')}</span>
++            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px;white-space:nowrap">⚠ untagged</span>` : ''}
++            <!-- Tags + Add button — all inline, not hidden at far right -->
++            <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
+               ${existingChips}
+               <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(sourceId)}','${anchorId}')"
+-                style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
+-                       cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
+-                + Tag
++                style="font-size:10px;padding:2px 8px;border:1.5px solid var(--accent);border-radius:4px;
++                       cursor:pointer;background:var(--surface);color:var(--accent);white-space:nowrap;font-weight:600;letter-spacing:.2px">
++                ＋ Tag
+               </button>
+             </span>
+           </div>
+@@ -483,24 +487,31 @@ export class HistoryView {
+       }).join('');
+ 
+       // Session key for DOM IDs (safe to use in attribute)
+-      const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
+-      const sid5   = sid ? sid.slice(-5) : '?????';
+-      const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
+-      const pCount = group.entries.length;
++      const sgKey      = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
++      const sid5       = sid ? sid.slice(-5) : '?????';
++      const latestTs   = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
++      const pCount     = group.entries.length;
++      // Extract session-level source + phase from its entries
++      const _sgSrc     = group.entries[0]?.source || 'ui';
++      const _sgLabel   = { claude_cli: 'CLI', ui: 'UI', workflow: 'Workflow' }[_sgSrc] || _sgSrc;
++      const _sgPhases  = [...new Set(group.entries.flatMap(e => (e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>t.slice(6))))];
++      const _sgPhase   = _sgPhases[0] || '';
+ 
+       return `
+         <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+           <!-- Session header — always visible, click to toggle -->
+           <div onclick="window._historyView._toggleSession('${sgKey}')"
+-               style="display:flex;align-items:center;gap:6px;padding:5px 8px;
++               style="display:flex;align-items:center;gap:6px;padding:5px 10px;
+                       background:var(--surface);cursor:pointer;user-select:none;font-size:11px;
+                       border-bottom:1px solid var(--border)">
+             <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
++            <span style="font-weight:600;color:var(--text)">${this._escapeHtml(_sgLabel)}</span>
++            ${_sgPhase ? `<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:1px 6px;border-radius:3px;font-size:10px">${this._escapeHtml(_sgPhas
 
 ### `commit` — 2026-04-15
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index cb20c1d..bf53f4e 100644
+index 5ae4fee..e9665eb 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-14 14:45 UTC
-+> Generated by aicli 2026-04-14 14:46 UTC
+-> Generated by aicli 2026-04-15 18:46 UTC
++> Generated by aicli 2026-04-15 18:55 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -358,33 +427,72 @@ index cb20c1d..bf53f4e 100644
 ### `commit` — 2026-04-15
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 55a56c5..87a31d2 100644
+index c808e3e..161152f 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:45 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:46 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:55 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-13] yes
+ - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
+ - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
+ - [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
++- [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
+ - [2026-04-15] test: is hook-log working now after m050?
+\ No newline at end of file
 
 
 ### `commit` — 2026-04-15
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 55a56c5..87a31d2 100644
+index c808e3e..161152f 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:45 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:46 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:55 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-13] yes
+ - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
+ - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
+ - [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
++- [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
+ - [2026-04-15] test: is hook-log working now after m050?
+\ No newline at end of file
 
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up stale agent context and legacy system documentation file
+Hash: 2725f654
+Code files (5):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - ui/frontend/views/history.js
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+Symbols changed: sgKey
+
+### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+User reports UI changes not fully visible in chat tab: session ID display needs to be in CLI header format at top of right pane (where Phase/tags row is), tag-adding functionality missing from prompts, and existing tags not showing. Need to verify Vite rebuild and check history.js rendering.
 
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Migration m050 implemented to fix silent DB errors in hook-log endpoint; prompts now correctly persist to PostgreSQL. Session header refactored to display source label (CLI/UI/Workflow), phase as blue chip, and session ID in (xxxxx) format at top of right pane. Full session ID with copy button added to metadata row. **[2026-04-15]** `claude_cli` — UI chat history not reflecting latest prompt changes; identified cache invalidation and real-time refresh as root cause. Frontend needs polling or WebSocket mechanism to sync new prompts submitted to hook-log endpoint. **[2026-04-15]** `claude_cli` — Per-prompt tagging system UI pending implementation; tag selection/creation buttons to be added per individual message. Tag suggestion column (ai_tag_suggestion) with approve/remove functionality refactored to simplified chip markup. **[2026-04-15]** `claude_cli` — Memory items and project_facts table population logic identified as gap; tables exist in schema but update/query operations not yet implemented for improved memory synthesis pipeline.
+**[2026-04-15]** `claude_cli` — Migration m050 completed, fixing silent DB errors in prompt persistence; hook-log endpoint stability verified. **[2026-04-15]** `claude_cli` — Chat view session list alignment underway: source badges (CLI/UI/Workflow), phase chips, and session ID display (last 5 chars) now match History view rendering for consistency. **[2026-04-15]** `claude_cli` — Timestamp formatting refined: YY/MM/DD-HH:MM format added next to 'YOU' label in both Chat and History prompts for temporal context. **[2026-04-15]** `claude_cli` — Session sticky banner implemented in Chat: displays 'SESSION <full-uuid> ⎘ <phase>' at top of right panel with full session ID + copy button. **[2026-04-15]** `claude_cli` — Per-prompt tagging UI redesigned: inline ＋ Tag button with simplified chip markup; tag creation/approval workflow for message-level granularity. **[2026-04-14]** `claude_cli` — mem_mrr_prompts column schema updated: moved event_id and project_id columns immediately after client_id per database consolidation standards.
