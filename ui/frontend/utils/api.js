@@ -256,6 +256,7 @@ api.entities = {
     if (opts.status) q.set('status', opts.status);
     return _get(`/entities/values?${q}`);
   },
+  allValues:      (project) => _get(`/entities/all-values?${_pq(project)}`),
   createValue:    (body)              => _post('/entities/values', body),
   patchValue:     (id, body)          => fetch(_base() + `/entities/values/${id}`, { method:'PATCH', headers:_headers(), body:JSON.stringify(body) }).then(r=>r.ok?r.json():r.json().then(e=>Promise.reject(new Error(e.detail)))),
   deleteValue:    (id)                => _del(`/entities/values/${id}`),

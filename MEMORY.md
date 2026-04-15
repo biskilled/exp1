@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 23:22 UTC by aicli /memory_
+_Generated: 2026-04-15 23:44 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -321,167 +321,295 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
-diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
-index d35fe7d..ca28256 100644
---- a/ui/frontend/views/history.js
-+++ b/ui/frontend/views/history.js
-@@ -355,21 +355,29 @@ export class HistoryView {
-            </span>`;
-         }).join('');
+Commit: docs: update system context and memory docs after cli session 8b91f9d9
+Hash: 6404b0ea
+Code files (8):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/core/database.py
+  - backend/memory/mem_embeddings.py
+  - backend/memory/memory_embedding.py
+  - backend/memory/memory_mirroring.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+Symbols changed: _openai_key, smart_chunk_diff, smart_chunk_markdown, smart_chunk_text, _detect_language, smart_chunk_code
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
+index 2efbb44..1c0f52d 100644
+--- a/backend/routers/route_history.py
++++ b/backend/routers/route_history.py
+@@ -28,7 +28,7 @@ from core.tags import tags_to_list, parse_tag
  
-+        const _copyBtn = (id, label) =>
-+          `<button onclick="navigator.clipboard.writeText(document.getElementById('${id}').innerText).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='⎘ copy',1200)})"
-+             style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;
-+                    cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap;margin-left:4px">⎘ copy</button>`;
+ _SQL_LIST_COMMITS = """
+     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
+-           c.source, c.session_id, c.committed_at,
++           c.tags->>'source' AS source, c.session_id, c.committed_at,
+            p.source_id AS prompt_source_id
+     FROM mem_mrr_commits c
+     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
+@@ -39,14 +39,17 @@ _SQL_LIST_COMMITS = """
+ 
+ _SQL_UPSERT_COMMIT_FROM_LOG = """
+     INSERT INTO mem_mrr_commits
+-        (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
+-    VALUES (1, %s, %s, %s, %s, %s, %s)
++        (client_id, project, commit_hash, commit_msg, session_id, committed_at,
++         tags)
++    VALUES (1, %s, %s, %s, %s, %s,
++            jsonb_build_object('source', %s))
+     ON CONFLICT (commit_hash) DO UPDATE SET
+         session_id = CASE
+             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
+             THEN EXCLUDED.session_id
+             ELSE mem_mrr_commits.session_id
+-        END
++        END,
++        tags = mem_mrr_commits.tags || EXCLUDED.tags
+ """
+ 
+ _SQL_UPDATE_COMMIT_META = (
+@@ -57,14 +60,14 @@ _SQL_UPDATE_COMMIT_META = (
+ # Base form matches by session_id only; extended form adds a committed_at range.
+ # Build dynamically in the handler; see session_commits() below.
+ _SQL_SESSION_COMMITS_BASE = """
+-    SELECT commit_hash, commit_msg, tags, source, committed_at
++    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+           FROM mem_mrr_commits
+          WHERE client_id=1 AND project=%s AND session_id = %s
+          ORDER BY committed_at
+ """
+ 
+ _SQL_SESSION_COMMITS_WITH_WINDOW = """
+-    SELECT commit_hash, commit_msg, tags, source, committed_at
++    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
+           FROM mem_mrr_commits
+          WHERE client_id=1 AND project=%s
+            AND (session_id = %s
+@@ -226,7 +229,7 @@ async def chat_history(
+                     ) + ")"
+                     noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
+ 
+-                    provider_filter = " AND llm_source = %s" if provider else ""
++                    provider_filter = " AND tags->>'source' = %s" if provider else ""
+                     provider_arg    = (provider,) if provider else ()
+ 
+                     cur.execute(
+@@ -239,7 +242,7 @@ async def chat_history(
+                     total = cur.fetchone()[0]
+ 
+                     cur.execute(
+-                        f"""SELECT source_id, session_id, llm_source, prompt,
++                        f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
+                                    response, tags, created_at
+                             FROM mem_mrr_prompts
+                             WHERE client_id=1 AND project=%s
+@@ -322,6 +325,8 @@ async def commits_history(
+                 for r in rows:
+                     if r.get("committed_at"):
+                         r["committed_at"] = r["committed_at"].isoformat()
++                    if isinstance(r.get("tags"), dict):
++                        r["tags"] = tags_to_list(r["tags"])
+                 return {"commits": rows, "project": p, "source": "db"}
+ 
+     # Fallback: read commit_log.jsonl — no tag enrichment
+@@ -416,14 +421,15 @@ async def sync_commits(project: str | None = Query(None)):
+             commit_hash = raw.get("hash") or raw.get("commit_hash")
+             if not commit_hash:
+                 continue
++            source_val = raw.get("source", "git")
+             rows.append((
+                 1,                                        # client_id
+                 p,
+                 commit_hash,
+                 raw.get("message", raw.get("msg", "")),
+-                raw.get("source", "git"),
+                 raw.get("session_id"),
+                 raw.get("ts"),
++                json.dumps({"source": source_val}),
+             ))
+ 
+     if not rows:
+@@ -431,14 +437,15 @@ async def sync_commits(project: str | None = Query(None)):
+ 
+     _SQL_BATCH_UPSERT = """
+         INSERT INTO mem_mrr_commits
+-            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
++            (client_id, project, commit_hash, commit_msg, session_id, committed_at, tags)
+         VALUES %s
+         ON CONFLICT (commit_hash) DO UPDATE SET
+             session_id = CASE
+                 WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
+                 THEN EXCLUDED.session_id
+                 ELSE mem_mrr_commits.session_id
+-            END
++            END,
++            tags = mem_mrr_commits.tags || EXCLUDED.tags
+     """
+     with db.conn() as conn:
+         with conn.cursor() as cur:
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
+index 89e0789..005d603 100644
+--- a/backend/routers/route_entities.py
++++ b/backend/routers/route_entities.py
+@@ -164,12 +164,14 @@ _SQL_GET_EVENTS_FOR_VALUE = """
+ # Expands JSONB dict {"phase":"discovery","feature":"auth"} → "phase:discovery", "feature:auth"
+ _SQL_GET_SESSION_TAGS_FROM_MRR = """
+     SELECT DISTINCT (key || ':' || value) AS tag_str
+-    FROM mem_mrr_prompts, jsonb_each_text(tags)
+-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
++    FROM mem_mrr_prompts, jsonb_each_text(tags - 'source' - 'llm')
++    WHERE client_id=1 AND project=%s AND session_id=%s
++      AND (tags - 'source' - 'llm') != '{}'::jsonb
+     UNION
+     SELECT DISTINCT (key || ':' || value)
+-    FROM mem_mrr_commits, jsonb_each_text(tags)
+-    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
++    FROM mem_mrr_commits, jsonb_each_text(tags - 'source' - 'llm')
++    WHERE client_id=1 AND project=%s AND session_id=%s
++      AND (tags - 'source' - 'llm') != '{}'::jsonb
+ """
+ 
+ # GitHub sync: upsert tag by name+project including short_desc inline
+@@ -1054,19 +1056,21 @@ async def get_events_source_tags(project: str | None = Query(None)):
+     result: dict = {}
+     with db.conn() as conn:
+         with conn.cursor() as cur:
+-            # Prompts
++            # Prompts — only rows with user-facing tags (exclude source/llm-only rows)
+             cur.execute(
+                 "SELECT source_id, tags FROM mem_mrr_prompts "
+-                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
++                "WHERE client_id=1 AND project=%s "
++                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
+                 (p,),
+             )
+             for source_id, tags in cur.fetchall():
+                 if source_id and tags:
+                     result[source_id] = tags_to_list(tags)
+-            # Commits
++            # Commits — only rows with user-facing tags
+             cur.execute(
+                 "SELECT commit_hash, tags FROM mem_mrr_commits "
+-                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
++                "WHERE client_id=1 AND project=%s "
++                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
+                 (p,),
+             )
+             for commit_hash, tags in cur.fetchall():
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/memory/memory_mirroring.py b/backend/memory/memory_mirroring.py
+index 287c593..e90341c 100644
+--- a/backend/memory/memory_mirroring.py
++++ b/backend/memory/memory_mirroring.py
+@@ -77,12 +77,14 @@ _SQL_GET_LAST_N_PROMPTS = """
+     LIMIT %s
+ """
+ 
+-# "Untagged" = tags dict is empty ({})
++# "Untagged" = no user-facing classification tags (phase/feature/bug etc.)
++# System keys (source, llm) are always present but do not count as "tagged".
+ _SQL_GET_UNTAGGED_PROMPTS = """
+     SELECT source_id, 'prompt' AS source_type,
+            (prompt || ' ' || response)[:500] AS content_preview, created_at
+     FROM mem_mrr_prompts
+-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
++    WHERE client_id=1 AND project=%s
++      AND (tags - 'source' - 'llm') = '{}'::jsonb
+     ORDER BY created_at ASC
+     LIMIT %s
+ """
+@@ -91,7 +93,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
+     SELECT commit_hash, 'commit' AS source_type,
+            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
+     FROM mem_mrr_commits
+-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
++    WHERE client_id=1 AND project=%s
++      AND (tags - 'source' - 'llm') = '{}'::jsonb
+     ORDER BY created_at ASC
+     LIMIT %s
+ """
+@@ -99,7 +102,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
+ _SQL_GET_UNTAGGED_ITEMS = """
+     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
+     FROM mem_mrr_items
+-    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
++    WHERE client_id=1 AND project=%s
++      AND (tags - 'source' - 'llm') = '{}'::jsonb
+     ORDER BY created_at ASC
+     LIMIT %s
+ """
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/core/tags.py b/backend/core/tags.py
+index 7c02326..dbc9556 100644
+--- a/backend/core/tags.py
++++ b/backend/core/tags.py
+@@ -11,6 +11,16 @@ from __future__ import annotations
+ 
+ import json
+ 
++# Internal pipeline metadata keys stored in tags JSONB but never shown as UI chips.
++# "source" = which platform sent the data (e.g. "claude_cli", "git")
++# "llm"    = which model produced digest content (e.g. "claude-haiku-4-5-20251001")
++_SYSTEM_KEYS: frozenset[str] = frozenset({"source", "llm", "event", "chunk_type"})
 +
-         const outputHtml = e.output
-           ? `<div style="margin-top:6px">
--              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Response</div>
--              <div id="${entryId}-resp"
-+              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-+                <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Response</span>
-+                ${_copyBtn(`${entryId}-resp`, 'copy response')}
-+                <span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none;margin-left:2px"
-+                    onclick="const el=document.getElementById('${entryId}-resp');
-+                             const collapsed=el.dataset.collapsed!=='false';
-+                             el.style.maxHeight=collapsed?'none':'200px';
-+                             el.dataset.collapsed=collapsed?'false':'true';
-+                             this.textContent=collapsed?'▲ collapse':'▼ expand'">▼ expand</span>
-+              </div>
-+              <div id="${entryId}-resp" data-collapsed="true"
-                 style="color:var(--muted);font-size:12px;border-left:2px solid var(--border);
-                        padding-left:8px;white-space:pre-wrap;word-break:break-word;
--                       max-height:100px;overflow:hidden;transition:max-height 0.2s">
-+                       max-height:200px;overflow-y:auto;transition:max-height 0.2s">
-                 ${this._escapeHtml(e.output)}
-               </div>
--              ${e.output.length > 200
--                ? `<span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none"
--                    onclick="const el=document.getElementById('${entryId}-resp');
--                             el.style.maxHeight=el.style.maxHeight==='none'?'100px':'none';
--                             this.textContent=el.style.maxHeight==='none'?'▲ collapse':'▼ expand'">▼ expand</span>`
--                : ''}
-             </div>`
-           : '';
++# JSONB filter expression: strips system keys before comparing to '{}'
++# Used in WHERE clauses to find rows with user-applied tags only.
++TAGS_USER_NONEMPTY = "(tags - 'source' - 'llm') != '{}'::jsonb"
++TAGS_USER_EMPTY    = "(tags - 'source' - 'llm') = '{}'::jsonb"
++
  
-@@ -417,8 +425,11 @@ export class HistoryView {
-               </button>
-             </span>
-           </div>
--          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Prompt</div>
--          <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
-+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-+            <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Prompt</span>
-+            ${_copyBtn(`${entryId}-prompt`, 'copy prompt')}
-+          </div>
-+          <div id="${entryId}-prompt" style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
-           ${outputHtml}
-           ${commitRow}
-         </div>`;
+ def tags_to_dict(tags: list[str] | dict | None) -> dict[str, str]:
+     """Convert wire-format string list → JSONB dict for storage.
+@@ -33,17 +43,21 @@ def tags_to_dict(tags: list[str] | dict | None) -> dict[str, str]:
+     return result
+ 
+ 
+-def tags_to_list(tags: dict | list | None) -> list[str]:
++def tags_to_list(tags: dict | list | None, *, include_system: bool = False) -> list[str]:
+     """Convert JSONB dict → wire-format string list for API responses.
+ 
+     {"phase": "discovery", "feature": "auth"} → ["phase:discovery", "feature:auth"]
++    System keys (source, llm, event, chunk_type) are excluded by default — they are
++    internal pipeline metadata, not user-facing classification tags.
+     Already-a-list passthrough (for compat with old code paths).
+     """
+     if not tags:
+         return []
+     if isinstance(tags, list):
+         return [str(t) for t in tags]
+-    return [f"{k}:{v}" for k, v in tags.items()]
++    if include_system:
++        return [f"{k}:{v}" for k, v in tags.items()]
++    return [f"{k}:{v}" for k, v in tags.items() if k not in _SYSTEM_KEYS]
+ 
+ 
+ def parse_tag(tag_str: str) -> tuple[str, str]:
 
 
 ### `commit` — 2026-04-15
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 1794988..6177158 100644
+index dbafc66..676245e 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-06 01:37 UTC
-+> Generated by aicli 2026-04-06 02:08 UTC
+-> Generated by aicli 2026-04-05 18:23 UTC
++> Generated by aicli 2026-04-05 22:11 UTC
  
  # aicli — Shared AI Memory Platform
  
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index b3f5136..4bb2083 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:37 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:08 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,11 +61,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
- - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
- - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
--
--## Recent Context (last 5 changes)
--
--- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
--- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
--- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
--- [2026-04-06] test prompt after fix
--- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
-\ No newline at end of file
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index b3f5136..4bb2083 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:37 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:08 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,11 +61,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
- - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
- - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
--
--## Recent Context (last 5 changes)
--
--- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
--- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
--- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
--- [2026-04-06] test prompt after fix
--- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
-\ No newline at end of file
-
-
-### `commit` — 2026-04-15
-
-Commit: docs: update system context files and trim MEMORY.md after CLI session
-Hash: 25ab487a
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - ui/frontend/views/history.js
-Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
-Symbols changed: _copyBtn
-
-### `commit` — 2026-04-15
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 3c64f25..cc26abd 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
-+- UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries
-+- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface
- - Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
--- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
--- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
--- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
--- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
--- Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
-+- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts
-+- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
-+- Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping
 

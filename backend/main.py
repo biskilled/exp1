@@ -123,12 +123,39 @@ async def health():
     }
 
 
+async def _warmup_statistics():
+    """Wait for DB to connect then pre-compute today's pr_statistics row.
+
+    Runs as a background task after startup so the dashboard has cached counts
+    available immediately on first open without the user having to trigger
+    a full data-dashboard reload.
+    """
+    import asyncio
+    for _ in range(30):           # wait up to 60 s (Railway cold-start)
+        if db.is_available():
+            break
+        await asyncio.sleep(2)
+    if not db.is_available():
+        log.debug("warmup_statistics: DB not ready after 60s, skipping")
+        return
+    try:
+        from routers.route_memory import _refresh_stats
+        pid = db.get_or_create_project_id(settings.active_project)
+        _refresh_stats(pid)
+        log.info("warmup_statistics: pr_statistics populated for '%s'", settings.active_project)
+    except Exception as e:
+        log.debug("warmup_statistics error: %s", e)
+
+
 @app.on_event("startup")
 async def startup():
     import asyncio
     # Fire-and-forget: DB init runs in a thread so the server starts immediately.
     # Routes check db.is_available() and fall back to file storage until DB connects.
     asyncio.get_event_loop().run_in_executor(None, db.init)
+
+    # Pre-compute statistics once DB is ready (background, non-blocking)
+    asyncio.ensure_future(_warmup_statistics())
 
     # Migrate server_data from old .aicli/server_data/ path to ui/backend/data/
     _migrate_server_data()

@@ -17,42 +17,35 @@ let _cache = {
   loaded:     false,
 };
 
-/** Load (or force-reload) all categories + their values for a project. */
+/** Load (or force-reload) all categories + their values for a project.
+ *
+ * Uses GET /entities/all-values (single round-trip) instead of N parallel
+ * category calls. Falls back to individual calls if the endpoint is unavailable.
+ */
 export async function loadTagCache(project, force = false) {
   if (!force && _cache.project === project && _cache.loaded) return _cache;
 
   _cache = { project, categories: [], values: {}, loaded: false };
   try {
-    const catData = await api.entities.listCategories(project);
-    _cache.categories = catData.categories || [];
+    const data = await api.entities.allValues(project);
 
-    // If DB was unavailable the categories have null IDs (fallback mode).
-    // Don't mark the cache as loaded so the next navigation triggers a fresh
-    // reload once the DB is ready.
-    if (catData.fallback) return _cache;
+    if (data.fallback) {
+      // DB not ready — seed fallback categories so the UI shows something
+      const catData = await api.entities.listCategories(project).catch(() => ({ categories: [], fallback: true }));
+      _cache.categories = catData.categories || [];
+      return _cache;  // not marked loaded; next navigation retries
+    }
 
-    // Load all categories' values in parallel — one batch instead of N serial calls
-    let anyValuesFallback = false;
-    await Promise.all(_cache.categories.map(async c => {
-      try {
-        const vData = await api.entities.listValues(project, c.id);
-        if (vData.fallback) {
-          // DB unavailable for this category's values — don't mark cache as loaded
-          anyValuesFallback = true;
-          _cache.values[String(c.id)] = [];
-          c.value_count = 0;
-        } else {
-          _cache.values[String(c.id)] = vData.values || [];
-          c.value_count = _cache.values[String(c.id)].length;
-        }
-      } catch {
-        _cache.values[String(c.id)] = [];
-        c.value_count = 0;
-      }
-    }));
+    _cache.categories = data.categories || [];
+    const byCategory = data.by_category || {};
 
-    // Only mark loaded if all values came from the real DB (no fallback)
-    if (!anyValuesFallback) _cache.loaded = true;
+    for (const c of _cache.categories) {
+      const key = String(c.id);
+      _cache.values[key] = byCategory[key] || [];
+      c.value_count = _cache.values[key].length;
+    }
+
+    _cache.loaded = true;
   } catch (e) {
     console.warn('[tagCache] load failed:', e.message);
   }

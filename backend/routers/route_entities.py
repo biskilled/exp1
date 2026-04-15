@@ -528,6 +528,49 @@ async def list_values(
             return {"values": rows, "project": p}
 
 
+@router.get("/all-values")
+async def list_all_values(project: str | None = Query(None)):
+    """Return all planner_tag values for ALL categories in a single query.
+
+    Replaces N parallel /entities/values calls in loadTagCache() with one
+    round-trip. Response groups values by category_id for direct cache hydration.
+
+    Returns:
+        {by_category: {"<cat_id>": [value, ...]}, categories: [{id,name,...}], project}
+    """
+    if not db.is_available():
+        return {"by_category": {}, "categories": [], "project": _project(project), "fallback": True}
+
+    p = _project(project)
+    _seed_defaults(p)
+    project_id = db.get_or_create_project_id(p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Load categories with value counts
+            cur.execute(_SQL_LIST_CATEGORIES, (project_id,))
+            cat_cols = [d[0] for d in cur.description]
+            categories = [dict(zip(cat_cols, r)) for r in cur.fetchall()]
+
+            # Load ALL values in one query (no category filter)
+            cur.execute(
+                _SQL_LIST_VALUES.format(where="t.project_id=%s"),
+                (project_id,),
+            )
+            val_cols = [d[0] for d in cur.description]
+            by_category: dict[str, list] = {}
+            for r in cur.fetchall():
+                row = dict(zip(val_cols, r))
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
+                if row.get("due_date"):
+                    row["due_date"] = row["due_date"].isoformat()
+                key = str(row["category_id"])
+                by_category.setdefault(key, []).append(row)
+
+    return {"by_category": by_category, "categories": categories, "project": p}
+
+
 @router.get("/summary")
 async def entity_summary(project: str | None = Query(None)):
     """Structured project management view: all active tags grouped by category.
