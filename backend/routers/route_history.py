@@ -268,7 +268,10 @@ async def chat_history(
                     provider_filter = " AND tags->>'source' = %s" if provider else ""
                     provider_arg    = (provider,) if provider else ()
 
-                    # Fetch ALL rows (pagination done in Python after JSONL merge)
+                    # Fetch DB rows with a generous cap, then merge JSONL in Python.
+                    # JSONL entries (pre-DB era) are always older, so fetching the
+                    # newest DB rows and appending JSONL gives correct merge coverage.
+                    db_limit = max(offset + limit + 50, 600) if limit > 0 else 10000
                     cur.execute(
                         f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
                                    response, tags, created_at
@@ -276,8 +279,9 @@ async def chat_history(
                             WHERE project_id=%s
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}
-                            ORDER BY created_at DESC""",
-                        (project_id,) + noise_args + provider_arg,
+                            ORDER BY created_at DESC
+                            LIMIT %s""",
+                        (project_id,) + noise_args + provider_arg + (db_limit,),
                     )
                     rows = cur.fetchall()
 

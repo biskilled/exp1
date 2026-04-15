@@ -930,6 +930,13 @@ async function _loadSessions(opts = {}) {
 
   const projectName = state.currentProject?.name;
 
+  // Pre-set session ID from runtime state so the very first render shows the right session.
+  // This is synchronous — no network call needed (loaded when project was opened).
+  if (!_sessionId) {
+    const lastKnown = state.currentProject?.dev_runtime_state?.last_session_id;
+    if (lastKnown) _sessionId = lastKnown;
+  }
+
   // ── 1. Quick render from localStorage cache (avoids blank sidebar on load) ──
   const cacheKey  = _sessCacheKey(projectName || '_');
   const fromCache = !opts.force && !_sessionCache.length;
@@ -938,7 +945,6 @@ async function _loadSessions(opts = {}) {
       const raw = localStorage.getItem(cacheKey);
       if (raw) {
         const cached = JSON.parse(raw);
-        // Restore entries map from live _sessionCache if available
         _sessionCache = cached;
         _renderSessionList(container);
       }
@@ -1025,19 +1031,11 @@ async function _loadSessions(opts = {}) {
     localStorage.setItem(cacheKey, JSON.stringify(toCache));
   } catch { /* quota exceeded — ignore */ }
 
-  // Auto-highlight the current CLI session in the sidebar.
-  // Fetch fresh project state to get latest last_session_id (may have changed since app open).
-  // Fall back to dev_runtime_state cached in state, then to newest session.
-  if (!_sessionId && merged.length) {
-    let lastKnown = state.currentProject?.dev_runtime_state?.last_session_id;
-    try {
-      const fresh = await api.getProject(projectName);
-      lastKnown = fresh?.dev_runtime_state?.last_session_id || lastKnown;
-    } catch { /* offline — use cached value */ }
-    const target = lastKnown
-      ? (merged.find(s => s.id === lastKnown) || merged[0])
-      : merged[0];
-    if (target) _sessionId = target.id;
+  // After full fetch: if _sessionId isn't in the new list, fall back to newest session.
+  if (_sessionId && !merged.find(s => s.id === _sessionId)) {
+    _sessionId = merged[0]?.id || null;
+  } else if (!_sessionId && merged.length) {
+    _sessionId = merged[0].id;
   }
 
   _renderSessionList(container);

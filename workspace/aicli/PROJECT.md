@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Chat history loading and sort stability — fixed incorrect sort order; verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; confirmed data pipeline working correctly post-migration
-- Session ID display in Chat/History views — implementing monospace badge (last 5 chars) between entity chips and +Tag button with click-to-copy full UUID; phase duplication removal in header
+- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration
+- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()
+- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
 - Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
-- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps

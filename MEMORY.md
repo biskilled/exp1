@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 21:20 UTC by aicli /memory_
+_Generated: 2026-04-15 21:31 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL with pgvector embeddings), a CLI interface, and an Electron desktop UI for managing AI-assisted development workflows. It uses async DAG workflows, multi-provider LLM adapters (Claude/OpenAI/DeepSeek/Gemini/Grok), and 4-layer memory synthesis to consolidate project context, commits, and collaborative sessions into searchable, tagged work items and project facts.
+aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling AI-assisted development through semantic search, memory synthesis, and workflow automation. The system maintains a 4-layer memory architecture (ephemeral → raw capture → digested events → work items), uses PostgreSQL + pgvector for embeddings, and integrates multiple LLM providers. Current focus is on session state stability, consistent timestamp/session ID rendering across Chat and History views, and per-prompt tagging refinement post-migration m050.
 
 ## Project Facts
 
@@ -264,16 +264,16 @@ Reviewer: ```json
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Chat history data pipeline: live DB-sourced prompts with JSONL fallback merge; limit=500 sort descending by created_at ensures April entries appear first with 531 total (389 DB + ~142 JSONL)
+- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations
 
 ## In Progress
 
-- Chat history loading and sort stability — fixed incorrect sort order; verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; confirmed data pipeline working correctly post-migration
-- Session ID display in Chat/History views — implementing monospace badge (last 5 chars) between entity chips and +Tag button with click-to-copy full UUID; phase duplication removal in header
+- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration
+- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()
+- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
 - Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
-- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps
 
 ## Active Features / Bugs / Tasks
 
@@ -323,6 +323,85 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
+### `commit` — 2026-04-15
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 9b62abe..7b45bb2 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 20:51 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:07 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
++- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
+ - [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
+ - [2026-04-15] I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be a
+ - [2026-04-15] test: is hook-log working now after m050?
+-- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
+\ No newline at end of file
++- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
++- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
+\ No newline at end of file
+
+
+### `commit` — 2026-04-15
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 9b62abe..7b45bb2 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 20:51 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:07 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+ - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+ - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
++- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
+ 
+ ## Recent Context (last 5 changes)
+ 
+-- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
+ - [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
+ - [2026-04-15] I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be a
+ - [2026-04-15] test: is hook-log working now after m050?
+-- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
+\ No newline at end of file
++- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
++- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
+\ No newline at end of file
+
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up legacy _system context files after claude cli session f6
+Hash: b4a10441
+Code files (5):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/routers/route_history.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+Symbols changed: _normalize_jsonl_entry
+
 ### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
 
 Commits: chore: clean up stale agent context and legacy system documentation file | chore: remove stale agent context and generated system docs after claude | chore: remove stale agent context and auto-generated system files after 
@@ -345,52 +424,16 @@ Code files (4):
   - workspace/aicli/PROJECT.md
 Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
 
-### `commit` — 2026-04-15
-
-Commit: chore: clean up legacy _system root files and consolidate into claude/ s
-Hash: b66c10a3
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl
-
-### `commit` — 2026-04-15
-
-Commit: chore: clean up legacy _system context files after claude cli session 2a
-Hash: 26f1ea53
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl
-
-### `commit` — 2026-04-15
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index a157ac9..156ecd7 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -262,9 +262,9 @@ sidebar tabs:
- 
- ## Recent Work
- 
--- History view UI refactor — Added collapsible session grouping with toggleable headers, improved timestamp formatting (YY/MM/DD-HH:MM), session ID display with last-4-char preview, and prompt count aggregation
--- History API enhancement — Added created_at ISO timestamp to chat_history endpoint response for improved UI date/time handling
--- Agent context consolidation — Legacy _system/ files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed
--- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter
--- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; 4-stage pipeline with provider/model overrides and auto_commit boolean support
--- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation
-+- Hook-log functionality verification — Testing hook-log behavior post-m050 migration; unclear if migration resolved core issues or if additional schema/logic changes required
-+- Backend module restructure completion — agents/tools/ and agents/mcp/ moved to correct locations; imports verified; stray auth.py references cleaned up
-+- Backend startup race condition mitigation — Retry logic handles empty project list on first load; root cause diagnosis ongoing for AiCli project visibility edge cases
-+- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
-+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
-+- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
-
-
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Identified and resolved chat history loading issue: system was correctly loading 531 total prompts (389 from PostgreSQL DB + ~142 from JSONL fallback merge) with proper descending sort by created_at, placing April entries first. Confirmed data pipeline working post-migration m050.
+**[2026-04-15]** `claude_cli` — Fixed stale session ID persisting across tab navigations by resetting module-level `_sessionId` to `null` at start of `renderChat()`; localStorage cache no longer highlights old sessions on load. Session ID display (last 5 chars) positioned between entity chips and +Tag button with click-to-copy UUID.
 
-**[2026-04-15]** `development` — Consolidated AI context files: removed legacy _system/ directory with stale CLAUDE.md, MEMORY.md, and context files. Established .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md as primary agent context sources (v3.0.0).
+**[2026-04-15]** `claude_cli` — Verified chat history sort stability: 531 total prompts loaded (389 from PostgreSQL, ~142 from JSONL fallback merge) with April entries correctly appearing first; confirmed data pipeline working post-m050 migration.
 
-**[2026-04-15]** `in_progress` — Session ID display feature: implementing monospace badge showing last 5 chars of UUID between entity chips and tag button; click copies full ID with no phase duplication in header.
+**[2026-04-15]** `cleanup` — Consolidated AI context files to `.ai/rules.md`, `.cursor/rules/aicli.mdrules`, `.github/copilot-instructions.md`; removed legacy `_system/` directory and repository-root CLAUDE.md/MEMORY.md to eliminate duplication and simplify agent context management.
 
-**[2026-04-15]** `in_progress` — Per-prompt tagging refinement: inline ✓ button at message level creates missing ai_suggestion tags with category inference; simplified chip markup without category prefix in non-category mode.
+**[2026-04-15]** `claude_cli` — Implemented per-prompt tagging refinement with simplified chip markup and inline ✓ button for tag creation/approval at message level; category inference auto-populated for new suggested tags.
 
-**[2026-04-15]** `in_progress` — Timestamp formatting for user prompts: YY/MM/DD-HH:MM format next to 'YOU' label in Chat and History views for temporal context.
+**[2026-04-15]** `claude_cli` — Timestamp formatting added to prompts (YY/MM/DD-HH:MM next to 'YOU' label) for temporal context in Chat view; History tab already consistent with left-sidebar session list rendering (source badges, phase chips, session IDs).
 
-**[2026-04-15]** `development` — Migration m050 resolved silent database errors in prompt persistence; hook-log endpoint now correctly stores and retrieves prompts without data loss.
+**[2026-04-15]** `claude_cli` — Hook-log endpoint confirmed stable post-m050: migration addressed silent database errors in prompt persistence; prompts now correctly stored and retrieved with accurate created_at timestamps.
