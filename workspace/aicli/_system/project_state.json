@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Snapshot generation refactor (2026-04-15) \u2014 Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing with JSONDecoder.raw_decode for robustness",
-    "Schema cleanup and refactoring (2026-04-14) \u2014 mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index",
-    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with _load_role() provider/model overrides",
+    "Snapshot generation refactor (2026-04-15) \u2014 Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing robustness",
+    "Schema cleanup and refactoring (2026-04-14) \u2014 mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index",
+    "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides",
     "Memory promotion timing instrumentation (2026-04-15) \u2014 Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement",
-    "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX from 'No existing tag' to 'Does not exist yet'",
-    "Agent context cleanup (2026-04-15) \u2014 Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from repository root"
+    "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX",
+    "Agent context consolidation (2026-04-15) \u2014 Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from root"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T10:37:57Z",
+  "last_memory_run": "2026-04-15T10:39:23Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -147,12 +147,12 @@
       "Tag suggestion with ai_tag_suggestion column and approve/remove buttons; category inference on tag creation; ai_tag_color_default (#4a90e2) when not set"
     ],
     "in_progress": [
-      "Snapshot generation refactor (2026-04-15) \u2014 Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing with JSONDecoder.raw_decode for robustness",
-      "Schema cleanup and refactoring (2026-04-14) \u2014 mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index",
-      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with _load_role() provider/model overrides",
+      "Snapshot generation refactor (2026-04-15) \u2014 Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing robustness",
+      "Schema cleanup and refactoring (2026-04-14) \u2014 mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index",
+      "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides",
       "Memory promotion timing instrumentation (2026-04-15) \u2014 Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement",
-      "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX from 'No existing tag' to 'Does not exist yet'",
-      "Agent context cleanup (2026-04-15) \u2014 Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from repository root"
+      "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX",
+      "Agent context consolidation (2026-04-15) \u2014 Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from root"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,16 +160,18 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework"
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
+      "database_version": "PostgreSQL 15+ with pgvector extensions",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop client, designed to capture, synthesize, and organize development knowledge through LLM-powered event digestion and semantic search. The system uses PostgreSQL with pgvector for unified event storage and intelligent work item promotion, supporting multi-LLM providers and async DAG-based workflow automation. Current focus is optimizing memory synthesis pipeline performance, cleaning up legacy context files, and refining the tag suggestion approval flow with improved UX.",
-    "memory_digest": "**[2026-04-15]** `snapshot-refactor` \u2014 Switched memory synthesis from Claude Sonnet to Haiku for cost optimization; simplified planner_tags upsert to flat keys (requirements, action_items, design, code_summary); improved JSON parsing robustness with JSONDecoder.raw_decode.\n**[2026-04-15]** `perf-instrumentation` \u2014 Added time.monotonic() tracking throughout _run_promote_all_work_items and _finish_run calls to measure and optimize memory promotion pipeline performance.\n**[2026-04-15]** `context-cleanup` \u2014 Consolidated agent context files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed legacy _system/ flat files and stale auto-generated CLAUDE.md/MEMORY.md from repository.\n**[2026-04-14]** `schema-refactor` \u2014 Reorganized mem_ai_work_items table: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY for merged_into, implemented ivfflat embedding index.\n**[2026-04-14]** `pipeline-refactor` \u2014 Implemented agent role loading from DB (mng_agent_roles) with fallback prompts; added auto_commit boolean support; enabled 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with per-stage provider/model overrides via _load_role().\n**[2026-04-13]** `tag-suggestion-ux` \u2014 Implemented ai_tag_suggestion column with approve/remove button handlers; refined chip markup; added category inference on tag creation; improved tooltips and error messaging."
+    "project_summary": "aicli is a shared AI memory platform combining a Python 3.12 backend (FastAPI + PostgreSQL 15+ with pgvector) with a desktop Electron UI, designed to synthesize development history into structured work items through 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items/facts). Currently refactoring memory synthesis to use Claude Haiku for cost efficiency, consolidating agent context files, and optimizing the work item pipeline with database-loaded agent roles and performance instrumentation.",
+    "memory_digest": "**[2026-04-15]** `snapshot-generation` \u2014 Switched Claude Sonnet to Haiku for cost efficiency in memory synthesis; simplified planner_tags to flat string keys (requirements, action_items, design, code_summary) and improved JSON parsing robustness with JSONDecoder.raw_decode.\n\n**[2026-04-15]** `performance` \u2014 Added time.monotonic() instrumentation to memory promotion pipeline (_run_promote_all_work_items) for performance measurement; updated _finish_run calls with t0 parameter tracking.\n\n**[2026-04-14]** `schema-cleanup` \u2014 mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, and added ivfflat embedding index for semantic search.\n\n**[2026-04-14]** `work-item-pipeline` \u2014 Agent roles now loaded from DB (mng_agent_roles) with fallback prompts; RoleCreate/RoleUpdate models updated to support auto_commit boolean; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with provider/model overrides per role.\n\n**[2026-04-13]** `tag-suggestion-ux` \u2014 ai_tag_suggestion column with approve/remove buttons implemented; simplified chip markup and improved tooltip UX from 'No existing tag' to 'Does not exist yet'; category inference on tag creation.\n\n**[2026-04-15]** `context-consolidation` \u2014 Removed legacy _system flat files and stale generated files from repository; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; deprecated CLAUDE.md and MEMORY.md from root."
   }
 }
