@@ -397,18 +397,13 @@ async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None 
 
 
 async def _embed_commits_background(project: str, commit_hashes: list[str]) -> None:
-    """Fire-and-forget: run process_commit() for each hash. Silent on error."""
+    """Fire-and-forget: batch-digest all pending commits for the project."""
     try:
         from memory.memory_embedding import MemoryEmbedding
-        emb = MemoryEmbedding()
-        for h in commit_hashes:
-            try:
-                await emb.process_commit(project, h)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).debug(f"_embed_commits_background {h}: {e}")
-    except Exception:
-        pass
+        await MemoryEmbedding().process_commit_batch(project, min_commits=1)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"_embed_commits_background error: {e}")
 
 
 @router.post("/commits/sync")

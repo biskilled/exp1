@@ -465,6 +465,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     summary      TEXT,
     action_items TEXT        NOT NULL DEFAULT '',
     tags         JSONB       NOT NULL DEFAULT '{}',              -- user-intent only: phase/feature/bug/source
+    is_system    BOOLEAN     NOT NULL DEFAULT FALSE,             -- system file updates (PROJECT.md etc) — excluded from work-item extraction
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     processed_at TIMESTAMPTZ,                                    -- set by extract_work_items_from_events()
     embedding    VECTOR(1536),
@@ -479,6 +480,7 @@ CREATE INDEX IF NOT EXISTS idx_mae_embed          ON mem_ai_events USING ivfflat
 CREATE INDEX IF NOT EXISTS idx_mae_project_session ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id, event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_system          ON mem_ai_events(is_system) WHERE is_system = TRUE;
 
 -- mem_ai_work_items: AI-detected actionable items (tasks, bugs, features)
 -- status_user = user-managed lifecycle (active|in_progress|paused|done)

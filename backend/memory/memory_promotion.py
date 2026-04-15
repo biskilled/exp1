@@ -143,6 +143,7 @@ _SQL_GET_UNEXTRACTED_EVENTS = """
       AND me.event_type IN ('prompt_batch', 'session_summary', 'commit')
       AND me.summary IS NOT NULL AND me.summary != ''
       AND me.processed_at IS NULL
+      AND me.is_system = FALSE
     ORDER BY me.created_at DESC
     LIMIT %s
 """

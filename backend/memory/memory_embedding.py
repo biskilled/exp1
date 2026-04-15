@@ -63,6 +63,37 @@ _EXT_LANG: dict[str, str] = {
 _USER_TAG_KEYS = frozenset({"phase", "feature", "bug", "source"})
 """Keys allowed in mem_ai_events.tags. Only user-intent context; no system metadata."""
 
+# Files/patterns that indicate an auto-generated system commit (not real dev work)
+_SYSTEM_FILE_PATTERNS = (
+    "CLAUDE.md", "MEMORY.md", "PROJECT.md", ".cursorrules",
+    ".ai/", ".github/copilot", "_system/", "commit_log.jsonl",
+    "history.jsonl", "session_state.json",
+)
+
+def _is_system_commit(commit_msgs: list[str], diff_summaries: list[str]) -> bool:
+    """Return True if the commit group looks like auto-generated system file updates."""
+    # Check commit messages for system-file-only patterns
+    _sys_msg_patterns = (
+        "update project.md", "update claude.md", "update memory.md",
+        "sync memory", "auto-commit", "update cursorrules",
+        "update copilot", "update .ai/", "update _system",
+    )
+    all_msgs = " ".join((m or "").lower() for m in commit_msgs)
+    all_diffs = " ".join((d or "").lower() for d in diff_summaries)
+    combined = all_msgs + " " + all_diffs
+
+    # If any system file appears AND no real source files, it's a system commit
+    has_system_file = any(p.lower() in combined for p in _SYSTEM_FILE_PATTERNS)
+    has_real_code = any(
+        ext in combined for ext in (".py ", ".ts ", ".js ", ".sql ", ".yaml ")
+    )
+    if has_system_file and not has_real_code:
+        return True
+    # Explicit system message patterns with no feature/bug tag
+    if any(p in all_msgs for p in _sys_msg_patterns) and not has_real_code:
+        return True
+    return False
+
 
 def _tag_fingerprint(tags: dict) -> str:
     """Return a stable string key for grouping by user-intent tags (phase/feature/bug)."""
@@ -85,8 +116,8 @@ def _user_tags(tags: dict) -> dict:
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (project_id, event_type, event_cnt, source_id, session_id,
-            chunk, chunk_type, content, embedding, summary, action_items, tags)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb)
+            chunk, chunk_type, content, embedding, summary, action_items, tags, is_system)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
        ON CONFLICT (project_id, event_type, source_id, chunk)
        DO UPDATE SET
            event_cnt    = EXCLUDED.event_cnt,
@@ -94,7 +125,8 @@ _SQL_UPSERT_EVENT = """
            embedding    = EXCLUDED.embedding,
            summary      = EXCLUDED.summary,
            action_items = EXCLUDED.action_items,
-           tags         = EXCLUDED.tags
+           tags         = EXCLUDED.tags,
+           is_system    = EXCLUDED.is_system
     RETURNING id
 """
 
@@ -248,6 +280,7 @@ def _upsert_event(
     action_items: str = "",
     tags: dict | None = None,
     event_cnt: int = 1,
+    is_system: bool = False,
     # backward-compat kwargs — accepted but ignored for tags (system metadata, not stored)
     metadata: dict | None = None,
     doc_type: Optional[str] = None,
@@ -278,7 +311,7 @@ def _upsert_event(
                     _SQL_UPSERT_EVENT,
                     (project_id, source_type, event_cnt, source_id, session_id,
                      chunk, chunk_type, content, vec_str, summary,
-                     action_items, json.dumps(clean_tags)),
+                     action_items, json.dumps(clean_tags), is_system),
                 )
                 row = cur.fetchone()
         return str(row[0]) if row else None
@@ -543,11 +576,18 @@ class MemoryEmbedding:
             # Use session_id from first commit (group may span sessions)
             session_id = group[0].get("session_id")
 
+            # Detect system-only commits (PROJECT.md / CLAUDE.md / MEMORY.md updates)
+            sys_flag = _is_system_commit(
+                [g["commit_msg"] for g in group],
+                [g["diff_summary"] for g in group],
+            )
+
             event_id = _upsert_event(
                 project, "commit", source_id, 0, "full", content, embedding,
                 session_id=session_id,
                 summary=summary_text, action_items=action_items,
                 tags=merged_tags, event_cnt=len(group),
+                is_system=sys_flag,
             )
 
             if event_id:

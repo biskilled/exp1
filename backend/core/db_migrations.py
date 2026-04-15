@@ -1133,6 +1133,25 @@ def m042_drop_source_event_id(conn) -> None:
     conn.commit()
 
 
+def m047_events_is_system(conn) -> None:
+    """Add is_system BOOLEAN column to mem_ai_events.
+
+    System events (e.g. PROJECT.md / CLAUDE.md / MEMORY.md auto-updates) are
+    excluded from work-item extraction to avoid noise. Flagged at insert time
+    by process_commit_batch() when all changed files are system-generated.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mem_ai_events "
+            "ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mae_system "
+            "ON mem_ai_events(is_system) WHERE is_system = TRUE"
+        )
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1167,4 +1186,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m044_drop_desc_ai", m044_drop_desc_ai),
     ("m045_add_score_ai", m045_add_score_ai),
     ("m046_reorder_work_items", m046_reorder_work_items),
+    ("m047_events_is_system", m047_events_is_system),
 ]
