@@ -780,6 +780,11 @@ export class HistoryView {
           style="padding:4px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface);font-size:12px">
           ↻ Sync Commits
         </button>
+        <button id="commits-relink-btn" onclick="window._historyView._relinkCommits()"
+          title="Re-link all commits to the prompt that was most recent before each commit"
+          style="padding:4px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface);font-size:12px">
+          ⛓ Re-link
+        </button>
       </div>`;
 
     if (!commits.length) {
@@ -1024,6 +1029,22 @@ export class HistoryView {
       alert('Sync failed: ' + e.message);
     } finally {
       if (btn) { btn.textContent = '↻ Sync Commits'; btn.disabled = false; }
+    }
+  }
+
+  async _relinkCommits() {
+    const btn = document.getElementById('commits-relink-btn');
+    if (btn) { btn.textContent = 'Relinking…'; btn.disabled = true; }
+    const project = state.currentProject?.name || '';
+    try {
+      const res = await api.relinkCommits(project);
+      this._commitData = null;
+      alert(`Re-linked ${res.updated} commit(s) to their closest preceding prompt.`);
+      await this._loadTab('commits');
+    } catch (e) {
+      alert('Re-link failed: ' + e.message);
+    } finally {
+      if (btn) { btn.textContent = '⛓ Re-link'; btn.disabled = false; }
     }
   }
 

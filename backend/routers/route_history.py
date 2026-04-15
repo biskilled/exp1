@@ -359,6 +359,40 @@ async def commits_history(
     return {"commits": commits[:limit], "project": p, "source": "file"}
 
 
+@router.post("/relink-commits")
+async def relink_commits(project: str | None = Query(None)):
+    """Re-link all commits to their closest preceding prompt in the same session.
+
+    Run this once to fix commits that were linked to wrong prompts.
+    Uses committed_at timestamp so each commit links to the prompt that was
+    most recent AT THE TIME of the commit, not the most recent prompt overall.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+    p = project or settings.active_project or "default"
+    project_id = db.get_or_create_project_id(p)
+
+    _SQL_RELINK = """
+        UPDATE mem_mrr_commits c
+        SET prompt_id = (
+            SELECT p.id FROM mem_mrr_prompts p
+            WHERE p.project_id = c.project_id
+              AND p.session_id = c.session_id
+              AND p.created_at <= COALESCE(c.committed_at, c.created_at)
+            ORDER BY p.created_at DESC
+            LIMIT 1
+        )
+        WHERE c.project_id = %s
+          AND c.session_id IS NOT NULL
+          AND c.session_id != ''
+    """
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_RELINK, (project_id,))
+            updated = cur.rowcount
+    return {"ok": True, "updated": updated, "project": p}
+
+
 @router.patch("/commits/{commit_hash}")
 async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None = Query(None)):
     """Update metadata (add_tag, remove_tag, summary) for a commit row."""

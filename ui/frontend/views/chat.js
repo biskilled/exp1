@@ -914,8 +914,11 @@ async function _loadSessions() {
         const s = bySession.get(sid);
         s.message_count++;
         s.entries.push(e);
-        // Capture phase from entries (use first non-empty value found)
-        if (e.phase && !s.phase) { s.phase = e.phase; s.tags = { phase: e.phase }; }
+        // Capture phase from entry.tags array ["phase:discovery", "feature:auth"]
+        if (!s.phase) {
+          const entryPhase = (e.tags || []).find(t => t.startsWith('phase:'))?.split(':')[1];
+          if (entryPhase) { s.phase = entryPhase; s.tags = { ...(s.tags || {}), phase: entryPhase }; }
+        }
       }
       merged.push(...bySession.values());
     } catch { /* silent */ }

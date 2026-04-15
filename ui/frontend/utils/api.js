@@ -147,6 +147,9 @@ export const api = {
   syncCommits: (project) => fetch(_base() + `/history/commits/sync?project=${encodeURIComponent(project || '')}`, {
     method: 'POST', headers: _headers(),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  relinkCommits: (project) => fetch(_base() + `/history/relink-commits?project=${encodeURIComponent(project || '')}`, {
+    method: 'POST', headers: _headers(),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   getSessionTags:   (project) => _get(`/history/session-tags?project=${encodeURIComponent(project || '')}`),
   getSessionPhases: (project) => _get(`/history/session-phases?project=${encodeURIComponent(project || '')}`),
   putSessionTags: (project, body) => fetch(_base() + `/history/session-tags?project=${encodeURIComponent(project || '')}`, {

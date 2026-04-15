@@ -45,18 +45,19 @@ _SQL_UPSERT_COMMIT = """
                 user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id)
 """
 
-# Link commit → most-recent prompt in the same session that occurred before the commit.
-# Uses mem_mrr_commits.prompt_id (UUID FK to mem_mrr_prompts) — replaces the old pr_events/pr_event_links approach.
+# Link commit → most-recent prompt in the same session that occurred BEFORE the commit.
+# committed_at is passed as %s so we only link to prompts that predated the commit.
+# Always updates (no IS NULL guard) so re-linking after backfill works correctly.
 _SQL_LINK_COMMIT_TO_PROMPT = """
     UPDATE mem_mrr_commits SET prompt_id = (
         SELECT p.id FROM mem_mrr_prompts p
         WHERE p.project_id=%s
           AND p.session_id = %s
+          AND p.created_at <= %s
         ORDER BY p.created_at DESC
         LIMIT 1
     )
     WHERE commit_hash = %s
-      AND prompt_id IS NULL
 """
 
 _SQL_LIST_COMMITS = """
@@ -265,7 +266,9 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                      json.dumps(tags_dict), ADMIN_USER_ID),
                 )
                 if session_id:
-                    cur.execute(_SQL_LINK_COMMIT_TO_PROMPT, (project_id, session_id, commit_hash))
+                    commit_ts = committed_at or datetime.now(timezone.utc)
+                    cur.execute(_SQL_LINK_COMMIT_TO_PROMPT,
+                                (project_id, session_id, commit_ts, commit_hash))
                     if cur.rowcount:
                         log.info(f"Commit {commit_hash[:8]} linked to prompt (session {session_id[:8]})")
         _finish_run(run_id, "ok", 1, 1, t0)

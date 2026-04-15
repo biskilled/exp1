@@ -84,6 +84,15 @@ _SQL_UPDATE_COMMIT_TAGS = """
     WHERE project_id=%s AND session_id=%s
 """
 
+_SQL_UPDATE_PROMPT_TAGS = """
+    UPDATE mem_mrr_prompts
+    SET tags = (tags - 'phase' - 'feature' - 'bug')
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('phase',   %s::text) ELSE '{}'::jsonb END
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('feature', %s::text) ELSE '{}'::jsonb END
+        || CASE WHEN %s::text IS NOT NULL THEN jsonb_build_object('bug',     %s::text) ELSE '{}'::jsonb END
+    WHERE project_id=%s AND session_id=%s
+"""
+
 # ────────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
@@ -568,6 +577,23 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
         hook_tags = _tags_to_dict(tags_list)
         hook_tags["source"] = body.source or "claude_cli"
         project_id = db.get_or_create_project_id(project)
+
+        # Fallback: if hook sent no phase/feature/bug, read from active mng_session_tags
+        if "phase" not in hook_tags or "feature" not in hook_tags:
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT phase, feature, bug_ref FROM mng_session_tags WHERE project_id=%s",
+                            (project_id,),
+                        )
+                        st = cur.fetchone()
+                        if st:
+                            if st[0] and "phase"   not in hook_tags: hook_tags["phase"]   = st[0]
+                            if st[1] and "feature" not in hook_tags: hook_tags["feature"] = st[1]
+                            if st[2] and "bug"     not in hook_tags: hook_tags["bug"]     = st[2]
+            except Exception:
+                pass
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -812,7 +838,7 @@ def _backfill_session_tags(
         except Exception:
             pass  # read-only filesystem or concurrent write — best-effort
 
-    # 2. Update mem_mrr_commits.tags for all commits in this session
+    # 2. Update mem_mrr_commits.tags + mem_mrr_prompts.tags for all rows in this session
     if db.is_available():
         import logging as _log
         _logger = _log.getLogger(__name__)
@@ -825,9 +851,15 @@ def _backfill_session_tags(
                         (phase, phase, feature, feature, bug_ref, bug_ref, project_id, session_id),
                     )
                     c_rows = cur.rowcount
+                    cur.execute(
+                        _SQL_UPDATE_PROMPT_TAGS,
+                        (phase, phase, feature, feature, bug_ref, bug_ref, project_id, session_id),
+                    )
+                    p_rows = cur.rowcount
             _logger.info(
                 f"backfill_session_tags: project={project} session={session_id[:8]} "
-                f"phase={phase!r} feature={feature!r} bug={bug_ref!r} → commits={c_rows}"
+                f"phase={phase!r} feature={feature!r} bug={bug_ref!r} "
+                f"→ commits={c_rows} prompts={p_rows}"
             )
         except Exception as exc:
             _logger.warning(f"backfill_session_tags DB failed: {exc}")
