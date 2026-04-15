@@ -1,6 +1,6 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 01:17 UTC — do not edit manually.
+> Auto-generated 2026-04-15 01:18 UTC — do not edit manually.
 
 ## Quick Stats
 
@@ -58,11 +58,11 @@
 
 ## In Progress
 
+- Snapshot generation refactor (2026-04-15) — Simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); switched from Sonnet to Haiku; improved JSON parsing with JSONDecoder.raw_decode to handle edge cases
 - Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
 - Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline uses _load_role() with provider/model overrides
+- Memory promotion timing instrumentation (2026-04-15) — Added _time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
-- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation
-- History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
 - Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending
 
 ## Key Decisions

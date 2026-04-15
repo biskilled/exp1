@@ -1,12 +1,18 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 01:17 UTC by aicli /memory_
+_Generated: 2026-04-15 01:18 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
+## Project Summary
+
+aicli is a shared AI memory platform for development teams, combining a FastAPI backend with PostgreSQL+pgvector semantic storage, a Python CLI with Electron desktop UI, and a multi-LLM agent system. It captures development context through smart code chunking and commit analysis, synthesizes insights via Claude Haiku dual-layer memory architecture, and routes work through a 4-stage approval pipeline with DAG-based workflow execution. Currently focused on schema consolidation, snapshot generation simplification, and work item promotion performance instrumentation.
+
 ## Project Facts
 
+- **ai_context_file_locations**: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory deprecated
 - **ai_event_filtering_logic**: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events; excludes per-commit and diff_file noise from event_count aggregation
 - **ai_event_tags_schema**: mem_ai_events.tags JSONB object; preserved keys: phase, feature, bug, source; system metadata (llm, event, chunk_type, commit_hash, commit_msg, file, files, languages, symbols, rows_changed, changed_files) stripped during backfill
+- **ai_rules_generation_mechanism**: aicli tool manages rule files; `/memory` command refreshes; auto-generated with UTC timestamp
 - **ai_tag_color_default**: #4a90e2 replaces var(--accent), applied when wi.ai_tag_color not set
 - **ai_tag_label_format**: category:name when both present, falls back to name-only, empty string if neither
 - **ai_tag_suggestion_debugging_status**: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
@@ -99,6 +105,8 @@ Reviewer: ```json
 - **prompt_count_metric**: distinct metric tracked separately from event_count in work items API response
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **prompt_work_item_trigger_automation**: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
+- **rel:aicli_tool:agent_context**: generates
+- **rel:ai_rules_md:cursor_rules**: related_to
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
 - **rel:background_tasks:pipeline_logging**: depends_on
@@ -247,11 +255,11 @@ Reviewer: ```json
 
 ## In Progress
 
+- Snapshot generation refactor (2026-04-15) — Simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); switched from Sonnet to Haiku; improved JSON parsing with JSONDecoder.raw_decode to handle edge cases
 - Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
 - Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline uses _load_role() with provider/model overrides
+- Memory promotion timing instrumentation (2026-04-15) — Added _time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
-- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation
-- History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
 - Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending
 
 ## Active Features / Bugs / Tasks
@@ -306,6 +314,226 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
+diff --git a/.ai/rules.md b/.ai/rules.md
+index 4cf2794..e65ba20 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:13 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:14 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
+index 529d323..fb473f1 100644
+--- a/backend/routers/route_snapshots.py
++++ b/backend/routers/route_snapshots.py
+@@ -48,11 +48,8 @@ _SQL_GET_MEMORY_EVENTS = """
+ 
+ _SQL_UPSERT_SNAPSHOT = """
+     UPDATE planner_tags SET
+-        summary      = %s,
++        requirements = %s,
+         action_items = %s,
+-        design       = %s::jsonb,
+-        code_summary = %s::jsonb,
+-        embedding    = %s,
+         updated_at   = NOW()
+     WHERE id = %s::uuid
+     RETURNING id
+@@ -65,9 +62,7 @@ _SQL_MARK_EVENTS_PROCESSED = """
+ 
+ _SQL_GET_SNAPSHOT = """
+     SELECT t.id, t.id, t.requirements, t.action_items,
+-           t.design, t.code_summary, NULL,
+-           NULL, t.updated_at, t.updated_at,
+-           t.name AS tag_name
++           t.updated_at, t.name AS tag_name
+     FROM planner_tags t
+     WHERE t.project_id = %s AND t.name = %s
+     LIMIT 1
+@@ -81,10 +76,13 @@ _SQL_UPSERT_FACT = """
+ """
+ 
+ _DEFAULT_SNAPSHOT_PROMPT = (
+-    "Produce a 4-layer feature snapshot as JSON with these keys: "
+-    "requirements (string), action_items (string), "
+-    "design (object: {high_level, low_level, patterns_used}), "
+-    "code_summary (object: {files, key_classes, key_methods, dependencies_added, dependencies_removed}). "
++    "Produce a feature snapshot as JSON with ONLY these 4 flat string keys: "
++    "requirements (2 sentences max), "
++    "action_items (up to 5 items, comma-separated, no newlines), "
++    "design (1-2 sentences, no newlines), "
++    "code_summary (key files and classes only, comma-separated, no newlines). "
++    "CRITICAL: All values must be single-line strings — NO literal newlines inside string values. "
++    "NO nested objects or arrays. Keep each value under 200 chars. "
+     "Base your answer only on the provided evidence. Return ONLY valid JSON."
+ )
+ 
+@@ -105,8 +103,8 @@ async def _call_sonnet(system_prompt: str, user_message: str) -> str:
+         import anthropic
+         client = anthropic.AsyncAnthropic(api_key=api_key)
+         resp = await client.messages.create(
+-            model=settings.claude_model,
+-            max_tokens=2000,
++            model=settings.haiku_model,
++            max_tokens=4096,
+             system=system_prompt,
+             messages=[{"role": "user", "content": user_message}],
+         )
+@@ -125,13 +123,21 @@ async def _embed_text(text: str) -> Optional[list]:
+ 
+ 
+ def _parse_snapshot_json(text: str) -> dict:
+-    clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
+-    m = re.search(r"\{[\s\S]*\}", clean)
+-    if not m:
++    import logging as _logging
++    _log = _logging.getLogger(__name__)
++    # Strip all markdown code fences (opening and closing)
++    clean = re.sub(r"```(?:json)?", "", text).strip().strip("`").strip()
++    start = clean.find("{")
++    if start == -1:
++        _log.warning(f"_parse_snapshot_json: no {{ found in: {clean[:100]!r}")
+         return {}
++    # Use Python's JSONDecoder.raw_decode — correctly handles strings with { }
++    decoder = json.JSONDecoder()
+     try:
+-        return json.loads(m.group())
+-    except Exception:
++        obj, _ = decoder.raw_decode(clean, start)
++        return obj if isinstance(obj, dict) else {}
++    except Exception as _e:
++        _log.warning(f"_parse_snapshot_json: raw_decode failed: {_e} | clean[{start}:{start+50}]={clean[start:start+50]!r}")
+         return {}
+ 
+ 
+@@ -182,35 +188,28 @@ async def generate_snapshot(project: str, tag_name: str):
+     if not raw:
+         raise HTTPException(status_code=502, detail="LLM returned empty response")
+ 
++    log.debug(f"snapshot raw LLM ({len(raw)} chars): {raw[:300]!r}")
+     parsed = _parse_snapshot_json(raw)
++    log.debug(f"snapshot parsed keys: {list(parsed.keys()) if parsed else 'EMPTY'}")
+     if not parsed:
+         raise HTTPException(status_code=502, detail=f"Could not parse LLM JSON: {raw[:200]}")
+ 
+     # Extract AI-detected relations before consuming the rest of the dict
+     ai_relations: list[dict] = parsed.pop("relations", []) or []
+ 
+-    embed_text = " ".join(filter(None, [
+-        parsed.get("requirements", ""),
+-        parsed.get("action_items", ""),
+-    ]))
+-    embedding = await _embed_text(embed_text) if embed_text.strip() else None
+-
+-    design = parsed.get("design", {})
+-    code_summary = parsed.get("code_summary", {})
+-    file_paths = list(code_summary.get("files", []) if isinstance(code_summary, dict) else [])
++    requirements = parsed.get("requirements", "")
++    action_items = parsed.get("action_items", "")
++    design_notes = parsed.get("design", "")
++    code_notes = parsed.get("code_summary", "")
+ 
+     with db.conn() as conn:
+         with conn.cursor() as cur:
+             cur.execute(
+                 _SQL_UPSERT_SNAPSHOT,
+                 (
+-                    parsed.get("requirements", ""),
+-                    parsed.get("action_items", ""),
+-                    json.dumps(design),
+-                    json.dumps(code_summary),
+-                    embedding,
++                    requirements,
++                    action_items,
+                     tag_id,
+-                    project,
+                 ),
+             )
+             snap_row = cur.fetchone()
+@@ -220,15 +219,14 @@ async def generate_snapshot(project: str, tag_name: str):
+                 cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))
+ 
+     facts_extracted = 0
+-    if isinstance(design, dict) and design.get("patterns_used"):
+-        patterns = design["patterns_used"]
+-        patterns_str = ", ".join(str(p) for p in patterns) if isinstance(patterns, list) else str(patterns)
++    # Store design notes as a project fact if present
++    if design_notes:
+         try:
+             with db.conn() as conn:
+                 with conn.cursor() as cur:
+                     cur.execute(
+                         _SQL_UPSERT_FACT,
+-                        (project_id, f"feature.{tag_name}.patterns", patterns_str),
++                
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
+index da7e71f..a7857c0 100644
+--- a/backend/routers/route_projects.py
++++ b/backend/routers/route_projects.py
+@@ -2236,19 +2236,22 @@ async def _run_promote_all_work_items(project: str) -> None:
+     """Promote all active work items (refresh AI text fields + status)."""
+     if not db.is_available():
+         return
++    import time as _time
+     from core.pipeline_log import _insert_run, _finish_run
+     project_id = db.get_or_create_project_id(project)
+     run_id = _insert_run(project_id, "work_item_promote", "all")
++    t0 = _time.monotonic()
+     try:
+         from memory.memory_promotion import MemoryPromotion
+         result = await MemoryPromotion().promote_all_work_items(project)
+         logging.getLogger(__name__).debug(f"_run_promote_all_work_items: {result}")
+         _finish_run(run_id, "ok",
+                     items_in=result.get("total", 0),
+-                    items_out=result.get("promoted", 0))
++                    items_out=result.get("promoted", 0),
++                    t0=t0)
+     except Exception as e:
+         logging.getLogger(__name__).debug(f"_run_promote_all_work_items failed: {e}")
+-        _finish_run(run_id, "error", error_msg=str(e))
++        _finish_run(run_id, "error", items_in=0, items_out=0, t0=t0, error_msg=str(e))
+ 
+ 
+ async def _run_work_item_extraction(project: str) -> None:
+
+
+### `commit` — 2026-04-15
+
+Commit: chore: restructure _system directory after claude cli session 2a6b600e
+Hash: 354fb017
+Code files (3):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
+
+### `commit` — 2026-04-15
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 79cffe9..4cf2794 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 00:01 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:13 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-15
+
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
 index 83ce3f8..be31579 100644
 --- a/.github/copilot-instructions.md
@@ -319,72 +547,16 @@ index 83ce3f8..be31579 100644
  
 
 
-### `commit` — 2026-04-15
+## AI Synthesis
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 79cffe9..4cf2794 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 00:01 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:13 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+**2026-04-15** `route_snapshots.py` — Simplified feature snapshot generation: refactored planner_tags upsert from nested objects (design, code_summary) to flat string keys; switched Claude model from Sonnet to Haiku; rewrote JSON parser using JSONDecoder.raw_decode to handle markdown fences and edge cases in LLM responses.
 
+**2026-04-15** `route_projects.py` — Added performance instrumentation to memory promotion: inserted _time.monotonic() timing in _run_promote_all_work_items; updated _finish_run calls to include t0 parameter for elapsed time measurement.
 
-### `commit` — 2026-04-15
+**2026-04-14** `mem_ai_work_items` schema refactor — Reorganized work item table structure: removed dual-status design (status_ai), reordered columns with seq_num moved near id, added explicit FOREIGN KEY constraint on merged_into, added ivfflat embedding index for vector search.
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index c72d0b5..79cffe9 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 23:58 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 00:01 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+**2026-04-14** Agent role pipeline — Completed DB-driven agent role loading with fallback prompts; RoleCreate/RoleUpdate models updated; 4-stage pipeline (PM→Architect→Developer→Reviewer) now supports auto_commit flag and provider/model overrides via _load_role().
 
+**2026-04-13** Tag suggestion UX — Implemented ai_tag_suggestion column with approve/remove button handlers; refactored chip markup to simplified format; improved tooltip from 'No existing tag' to 'Does not exist yet'; category inference on tag creation with clickable ✓ button.
 
-### `commit` — 2026-04-15
-
-Commit: chore: clean up legacy _system files and restructure agent context for a
-Hash: 497763c6
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit` — 2026-04-15
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index c72d0b5..79cffe9 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 23:58 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 00:01 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
-### `commit` — 2026-04-15
-
-Commit: chore: restructure _system documentation after claude cli session 2a6b60
-Hash: 514a4b47
-Code files (6):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/routers/route_projects.py
-  - backend/routers/route_snapshots.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-Symbols changed: _parse_snapshot_json
+**2026-04-06** Route history batch upsert — Resolved PostgreSQL ON CONFLICT DO UPDATE syntax error via JSONB merge operator (||) correction; fixed event batch processing for memory event log.
