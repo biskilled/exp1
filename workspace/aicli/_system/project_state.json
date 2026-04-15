@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T10:08:11Z",
+  "last_memory_run": "2026-04-15T10:35:24Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -160,16 +160,21 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
+      "mcp": "Stdio MCP server with 12+ tools",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "database_version": "PostgreSQL 15+ with pgvector extensions",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with an Electron desktop UI, designed to capture, analyze, and promote development activities into structured work items. It uses PostgreSQL with pgvector for semantic search, multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) for intelligent synthesis, and an async DAG workflow engine to coordinate multi-stage agent pipelines. Current focus is on refining memory synthesis (Haiku dual-layer), simplifying schema design (mem_ai_work_items reorganization), and implementing tag suggestion workflows with user approval.",
-    "memory_digest": "**[2026-04-15]** `snapshot_generation` \u2014 Refactored planner_tags upsert to use flat string keys (requirements, action_items, design, code_summary) instead of nested structures; switched memory synthesis from Claude Sonnet to Haiku for cost efficiency; improved JSON parsing robustness using JSONDecoder.raw_decode to handle partially malformed responses.\n\n**[2026-04-15]** `memory_promotion` \u2014 Added time.monotonic() instrumentation to _run_promote_all_work_items for performance tracking; updated _finish_run calls to include t0 parameter enabling end-to-end timing measurement across the promotion pipeline.\n\n**[2026-04-14]** `schema_refactoring` \u2014 Reorganized mem_ai_work_items table schema: removed status_ai dual-status design pattern, repositioned seq_num column near id for clarity, added explicit FOREIGN KEY constraint for merged_into field, and created ivfflat embedding index for faster semantic searches.\n\n**[2026-04-14]** `work_item_pipeline` \u2014 Implemented dynamic agent role loading from mng_agent_roles database table with fallback to default prompts; added auto_commit boolean flag support; extended 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) to allow per-role provider/model overrides via _load_role().\n\n**[2026-04-13]** `tag_suggestion_ux` \u2014 Introduced ai_tag_suggestion column with approve/remove button flow; simplified chip markup for cleaner rendering; improved tooltip UX; work underway on rendering suggested_new tags in the UI.\n\n**[2026-04-06]** `database_fix` \u2014 Fixed PostgreSQL ON CONFLICT DO UPDATE syntax error in route history batch upsert by correcting JSONB merge operator (||) syntax in the UPDATE clause."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend, PostgreSQL with pgvector semantic search, and an Electron desktop UI. It captures development activity (commits, sessions, prompts) into a 4-layer memory architecture that synthesizes raw events into work items and project facts via LLM agents. Current focus is on refactoring memory synthesis pipelines, optimizing schema design, improving work item promotion instrumentation, and debugging tag suggestion UI workflows.",
+    "memory_digest": "**2026-04-15** `schema` \u2014 Simplified snapshot generation: consolidated planner_tags to flat string keys (requirements, action_items, design, code_summary); switched LLM from Sonnet to Haiku; enhanced JSON parsing robustness with JSONDecoder.raw_decode. **2026-04-15** `instrumentation` \u2014 Added time.monotonic() tracking to work item promotion pipeline (_run_promote_all_work_items) with t0 parameter passed to _finish_run for performance metrics. **2026-04-14** `database` \u2014 Reorganized mem_ai_work_items table: removed dual-status design (status_ai), reordered columns (seq_num near id), added explicit FOREIGN KEY for merged_into, created ivfflat embedding index. **2026-04-14** `agents` \u2014 Refactored work item pipeline: DB-loaded agent roles with fallback prompts, RoleCreate/RoleUpdate models updated, auto_commit flag support, 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with _load_role() provider/model overrides. **2026-04-13** `ui` \u2014 Tag suggestion approval flow: ai_tag_suggestion column with \u2713/\u00d7 buttons, simplified chip markup, improved tooltip from 'No existing tag' to 'Does not exist yet', category inference on tag creation. **2026-04-06** `database` \u2014 Fixed Route history batch upsert PostgreSQL error: corrected JSONB merge operator (||) syntax in ON CONFLICT DO UPDATE clause."
   }
 }
