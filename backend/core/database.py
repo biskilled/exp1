@@ -112,11 +112,23 @@ class _Database:
         if not self._pool:
             raise RuntimeError("PostgreSQL not initialised")
         connection = self._pool.getconn()
+        # Test the connection; if stale, discard and get a fresh one
+        try:
+            connection.cursor().execute("SELECT 1")
+        except Exception:
+            try:
+                self._pool.putconn(connection, close=True)
+            except Exception:
+                pass
+            connection = self._pool.getconn()
         try:
             yield connection
             connection.commit()
         except Exception:
-            connection.rollback()
+            try:
+                connection.rollback()
+            except Exception:
+                pass
             raise
         finally:
             self._pool.putconn(connection)

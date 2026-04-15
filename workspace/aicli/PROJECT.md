@@ -262,8 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Snapshot generation fix (2026-04-15) — Fixed dropped columns (design/code_summary removed in m027), JSON parser truncation at 2000 tokens, switched to Haiku model; snapshots now working for 10+ features
-- Event pipeline overhaul (2026-04-15) — Batch commit grouping by tag fingerprint; is_system flag for PROJECT.md/CLAUDE.md noise; event_id back-propagation to mem_mrr_commits; removed old process_commit() single-commit method
-- Work item rebuild (2026-04-15) — POST /memory/{p}/rebuild endpoint; deleted 236 noisy work items; reprocessed from scratch (46 quality items remain)
-- Work item anti-hallucination (2026-04-14) — Path 2 AI extraction restricted to prompt_batch/session_summary only; confidence gate 0.75; work item monitoring KPIs in pipeline dashboard
-- m047 migration (2026-04-15) — is_system BOOLEAN on mem_ai_events; system commits excluded from work item extraction
+- Snapshot generation refactor (2026-04-15) — Simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); switched from Sonnet to Haiku; improved JSON parsing with JSONDecoder.raw_decode for robustness
+- Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with _load_role() provider/model overrides
+- Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
+- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction

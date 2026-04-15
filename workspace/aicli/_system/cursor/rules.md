@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 08:22 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 10:07 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -62,17 +62,9 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
-
-## Recent Context (last 5 changes)
-
-- [2026-04-13] Can you try again the table migration (using the column order I have mention) this time when finished - drop the _old ta
-- [2026-04-13] In events table is there is any point to have importance ? I think its more relevant for work_items
-- [2026-04-13] yes
-- [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
-- [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 

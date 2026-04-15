@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 09:43 UTC — do not edit manually.
+> Auto-generated 2026-04-15 10:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 553
-- **Last active**: 2026-04-15T08:22:11Z
+- **Sessions**: 554
+- **Last active**: 2026-04-15T09:46:51Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Snapshot generation refactor (2026-04-15) — Simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); switched from Sonnet to Haiku; improved JSON parsing with JSONDecoder.raw_decode to handle edge cases
+- Snapshot generation refactor (2026-04-15) — Simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); switched from Sonnet to Haiku; improved JSON parsing with JSONDecoder.raw_decode for robustness
 - Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline uses _load_role() with provider/model overrides
-- Memory promotion timing instrumentation (2026-04-15) — Added _time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with _load_role() provider/model overrides
+- Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
-- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction
 
 ## Key Decisions
 
@@ -76,7 +76,7 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
@@ -169,7 +169,7 @@ POST /projects/aicli/memory
 
 
 
-*...189 more lines in PROJECT.md*
+*...190 more lines in PROJECT.md*
 
 ---
 
