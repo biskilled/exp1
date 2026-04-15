@@ -1225,6 +1225,29 @@ def m049_work_item_quality_gate(conn) -> None:
     log.info("m049_work_item_quality_gate: quality_stage, quality_issues, dedup_status added")
 
 
+def m050_prompts_source_id_index(conn) -> None:
+    """Add missing unique partial index on mem_mrr_prompts(project_id, source_id).
+
+    Required for ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL
+    in the hook-log INSERT. Without it every hook-log POST returns a DB error and
+    prompts are silently dropped, causing history to stop updating.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source
+            ON mem_mrr_prompts(project_id, source_id)
+            WHERE source_id IS NOT NULL
+        """)
+        # Also add supporting indexes if missing
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id)   WHERE event_id IS NOT NULL")
+    conn.commit()
+    log.info("m050_prompts_source_id_index: unique index idx_mmrr_p_source created")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1262,4 +1285,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m047_events_is_system", m047_events_is_system),
     ("m048_user_id_mirror_tables", m048_user_id_mirror_tables),
     ("m049_work_item_quality_gate", m049_work_item_quality_gate),
+    ("m050_prompts_source_id_index", m050_prompts_source_id_index),
 ]

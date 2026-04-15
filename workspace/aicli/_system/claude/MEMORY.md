@@ -1,20 +1,21 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 17:28 UTC by aicli /memory_
+_Generated: 2026-04-15 18:23 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform that synthesizes developer context across sessions using PostgreSQL + pgvector, multi-LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok), and a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items). The desktop UI (Electron + Vanilla JS) and CLI (Python 3.12) enable asynchronous DAG-based workflows with visual graph editing, smart code chunking, semantic search, and approval-gated execution. Currently in active development, with recent focus on cost optimization (Haiku), schema consolidation, tag suggestion UX, and agent role database integration.
+aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI for managing AI-driven development workflows. It synthesizes project history into semantic memory via Claude Haiku, executes async DAG-based workflows with LLM agents (4-stage pipeline: PM→Architect→Developer→Reviewer), and provides semantic search/tagging across events, commits, and work items. Currently stabilizing history UI, consolidating agent context files, and instrumenting memory promotion performance.
 
 ## Project Facts
 
+- **ai_context_consolidation_status**: legacy _system directory removed; context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed from repository root
 - **ai_context_file_locations**: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory deprecated
 - **ai_event_filtering_logic**: event_type IN ('prompt_batch', 'session_summary') filters mem_ai_events; excludes per-commit and diff_file noise from event_count aggregation
 - **ai_event_tags_schema**: mem_ai_events.tags JSONB object; preserved keys: phase, feature, bug, source; system metadata stripped during backfill
 - **ai_rules_file_version**: Version 3.0.0, last updated 2026-04-15
 - **ai_rules_generation_mechanism**: aicli tool manages rule files; `/memory` command refreshes; auto-generated with UTC timestamp
-- **ai_rules_generation_timestamp**: 2026-04-15 10:07 UTC
+- **ai_rules_generation_timestamp**: 2026-04-15 01:13 UTC
 - **ai_tag_color_default**: #4a90e2 replaces var(--accent), applied when wi.ai_tag_color not set
 - **ai_tag_label_format**: category:name when both present, falls back to name-only, empty string if neither
 - **ai_tag_suggestion_debugging_status**: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
@@ -65,6 +66,7 @@ aicli is a shared AI memory platform that synthesizes developer context across s
 - **known_bug_active**: planner_tag_visibility: categories upload but individual tags don't display in UI bindings
 - **mcp_integration**: embedding_and_data_retrieval_for_work_item_management
 - **mcp_tools_count**: 12+ tools including semantic search with work_items vector search, work item management, session tagging
+- **mem_ai_work_items_schema_updates**: removed status_ai dual-status design, seq_num reordered near id, explicit FOREIGN KEY for merged_into, ivfflat embedding index added
 - **memory_endpoint_template_variable_scoping**: code_dir_variable_fixed_at_line_1120
 - **memory_management_pattern**: load_once_on_access_update_on_save
 - **memory_sync_workflow**: /memory endpoint executes embedding pipeline refresh to sync prompts with work_items and detect new tags
@@ -74,6 +76,7 @@ aicli is a shared AI memory platform that synthesizes developer context across s
 - **pending_feature**: tags display under work_items in shared memory context
 - **pending_implementation**: memory_items_and_project_facts_table_population
 - **pending_issues**: project_visibility_bug_active_project_not_displaying
+- **performance_instrumentation_pattern**: time.monotonic() tracking in _run_promote_all_work_items; _finish_run calls include t0 parameter for measurement
 - **performance_issue_active**: route_work_items latency ~60s; investigating _SQL_UNLINKED_WORK_ITEMS indexing and mem_ai_events join optimization
 - **performance_optimization**: redundant_SQL_calls_eliminated
 - **pipeline/auth**: Acceptance criteria:
@@ -103,6 +106,7 @@ Reviewer: ```json
 - **planned_schema_change_llm_source_column**: llm_source column to be added after project column in tables; embedding columns appended to end of tables containing them
 - **planner_tag_schema_consolidation_proposed**: drop seq_num and source columns; keep creator only; reduce descriptors (short_desc, full_desc, requirements, acceptance_criteria, summary, action_items, design) to essential fields
 - **planner_tags_core_columns**: requirements, acceptance_criteria, action_items, status, priority, due_date, requester, creator, created_at, updater, updated_at retained
+- **planner_tags_schema**: flat string keys: requirements, action_items, design, code_summary; JSON parsing via JSONDecoder.raw_decode
 - **planner_tags_schema_cleanup**: dropped summary, design, embedding (VECTOR 1536), extra columns; move to future merge-layer table (m027)
 - **planner_tags_schema_refactored**: dropped seq_num, source, summary, design, embedding, extra; merged source into creator (username for users, 'ai' default); added updater and deliveries (JSONB); reordered with project_id after client_id, timestamps last
 - **prompt_architecture**: core.prompt_loader for centralization; eliminates redundant mng_system_roles database lookups; unified prompt cache for all routes
@@ -110,6 +114,7 @@ Reviewer: ```json
 - **prompt_loading_pattern**: core.prompt_loader._prompts.content() replaces direct mng_system_roles queries
 - **prompt_work_item_trigger_automation**: _run_promote_all_work_items() integrated into /memory command pipeline to refresh AI text fields and embedding vectors during memory generation
 - **rel:aicli_tool:agent_context**: generates
+- **rel:ai_context_files:legacy_system_dir**: replaces
 - **rel:ai_rules_md:cursor_rules**: related_to
 - **rel:ai_tag_suggestion:user_tags**: replaces
 - **rel:ai_tag_suggestion:work_items_table**: related_to
@@ -146,6 +151,7 @@ Reviewer: ```json
 - **rel:route_snapshots:prompt_loader**: depends_on
 - **rel:route_work_items:sql_parameter_binding**: depends_on
 - **rel:session_context:prompt_counter**: implements
+- **rel:snapshot_generation:haiku**: depends_on
 - **rel:stag_command:tag_command**: replaces
 - **rel:sticky_header:work_items_panel**: implements
 - **rel:tag_reminder:session_context**: depends_on
@@ -158,9 +164,11 @@ Reviewer: ```json
 - **rel:work_item_embedding:prompt_work_item_trigger**: implements
 - **rel:work_item_panel_sort:prompt_count**: implements
 - **rel:work_item_panel:state_management**: implements
+- **rel:work_item_pipeline:agent_roles_db**: depends_on
 - **rel:work_item_vector_search:mcp_tools**: implements
 - **route_work_items_sql_errors**: line_249_cur_execute_missing_parameter_binding_line_288_incomplete_column_selection_in_merged_query
 - **session_context_prompt_counter**: prompt_count field added to session context JSON, initialized to 0, incremented on each prompt validation
+- **snapshot_generation_llm_model**: Claude Haiku (cost-optimized from Sonnet)
 - **sql_performance_strategy**: redundant_calls_eliminated_load_once_pattern
 - **stale_code_removed**: git_supervisor_module_deleted_automated_git_workflow_no_longer_used
 - **tag_command_alias**: /stag replaces /tag due to Claude Code skill name conflict; identical functionality with immediate availability
@@ -190,6 +198,7 @@ Reviewer: ```json
 - **work_item_panel_column_widths**: prompt_count:46px, commit_count:46px, event_count:46px (resized from 52px event_count + 52px commit_count)
 - **work_item_panel_sortable_fields**: prompt_count, event_count, commit_count, seq_num (prompt_count added to sort handler)
 - **work_item_panel_state_management**: _wiPanelItems object stores work items, window._wiPanelDelete and window._wiPanelRefresh are global handlers
+- **work_item_pipeline_stages**: 4-stage pipeline with DB-loaded agent roles, fallback prompts, provider/model overrides, auto_commit boolean support
 - **work_item_ui_column_widths**: 56px–80px for multi-column sortable table headers
 - **work_item_ui_pattern**: multi-column sortable table with proper header styling, status color badges
 - **work_item_unlink_handler**: _wiUnlink uses _wiRowLoading(id, true) for loading state during patch operation
@@ -259,12 +268,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Agent context consolidation — Consolidated legacy _system/ files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context; removed stale CLAUDE.md and MEMORY.md
-- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
-- Snapshot generation refactor — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary)
-- Schema cleanup and refactoring — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added FOREIGN KEY constraint for merged_into, added ivfflat embedding index
-- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
-- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
+- History view UI refactor — Added collapsible session grouping with toggleable headers, improved timestamp formatting (YY/MM/DD-HH:MM), session ID display with last-4-char preview, and prompt count aggregation
+- History API enhancement — Added created_at ISO timestamp to chat_history endpoint response for improved UI date/time handling
+- Agent context consolidation — Legacy _system/ files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed
+- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter
+- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; 4-stage pipeline with provider/model overrides and auto_commit boolean support
+- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation
 
 ## Active Features / Bugs / Tasks
 
@@ -316,6 +325,121 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
+diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
+index 8aff2cc..eeb2008 100644
+--- a/ui/frontend/views/history.js
++++ b/ui/frontend/views/history.js
+@@ -411,8 +411,7 @@ export class HistoryView {
+              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
+                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
+           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
+-            <span style="color:var(--muted)">${e.ts?.slice(0, 16) || ''}</span>
+-            <span style="color:var(--accent)">${e.provider || ''}</span>
++            <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
+             <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
+             ${(e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>`<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${this._escapeHtml(t.slice(6))}</span>`).join('')}
+             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
+@@ -435,17 +434,66 @@ export class HistoryView {
+         </div>`;
+       }).join('');
+ 
++      // Session key for DOM IDs (safe to use in attribute)
++      const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
++      const sid4   = sid ? sid.slice(-4) : '????';
++      const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
++      const pCount = group.entries.length;
++
+       return `
+-        <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
+-          ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-family:monospace">session: ${sid.slice(0,20)}…</div>` : ''}
+-          ${commitStrip}
+-          ${entriesHtml}
++        <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
++          <!-- Session header — always visible, click to toggle -->
++          <div onclick="window._historyView._toggleSession('${sgKey}')"
++               style="display:flex;align-items:center;gap:6px;padding:5px 8px;
++                      background:var(--surface);cursor:pointer;user-select:none;font-size:11px;
++                      border-bottom:1px solid var(--border)">
++            <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
++            <span style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);
++                         padding:1px 5px;border-radius:3px;font-size:10px;color:var(--accent)"
++                  title="Session ID: ${this._escapeHtml(sid || 'none')}">…${this._escapeHtml(sid4)}</span>
++            <span style="color:var(--muted)">${pCount} prompt${pCount !== 1 ? 's' : ''}</span>
++            ${latestTs ? `<span style="color:var(--muted);margin-left:auto">${latestTs}</span>` : ''}
++          </div>
++          <!-- Session body — collapsible -->
++          <div id="sg-body-${sgKey}" style="padding:8px">
++            ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:monospace;
++                               padding:3px 6px;background:var(--surface2);border-radius:3px;word-break:break-all">
++                       Session: ${this._escapeHtml(sid)}
++                     </div>` : ''}
++            ${commitStrip}
++            ${entriesHtml}
++          </div>
+         </div>`;
+     }).join('');
+ 
+     this._renderPageBars(totalFiltered, start);
+   }
+ 
++  // ── Helpers ─────────────────────────────────────────────────────────────────
++
++  /** Format ISO timestamp as YY/MM/DD-HH:MM (local time). */
++  _fmtTs(ts) {
++    if (!ts) return '';
++    const d = new Date(ts);
++    if (isNaN(d.getTime())) return ts.slice(0, 16);
++    const YY  = String(d.getFullYear()).slice(2);
++    const MM  = String(d.getMonth() + 1).padStart(2, '0');
++    const DD  = String(d.getDate()).padStart(2, '0');
++    const HH  = String(d.getHours()).padStart(2, '0');
++    const min = String(d.getMinutes()).padStart(2, '0');
++    return `${YY}/${MM}/${DD}-${HH}:${min}`;
++  }
++
++  /** Toggle a session group open/closed. */
++  _toggleSession(sessionKey) {
++    const body = document.getElementById(`sg-body-${sessionKey}`);
++    const icon = document.getElementById(`sg-icon-${sessionKey}`);
++    if (!body) return;
++    const isOpen = body.style.display !== 'none';
++    body.style.display = isOpen ? 'none' : '';
++    if (icon) icon.textContent = isOpen ? '▶' : '▼';
++  }
++
+   // ── Pagination ─────────────────────────────────────────────────────────────
+ 
+   _renderPageBars(total, start) {
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
+index 61331a9..e54fb8e 100644
+--- a/backend/routers/route_history.py
++++ b/backend/routers/route_history.py
+@@ -256,6 +256,7 @@ async def chat_history(
+             entries = [
+                 {
+                     "ts":         r[0] or (r[6].strftime("%Y-%m-%dT%H:%M:%SZ") if r[6] else ""),
++                    "created_at": r[6].isoformat() if r[6] else "",
+                     "source":     r[2] or "ui",
+                     "session_id": r[1],
+                     "provider":   r[2] or "unknown",
+
+
+### `commit` — 2026-04-15
+
+Commit: chore: remove stale agent context and system documentation files after c
+Hash: 9024d41b
+Code files (2):
+  - backend/routers/route_history.py
+  - ui/frontend/views/history.js
+Generated/internal files: workspace/aicli/_system/.agent-context, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
+Symbols changed: sgKey
+
+### `commit` — 2026-04-15
+
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
 index be31579..df85914 100644
 --- a/.github/copilot-instructions.md
@@ -359,65 +483,16 @@ index 79cffe9..4cf2794 100644
  
 
 
-### `commit` — 2026-04-15
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 3e867aa..82d66a5 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -262,9 +262,9 @@ sidebar tabs:
- 
- ## Recent Work
- 
--- Snapshot generation refactor (2026-04-15) — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing with JSONDecoder.raw_decode for robustness
--- Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns (seq_num moved near id), added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
--- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with _load_role() provider/model overrides
-+- Snapshot generation refactor (2026-04-15) — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing robustness
-+- Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
-+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
- - Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
--- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX from 'No existing tag' to 'Does not exist yet'
--- Agent context cleanup (2026-04-15) — Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from repository root
-+- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
-+- Agent context consolidation (2026-04-15) — Removed legacy _system flat files and stale generated files; consolidated context to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; removed CLAUDE.md and MEMORY.md from root
-
-
-### `commit` — 2026-04-15
-
-Commit: chore: clean up legacy _system files and restructure agent context for a
-Hash: 497763c6
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-
-### `commit` — 2026-04-15
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 842dc0a..d812c8b 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-15 10:37 UTC
-+> Generated by aicli 2026-04-15 10:38 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-
-
 ## AI Synthesis
 
-**2026-04-15** `consolidation` — Agent context files consolidated into .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; legacy _system/ directory deprecated; primary source of truth centralized.
+**[2026-04-15]** `ui/frontend/views/history.js` — Refactored history view with collapsible session groups: added session header with toggle icon, prompt count display, and improved timestamp formatting (YY/MM/DD-HH:MM local time). Session body now collapsible with DOM-driven state management via _toggleSession helper.
 
-**2026-04-15** `instrumentation` — Memory promotion timing added via time.monotonic() tracking in _run_promote_all_work_items; performance measurement now captured in _finish_run calls for monitoring promotion latency.
+**[2026-04-15]** `backend/routers/route_history.py` — Enhanced chat_history endpoint to return created_at ISO timestamp alongside legacy ts field, enabling UI to use precise event creation time for display and filtering.
 
-**2026-04-15** `optimization` — Claude Sonnet downgraded to Haiku for cost efficiency in snapshot generation; planner_tags upsert simplified to flat string keys (requirements, action_items, design, code_summary); JSON parsing robustness improved.
+**[2026-04-15]** `context consolidation` — Removed legacy _system/ directory and deprecated CLAUDE.md/MEMORY.md from repository root. Consolidated all agent context to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md as single source of truth. Version 3.0.0 established as current rules version.
 
-**2026-04-14** `schema` — mem_ai_work_items table reorganized: removed status_ai dual-status design conflict; seq_num repositioned near id for logical grouping; explicit FOREIGN KEY constraint added for merged_into; ivfflat embedding index created for semantic search performance.
+**[ongoing]** `memory promotion` — Instrumented _run_promote_all_work_items with time.monotonic() tracking to measure performance of mem_ai_events → mem_ai_work_items promotion pipeline; enables quantification of memory synthesis latency.
 
-**2026-04-14** `pipeline` — Work item pipeline refactored: agent roles now loaded from DB (mng_agent_roles) with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline (PM→Architect→Developer→Reviewer) supports per-stage provider/model overrides.
+**[ongoing]** `work item pipeline` — Agent roles now loaded from database (mng_agent_roles table) with fallback prompts; 4-stage pipeline (PM→Architect→Developer→Reviewer) supports per-role provider/model overrides and auto_commit boolean flag for automated acceptance.
 
-**2026-04-13** `ux` — Tag suggestion approval flow implemented: ai_tag_suggestion column with approve/remove button handlers; simplified chip markup removes category prefix in non-category mode; category inference automatic on tag creation; tooltip improved from 'No existing tag' to 'Does not exist yet'.
+**[ongoing]** `tag suggestion UX` — Implemented ai_tag_suggestion column with approve/remove button handlers; refactored to simplified chip markup with category inference on tag creation; improved tooltip messaging for non-existent tags.

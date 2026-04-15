@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 18:20 UTC — do not edit manually.
+> Auto-generated 2026-04-15 18:23 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 566
-- **Last active**: 2026-04-15T17:28:30Z
+- **Sessions**: 567
+- **Last active**: 2026-04-15T18:23:03Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Agent context consolidation — Consolidated legacy _system/ files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context; removed stale CLAUDE.md and MEMORY.md
-- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
-- Snapshot generation refactor — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary)
-- Schema cleanup and refactoring — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added FOREIGN KEY constraint for merged_into, added ivfflat embedding index
-- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
-- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
+- History view UI refactor — Added collapsible session grouping with toggleable headers, improved timestamp formatting (YY/MM/DD-HH:MM), session ID display with last-4-char preview, and prompt count aggregation
+- History API enhancement — Added created_at ISO timestamp to chat_history endpoint response for improved UI date/time handling
+- Agent context consolidation — Legacy _system/ files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed
+- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter
+- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; 4-stage pipeline with provider/model overrides and auto_commit boolean support
+- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation
 
 ## Key Decisions
 
