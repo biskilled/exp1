@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 00:23 UTC — do not edit manually.
+> Auto-generated 2026-04-15 01:13 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 538
-- **Last active**: 2026-04-15T00:00:19Z
+- **Sessions**: 540
+- **Last active**: 2026-04-15T01:13:34Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; mem_session.py missing; pending schema documentation update and restoration investigation
-- History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
-- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB
-- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
+- Schema refactor (2026-04-14) — mem_ai_work_items column reordering and constraint migration: removed status_ai tracking, added explicit CONSTRAINT fk_wi_merged_into, optimized index strategy (dropped idx_mem_ai_wi_sai, added ivfflat embedding index)
+- Schema sync investigation (2026-04-06) — aiCli_memory database out of sync with codebase; mem_session.py missing; pending restoration and documentation update
+- History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing
+- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; suggested_new tags rendering under investigation
 - Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added
-- Agent roles enhancement (2026-04-14) — 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides; memory mirror refactor applied
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction
 
 ## Key Decisions
 
@@ -76,7 +76,7 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations

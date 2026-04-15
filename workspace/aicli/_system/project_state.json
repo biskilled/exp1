@@ -56,7 +56,7 @@
     "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
     "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
-    "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)",
+    "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained",
     "Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with auto_commit flag",
     "Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Schema sync issue (2026-04-06) \u2014 aiCli_memory database out of sync with codebase; mem_session.py missing; pending schema documentation update and restoration investigation",
-    "History UI rendering (2026-04-06) \u2014 Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending",
-    "Route history batch upsert fix (2026-04-06) \u2014 PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB",
-    "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
+    "Schema refactor (2026-04-14) \u2014 mem_ai_work_items column reordering and constraint migration: removed status_ai tracking, added explicit CONSTRAINT fk_wi_merged_into, optimized index strategy (dropped idx_mem_ai_wi_sai, added ivfflat embedding index)",
+    "Schema sync investigation (2026-04-06) \u2014 aiCli_memory database out of sync with codebase; mem_session.py missing; pending restoration and documentation update",
+    "History UI rendering (2026-04-06) \u2014 Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing",
+    "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; suggested_new tags rendering under investigation",
     "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added",
-    "Agent roles enhancement (2026-04-14) \u2014 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides; memory mirror refactor applied"
+    "Route history batch upsert fix (2026-04-06) \u2014 PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T00:05:14Z",
+  "last_memory_run": "2026-04-15T01:13:43Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; _system/ stores project state and memory files",
@@ -139,7 +139,7 @@
       "Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel",
       "4-layer memory architecture: ephemeral session \u2192 mem_mrr_* raw capture \u2192 mem_ai_events LLM digests + embeddings \u2192 mem_ai_work_items/project_facts",
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag",
-      "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)",
+      "Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained",
       "Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with auto_commit flag",
       "Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
@@ -147,12 +147,12 @@
       "Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation"
     ],
     "in_progress": [
-      "Schema sync issue (2026-04-06) \u2014 aiCli_memory database out of sync with codebase; mem_session.py missing; pending schema documentation update and restoration investigation",
-      "History UI rendering (2026-04-06) \u2014 Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending",
-      "Route history batch upsert fix (2026-04-06) \u2014 PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB",
-      "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation",
+      "Schema refactor (2026-04-14) \u2014 mem_ai_work_items column reordering and constraint migration: removed status_ai tracking, added explicit CONSTRAINT fk_wi_merged_into, optimized index strategy (dropped idx_mem_ai_wi_sai, added ivfflat embedding index)",
+      "Schema sync investigation (2026-04-06) \u2014 aiCli_memory database out of sync with codebase; mem_session.py missing; pending restoration and documentation update",
+      "History UI rendering (2026-04-06) \u2014 Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing",
+      "Tag suggestion approval flow (2026-04-13) \u2014 ai_tag_suggestion column with approve/remove buttons; suggested_new tags rendering under investigation",
       "Work item pipeline refactor (2026-04-14) \u2014 Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added",
-      "Agent roles enhancement (2026-04-14) \u2014 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides; memory mirror refactor applied"
+      "Route history batch upsert fix (2026-04-06) \u2014 PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -164,15 +164,14 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
-      "mcp": "Stdio MCP server with 12+ tools",
-      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "schema_migrations": "m001-m041 framework with db_schema.sql as source of truth",
       "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
+      "deployment_backend": "Railway (Dockerfile + railway.toml)",
+      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "database_version": "PostgreSQL 15+ with pgvector extensions"
     },
-    "project_summary": "aicli is a shared AI memory platform that combines a Python FastAPI backend with an Electron desktop UI to provide semantic search, workflow automation, and agent-based work item processing. The system captures development context through commits and sessions, synthesizes insights via Claude Haiku, and routes work through a 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) with flexible LLM provider support. Current focus is stabilizing database schema synchronization, completing tag suggestion UI flows, and enabling history rendering with full LLM response visibility.",
-    "memory_digest": "**[2026-04-14]** `agent_roles` \u2014 Auto_commit boolean column added to mng_agent_roles; 4-stage pipeline refactored to load roles from DB with fallback prompts; all pipeline stages now support provider/model overrides for flexible LLM execution. **[2026-04-14]** `schema_refactor` \u2014 Memory mirror tables (mem_mrr_*) columns reordered with project_id/event_id normalized after client_id; m037-m039 migrations applied to align schema with unified architecture. **[2026-04-13]** `tag_suggestion_ux` \u2014 AI tag suggestion feature implemented with approve/remove button handlers; simplified chip markup deployed; category inference added on tag creation; suggested_new tags rendering under investigation for visibility. **[2026-04-06]** `database_sync` \u2014 aiCli_memory schema identified as out of sync with current codebase; mem_session.py missing; schema documentation update and restoration investigation deferred; history/commits/sync endpoint ready for testing. **[2026-04-06]** `history_rendering` \u2014 History UI identified as only displaying prompts without full LLM responses; copy-to-clipboard functionality missing; PostgreSQL ON CONFLICT DO UPDATE error in route_history line 470 resolved via JSONB merge operator (||) syntax correction. **[2026-03-20]** `project_startup_fix` \u2014 Sequential await api.listProjects() implemented to prevent empty home screen race condition; edge case handling for successful list queries returning empty results applied. **[2026-03-20]** `pipeline_ui_state` \u2014 Chat panel state management and old MD version display on approval panel identified as requiring investigation for proper execution output visibility. **[2026-03-14]** `project_release` \u2014 aicli v2.2.0 released; 23 active project entities (features/bugs/tasks/phases/doc_types) tracked; shared memory platform with multi-entry pipeline triggering operational across planner, docs, and chat interfaces."
+    "project_summary": "aicli is a shared AI memory platform that captures development context (commits, prompts, LLM responses) into a unified PostgreSQL database with semantic embeddings, synthesizes actionable work items via multi-stage agent pipelines (PM\u2192Architect\u2192Developer\u2192Reviewer), and provides a cross-platform desktop UI (Electron) and CLI for querying and managing project memory. The architecture separates backend (FastAPI + Python agents) from workspace content, uses Claude Haiku for dual-layer memory digestion, and integrates multiple LLM providers (Claude/OpenAI/DeepSeek/Gemini/Grok) with pluggable provider adapters.",
+    "memory_digest": "**[2026-04-14]** `schema` \u2014 Refactored mem_ai_work_items table: reordered columns (seq_num moved earlier), removed dual-status design (dropped status_ai column), added explicit CONSTRAINT fk_wi_merged_into for referential integrity, optimized indexes (removed idx_mem_ai_wi_sai, added ivfflat embedding index for semantic search). **[2026-04-13]** `feature` \u2014 Enhanced tag suggestion UX with ai_tag_suggestion column supporting approve/remove button handlers; refactored chip markup to simplified format with category inference on tag creation; investigating missing suggested_new tags in ui_tags query. **[2026-04-14]** `agent-roles` \u2014 Work item pipeline refactor: agent roles now loaded from DB (mng_agent_roles) with fallback prompts; RoleCreate/RoleUpdate models updated; 4-stage pipeline (PM\u2192Architect\u2192Developer\u2192Reviewer) supports provider/model overrides and auto_commit boolean. **[2026-04-06]** `bug` \u2014 Schema sync issue detected: aiCli_memory database out of sync with codebase; mem_session.py missing; route history batch upsert fixed via JSONB merge operator (||) syntax correction; testing pending on operational DB. **[2026-04-06]** `ui` \u2014 History panel rendering only showing prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending. **[2026-03-14]** `baseline` \u2014 Project at version 2.2.0 with unified mem_ai_* table architecture, 4-layer memory synthesis, smart code chunking, async DAG workflow engine, and Electron desktop client for Mac/Windows/Linux."
   }
 }
