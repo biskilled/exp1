@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 18:35 UTC — do not edit manually.
+> Auto-generated 2026-04-15 18:47 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 568
-- **Last active**: 2026-04-15T18:31:58Z
+- **Sessions**: 569
+- **Last active**: 2026-04-15T18:46:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,7 +40,7 @@
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
-- **database_version**: PostgreSQL 15+ with pgvector extensions
+- **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Hook-log functionality verification — Testing hook-log behavior post-m050 migration; unclear if migration resolved core issues or if additional schema/logic changes required
-- Backend module restructure completion — agents/tools/ and agents/mcp/ moved to correct locations; imports verified; stray auth.py references cleaned up
-- Backend startup race condition mitigation — Retry logic handles empty project list on first load; root cause diagnosis ongoing for AiCli project visibility edge cases
-- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
-- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
+- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working
+- UI chat history rendering — Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism
+- Backend startup race condition mitigation — Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases
+- Data persistence for tags in session workflow — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
 - Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
+- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
 
 ## Key Decisions
 
@@ -78,7 +78,7 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
-- Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+- Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation

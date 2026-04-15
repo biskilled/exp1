@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 18:32 UTC by aicli /memory_
+_Generated: 2026-04-15 18:46 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL+pgvector, a Python CLI, and an Electron desktop UI to capture, synthesize, and retrieve development context across sessions. The project uses a 4-layer memory architecture (session → raw capture → LLM-digested events → work items/facts) with semantic search, autonomous agent workflows, and multi-provider LLM support. Current focus is resolving backend startup race conditions, data persistence issues with tag serialization, and implementing missing memory synthesis logic (memory_items/project_facts population).
+aicli is a shared AI memory platform combining a Python CLI backend with a desktop Electron UI, leveraging PostgreSQL with pgvector for semantic search and multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok). The platform implements a 4-layer memory architecture (session → raw capture → LLM digests → work items) with intelligent event filtering, async DAG workflows, and role-based agent pipelines. Currently addressing UI prompt display failures despite correct database persistence (post-m050 migration), backend port binding stability issues, and pending implementation of memory item synthesis logic.
 
 ## Project Facts
 
@@ -232,7 +232,7 @@ Reviewer: ```json
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
-- **database_version**: PostgreSQL 15+ with pgvector extensions
+- **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -261,19 +261,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
-- Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+- Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
 
 ## In Progress
 
-- Hook-log functionality verification — Testing hook-log behavior post-m050 migration; unclear if migration resolved core issues or if additional schema/logic changes required
-- Backend module restructure completion — agents/tools/ and agents/mcp/ moved to correct locations; imports verified; stray auth.py references cleaned up
-- Backend startup race condition mitigation — Retry logic handles empty project list on first load; root cause diagnosis ongoing for AiCli project visibility edge cases
-- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
-- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
+- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working
+- UI chat history rendering — Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism
+- Backend startup race condition mitigation — Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases
+- Data persistence for tags in session workflow — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
 - Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
+- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
 
 ## Active Features / Bugs / Tasks
 
@@ -325,135 +325,201 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 5a4df05..2b2a869 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Backend startup race condition fix: retry logic handles empty project list on first load during initialization
--- PostgreSQL agent roles initialization: router mapping queries correct tables per project; removed fallback workarounds
--- Planner tags UI completion: categories uploaded to Planner tab; investigating missing tags display per category and tag filtering workflow
--- Tag system metadata cleanup: retained user-facing tags (phase, feature, bug, source); stripped system metadata from 1441+ events during Pass 0-2
--- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
--- AI tag suggestion feature: approved/removed tag handlers (_wiPanelApproveTag/_wiPanelRemoveTag) with category inference and tooltip improvements
-+- Backend module restructure completion — Moved agents/tools/ and agents/mcp/ to correct locations; verified all imports resolve cleanly; fixed stray auth.py import reference
-+- Backend startup race condition fix — Retry logic handles empty project list on first load during initialization; root cause diagnosis ongoing for AiCli project visibility bug
-+- Memory items and project_facts table population — Tables defined in schema but update logic not yet implemented; required for improved memory/context mechanism
-+- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database save failure in tag serialization workflow
-+- Backend port binding stability — Intermittent app restart failures due to stale port 127.0.0.1:8000 conflicts; freePort() mitigation in place but needs testing
-+- SQL query optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination to reduce database load
-
-
-### `commit` — 2026-04-15
-
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index f7caf85..896f534 100644
+index cb20c1d..bf53f4e 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-14 15:53 UTC
-+> Generated by aicli 2026-04-14 16:14 UTC
+-> Generated by aicli 2026-04-14 14:45 UTC
++> Generated by aicli 2026-04-14 14:46 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -62,8 +62,8 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
--- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
--- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-\ No newline at end of file
-+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)
-+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-+- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
-\ No newline at end of file
 
 
 ### `commit` — 2026-04-15
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 2109733..21437c8 100644
+index 55a56c5..87a31d2 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 15:53 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 16:14 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:45 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:46 UTC
  
  # aicli — Shared AI Memory Platform
- 
-@@ -62,11 +62,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
--- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
-+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)
-+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
- 
- ## Recent Context (last 5 changes)
  
 
 
 ### `commit` — 2026-04-15
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index 2109733..21437c8 100644
+index 55a56c5..87a31d2 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 15:53 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 16:14 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:45 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:46 UTC
  
  # aicli — Shared AI Memory Platform
- 
-@@ -62,11 +62,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- Work item embedding integration: _embed_work_item() persists 1536-dim vectors during /memory command execution
--- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
--- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Tag system: retained only user-facing tags (phase, feature, bug, source); stripped system metadata (llm, event, chunk_type, commit_hash, etc.)
-+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix)
-+- MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- Database schema as single source of truth (db_schema.sql) with migration framework (m001-m041); column naming: prefix_noun_adjective order
- 
- ## Recent Context (last 5 changes)
  
 
 
 ### `commit` — 2026-04-15
 
-Commit: chore: clean up stale agent context and legacy system docs after claude
-Hash: af9cfb89
+Commit: chore: clean up legacy _system files after claude cli session 2a6b600e
+Hash: b189c67e
 Code files (4):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
+  - backend/routers/route_work_items.py
 Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
 
 ### `commit` — 2026-04-15
 
-Commit: chore: remove stale agent-context and auto-generated system docs after c
-Hash: 327e202c
-Generated/internal files: workspace/aicli/_system/.agent-context, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
+diff --git a/ui/frontend/views/pipeline.js b/ui/frontend/views/pipeline.js
+index 59f5051..21f147d 100644
+--- a/ui/frontend/views/pipeline.js
++++ b/ui/frontend/views/pipeline.js
+@@ -1,160 +1,363 @@
+ /**
+- * pipeline.js — Pipeline Health Dashboard view.
++ * pipeline.js — Data Dashboard view.
+  *
+- * Renders background task health stats (commit_embed, session_summary, tag_match, etc.)
+- * with 30-second auto-refresh and links to recent workflow runs.
++ * Three sections:
++ *   1. Mirror Data  — mem_mrr_* counts (commits, prompts, items, messages)
++ *   2. AI / LLM     — mem_ai_* counts (events, work_items, feature snapshots)
++ *   3. Pipeline Runs — last-24h health per background job
++ *   4. Recent Workflow Runs
+  */
+ 
+ import { api } from '../utils/api.js';
+-import { toast } from '../utils/toast.js';
+ 
+ let _refreshTimer = null;
+ let _currentProject = null;
+ 
+ export function destroyPipeline() {
+-  if (_refreshTimer) {
+-    clearInterval(_refreshTimer);
+-    _refreshTimer = null;
+-  }
++  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+ }
+ 
+ export async function renderPipeline(container, project) {
+   destroyPipeline();
+   _currentProject = project;
++
+   container.innerHTML = `
+-    <div style="padding:1.5rem;max-width:900px;margin:0 auto;overflow-y:auto;height:100%">
+-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
+-        <h2 style="margin:0;font-size:1.1rem">Pipeline Health</h2>
+-        <button id="pipeline-refresh-btn" class="btn btn-ghost btn-sm" onclick="window._pipelineRefresh()">↻ Refresh</button>
++    <div style="padding:1.5rem 1.5rem 2rem;max-width:1000px;margin:0 auto;overflow-y:auto;height:100%;box-sizing:border-box">
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.4rem">
++        <h2 style="margin:0;font-size:1.05rem;font-weight:600">Data Dashboard</h2>
++        <button id="dd-refresh-btn" class="btn btn-ghost btn-sm" style="font-size:0.78rem">↻ Refresh</button>
++      </div>
++
++      <div class="dd-section-label">Mirror Data</div>
++      <div id="dd-mirror" class="dd-grid dd-grid-4" style="margin-bottom:1.5rem">
++        ${_skeleton(4)}
+       </div>
+-      <div id="pipeline-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.5rem">
+-        <div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Loading…</div>
++
++      <div class="dd-section-label">AI / LLM</div>
++      <div id="dd-ai" class="dd-grid dd-grid-3" style="margin-bottom:1.5rem">
++        ${_skeleton(3)}
+       </div>
+-      <div id="pipeline-pending" style="margin-bottom:1.2rem"></div>
+-      <div id="pipeline-errors" style="margin-bottom:1.5rem"></div>
+-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+-        <h3 style="margin:0;font-size:0.95rem">Recent Workflow Runs</h3>
+-        <button class="btn btn-ghost btn-sm" onclick="window._nav('workflow')">→ Pipelines</button>
++
++      <div class="dd-section-label">Pipeline Runs <span style="font-weight:400;color:var(--muted)">(last 24h)</span></div>
++      <div id="dd-pipeline" class="dd-grid dd-grid-6" style="margin-bottom:1.5rem">
++        ${_skeleton(6)}
+       </div>
+-      <div id="pipeline-runs">
+-        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
++
++      <div id="dd-errors" style="margin-bottom:1.2rem"></div>
++
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
++        <div class="dd-section-label" style="margin-bottom:0">Recent Workflow Runs</div>
++        <button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="window._nav('workflow')">→ Pipelines</button>
+       </div>
++      <div id="dd-runs"><div style="color:var(--muted);font-size:0.8rem">Loading…</div></div>
+     </div>
++
++    <style>
++      .dd-section-label {
++        font-size:0.7rem;font-weight:700;text-transform:uppercase;
++        letter-spacing:0.07em;color:var(--muted);margin-bottom:0.6rem
++      }
++      .dd-grid { display:grid;gap:0.65rem }
++      .dd-grid-4 { grid-template-columns:repeat(4,1fr) }
++      .dd-grid-3 { grid-template-columns:repeat(3,1fr) }
++      .dd-grid-6 { grid-template-columns:repeat(6,1fr) }
++      @media(max-width:780px){
++        .dd-grid-4{grid-template-columns:repeat(2,1fr)}
++        .dd-grid-6{grid-template-columns:repeat(3,1fr)}
++      }
++      .dd-card {
++        background:var(--surface2);border:1px solid var(--border);
++        border-radius:var(--radius);padding:0.8rem 0.85rem 0.65rem;
++        display:flex;flex-direction:column;gap:0.4rem;min-width:0
++      }
++      .dd-card-hdr {
++        display:flex;align-items:center;gap:0.4rem;
++        font-size:0.72rem;font-weight:600;color:var(--muted);
++        text-transform:uppercase;letter-spacing:0.04em
++      }
++      .dd-card-icon { font-size:0.85rem;flex-shrink:0 }
++      .dd-card-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
++      .dd-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0 }
++      .dd-stats { display:flex;gap:1rem;align-items:flex-end }
++      .dd-stat { display:flex;flex-direction:column }
++      .dd-stat-val { font-size:1.35rem;font-weight:700;color:var(--text);line-height:1 }
++      .dd-stat-lbl { font-size:0.62rem;color:var(--muted);margin-top:0.15rem;text-transform:uppercase }
++      .dd-card-footer {
++        font-size:0.65rem;color:var(--muted);
++        display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.1rem
++      }
++      .dd-tag { background:var(--surface3,rgba(128,128,128,.12));padding:0.1rem 0.35rem;
++                border-radius:3px;white-space:nowrap }
++      .dd-pipe-card {
++        background:var(--surface2);border:1px solid var(--border);
++        border-radius:var(--radius);padding:0.55rem 0.6rem;min-width:0
++      }
++      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
++                      fon
+
+### `commit` — 2026-04-15
+
+diff --git a/ui/frontend/utils/api.js b/ui/frontend/utils/api.js
+index 1a84090..ff7da10 100644
+--- a/ui/frontend/utils/api.js
++++ b/ui/frontend/utils/api.js
+@@ -485,6 +485,7 @@ api.documents = {
+ 
+ api.pipeline = {
+   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
++  dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
+   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
+   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
+     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
+
 
 ## AI Synthesis
 
-**[2026-04-15]** CLI session — Test query regarding hook-log functionality post-m050 migration; status unclear on whether migration resolved underlying issues. **[2026-04-14]** Context consolidation — Legacy _system/ directory fully deprecated; agent context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md. **[2026-04-14]** Backend module restructure — agents/tools/ and agents/mcp/ moved to correct locations with import verification; stray references cleaned. **[2026-04-14]** Backend diagnostics — Identified startup race condition with empty project list on first load; intermittent port 127.0.0.1:8000 binding conflicts requiring freePort() testing. **[2026-04-14]** Data persistence bug triage — Tags disappearing on session switch; root cause ambiguous between UI rendering and database serialization. **[2026-04-14]** Schema gap identified — memory_items and project_facts tables defined but update/query logic missing; critical for improved memory synthesis. **[2026-04-14]** SQL optimization backlog — Row-by-row INSERT in event migration and unbounded fetchall() in memory synthesis require batch refactor and pagination. **[2026-04-14]** Work item pipeline — Agent roles now loaded from DB (mng_agent_roles) with fallback prompts; 4-stage pipeline (PM→Architect→Developer→Reviewer) with provider/model overrides. **[2026-04-14]** Tag suggestion UX — ai_tag_suggestion column with approve/remove handlers; simplified chip markup; category inference on tag creation. **[2026-04-14]** History view UI — Collapsible session grouping with improved timestamp formatting (YY/MM/DD-HH:MM) and prompt count aggregation.
+**[2026-04-15 18:41]** `claude_cli` — Migration m050 resolved silent database errors in hook-log endpoint; all prompts now persisting to DB correctly. Root cause was DB constraint violation preventing event storage. **[2026-04-15 18:41]** `claude_cli` — UI not displaying latest prompts despite correct DB persistence; Vite dev server confirmed serving updated history.js; issue identified as client-side event listener or polling refresh mechanism failure. **[2026-04-15 19:31]** `claude_cli` — Hook-log functionality verification initiated post-m050; testing whether prompt persistence and auto-refresh now working end-to-end. **[In progress]** Backend startup race condition remains partially unresolved — retry logic added for empty project list but AiCli project visibility edge cases still under diagnosis. **[In progress]** Tag persistence across session switches failing — unclear whether UI rendering issue or database serialization failure in tag workflow. **[In progress]** Backend port binding stability — stale 127.0.0.1:8000 conflicts causing intermittent restart failures; freePort() mitigation implemented pending verification. **[Architectural]** Memory items and project_facts table logic still not implemented despite schema definition; required for complete memory synthesis pipeline. **[Schema]** m050 migration completed; db_schema.sql remains single source of truth with column ordering: client_id → project_id → created_at/processed_at/embedding. **[Integration]** Unified tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) functional; per-project tables and shared auth tables operational. **[Context]** AI rules files (rules.md, aicli.mdrules, copilot-instructions.md) auto-generated; legacy _system directory removed; context consolidation complete.

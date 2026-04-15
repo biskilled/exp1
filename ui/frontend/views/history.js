@@ -456,7 +456,12 @@ export class HistoryView {
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
             <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
             <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
-            ${(e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>`<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${this._escapeHtml(t.slice(6))}</span>`).join('')}
+            ${(e.tags||[]).map(t => {
+              const col = this._tagColor(t);
+              const prefix = t.split(':')[0];
+              const label  = t.includes(':') ? t : t;
+              return `<span style="background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 5px;border-radius:3px;font-size:10px">${this._escapeHtml(label)}</span>`;
+            }).join('')}
             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
             <span id="${anchorId}" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
               ${existingChips}
@@ -479,7 +484,7 @@ export class HistoryView {
 
       // Session key for DOM IDs (safe to use in attribute)
       const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
-      const sid4   = sid ? sid.slice(-4) : '????';
+      const sid5   = sid ? sid.slice(-5) : '?????';
       const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
       const pCount = group.entries.length;
 
@@ -493,15 +498,18 @@ export class HistoryView {
             <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
             <span style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);
                          padding:1px 5px;border-radius:3px;font-size:10px;color:var(--accent)"
-                  title="Session ID: ${this._escapeHtml(sid || 'none')}">…${this._escapeHtml(sid4)}</span>
+                  title="Session ID: ${this._escapeHtml(sid || 'none')}">…${this._escapeHtml(sid5)}</span>
             <span style="color:var(--muted)">${pCount} prompt${pCount !== 1 ? 's' : ''}</span>
             ${latestTs ? `<span style="color:var(--muted);margin-left:auto">${latestTs}</span>` : ''}
           </div>
           <!-- Session body — collapsible -->
           <div id="sg-body-${sgKey}" style="padding:8px">
-            ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:monospace;
-                               padding:3px 6px;background:var(--surface2);border-radius:3px;word-break:break-all">
-                       Session: ${this._escapeHtml(sid)}
+            ${sid ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-family:monospace;
+                               padding:4px 8px;background:var(--surface2);border-radius:4px;border-left:3px solid var(--accent)">
+                       <span style="font-size:10px;color:var(--muted);white-space:nowrap;font-family:sans-serif;text-transform:uppercase;letter-spacing:.4px">Session ID</span>
+                       <span style="font-size:11px;color:var(--accent);word-break:break-all;user-select:all">${this._escapeHtml(sid)}</span>
+                       <button onclick="event.stopPropagation();navigator.clipboard.writeText('${this._escapeHtml(sid)}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})"
+                         style="margin-left:auto;font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap;flex-shrink:0">⎘</button>
                      </div>` : ''}
             ${commitStrip}
             ${entriesHtml}
@@ -1265,7 +1273,7 @@ export class HistoryView {
 
   _tagColor(tagStr) {
     const prefix = (tagStr || '').split(':')[0];
-    const MAP = { phase: '#3b82f6', feature: '#22c55e', bug: '#ef4444' };
+    const MAP = { phase: '#3b82f6', feature: '#22c55e', bug: '#ef4444', source: '#a78bfa', task: '#f59e0b' };
     return MAP[prefix] || '#4a90e2';
   }
 

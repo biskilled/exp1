@@ -1,9 +1,78 @@
-## Project: aicli
+# aicli — AI Coding Rules
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
 
-## Active Features (do not break)
+# aicli — Shared AI Memory Platform
 
-cleanup-database-py: cleanup-database-py is a database schema refactoring effort to remove deprecated
-refactor-db-schema-columns: This work item involves refactoring the database schema to add a new llem_source
-track-multi-project-support-development: This work item tracks development of multi-project support capabilities by impro
-auto-tag-summarize-chat-responses: This work item implements automatic tagging and summarization for chat responses
-chat-response-condensing: Chat-response-condensing enables users to view summarized chat responses with ex
+_Last updated: 2026-04-15 | Version 3.0.0_
+
+---
+
+## Tech Stack
+
+- **cli**: Python 3.12 + prompt_toolkit + rich
+- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
+- **frontend**: Vanilla JS + Electron shell + Vite dev server
+- **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+- **storage_primary**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns, full_symbol generated); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+- **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility
+- **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+- **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+- **mcp**: Stdio MCP server with 12+ tools
+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
+- **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
+- **config_management**: config.py + YAML pipelines + pyproject.toml
+- **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+- **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+- **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+- **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+- **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+- **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+- **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+- **build_tooling**: npm 8+ + Electron-builder + Vite dev server
+- **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
+- **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+- **deployment_cloud**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **deployment_local**: bash start_backend.sh + npm run dev
+- **prompt_management**: core.prompt_loader module with centralized prompt caching
+- **schema_management**: db_schema.sql + db_migrations.py (m001-m037)
+- **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
+- **embeddings**: text-embedding-3-small (1536-dim vectors)
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
+- **schema_migrations**: m001-m041 framework with db_schema.sql as source of truth
+- **llm_provider_location**: agents/providers/
+
+## Key Decisions
+
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
+- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
+- Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+- Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
+- 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
+- Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
+- Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
+- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
+- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation
+
+## Recent Context (last 5 changes)
+
+- [2026-04-13] yes
+- [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
+- [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
+- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
+- [2026-04-15] test: is hook-log working now after m050?
