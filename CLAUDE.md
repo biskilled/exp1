@@ -48,7 +48,7 @@ You are a senior Python software architect with deep expertise in:
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-14 | Version 2.2.0_
+_Last updated: 2026-04-15 | Version 3.0.0_
 
 ---
 
@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
 
 **aicli gives every LLM the same project memory.**
 
-When you switch between Claude CLI, the aicli terminal, Cursor, or the web UI, the AI picks up
+When you switch between Claude Code, the aicli CLI, Cursor, or the web UI, the AI picks up
 exactly where you left off — same codebase context, same decisions, same feature history.
 No more copy-pasting context. No more re-explaining your architecture.
 
@@ -66,49 +66,49 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 | # | Goal | Status |
 |---|------|--------|
-| 1 | **Shared LLM memory** — Claude CLI, aicli CLI, Cursor, UI all read the same knowledge base | ✓ Implemented |
-| 2 | **Prompt management** — Role-based agents (architect, developer, reviewer, QA, security, devops) | ✓ Implemented |
-| 3 | **5-layer memory** — Immediate → Working → Project → Historical → Global | ✓ Implemented |
-| 4 | **Auto-deploy** — pull → commit → push after every AI session | ✓ Hooks + git.py |
+| 1 | **Shared LLM memory** — Claude Code, aicli CLI, Cursor all read the same knowledge base | ✓ Implemented |
+| 2 | **4-layer memory pipeline** — Mirror → AI Events → Work Items → Project Facts | ✓ Implemented |
+| 3 | **Planner / Work Items** — AI-detected tasks linked to user-managed planner_tags | ✓ Implemented |
+| 4 | **Auto-deploy** — Stop hook → auto_commit_push.sh after every Claude Code session | ✓ Hooks |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
-| 7 | **Entity/knowledge graph** — Tag every event (prompt/commit) to features, bugs, tasks | ✓ Implemented |
-| 8 | **Semantic search** — pgvector cosine similarity over chunked history + code | ✓ Implemented |
-| 9 | **Project management UI** — Unified Planner: 2-pane tag manager, per-entry tagging, commit linking | ✓ Implemented |
+| 7 | **Semantic search** — pgvector cosine similarity over events + work items | ✓ Implemented |
+| 8 | **Feature snapshots** — Haiku-generated requirements/design per tag | ✓ Implemented |
+| 9 | **MCP server** — 10 tools: search_memory, get_project_state, work items, tags | ✓ Implemented |
 
 ---
 
-## 5-Layer Memory Architecture
+## 4-Layer Memory Architecture
 
 ```
-Layer 1 — Immediate Context
-  └── providers/{claude,openai,...}.messages  (in-memory, not persisted)
-      Live conversation: current prompt chain within the session
+Layer 1 — Raw Capture (mem_mrr_*)
+  ├── mem_mrr_prompts        raw prompt/response pairs (session-tagged)
+  ├── mem_mrr_commits        git commits (hash, msg, tags, diff_summary)
+  ├── mem_mrr_commits_code   per-symbol diffs (tree-sitter: class, method, file)
+  ├── mem_mrr_items          document/meeting items
+  └── mem_mrr_messages       Slack/chat messages
 
-Layer 2 — Working Memory
-  └── {cli_data_dir}/sessions/{provider}_messages.json
-  └── {cli_data_dir}/session_state.json
-      Short-term task state: active feature, tag, last commit, cross-provider handoff
+Layer 2 — AI Events (mem_ai_events)
+  Haiku digest + OpenAI embedding (text-embedding-3-small, 1536-dim)
+  event_type: prompt_batch | commit | session_summary | item | workflow
+  is_system=TRUE → system file updates (PROJECT.md etc) skipped for work items
+  source_id: batch_{hash8}_{tagfp8} for commits; last prompt UUID for prompt batches
+  Tags: only user-intent {phase, feature, bug, source} stored
 
-Layer 3 — Project Knowledge
-  └── workspace/{project}/PROJECT.md          — living project doc (this file)
-  └── workspace/{project}/_system/project_state.json  — structured metadata + next_phase_plan
-  └── workspace/{project}/_system/CLAUDE.md   — synced to code_dir/CLAUDE.md for Claude Code
+Layer 3 — Structured Artifacts (mem_ai_*)
+  ├── mem_ai_work_items      AI-detected tasks/bugs/features (score_ai 0-5)
+  └── mem_ai_project_facts   Durable facts ("uses pgvector", "auth is JWT")
 
-Layer 4 — Historical Knowledge
-  └── workspace/{project}/_system/history.jsonl    — all interactions (UI + CLI + workflow + Cursor)
-  └── workspace/{project}/_system/events_{p}       — PostgreSQL event log, tagged to features/bugs
-      Past decisions, design discussions, feature history, bug postmortems, refactor notes
-
-Layer 5 — Global Knowledge
-  └── workspace/_templates/hooks/                  — canonical hook scripts for all projects
-  └── workspace/_templates/{blank,python_api,...}  — project starter templates
-  └── workspace/_templates/workflows/              — shared workflow YAML library (planned)
-  └── workspace/_templates/roles/                  — shared AI role prompts (planned)
+Layer 4 — User Tags (planner_tags)
+  Human-owned taxonomy: features, bugs, tasks, phases
+  ← USER OWNS THIS — AI suggests, user confirms
 ```
 
+### How `/memory` syncs context to every LLM tool
 
-*See PROJECT.md for full documentation (383 lines total)*
+
+
+*See PROJECT.md for full documentation (269 lines total)*
 
 ## Recent Work (last 5 prompts)
 
@@ -120,9 +120,3 @@ Layer 5 — Global Knowledge
 
 ---
 *Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
-
----
-
-## Session Memory
-
-Read `MEMORY.md` in this directory for recent work history, key decisions, and in-progress items. It was generated by aicli `/memory` (last 10 development exchanges).

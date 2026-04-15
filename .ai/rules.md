@@ -1,9 +1,9 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 08:11 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 08:22 UTC
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-03-14 | Version 2.2.0_
+_Last updated: 2026-04-15 | Version 3.0.0_
 
 ---
 

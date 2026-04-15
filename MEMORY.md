@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 08:11 UTC by aicli /memory_
+_Generated: 2026-04-15 08:22 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -311,13 +311,13 @@ Reviewer: ```json
 ### `commit` — 2026-04-15
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index d90eb4c..bd82af9 100644
+index 55a56c5..87a31d2 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:20 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 01:21 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:45 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:46 UTC
  
  # aicli — Shared AI Memory Platform
  
@@ -325,73 +325,303 @@ index d90eb4c..bd82af9 100644
 
 ### `commit` — 2026-04-15
 
-Commit: chore: consolidate and reorganize _system memory/context files after cla
-Hash: ec75b516
-Code files (9):
+Commit: chore: clean up legacy _system files after claude cli session 2a6b600e
+Hash: b189c67e
+Code files (4):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
-  - backend/core/db_migrations.py
-  - backend/core/db_schema.sql
-  - backend/memory/memory_embedding.py
-  - backend/memory/memory_files.py
-  - backend/memory/memory_promotion.py
-  - backend/routers/route_history.py
-Generated/internal files: MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
-Symbols changed: _is_system_commit, _tag_fingerprint, m047_events_is_system
+  - backend/routers/route_work_items.py
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
 
 ### `commit` — 2026-04-15
 
-Commit: chore: clean up stale system context files after claude cli session 2a6b
-Hash: 36dc1a0f
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
-
-### `commit: 2a6b600e-9046-4d7b-88e9-ddb136d6ed65` — 2026-04-15
-
-Commits: chore: remove stale agent context and system prompt files after claude c | chore: clean up and restructure _system memory/context files after claud | chore: clean up stale agent context and system memory files after claude
-Stats:  workspace/aicli/PROJECT.md      |   4 +-
- 6 files changed, 229 insertions(+), 57 deletions(-)
+diff --git a/ui/frontend/views/pipeline.js b/ui/frontend/views/pipeline.js
+index 59f5051..21f147d 100644
+--- a/ui/frontend/views/pipeline.js
++++ b/ui/frontend/views/pipeline.js
+@@ -1,160 +1,363 @@
+ /**
+- * pipeline.js — Pipeline Health Dashboard view.
++ * pipeline.js — Data Dashboard view.
+  *
+- * Renders background task health stats (commit_embed, session_summary, tag_match, etc.)
+- * with 30-second auto-refresh and links to recent workflow runs.
++ * Three sections:
++ *   1. Mirror Data  — mem_mrr_* counts (commits, prompts, items, messages)
++ *   2. AI / LLM     — mem_ai_* counts (events, work_items, feature snapshots)
++ *   3. Pipeline Runs — last-24h health per background job
++ *   4. Recent Workflow Runs
+  */
+ 
+ import { api } from '../utils/api.js';
+-import { toast } from '../utils/toast.js';
+ 
+ let _refreshTimer = null;
+ let _currentProject = null;
+ 
+ export function destroyPipeline() {
+-  if (_refreshTimer) {
+-    clearInterval(_refreshTimer);
+-    _refreshTimer = null;
+-  }
++  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+ }
+ 
+ export async function renderPipeline(container, project) {
+   destroyPipeline();
+   _currentProject = project;
++
+   container.innerHTML = `
+-    <div style="padding:1.5rem;max-width:900px;margin:0 auto;overflow-y:auto;height:100%">
+-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
+-        <h2 style="margin:0;font-size:1.1rem">Pipeline Health</h2>
+-        <button id="pipeline-refresh-btn" class="btn btn-ghost btn-sm" onclick="window._pipelineRefresh()">↻ Refresh</button>
++    <div style="padding:1.5rem 1.5rem 2rem;max-width:1000px;margin:0 auto;overflow-y:auto;height:100%;box-sizing:border-box">
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.4rem">
++        <h2 style="margin:0;font-size:1.05rem;font-weight:600">Data Dashboard</h2>
++        <button id="dd-refresh-btn" class="btn btn-ghost btn-sm" style="font-size:0.78rem">↻ Refresh</button>
++      </div>
++
++      <div class="dd-section-label">Mirror Data</div>
++      <div id="dd-mirror" class="dd-grid dd-grid-4" style="margin-bottom:1.5rem">
++        ${_skeleton(4)}
+       </div>
+-      <div id="pipeline-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1.5rem">
+-        <div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Loading…</div>
++
++      <div class="dd-section-label">AI / LLM</div>
++      <div id="dd-ai" class="dd-grid dd-grid-3" style="margin-bottom:1.5rem">
++        ${_skeleton(3)}
+       </div>
+-      <div id="pipeline-pending" style="margin-bottom:1.2rem"></div>
+-      <div id="pipeline-errors" style="margin-bottom:1.5rem"></div>
+-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+-        <h3 style="margin:0;font-size:0.95rem">Recent Workflow Runs</h3>
+-        <button class="btn btn-ghost btn-sm" onclick="window._nav('workflow')">→ Pipelines</button>
++
++      <div class="dd-section-label">Pipeline Runs <span style="font-weight:400;color:var(--muted)">(last 24h)</span></div>
++      <div id="dd-pipeline" class="dd-grid dd-grid-6" style="margin-bottom:1.5rem">
++        ${_skeleton(6)}
+       </div>
+-      <div id="pipeline-runs">
+-        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
++
++      <div id="dd-errors" style="margin-bottom:1.2rem"></div>
++
++      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
++        <div class="dd-section-label" style="margin-bottom:0">Recent Workflow Runs</div>
++        <button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="window._nav('workflow')">→ Pipelines</button>
+       </div>
++      <div id="dd-runs"><div style="color:var(--muted);font-size:0.8rem">Loading…</div></div>
+     </div>
++
++    <style>
++      .dd-section-label {
++        font-size:0.7rem;font-weight:700;text-transform:uppercase;
++        letter-spacing:0.07em;color:var(--muted);margin-bottom:0.6rem
++      }
++      .dd-grid { display:grid;gap:0.65rem }
++      .dd-grid-4 { grid-template-columns:repeat(4,1fr) }
++      .dd-grid-3 { grid-template-columns:repeat(3,1fr) }
++      .dd-grid-6 { grid-template-columns:repeat(6,1fr) }
++      @media(max-width:780px){
++        .dd-grid-4{grid-template-columns:repeat(2,1fr)}
++        .dd-grid-6{grid-template-columns:repeat(3,1fr)}
++      }
++      .dd-card {
++        background:var(--surface2);border:1px solid var(--border);
++        border-radius:var(--radius);padding:0.8rem 0.85rem 0.65rem;
++        display:flex;flex-direction:column;gap:0.4rem;min-width:0
++      }
++      .dd-card-hdr {
++        display:flex;align-items:center;gap:0.4rem;
++        font-size:0.72rem;font-weight:600;color:var(--muted);
++        text-transform:uppercase;letter-spacing:0.04em
++      }
++      .dd-card-icon { font-size:0.85rem;flex-shrink:0 }
++      .dd-card-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
++      .dd-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0 }
++      .dd-stats { display:flex;gap:1rem;align-items:flex-end }
++      .dd-stat { display:flex;flex-direction:column }
++      .dd-stat-val { font-size:1.35rem;font-weight:700;color:var(--text);line-height:1 }
++      .dd-stat-lbl { font-size:0.62rem;color:var(--muted);margin-top:0.15rem;text-transform:uppercase }
++      .dd-card-footer {
++        font-size:0.65rem;color:var(--muted);
++        display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.1rem
++      }
++      .dd-tag { background:var(--surface3,rgba(128,128,128,.12));padding:0.1rem 0.35rem;
++                border-radius:3px;white-space:nowrap }
++      .dd-pipe-card {
++        background:var(--surface2);border:1px solid var(--border);
++        border-radius:var(--radius);padding:0.55rem 0.6rem;min-width:0
++      }
++      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
++                      fon
 
 ### `commit` — 2026-04-15
 
-diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
-index df7bf1f..c1de7ee 100644
---- a/backend/memory/memory_files.py
-+++ b/backend/memory/memory_files.py
-@@ -49,7 +49,7 @@ _SQL_FACTS = """
- """
+diff --git a/ui/frontend/utils/api.js b/ui/frontend/utils/api.js
+index 1a84090..ff7da10 100644
+--- a/ui/frontend/utils/api.js
++++ b/ui/frontend/utils/api.js
+@@ -485,6 +485,7 @@ api.documents = {
  
- _SQL_ACTIVE_WORK_ITEMS = """
--    SELECT wi.name_ai, wi.desc_ai, wi.category_ai,
-+    SELECT wi.name_ai, wi.summary_ai, wi.category_ai,
-            wi.seq_num, t.name AS tag_name
-     FROM mem_ai_work_items wi
-     LEFT JOIN planner_tags t ON t.id = wi.tag_id_user
-@@ -167,9 +167,9 @@ class MemoryFiles:
- 
-                     # Active work items
-                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
--                    for ai_name, ai_desc, ai_category, seq_num, tag_name in cur.fetchall():
-+                    for ai_name, ai_summary, ai_category, seq_num, tag_name in cur.fetchall():
-                         ctx["active_work"].append({
--                            "name": ai_name, "desc": (ai_desc or "")[:120],
-+                            "name": ai_name, "desc": (ai_summary or "")[:120],
-                             "lifecycle": "active", "category": ai_category,
-                             "seq_num": seq_num, "tag_name": tag_name or ai_name,
-                         })
+ api.pipeline = {
+   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
++  dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
+   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
+   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
+     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
 
 
 ### `commit` — 2026-04-15
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index ed04102..459cc85 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-15 01:19 UTC
-+> Generated by aicli 2026-04-15 01:20 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+diff --git a/ui/frontend/main.js b/ui/frontend/main.js
+index 0105dec..dfd1767 100644
+--- a/ui/frontend/main.js
++++ b/ui/frontend/main.js
+@@ -74,7 +74,7 @@ const PROJECT_TABS = [
+   { id: 'code',      icon: '</>',label: 'Code'      },
+   { id: 'documents', icon: '📋', label: 'Documents' },
+   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
+-  { id: 'pipeline',  icon: '⊕',  label: 'Pipeline'  },
++  { id: 'pipeline',  icon: '◫',  label: 'Data'      },
+   { id: 'history',  icon: '⏱',  label: 'History'  },
+   { id: 'settings', icon: '⚙',  label: 'Settings' },
+ ];
 
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
+index af19f4c..bd74124 100644
+--- a/backend/routers/route_memory.py
++++ b/backend/routers/route_memory.py
+@@ -487,6 +487,225 @@ async def get_pipeline_status(project: str):
+     }
+ 
+ 
++@router.get("/{project}/data-dashboard")
++async def get_data_dashboard(project: str):
++    """Data Dashboard: mirror layer counts, AI layer counts, pipeline health, pending."""
++    if not db.is_available():
++        return {"mirror": {}, "ai": {}, "pipeline": {}, "pending": {}, "recent_errors": [], "fallback": True}
++
++    project_id = db.get_or_create_project_id(project)
++    mirror: dict = {}
++    ai: dict = {}
++    pipeline: dict = {}
++    pending: dict = {}
++    recent_errors: list = []
++
++    try:
++        with db.conn() as conn:
++            with conn.cursor() as cur:
++
++                # ── Mirror layer ──────────────────────────────────────────
++                for table, key in [
++                    ("mem_mrr_commits",  "commits"),
++                    ("mem_mrr_prompts",  "prompts"),
++                    ("mem_mrr_items",    "items"),
++                    ("mem_mrr_messages", "messages"),
++                ]:
++                    try:
++                        cur.execute(
++                            f"""SELECT COUNT(*),
++                                       COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
++                                       MAX(created_at)
++                                FROM {table} WHERE project_id = %s""",
++                            (project_id,),
++                        )
++                        r = cur.fetchone()
++                        mirror[key] = {
++                            "total": r[0] or 0,
++                            "last_24h": r[1] or 0,
++                            "last_at": r[2].isoformat() if r[2] else None,
++                        }
++                    except Exception:
++                        conn.rollback()
++                        mirror[key] = {"total": 0, "last_24h": 0, "last_at": None}
++
++                # Commits: pending embed
++                try:
++                    cur.execute(
++                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
++                        (project_id,),
++                    )
++                    mirror["commits"]["pending_embed"] = cur.fetchone()[0] or 0
++                except Exception:
++                    conn.rollback()
++                    mirror["commits"]["pending_embed"] = 0
++
++                # Prompts: pending embed
++                try:
++                    cur.execute(
++                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NULL",
++                        (project_id,),
++                    )
++                    mirror["prompts"]["pending_embed"] = cur.fetchone()[0] or 0
++                except Exception:
++                    conn.rollback()
++                    mirror["prompts"]["pending_embed"] = 0
++
++                # ── AI layer ──────────────────────────────────────────────
++                # Events
++                try:
++                    cur.execute(
++                        """SELECT COUNT(*),
++                                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
++                                  MAX(created_at)
++                           FROM mem_ai_events WHERE project_id = %s""",
++                        (project_id,),
++                    )
++                    r = cur.fetchone()
++                    ai["events"] = {
++                        "total": r[0] or 0,
++                        "last_24h": r[1] or 0,
++                        "last_at": r[2].isoformat() if r[2] else None,
++                        "by_type": {},
++                    }
++                    cur.execute(
++                        "SELECT event_type, COUNT(*) FROM mem_ai_events WHERE project_id=%s GROUP BY event_type ORDER BY 2 DESC",
++                        (project_id,),
++                    )
++                    ai["events"]["by_type"] = {row[0]: row[1] for row in cur.fetchall()}
++                except Exception:
++                    conn.rollback()
++                    ai["events"] = {"total": 0, "last_24h": 0, "last_at": None, "by_type": {}}
++
++                # Work items
++                try:
++                    cur.execute(
++                        """SELECT COUNT(*),
++                                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
++                                  MAX(created_at),
++                                  COUNT(*) FILTER (WHERE status_user NOT IN ('done','archived')),
++                                  COUNT(*) FILTER (WHERE status_user = 'done'),
++                                  COUNT(*) FILTER (WHERE tag_id_user IS NOT NULL)
++                           FROM mem_ai_work_items WHERE project_id = %s""",
++                        (project_id,),
++                    )
++                    r = cur.fetchone()
++                    ai["work_items"] = {
++                        "total": r[0] or 0,
++                        "last_24h": r[1] or 0,
++                        "last_at": r[2].isoformat() if r[2] else None,
++                        "active": r[3] or 0,
++                        "done": r[4] or 0,
++                        "linked": r[5] or 0,
++                    }
++                except Exception:
++                    conn.rollback()
++                    ai["work_items"] = {"total": 0, "last_24h": 0, "last_at": None,
++                                        "active": 0, "done": 0, "linked": 0}
++
++                # Feature snapshots (planner_tags with AI content)
++                try:
++                    cur.execute(
++                        """SELECT COUNT(*),
++                                  COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
++                                  MAX(updated_at)
++                         
