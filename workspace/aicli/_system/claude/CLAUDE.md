@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations
+- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state
 
 ---
 

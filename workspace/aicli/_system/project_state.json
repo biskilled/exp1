@@ -61,7 +61,7 @@
     "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations"
+    "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -90,11 +90,11 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration",
-    "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()",
-    "Timestamp formatting on user prompts \u2014 YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)",
+    "Session ID startup loading \u2014 fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders",
+    "Importance column consolidation \u2014 deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries",
+    "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable",
+    "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null",
     "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
-    "Chat and History views session rendering consistency \u2014 matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display",
     "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps"
   ],
   "next_phase_plan": {
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T21:31:50Z",
+  "last_memory_run": "2026-04-15T21:46:39Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -144,14 +144,14 @@
       "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations"
+      "Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state"
     ],
     "in_progress": [
-      "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration",
-      "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()",
-      "Timestamp formatting on user prompts \u2014 YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)",
+      "Session ID startup loading \u2014 fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders",
+      "Importance column consolidation \u2014 deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries",
+      "Chat history sort stability \u2014 verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable",
+      "Session ID display consistency \u2014 monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null",
       "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
-      "Chat and History views session rendering consistency \u2014 matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display",
       "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps"
     ],
     "tech_stack": {
@@ -160,20 +160,17 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
+      "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
       "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml"
+      "embeddings": "text-embedding-3-small (1536-dim vectors)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling AI-assisted development through semantic search, memory synthesis, and workflow automation. The system maintains a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 digested events \u2192 work items), uses PostgreSQL + pgvector for embeddings, and integrates multiple LLM providers. Current focus is on session state stability, consistent timestamp/session ID rendering across Chat and History views, and per-prompt tagging refinement post-migration m050.",
-    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Fixed stale session ID persisting across tab navigations by resetting module-level `_sessionId` to `null` at start of `renderChat()`; localStorage cache no longer highlights old sessions on load. Session ID display (last 5 chars) positioned between entity chips and +Tag button with click-to-copy UUID.\n\n**[2026-04-15]** `claude_cli` \u2014 Verified chat history sort stability: 531 total prompts loaded (389 from PostgreSQL, ~142 from JSONL fallback merge) with April entries correctly appearing first; confirmed data pipeline working post-m050 migration.\n\n**[2026-04-15]** `cleanup` \u2014 Consolidated AI context files to `.ai/rules.md`, `.cursor/rules/aicli.mdrules`, `.github/copilot-instructions.md`; removed legacy `_system/` directory and repository-root CLAUDE.md/MEMORY.md to eliminate duplication and simplify agent context management.\n\n**[2026-04-15]** `claude_cli` \u2014 Implemented per-prompt tagging refinement with simplified chip markup and inline \u2713 button for tag creation/approval at message level; category inference auto-populated for new suggested tags.\n\n**[2026-04-15]** `claude_cli` \u2014 Timestamp formatting added to prompts (YY/MM/DD-HH:MM next to 'YOU' label) for temporal context in Chat view; History tab already consistent with left-sidebar session list rendering (source badges, phase chips, session IDs).\n\n**[2026-04-15]** `claude_cli` \u2014 Hook-log endpoint confirmed stable post-m050: migration addressed silent database errors in prompt persistence; prompts now correctly stored and retrieved with accurate created_at timestamps."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js) to track development sessions, capture AI interactions, and synthesize contextual memory across projects. It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items) with async DAG workflows, multi-LLM provider support, and semantic search via embeddings. Current focus is on session state stability, database schema consolidation, and tagging refinement for improved chat history rendering.",
+    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Fixed session ID startup loading: synchronously load last_session_id from dev_runtime_state in renderChat() entry to eliminate 15-second delay before correct session appears, preventing stale session display from persisting module-level _sessionId.\n\n**[2026-04-13]** `claude_cli` \u2014 Consolidated importance column removal from mem_ai_events table (m050 migration); deprecated importance as semantically more relevant for work_items only; removed importance parameters from memory item insertion queries in route_projects.py to simplify event schema.\n\n**[2026-04-13]** `claude_cli` \u2014 Completed table migration with column reordering using specified column order; dropped _old tables post-completion to reclaim space and finalized m050 migration for database schema consolidation.\n\n**[2026-04-06]** `claude_cli` \u2014 Verified chat history sort stability: confirmed 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with correct April-first ordering post-m050 migration.\n\n**[2026-04-06]** `claude_cli` \u2014 Fixed PostgreSQL JSONB operator conflict in route_history line 466-470 causing batch upsert failures; resolved `jsonb ||` precedence issue enabling reliable prompt persistence.\n\n**[2026-03-18]** `claude_cli` \u2014 Addressed backend startup race condition with retry logic for empty projects list during initial load; ensured aicli project visibility in main list."
   }
 }

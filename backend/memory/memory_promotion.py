@@ -128,12 +128,12 @@ _SQL_MARK_FACT_CONFLICT = """
 """
 
 _SQL_MARK_EVENTS_PROCESSED = """
-    UPDATE mem_ai_events SET processed_at=NOW()
-    WHERE id=ANY(%s::uuid[]) AND processed_at IS NULL
+    UPDATE mem_ai_events SET updated_at=NOW()
+    WHERE id=ANY(%s::uuid[]) AND updated_at IS NULL
 """
 
 # Find events not yet processed for work item extraction.
-# processed_at is set after extract_work_items_from_events() handles the event —
+# updated_at is set after extract_work_items_from_events() handles the event —
 # this prevents reprocessing while still allowing events to update existing work items.
 _SQL_GET_UNEXTRACTED_EVENTS = """
     SELECT me.id, me.event_type, me.session_id, me.summary, me.action_items,
@@ -142,15 +142,15 @@ _SQL_GET_UNEXTRACTED_EVENTS = """
     WHERE me.project_id=%s
       AND me.event_type IN ('prompt_batch', 'session_summary', 'commit')
       AND me.summary IS NOT NULL AND me.summary != ''
-      AND me.processed_at IS NULL
-      AND me.is_system = FALSE
+      AND me.updated_at IS NULL
+      AND me.event_system = FALSE
     ORDER BY me.created_at DESC
     LIMIT %s
 """
 
 _SQL_MARK_EVENT_EXTRACTED = """
-    UPDATE mem_ai_events SET processed_at = NOW()
-    WHERE id = %s::uuid AND processed_at IS NULL
+    UPDATE mem_ai_events SET updated_at = NOW()
+    WHERE id = %s::uuid AND updated_at IS NULL
 """
 
 _SQL_UPDATE_EVENT_AI_TAGS = """

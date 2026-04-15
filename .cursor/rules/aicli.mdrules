@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:31 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:46 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations
+- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-15] test: is hook-log working now after m050?
 - [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
 - [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
 - [2026-04-15] The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is
 - [2026-04-15] The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the curre
+- [2026-04-15] it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the rig

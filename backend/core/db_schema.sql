@@ -1,6 +1,6 @@
 -- ============================================================================
 -- aicli Database Schema — Canonical Latest Version
--- Updated: 2026-04-08
+-- Updated: 2026-04-15 (m051: SERIAL user IDs, updated_at everywhere, event_system rename)
 -- ============================================================================
 -- This file is the SINGLE SOURCE OF TRUTH for all table structures.
 -- Rules:
@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS mng_clients (
     name              VARCHAR(255) NOT NULL DEFAULT '',
     plan              VARCHAR(20)  NOT NULL DEFAULT 'free',
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     pricing_config    JSONB        DEFAULT NULL,
     provider_costs    JSONB        DEFAULT NULL,
     provider_balances JSONB        DEFAULT NULL,
@@ -40,14 +41,17 @@ VALUES (1, 'local', 'Local Install', 'free')
 ON CONFLICT (slug) DO NOTHING;
 
 -- mng_users: user accounts (per client)
+-- id is now a SERIAL INT PK; the original UUID is preserved in uuid_id for backward compat.
 CREATE TABLE IF NOT EXISTS mng_users (
-    id                 VARCHAR(36)    PRIMARY KEY,
+    id                 SERIAL         PRIMARY KEY,
+    uuid_id            VARCHAR(36)    UNIQUE,                          -- original UUID (m051)
     client_id          INT            NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     email              VARCHAR(255)   UNIQUE NOT NULL,
     password_hash      TEXT           NOT NULL,
     is_admin           BOOLEAN        NOT NULL DEFAULT FALSE,
     is_active          BOOLEAN        NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
     last_login         TIMESTAMPTZ,
     role               VARCHAR(20)    NOT NULL DEFAULT 'free',
     balance_added_usd  NUMERIC(14, 8) NOT NULL DEFAULT 0,
@@ -61,7 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_users_client ON mng_users(client_id);
 -- mng_usage_logs: per-request LLM usage tracking
 CREATE TABLE IF NOT EXISTS mng_usage_logs (
     id            SERIAL         PRIMARY KEY,
-    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
+    user_id       INT            REFERENCES mng_users(id) ON DELETE SET NULL,
     provider      VARCHAR(50),
     model         VARCHAR(100),
     input_tokens  INTEGER        NOT NULL DEFAULT 0,
@@ -82,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_source     ON mng_usage_logs(source);
 -- mng_transactions: billing credit/debit events
 CREATE TABLE IF NOT EXISTS mng_transactions (
     id            SERIAL         PRIMARY KEY,
-    user_id       VARCHAR(36)    REFERENCES mng_users(id) ON DELETE SET NULL,
+    user_id       INT            REFERENCES mng_users(id) ON DELETE SET NULL,
     type          VARCHAR(50)    NOT NULL,
     amount_usd    NUMERIC(12, 8) NOT NULL DEFAULT 0,
     base_cost_usd NUMERIC(12, 8),
@@ -97,7 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_tx_type       ON mng_transactions(type);
 -- mng_user_api_keys: per-user encrypted provider API keys
 CREATE TABLE IF NOT EXISTS mng_user_api_keys (
     id         SERIAL      PRIMARY KEY,
-    user_id    VARCHAR(36) NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
+    user_id    INT         NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
     provider   VARCHAR(50) NOT NULL,
     key_enc    TEXT        NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -154,7 +158,7 @@ CREATE INDEX IF NOT EXISTS idx_mng_projects_client ON mng_projects(client_id);
 
 -- mng_user_projects: user ↔ project membership with role (owner|editor|viewer)
 CREATE TABLE IF NOT EXISTS mng_user_projects (
-    user_id    VARCHAR(36) NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
+    user_id    INT         NOT NULL REFERENCES mng_users(id) ON DELETE CASCADE,
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     role       VARCHAR(20) NOT NULL DEFAULT 'member',
     joined_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -313,17 +317,20 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 -- mem_mrr_prompts: every prompt/response pair from all providers and UIs
 -- tags JSONB carries inline metadata: {source, phase, feature, bug, work-item, session_id}
 -- event_id: set after prompt batch digest in mem_ai_events (back-propagated by process_prompt_batch)
+-- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id    INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
     session_id TEXT,
     source_id  TEXT,                            -- external ID for deduplication
     prompt     TEXT        NOT NULL DEFAULT '',
     response   TEXT        NOT NULL DEFAULT '',
     tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id);
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
@@ -337,11 +344,13 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id
 -- tags = user intent: {phase, feature, bug} — sourced from mng_session_tags at push time.
 -- event_id IS NULL means process_commit_batch() has not processed this commit yet.
 -- Detailed per-symbol code data lives in mem_mrr_commits_code (one row per symbol).
+-- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash       VARCHAR(64)  PRIMARY KEY,
     commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
     client_id         INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id        INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id           INT          NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     commit_msg        TEXT         NOT NULL DEFAULT '',
     summary           TEXT         NOT NULL DEFAULT '',
     diff_summary      TEXT         NOT NULL DEFAULT '',  -- git --stat output
@@ -353,7 +362,8 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     author_email      TEXT         NOT NULL DEFAULT '',
     llm               TEXT,                              -- model name used for digest
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    committed_at      TIMESTAMPTZ
+    committed_at      TIMESTAMPTZ,
+    updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid            ON mem_mrr_commits(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm           ON mem_mrr_commits(committed_at DESC);
@@ -366,10 +376,12 @@ CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session ON mem_mrr_commits(project_
 -- mem_mrr_commits_code: per-symbol code statistics for each commit
 -- Populated by memory_code_parser.extract_commit_code() using tree-sitter AST parsing.
 -- One row per (commit, file, symbol_type, class_name, method_name).
+-- user_id: INT FK to mng_users (m051); nullable, inherits from parent commit if needed
 CREATE TABLE IF NOT EXISTS mem_mrr_commits_code (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id     INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id    INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id       INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     commit_hash   VARCHAR(64) NOT NULL REFERENCES mem_mrr_commits(commit_hash) ON DELETE CASCADE,
     file_path     TEXT        NOT NULL,
     file_ext      TEXT        NOT NULL DEFAULT '',
@@ -392,6 +404,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits_code (
     diff_snippet  TEXT,
     llm_summary   TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (commit_hash, file_path, symbol_type,
             COALESCE(class_name, ''), COALESCE(method_name, ''))
 );
@@ -400,10 +413,12 @@ CREATE INDEX IF NOT EXISTS idx_mmc_code_hash ON mem_mrr_commits_code(commit_hash
 CREATE INDEX IF NOT EXISTS idx_mmc_code_sym  ON mem_mrr_commits_code(full_symbol) WHERE full_symbol IS NOT NULL;
 
 -- mem_mrr_items: requirements, decisions, meeting notes
+-- user_id: INT FK to mng_users (m051); nullable
 CREATE TABLE IF NOT EXISTS mem_mrr_items (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id    INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     item_type  TEXT        NOT NULL,
     title      TEXT,
     meeting_at TIMESTAMPTZ,
@@ -411,24 +426,28 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     raw_text   TEXT        NOT NULL,
     summary    TEXT,
     tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_pid  ON mem_mrr_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
 CREATE INDEX IF NOT EXISTS idx_mmrr_i_tags     ON mem_mrr_items USING gin(tags);
 
 -- mem_mrr_messages: chat messages from Slack, Teams, Discord
+-- user_id: INT FK to mng_users (m051); nullable
 CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id    INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     platform   TEXT        NOT NULL,
     channel    TEXT,
     thread_ref TEXT,
     messages   JSONB       NOT NULL,
     date_range TSTZRANGE,
     tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(tags);
@@ -448,13 +467,15 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(t
 --   prompt_batch: UUID of the last mem_mrr_prompts row in the tag group
 --   item/session_summary: 1:1 with source record UUID
 -- tags: ONLY user-intent context — {phase, feature, bug, source}; no system metadata
--- processed_at: NULL = not yet processed by work item extraction pipeline
+-- event_system: TRUE for auto-generated system file updates (PROJECT.md etc) — excluded from work-item extraction
+-- updated_at: NULL = not yet processed by work item extraction pipeline (renamed from processed_at m051)
 -- Relevance ordering: pure recency EXP(-0.01 * age_days); importance lives on mem_ai_work_items
 CREATE TABLE IF NOT EXISTS mem_ai_events (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id    INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     event_type   TEXT        NOT NULL,
+    event_system BOOLEAN     NOT NULL DEFAULT FALSE,             -- system file updates (PROJECT.md etc) — excluded from work-item extraction
     event_cnt    INT         NOT NULL DEFAULT 0,                 -- mirror rows aggregated
     source_id    TEXT        NOT NULL,
     work_item_id UUID,                                           -- FK to mem_ai_work_items.id
@@ -465,22 +486,21 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
     summary      TEXT,
     action_items TEXT        NOT NULL DEFAULT '',
     tags         JSONB       NOT NULL DEFAULT '{}',              -- user-intent only: phase/feature/bug/source
-    is_system    BOOLEAN     NOT NULL DEFAULT FALSE,             -- system file updates (PROJECT.md etc) — excluded from work-item extraction
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    processed_at TIMESTAMPTZ,                                    -- set by extract_work_items_from_events()
+    updated_at   TIMESTAMPTZ,                                    -- set by extract_work_items_from_events() (NULL = pending)
     embedding    VECTOR(1536),
     UNIQUE(project_id, event_type, source_id, chunk)
 );
-CREATE INDEX IF NOT EXISTS idx_mae_pid            ON mem_ai_events(project_id);
-CREATE INDEX IF NOT EXISTS idx_mae_session        ON mem_ai_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_mae_type           ON mem_ai_events(event_type);
-CREATE INDEX IF NOT EXISTS idx_mae_pending        ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_mae_tags           ON mem_ai_events USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mae_embed          ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_pid             ON mem_ai_events(project_id);
+CREATE INDEX IF NOT EXISTS idx_mae_session         ON mem_ai_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_mae_type            ON mem_ai_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_mae_pending         ON mem_ai_events(updated_at) WHERE updated_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_mae_tags            ON mem_ai_events USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_mae_embed           ON mem_ai_events USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mae_project_session ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mae_project_etype   ON mem_ai_events(project_id, event_type);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_events_wi    ON mem_ai_events(work_item_id) WHERE work_item_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_mae_system          ON mem_ai_events(is_system) WHERE is_system = TRUE;
+CREATE INDEX IF NOT EXISTS idx_mae_event_system    ON mem_ai_events(event_system) WHERE event_system = TRUE;
 
 -- mem_ai_work_items: AI-detected actionable items (tasks, bugs, features)
 -- status_user = user-managed lifecycle (active|in_progress|paused|done)
@@ -537,6 +557,8 @@ CREATE TABLE IF NOT EXISTS mem_ai_project_facts (
     valid_until      TIMESTAMPTZ,
     source_memory_id UUID,
     conflict_status  TEXT        DEFAULT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     embedding        VECTOR(1536)
 );
 CREATE INDEX        IF NOT EXISTS idx_mem_ai_pf_pid     ON mem_ai_project_facts(project_id) WHERE valid_until IS NULL;
@@ -681,9 +703,11 @@ CREATE INDEX IF NOT EXISTS idx_pr_gnr_node ON pr_graph_node_results(node_id);
 
 -- mem_pipeline_runs: background task observability — tracks every pipeline invocation
 -- Powers GET /memory/{project}/pipeline-status dashboard.
+-- user_id: INT FK to mng_users (m051); nullable — pipeline runs may be system-triggered
 CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
     id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id   INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    user_id      INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
     pipeline     TEXT        NOT NULL,
     source_id    TEXT        NOT NULL DEFAULT '',
     status       TEXT        NOT NULL DEFAULT 'running',
@@ -692,7 +716,8 @@ CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
     error_msg    TEXT,
     duration_ms  INT,
     started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at  TIMESTAMPTZ
+    finished_at  TIMESTAMPTZ,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mpr_status ON mem_pipeline_runs(status) WHERE status = 'running';
@@ -705,3 +730,49 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
     next_val   INT          NOT NULL DEFAULT 10000,
     PRIMARY KEY (project_id, category)
 );
+
+-- ============================================================================
+-- SECTION 6: Trigger Functions
+-- set_updated_at() fires BEFORE UPDATE on every table that has an updated_at
+-- column, keeping it in sync automatically.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+-- Tables where set_updated_at() is registered (CREATE OR REPLACE is idempotent):
+DO $$
+DECLARE
+    _tbls text[] := ARRAY[
+        'mng_clients', 'mng_users',
+        'mng_projects', 'mng_session_tags',
+        'mng_agent_roles', 'mng_system_roles',
+        'planner_tags',
+        'mem_mrr_prompts', 'mem_mrr_commits', 'mem_mrr_commits_code',
+        'mem_mrr_items', 'mem_mrr_messages',
+        'mem_ai_events', 'mem_ai_work_items', 'mem_ai_project_facts',
+        'mem_ai_feature_snapshot',
+        'mem_pipeline_runs',
+        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges'
+    ];
+    _t text;
+BEGIN
+    FOREACH _t IN ARRAY _tbls LOOP
+        -- Drop existing trigger to ensure idempotency, then recreate
+        EXECUTE format(
+            'DROP TRIGGER IF EXISTS trg_updated_at_%s ON %s',
+            _t, _t
+        );
+        EXECUTE format(
+            'CREATE TRIGGER trg_updated_at_%s
+             BEFORE UPDATE ON %s
+             FOR EACH ROW EXECUTE FUNCTION set_updated_at()',
+            _t, _t
+        );
+    END LOOP;
+END $$;

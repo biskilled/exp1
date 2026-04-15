@@ -7,7 +7,7 @@ Generates structured knowledge artifacts from memory events:
   3. Parse JSON → UPDATE planner_tags inline fields (summary, action_items, design, code_summary, embedding)
   4. Extract project_facts → upsert mem_ai_project_facts
   5. Embed requirements+action_items → planner_tags.embedding
-  6. Mark contributing mem_ai_events.processed_at = NOW()
+  6. Mark contributing mem_ai_events.updated_at = NOW()
 
 Endpoints:
     POST /projects/{project}/snapshot/{tag_name}
@@ -56,8 +56,8 @@ _SQL_UPSERT_SNAPSHOT = """
 """
 
 _SQL_MARK_EVENTS_PROCESSED = """
-    UPDATE mem_ai_events SET processed_at = NOW()
-    WHERE id = ANY(%s::uuid[]) AND processed_at IS NULL
+    UPDATE mem_ai_events SET updated_at = NOW()
+    WHERE id = ANY(%s::uuid[]) AND updated_at IS NULL
 """
 
 _SQL_GET_SNAPSHOT = """

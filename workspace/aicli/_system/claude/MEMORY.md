@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 21:31 UTC by aicli /memory_
+_Generated: 2026-04-15 21:46 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling AI-assisted development through semantic search, memory synthesis, and workflow automation. The system maintains a 4-layer memory architecture (ephemeral → raw capture → digested events → work items), uses PostgreSQL + pgvector for embeddings, and integrates multiple LLM providers. Current focus is on session state stability, consistent timestamp/session ID rendering across Chat and History views, and per-prompt tagging refinement post-migration m050.
+aicli is a shared AI memory platform that combines a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + Cytoscape.js) to track development sessions, capture AI interactions, and synthesize contextual memory across projects. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → work items) with async DAG workflows, multi-LLM provider support, and semantic search via embeddings. Current focus is on session state stability, database schema consolidation, and tagging refinement for improved chat history rendering.
 
 ## Project Facts
 
@@ -264,15 +264,15 @@ Reviewer: ```json
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs persisting across tab navigations
+- Session state management: module-level variables (_sessionId, _appliedEntities, _pendingEntities) reset on renderChat() to prevent stale session IDs; last_session_id loaded synchronously from dev_runtime_state
 
 ## In Progress
 
-- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration
-- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()
-- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)
+- Session ID startup loading — fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders
+- Importance column consolidation — deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries
+- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable
+- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
-- Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
 - Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps
 
 ## Active Features / Bugs / Tasks
@@ -325,115 +325,246 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 9b62abe..7b45bb2 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 20:51 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:07 UTC
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index f25288e..e8585d1 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
- # aicli — Shared AI Memory Platform
+ ## Recent Work
  
-@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
- - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
- - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
-+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
- - [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
- - [2026-04-15] I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be a
- - [2026-04-15] test: is hook-log working now after m050?
--- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
-\ No newline at end of file
-+- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
-+- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
-\ No newline at end of file
++- Importance column consolidation: deprecated importance from mem_ai_events table as it is more semantically relevant for work_items; evaluating removal to simplify event schema (2026-04-13)
+ - Table migration with column reordering: executing migration using specified column order; dropping _old tables post-completion to reclaim space (2026-04-13)
+ - PostgreSQL nohup logging issue: switching to fresh log file paths to avoid stale file handle null byte output (2026-04-13)
+ - History display enhancement: users reported incomplete prompt + response rendering and copy-to-clipboard functionality gaps (2026-04-06)
+ - PostgreSQL JSONB operator conflict: fixed line 466-470 `jsonb ||` conflict in route_history causing batch upsert failures (2026-04-06)
+ - Backend startup race condition: retry logic for empty projects list during initial load; aicli project visibility in main list (2026-03-18)
+-- Memory mechanism population: memory_items and project_facts tables exist but not actively populated; requires event-driven update implementation
 
 
 ### `commit` — 2026-04-15
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 9b62abe..7b45bb2 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 20:51 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:07 UTC
+diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
+index dbdc65d..529d323 100644
+--- a/backend/routers/route_snapshots.py
++++ b/backend/routers/route_snapshots.py
+@@ -40,7 +40,7 @@ _SQL_GET_TAG_ID = """
+ """
  
- # aicli — Shared AI Memory Platform
+ _SQL_GET_MEMORY_EVENTS = """
+-    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
++    SELECT me.id, me.event_type, me.source_id, me.session_id, me.content
+     FROM mem_ai_events me
+     WHERE me.project_id = %s
+     ORDER BY me.created_at
+@@ -166,9 +166,9 @@ async def generate_snapshot(project: str, tag_name: str):
  
-@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
- - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
- - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
- - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
--- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
-+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
+     by_type: dict[str, list[str]] = {}
+     event_ids: list[str] = []
+-    for ev_id, src_type, src_id, session_id, content, importance in events:
++    for ev_id, src_type, src_id, session_id, content in events:
+         event_ids.append(str(ev_id))
+-        by_type.setdefault(src_type, []).append(f"[importance={importance}] {content}")
++        by_type.setdefault(src_type, []).append(content)
  
- ## Recent Context (last 5 changes)
- 
--- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
- - [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
- - [2026-04-15] I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be a
- - [2026-04-15] test: is hook-log working now after m050?
--- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
-\ No newline at end of file
-+- [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
-+- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
-\ No newline at end of file
+     sections = []
+     for stype, items in by_type.items():
 
 
 ### `commit` — 2026-04-15
 
-Commit: chore: clean up legacy _system context files after claude cli session f6
-Hash: b4a10441
-Code files (5):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/routers/route_history.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-Symbols changed: _normalize_jsonl_entry
+diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
+index 908e217..2e1ef36 100644
+--- a/backend/routers/route_projects.py
++++ b/backend/routers/route_projects.py
+@@ -57,8 +57,8 @@ _SQL_GET_SESSIONS_UNSUMMARIZED = (
+ 
+ _SQL_INSERT_MEMORY_ITEM_SESSION = (
+     """INSERT INTO mem_ai_events
+-           (project_id, event_type, source_id, session_id, content, importance)
+-       VALUES (%s, 'prompt_batch', %s, %s, %s, %s)
++           (project_id, event_type, source_id, session_id, content)
++       VALUES (%s, 'prompt_batch', %s, %s, %s)
+        ON CONFLICT (project_id, event_type, source_id, chunk) DO NOTHING
+        RETURNING id"""
+ )
+@@ -78,10 +78,10 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
+ 
+ _SQL_INSERT_MEMORY_ITEM_FEATURE = (
+     """INSERT INTO mem_ai_events
+-           (project_id, event_type, source_id, session_id, content, importance)
+-       VALUES (%s, 'feature_summary', %s::uuid, %s, %s, %s)
+-       ON CONFLICT (project_id, event_type, source_id) DO UPDATE
+-           SET content=EXCLUDED.content, importance=EXCLUDED.importance
++           (project_id, event_type, source_id, session_id, content)
++       VALUES (%s, 'feature_summary', %s::uuid, %s, %s)
++       ON CONFLICT (project_id, event_type, source_id, chunk) DO UPDATE
++           SET content=EXCLUDED.content
+        RETURNING id"""
+ )
+ 
+@@ -1178,13 +1178,11 @@ async def _summarize_session_memory(project: str) -> int:
+                 if not last_prompt_id:
+                     continue  # no source_id available, skip
+ 
+-                importance = min(5, max(1, (score + 1) // 2))  # convert 1-10 → 1-5
+-
+                 with db.conn() as conn:
+                     with conn.cursor() as cur:
+                         cur.execute(
+                             _SQL_INSERT_MEMORY_ITEM_SESSION,
+-                            (project_id, last_prompt_id, session_id, final_summary, importance),
++                            (project_id, last_prompt_id, session_id, final_summary),
+                         )
+                         row = cur.fetchone()
+                         if row:
+@@ -1288,10 +1286,9 @@ async def _summarize_feature_memory(project: str, work_item_id: str) -> str | No
+         with db.conn() as conn:
+             with conn.cursor() as cur:
+                 # source_id = work_item UUID; session_id stores the feature/work-item name
+-                importance = min(5, max(1, (score + 1) // 2))
+                 cur.execute(
+                     _SQL_INSERT_MEMORY_ITEM_FEATURE,
+-                    (project_id, work_item_id, wi_name, final_summary, importance),
++                    (project_id, work_item_id, wi_name, final_summary),
+                 )
+                 row = cur.fetchone()
+                 if not row:
 
-### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
-
-Commits: chore: clean up stale agent context and legacy system documentation file | chore: remove stale agent context and generated system docs after claude | chore: remove stale agent context and auto-generated system files after 
-Stats:  ui/frontend/views/history.js    | 57 ++++++++++++++++++++++++-----------------
- workspace/aicli/PROJECT.md      |  8 +++---
- 7 files changed, 56 insertions(+), 62 deletions(-)
-
-### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
-
-Identified root cause of stale chat loading: system loads from cached/outdated _system/session JSON files instead of live data source. Need to verify data pipeline—either consolidate session storage to single source-of-truth or implement forced refresh on startup.
 
 ### `commit` — 2026-04-15
 
-Commit: chore: clean up legacy _system context files after claude cli session 2a
-Hash: ab47c27c
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
+index 8cc400f..d4cef1a 100644
+--- a/backend/routers/route_memory.py
++++ b/backend/routers/route_memory.py
+@@ -44,10 +44,9 @@ _SQL_GET_SESSION_PROMPTS = """
+ _SQL_UPSERT_SESSION_SUMMARY = """
+     INSERT INTO mem_ai_events
+         (project_id, event_type, source_id, session_id,
+-         chunk, chunk_type, content, summary, action_items,
+-         importance, tags, created_at)
++         chunk, chunk_type, content, summary, action_items, tags, created_at)
+     VALUES (%s, 'session_summary', %s, %s,
+-            0, 'full', %s, %s, %s, 2, %s::jsonb, NOW())
++            0, 'full', %s, %s, %s, %s::jsonb, NOW())
+     ON CONFLICT (project_id, event_type, source_id, chunk)
+     DO UPDATE SET
+         content      = EXCLUDED.content,
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/routers/route_admin.py b/backend/routers/route_admin.py
+index 795aaca..9775870 100644
+--- a/backend/routers/route_admin.py
++++ b/backend/routers/route_admin.py
+@@ -740,7 +740,6 @@ async def migrate_project_tables(_: dict = Depends(_require_admin)):
+ @router.post("/trim-events")
+ async def trim_events(
+     older_than_days: int = 90,
+-    max_importance: int = 5,
+     event_types: str = "prompt_batch,commit",
+     dry_run: bool = False,
+     _: dict = Depends(_require_admin),
+@@ -750,7 +749,6 @@ async def trim_events(
+     Removes rows where:
+       - event_type IN (event_types)
+       - created_at < NOW() - older_than_days
+-      - importance <= max_importance
+ 
+     Safe to run: session_summary and item events are excluded by default.
+     After trimming, run /admin/db-vacuum to reclaim the freed pages.
+@@ -772,34 +770,31 @@ async def trim_events(
+         FROM mem_ai_events
+         WHERE event_type IN ({placeholders})
+           AND created_at < NOW() - INTERVAL '%s days'
+-          AND importance <= %s
+     """
+     delete_sql = f"""
+         DELETE FROM mem_ai_events
+         WHERE event_type IN ({placeholders})
+           AND created_at < NOW() - INTERVAL '%s days'
+-          AND importance <= %s
+     """
+ 
+     with db.conn() as conn:
+         with conn.cursor() as cur:
+-            cur.execute(count_sql, (*types, older_than_days, max_importance))
++            cur.execute(count_sql, (*types, older_than_days))
+             row = cur.fetchone()
+             row_count = row[0] if row else 0
+             size_est  = row[1] if row else "0 bytes"
+ 
+             if not dry_run and row_count > 0:
+-                cur.execute(delete_sql, (*types, older_than_days, max_importance))
++                cur.execute(delete_sql, (*types, older_than_days))
+ 
+     return {
+-        "dry_run":          dry_run,
+-        "deleted":          row_count if not dry_run else 0,
+-        "would_delete":     row_count,
+-        "size_estimate":    size_est,
+-        "event_types":      types,
+-        "older_than_days":  older_than_days,
+-        "max_importance":   max_importance,
+-        "next_step":        "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
++        "dry_run":         dry_run,
++        "deleted":         row_count if not dry_run else 0,
++        "would_delete":    row_count,
++        "size_estimate":   size_est,
++        "event_types":     types,
++        "older_than_days": older_than_days,
++        "next_step":       "Run POST /admin/db-vacuum to reclaim freed pages" if not dry_run and row_count > 0 else "",
+     }
+ 
+ 
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/memory/memory_files.py b/backend/memory/memory_files.py
+index 016bb5a..df7bf1f 100644
+--- a/backend/memory/memory_files.py
++++ b/backend/memory/memory_files.py
+@@ -87,8 +87,8 @@ _SQL_BLOCKED_TAGS = """
+ """
+ 
+ _SQL_TOP_EVENTS = """
+-    SELECT content, event_type, importance, created_at,
+-           importance * EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
++    SELECT content, event_type, created_at,
++           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance
+     FROM mem_ai_events
+     WHERE project_id=%s
+     ORDER BY relevance DESC
+@@ -245,11 +245,10 @@ class MemoryFiles:
+                     cur.execute(_SQL_TOP_EVENTS, (project_id, limit))
+                     return [
+                         {
+-                            "content":     r[0],
++                            "content":    r[0],
+                             "event_type": r[1],
+-                            "importance":  r[2],
+-                            "created_at":  r[3].isoformat() if r[3] else "",
+-                            "relevance":   float(r[4]) if r[4] else 0.0,
++                            "created_at": r[2].isoformat() if r[2] else "",
++                            "relevance":  float(r[3]) if r[3] else 0.0,
+                         }
+                         for r in cur.fetchall()
+                     ]
+
 
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Fixed stale session ID persisting across tab navigations by resetting module-level `_sessionId` to `null` at start of `renderChat()`; localStorage cache no longer highlights old sessions on load. Session ID display (last 5 chars) positioned between entity chips and +Tag button with click-to-copy UUID.
+**[2026-04-15]** `claude_cli` — Fixed session ID startup loading: synchronously load last_session_id from dev_runtime_state in renderChat() entry to eliminate 15-second delay before correct session appears, preventing stale session display from persisting module-level _sessionId.
 
-**[2026-04-15]** `claude_cli` — Verified chat history sort stability: 531 total prompts loaded (389 from PostgreSQL, ~142 from JSONL fallback merge) with April entries correctly appearing first; confirmed data pipeline working post-m050 migration.
+**[2026-04-13]** `claude_cli` — Consolidated importance column removal from mem_ai_events table (m050 migration); deprecated importance as semantically more relevant for work_items only; removed importance parameters from memory item insertion queries in route_projects.py to simplify event schema.
 
-**[2026-04-15]** `cleanup` — Consolidated AI context files to `.ai/rules.md`, `.cursor/rules/aicli.mdrules`, `.github/copilot-instructions.md`; removed legacy `_system/` directory and repository-root CLAUDE.md/MEMORY.md to eliminate duplication and simplify agent context management.
+**[2026-04-13]** `claude_cli` — Completed table migration with column reordering using specified column order; dropped _old tables post-completion to reclaim space and finalized m050 migration for database schema consolidation.
 
-**[2026-04-15]** `claude_cli` — Implemented per-prompt tagging refinement with simplified chip markup and inline ✓ button for tag creation/approval at message level; category inference auto-populated for new suggested tags.
+**[2026-04-06]** `claude_cli` — Verified chat history sort stability: confirmed 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with correct April-first ordering post-m050 migration.
 
-**[2026-04-15]** `claude_cli` — Timestamp formatting added to prompts (YY/MM/DD-HH:MM next to 'YOU' label) for temporal context in Chat view; History tab already consistent with left-sidebar session list rendering (source badges, phase chips, session IDs).
+**[2026-04-06]** `claude_cli` — Fixed PostgreSQL JSONB operator conflict in route_history line 466-470 causing batch upsert failures; resolved `jsonb ||` precedence issue enabling reliable prompt persistence.
 
-**[2026-04-15]** `claude_cli` — Hook-log endpoint confirmed stable post-m050: migration addressed silent database errors in prompt persistence; prompts now correctly stored and retrieved with accurate created_at timestamps.
+**[2026-03-18]** `claude_cli` — Addressed backend startup race condition with retry logic for empty projects list during initial load; ensured aicli project visibility in main list.

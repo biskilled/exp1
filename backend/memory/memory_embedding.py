@@ -116,7 +116,7 @@ def _user_tags(tags: dict) -> dict:
 _SQL_UPSERT_EVENT = """
     INSERT INTO mem_ai_events
            (project_id, event_type, event_cnt, source_id, session_id,
-            chunk, chunk_type, content, embedding, summary, action_items, tags, is_system)
+            chunk, chunk_type, content, embedding, summary, action_items, tags, event_system)
        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s::jsonb, %s)
        ON CONFLICT (project_id, event_type, source_id, chunk)
        DO UPDATE SET
@@ -126,7 +126,7 @@ _SQL_UPSERT_EVENT = """
            summary      = EXCLUDED.summary,
            action_items = EXCLUDED.action_items,
            tags         = EXCLUDED.tags,
-           is_system    = EXCLUDED.is_system
+           event_system = EXCLUDED.event_system
     RETURNING id
 """
 

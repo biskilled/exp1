@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; sort order fixed post-m050 migration
-- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null at start of renderChat()
-- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat view (History tab already updated)
+- Session ID startup loading — fixed stale session display by synchronously loading last_session_id from dev_runtime_state at renderChat() entry, eliminating 15-second delay before correct session renders
+- Importance column consolidation — deprecated importance from mem_ai_events table during m050 migration as it is more semantically relevant for work_items; simplified event schema by removing importance parameter from memory item insertion queries
+- Chat history sort stability — verified 531 total prompts loaded (389 from DB, ~142 from JSONL merge) with April entries first; post-m050 migration sort order confirmed stable
+- Session ID display consistency — monospace badge (last 5 chars) placed between entity chips and +Tag button with click-to-copy UUID; stale session ID on load fixed by resetting module-level _sessionId to null
 - Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
-- Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
 - Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts correctly stored and retrieved with accurate timestamps

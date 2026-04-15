@@ -28,16 +28,20 @@ _bearer = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
 
-# Fixed UUID for the seeded admin user (m048 migration).
-# Used as a stable FK target in all mirror tables when no real user is authenticated.
-ADMIN_USER_ID = "00000000-0000-0000-0000-000000000001"
+# Fixed INT id for the seeded admin user (mng_users.id SERIAL after m051).
+# UUID kept as ADMIN_USER_UUID for backwards-compat lookups.
+ADMIN_USER_ID: int = 1
+ADMIN_USER_UUID = "00000000-0000-0000-0000-000000000001"
 
 
-def _resolve_user_id(uid: str | None) -> str:
-    """Return ADMIN_USER_ID when uid is None, 'dev-admin', or empty."""
+def _resolve_user_id(uid: int | str | None) -> int:
+    """Return ADMIN_USER_ID (INT=1) when uid is None/empty/dev-admin."""
     if not uid or uid == "dev-admin":
         return ADMIN_USER_ID
-    return uid
+    try:
+        return int(uid)
+    except (TypeError, ValueError):
+        return ADMIN_USER_ID
 
 
 # ── Password helpers ──────────────────────────────────────────────────────────
@@ -78,8 +82,9 @@ def decode_access_token(token: str) -> dict:
 # ── FastAPI dependencies ──────────────────────────────────────────────────────
 
 _DEV_ADMIN = {
-    "sub": ADMIN_USER_ID,
-    "id": ADMIN_USER_ID,
+    "sub": ADMIN_USER_UUID,
+    "id": ADMIN_USER_ID,       # INT — FK target for mirror tables
+    "uuid": ADMIN_USER_UUID,   # kept for JWT backwards-compat
     "email": "admin@local",
     "role": "admin",
     "is_admin": True,

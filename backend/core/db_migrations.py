@@ -1248,6 +1248,367 @@ def m050_prompts_source_id_index(conn) -> None:
     log.info("m050_prompts_source_id_index: unique index idx_mmrr_p_source created")
 
 
+def m051_schema_refactor_user_id_updated_at(conn) -> None:
+    """Major schema refactor: INT user IDs, updated_at on all tables, event column renames.
+
+    Changes applied:
+      1. mng_users.id: VARCHAR(36) → SERIAL INT; old UUID kept as uuid_id VARCHAR(36) UNIQUE.
+         mng_users: add updated_at TIMESTAMPTZ.
+      2. Dependent tables (mng_usage_logs, mng_transactions, mng_user_api_keys,
+         mng_user_projects): user_id VARCHAR(36) → INT FK to new mng_users.id.
+      3. mng_clients: add updated_at TIMESTAMPTZ.
+      4. Mirror tables (mem_mrr_prompts, mem_mrr_commits, mem_mrr_commits_code,
+         mem_mrr_items, mem_mrr_messages): add user_id INT NULL + updated_at.
+      5. mem_ai_events: rename is_system → event_system; rename processed_at → updated_at.
+         Drop old index idx_mae_system, recreate as idx_mae_event_system.
+         Drop old index idx_mae_pending (was on processed_at), recreate on updated_at.
+      6. mem_ai_project_facts: add created_at + updated_at.
+      7. mem_pipeline_runs: add user_id INT NULL + updated_at.
+      8. Create set_updated_at() trigger function and triggers on all tables that have
+         updated_at (excluding those that already had it before this migration).
+    """
+    with conn.cursor() as cur:
+
+        # ── Step 1: Add new SERIAL column to mng_users ────────────────────────
+        cur.execute("ALTER TABLE mng_users ADD COLUMN IF NOT EXISTS new_id SERIAL")
+
+        # ── Step 2: Drop ALL FK constraints referencing mng_users (dynamic) ────
+        # Covers named FKs on mng_user_api_keys, mng_user_projects, mng_usage_logs,
+        # mng_transactions, plus any mirror-table FKs added by prior migrations.
+        cur.execute("""
+            DO $$ DECLARE r record;
+            BEGIN
+                FOR r IN
+                    SELECT c.conname, c.conrelid::regclass::text AS tname
+                    FROM pg_constraint c
+                    WHERE c.confrelid = 'mng_users'::regclass AND c.contype = 'f'
+                LOOP
+                    EXECUTE 'ALTER TABLE ' || r.tname ||
+                            ' DROP CONSTRAINT ' || quote_ident(r.conname);
+                END LOOP;
+            END $$
+        """)
+
+        # ── Step 3: Swap PK on mng_users: uuid → id SERIAL ───────────────────
+        # Drop existing PK dynamically — constraint name may differ from 'mng_users_pkey'
+        cur.execute("""
+            DO $$ DECLARE _c text;
+            BEGIN
+                SELECT conname INTO _c FROM pg_constraint
+                WHERE conrelid = 'mng_users'::regclass AND contype = 'p';
+                IF _c IS NOT NULL THEN
+                    EXECUTE 'ALTER TABLE mng_users DROP CONSTRAINT ' || quote_ident(_c);
+                END IF;
+            END $$
+        """)
+        cur.execute("ALTER TABLE mng_users RENAME COLUMN id TO uuid_id")
+        cur.execute("ALTER TABLE mng_users RENAME COLUMN new_id TO id")
+        cur.execute("ALTER TABLE mng_users ADD PRIMARY KEY (id)")
+        cur.execute("""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'mng_users'::regclass
+                      AND conname = 'mng_users_uuid_id_unique'
+                ) THEN
+                    ALTER TABLE mng_users
+                    ADD CONSTRAINT mng_users_uuid_id_unique UNIQUE (uuid_id);
+                END IF;
+            END $$
+        """)
+
+        # Add updated_at to mng_users
+        cur.execute("""
+            ALTER TABLE mng_users
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # ── Step 4a: Convert mng_usage_logs.user_id VARCHAR → INT ─────────────
+        cur.execute("ALTER TABLE mng_usage_logs ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mng_usage_logs l
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = l.user_id
+        """)
+        cur.execute("ALTER TABLE mng_usage_logs DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mng_usage_logs RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mng_usage_logs
+            ADD CONSTRAINT mng_usage_logs_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+
+        # ── Step 4b: Convert mng_transactions.user_id VARCHAR → INT ──────────
+        cur.execute("ALTER TABLE mng_transactions ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mng_transactions t
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = t.user_id
+        """)
+        cur.execute("ALTER TABLE mng_transactions DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mng_transactions RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mng_transactions
+            ADD CONSTRAINT mng_transactions_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+
+        # ── Step 4c: Convert mng_user_api_keys.user_id VARCHAR → INT ─────────
+        # Drop any UNIQUE constraint on (user_id, provider) — name may vary
+        cur.execute("""
+            DO $$ DECLARE _c text;
+            BEGIN
+                SELECT conname INTO _c FROM pg_constraint
+                WHERE conrelid = 'mng_user_api_keys'::regclass
+                  AND contype = 'u'
+                LIMIT 1;
+                IF _c IS NOT NULL THEN
+                    EXECUTE 'ALTER TABLE mng_user_api_keys DROP CONSTRAINT ' || quote_ident(_c);
+                END IF;
+            END $$
+        """)
+        cur.execute("ALTER TABLE mng_user_api_keys ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mng_user_api_keys k
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = k.user_id
+        """)
+        cur.execute("ALTER TABLE mng_user_api_keys ALTER COLUMN user_id_new SET NOT NULL")
+        cur.execute("ALTER TABLE mng_user_api_keys DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mng_user_api_keys RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mng_user_api_keys
+            ADD CONSTRAINT mng_user_api_keys_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE CASCADE
+        """)
+        cur.execute("""
+            ALTER TABLE mng_user_api_keys
+            ADD CONSTRAINT mng_user_api_keys_user_id_provider_key
+            UNIQUE (user_id, provider)
+        """)
+
+        # ── Step 4d: Convert mng_user_projects.user_id VARCHAR → INT ─────────
+        cur.execute("ALTER TABLE mng_user_projects DROP CONSTRAINT IF EXISTS mng_user_projects_pkey")
+        cur.execute("ALTER TABLE mng_user_projects ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mng_user_projects up
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = up.user_id
+        """)
+        cur.execute("ALTER TABLE mng_user_projects ALTER COLUMN user_id_new SET NOT NULL")
+        cur.execute("ALTER TABLE mng_user_projects DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mng_user_projects RENAME COLUMN user_id_new TO user_id")
+        cur.execute("ALTER TABLE mng_user_projects ADD PRIMARY KEY (user_id, project_id)")
+        cur.execute("""
+            ALTER TABLE mng_user_projects
+            ADD CONSTRAINT mng_user_projects_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE CASCADE
+        """)
+
+        # ── Step 5: mng_clients — add updated_at ─────────────────────────────
+        cur.execute("""
+            ALTER TABLE mng_clients
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # ── Step 6: Mirror tables — convert user_id VARCHAR → INT + add updated_at ──
+        # mem_mrr_prompts
+        cur.execute("ALTER TABLE mem_mrr_prompts ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mem_mrr_prompts p
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = p.user_id
+        """)
+        cur.execute("ALTER TABLE mem_mrr_prompts DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mem_mrr_prompts RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mem_mrr_prompts
+            ADD CONSTRAINT mem_mrr_prompts_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_mrr_prompts
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # mem_mrr_commits
+        cur.execute("ALTER TABLE mem_mrr_commits ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mem_mrr_commits c
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = c.user_id
+        """)
+        cur.execute("ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mem_mrr_commits RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits
+            ADD CONSTRAINT mem_mrr_commits_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # mem_mrr_commits_code  (no user_id in m048, add fresh)
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits_code
+            ADD COLUMN IF NOT EXISTS user_id INT NULL REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits_code
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # mem_mrr_items
+        cur.execute("ALTER TABLE mem_mrr_items ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mem_mrr_items i
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = i.user_id
+        """)
+        cur.execute("ALTER TABLE mem_mrr_items DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mem_mrr_items RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mem_mrr_items
+            ADD CONSTRAINT mem_mrr_items_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_mrr_items
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # mem_mrr_messages
+        cur.execute("ALTER TABLE mem_mrr_messages ADD COLUMN IF NOT EXISTS user_id_new INT")
+        cur.execute("""
+            UPDATE mem_mrr_messages m
+            SET user_id_new = u.id
+            FROM mng_users u
+            WHERE u.uuid_id = m.user_id
+        """)
+        cur.execute("ALTER TABLE mem_mrr_messages DROP COLUMN IF EXISTS user_id")
+        cur.execute("ALTER TABLE mem_mrr_messages RENAME COLUMN user_id_new TO user_id")
+        cur.execute("""
+            ALTER TABLE mem_mrr_messages
+            ADD CONSTRAINT mem_mrr_messages_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_mrr_messages
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # ── Step 7: mem_ai_events — rename is_system → event_system, processed_at → updated_at ──
+        cur.execute("""
+            ALTER TABLE mem_ai_events
+            RENAME COLUMN is_system TO event_system
+        """)
+        cur.execute("""
+            ALTER TABLE mem_ai_events
+            RENAME COLUMN processed_at TO updated_at
+        """)
+        # Drop old indexes on old column names and recreate with new names
+        cur.execute("DROP INDEX IF EXISTS idx_mae_system")
+        cur.execute("DROP INDEX IF EXISTS idx_mae_pending")
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mae_event_system
+            ON mem_ai_events(event_system) WHERE event_system = TRUE
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mae_pending
+            ON mem_ai_events(updated_at) WHERE updated_at IS NULL
+        """)
+
+        # ── Step 8: mem_ai_project_facts — add created_at + updated_at ───────
+        cur.execute("""
+            ALTER TABLE mem_ai_project_facts
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+        cur.execute("""
+            ALTER TABLE mem_ai_project_facts
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # ── Step 9: mem_pipeline_runs — add user_id + updated_at ─────────────
+        cur.execute("""
+            ALTER TABLE mem_pipeline_runs
+            ADD COLUMN IF NOT EXISTS user_id INT NULL REFERENCES mng_users(id) ON DELETE SET NULL
+        """)
+        cur.execute("""
+            ALTER TABLE mem_pipeline_runs
+            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        """)
+
+        # ── Step 10: Create set_updated_at() trigger function ─────────────────
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION set_updated_at()
+            RETURNS TRIGGER LANGUAGE plpgsql AS $$
+            BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+            END;
+            $$
+        """)
+
+        # ── Step 11: Create triggers on all tables with updated_at ─────────────
+        # Tables that already had triggers (mng_projects, planner_tags,
+        # mng_agent_roles, mng_system_roles, mem_ai_work_items, mem_ai_feature_snapshot,
+        # pr_graph_workflows, pr_graph_nodes, pr_graph_edges, mng_session_tags)
+        # are NOT re-triggered here to avoid duplicates.
+        # New tables gaining updated_at via this migration:
+        _trigger_tables = [
+            "mng_users",
+            "mng_clients",
+            "mem_mrr_prompts",
+            "mem_mrr_commits",
+            "mem_mrr_commits_code",
+            "mem_mrr_items",
+            "mem_mrr_messages",
+            "mem_ai_events",
+            "mem_ai_project_facts",
+            "mem_pipeline_runs",
+        ]
+        for _tbl in _trigger_tables:
+            cur.execute(f"""
+                DROP TRIGGER IF EXISTS trg_updated_at_{_tbl} ON {_tbl}
+            """)
+            cur.execute(f"""
+                CREATE TRIGGER trg_updated_at_{_tbl}
+                BEFORE UPDATE ON {_tbl}
+                FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+            """)
+
+        # ── Step 12: Recreate idx_users_email (was on id column; now uuid_id) ─
+        # The email index is fine — email column didn't change.
+        # Recreate user_id indexes on dependent tables for new INT column.
+        cur.execute("DROP INDEX IF EXISTS idx_usage_user_id")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_usage_user_id ON mng_usage_logs(user_id)")
+        cur.execute("DROP INDEX IF EXISTS idx_tx_user_id")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tx_user_id ON mng_transactions(user_id)")
+        cur.execute("DROP INDEX IF EXISTS idx_muak_user")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_muak_user ON mng_user_api_keys(user_id)")
+
+    conn.commit()
+    log.info(
+        "m051_schema_refactor_user_id_updated_at: "
+        "mng_users.id → SERIAL INT, uuid_id added; "
+        "user_id FK converted to INT on 4 tables; "
+        "updated_at added to mng_clients, mng_users, 5 mirror tables, "
+        "mem_ai_project_facts, mem_pipeline_runs; "
+        "user_id INT added to 5 mirror tables + mem_pipeline_runs; "
+        "mem_ai_events: is_system → event_system, processed_at → updated_at; "
+        "set_updated_at() trigger created on 10 tables"
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1286,4 +1647,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m048_user_id_mirror_tables", m048_user_id_mirror_tables),
     ("m049_work_item_quality_gate", m049_work_item_quality_gate),
     ("m050_prompts_source_id_index", m050_prompts_source_id_index),
+    ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
 ]
