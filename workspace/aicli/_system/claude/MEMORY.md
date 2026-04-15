@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 20:51 UTC by aicli /memory_
+_Generated: 2026-04-15 21:07 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend, PostgreSQL vector database, and Electron desktop UI to capture, synthesize, and surface project context across development workflows. The platform uses Claude for memory synthesis, multi-LLM provider support (OpenAI/DeepSeek/Gemini/Grok), and async DAG workflows for intelligent task routing. Currently stabilizing post-migration (m050), with focus on Chat/History UI alignment, real-time prompt persistence, and per-prompt tagging for fine-grained memory organization.
+aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and manage project memory across sessions. Built on PostgreSQL 15+ with pgvector embeddings, it features async DAG workflow orchestration, multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok), and a unified memory architecture (4-layer: session → raw capture → digested events → work items/facts). Currently refining Chat UX for session management, timestamp display, and per-prompt tagging while stabilizing the hook-log endpoint and cache invalidation patterns post-m050.
 
 ## Project Facts
 
@@ -264,16 +264,16 @@ Reviewer: ```json
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 
 ## In Progress
 
-- Chat view session list UI alignment — matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency
-- Timestamp formatting on user prompts — adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint
-- Per-prompt tagging system implementation — tag selection/creation UI per individual prompt (inline ＋ Tag button) with storage and retrieval for message-level granularity
-- Session sticky banner in Chat — displaying 'SESSION <full-uuid> ⎘ <phase>' at top of right panel when session opened; full session ID with copy button for accessibility
-- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms
+- Session ID display in Chat view tag bar — showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved
+- Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
+- Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
+- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
+- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket
 
 ## Active Features / Bugs / Tasks
 
@@ -325,174 +325,174 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
+Commit: chore: clean up legacy _system context files after claude cli session 2a
+Hash: ab47c27c
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up legacy _system root files and consolidate into claude/ s
+Hash: b66c10a3
+Generated/internal files: workspace/aicli/_system/commit_log.jsonl
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up legacy _system context files after claude cli session 2a
+Hash: 26f1ea53
+Generated/internal files: workspace/aicli/_system/commit_log.jsonl
+
+### `commit` — 2026-04-15
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index a157ac9..156ecd7 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -262,9 +262,9 @@ sidebar tabs:
+ 
+ ## Recent Work
+ 
+-- History view UI refactor — Added collapsible session grouping with toggleable headers, improved timestamp formatting (YY/MM/DD-HH:MM), session ID display with last-4-char preview, and prompt count aggregation
+-- History API enhancement — Added created_at ISO timestamp to chat_history endpoint response for improved UI date/time handling
+-- Agent context consolidation — Legacy _system/ files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; CLAUDE.md and MEMORY.md removed
+-- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter
+-- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; 4-stage pipeline with provider/model overrides and auto_commit boolean support
+-- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation
++- Hook-log functionality verification — Testing hook-log behavior post-m050 migration; unclear if migration resolved core issues or if additional schema/logic changes required
++- Backend module restructure completion — agents/tools/ and agents/mcp/ moved to correct locations; imports verified; stray auth.py references cleaned up
++- Backend startup race condition mitigation — Retry logic handles empty project list on first load; root cause diagnosis ongoing for AiCli project visibility edge cases
++- Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
++- Data persistence issue triage — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
++- Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
+
+
+### `commit` — 2026-04-15
+
 diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
-index 429eed7..4bfc7cd 100644
+index eeb2008..1d8a412 100644
 --- a/ui/frontend/views/history.js
 +++ b/ui/frontend/views/history.js
-@@ -385,7 +385,16 @@ export class HistoryView {
-         const anchorId    = `ha-${entryId}`;
-         const sourceId    = e.ts || '';
+@@ -41,10 +41,44 @@ export class HistoryView {
+     this._histFilter    = { source: '', phase: '', query: '' };
+     this._commitFilter  = { phase: '' };
  
--        // Pre-existing tag chips from DB (string array)
-+        // Seed _entryTags from e.tags so system tags (phase/source/feature) always render.
-+        // User-added tags from getSourceTags() are merged in on top (loaded earlier).
-+        if (e.tags?.length) {
-+          const cached = this._entryTags[sourceId] || [];
-+          // Keep user-added tags that may not be in e.tags, but ensure e.tags are present
-+          const merged = [...new Set([...e.tags, ...cached])];
-+          this._entryTags[sourceId] = merged;
-+        }
++    // Auto-refresh: poll every 15s for new prompts while chat tab is active
++    this._pollTimer     = null;
 +
-+        // Tag chips with remove buttons (system + user-added)
-         const existing = this._entryTags[sourceId] || [];
-         const existingChips = existing.map(tag => {
-           const color = this._tagColor(tag);
-@@ -453,22 +462,17 @@ export class HistoryView {
-         <div class="history-entry" data-ts="${this._escapeHtml(e.ts || '')}"
-              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
-                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
--          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
--            <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
--            <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
--            ${(e.tags||[]).map(t => {
--              const col = this._tagColor(t);
--              const prefix = t.split(':')[0];
--              const label  = t.includes(':') ? t : t;
--              return `<span style="background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 5px;border-radius:3px;font-size:10px">${this._escapeHtml(label)}</span>`;
--            }).join('')}
--            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
--            <span id="${anchorId}" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
-+          <div style="display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;margin-bottom:6px;font-size:11px">
-+            <span style="font-weight:600;color:#27ae60;white-space:nowrap">YOU${this._fmtTs(e.created_at || e.ts) ? ' — ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
-+            <span style="background:var(--surface2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:10px;white-space:nowrap">${this._escapeHtml(e.source || 'ui')}</span>
-+            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px;white-space:nowrap">⚠ untagged</span>` : ''}
-+            <!-- Tags + Add button — all inline, not hidden at far right -->
-+            <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
-               ${existingChips}
-               <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(sourceId)}','${anchorId}')"
--                style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
--                       cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
--                + Tag
-+                style="font-size:10px;padding:2px 8px;border:1.5px solid var(--accent);border-radius:4px;
-+                       cursor:pointer;background:var(--surface);color:var(--accent);white-space:nowrap;font-weight:600;letter-spacing:.2px">
-+                ＋ Tag
-               </button>
-             </span>
-           </div>
-@@ -483,24 +487,31 @@ export class HistoryView {
-       }).join('');
+     this._render();
+     this._loadTab("chat");
+   }
  
-       // Session key for DOM IDs (safe to use in attribute)
--      const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
--      const sid5   = sid ? sid.slice(-5) : '?????';
--      const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
--      const pCount = group.entries.length;
-+      const sgKey      = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
-+      const sid5       = sid ? sid.slice(-5) : '?????';
-+      const latestTs   = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
-+      const pCount     = group.entries.length;
-+      // Extract session-level source + phase from its entries
-+      const _sgSrc     = group.entries[0]?.source || 'ui';
-+      const _sgLabel   = { claude_cli: 'CLI', ui: 'UI', workflow: 'Workflow' }[_sgSrc] || _sgSrc;
-+      const _sgPhases  = [...new Set(group.entries.flatMap(e => (e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>t.slice(6))))];
-+      const _sgPhase   = _sgPhases[0] || '';
++  /** Start polling for new prompts every 15 seconds. */
++  _startPoll() {
++    this._stopPoll();
++    this._pollTimer = setInterval(() => this._checkForNewPrompts(), 15000);
++  }
++
++  _stopPoll() {
++    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
++  }
++
++  async _checkForNewPrompts() {
++    if (this.activeTab !== 'chat') return;
++    const project = state.currentProject?.name || '';
++    if (!project) return;
++    try {
++      const r = await fetch(_histUrl(`/history/chat?limit=1&_t=${Date.now()}`)).then(r => r.json());
++      const newTotal = r.total || 0;
++      const oldTotal = this._histData?.total || 0;
++      if (newTotal > oldTotal) {
++        const diff = newTotal - oldTotal;
++        // Show banner and auto-refresh immediately
++        const banner = document.getElementById('hist-new-banner');
++        if (banner) {
++          banner.textContent = `🔴 ${diff} new prompt${diff > 1 ? 's' : ''} — refreshing…`;
++          banner.style.display = '';
++        }
++        await this._refreshHistory();
++      }
++    } catch (_) {}
++  }
++
+   _render() {
+     const tabs = ["chat", "commits", "runs", "evals"];
+     this.container.innerHTML = `
+@@ -101,8 +135,9 @@ export class HistoryView {
+       return;
+     }
  
-       return `
-         <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
-           <!-- Session header — always visible, click to toggle -->
-           <div onclick="window._historyView._toggleSession('${sgKey}')"
--               style="display:flex;align-items:center;gap:6px;padding:5px 8px;
-+               style="display:flex;align-items:center;gap:6px;padding:5px 10px;
-                       background:var(--surface);cursor:pointer;user-select:none;font-size:11px;
-                       border-bottom:1px solid var(--border)">
-             <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
-+            <span style="font-weight:600;color:var(--text)">${this._escapeHtml(_sgLabel)}</span>
-+            ${_sgPhase ? `<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:1px 6px;border-radius:3px;font-size:10px">${this._escapeHtml(_sgPhas
+-    // Clear nav bar when switching away from chat
++    // Stop polling when leaving chat tab
+     if (tab !== 'chat') {
++      this._stopPoll();
+       const nav = document.getElementById('hist-nav-bar');
+       if (nav) nav.innerHTML = '';
+     }
+@@ -129,6 +164,7 @@ export class HistoryView {
+   }
+ 
+   async _renderChat(container) {
++    this._startPoll();
+     const project = state.currentProject?.name || '';
+ 
+     // Step 1: fetch history, config, and source tags in parallel
+@@ -205,8 +241,15 @@ export class HistoryView {
+         ${untagged > 0 ? `<span style="color:#e74c3c;font-weight:600">${untagged} untagged</span>` : `<span style="color:green">All tagged ✓</span>`}
+         <button onclick="window._historyView._refreshHistory()"
+           style="padding:2px 7px;border:1px solid var(--border);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--muted)"
+-          title="Reload from server">↻</button>
++          title="Reload from server">↻ refresh</button>
++        <button onclick="window.location.reload()"
++          style="padding:2px 7px;border:1px solid var(--accent);border-radius:3px;cursor:pointer;background:var(--surface);font-size:11px;color:var(--accent)"
++          title="Hard-reload the Electron window to pick up UI code changes">⟳ reload UI</button>
+       </div>
++      <div id="hist-new-banner"
++           style="display:none;padding:5px 10px;background:#27ae6022;color:#27ae60;
++                  border-radius:4px;font-size:11px;font-weight:600;margin-bottom:4px;
++                  cursor:pointer" onclick="window._historyView._refreshHistory()"></div>
+       <div id="hist-chat-groups"></div>`;
+ 
+     // Restore filter state (default = All phases, no auto-populate)
+
 
 ### `commit` — 2026-04-15
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 5ae4fee..e9665eb 100644
+index b66a625..96712f2 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-15 18:46 UTC
-+> Generated by aicli 2026-04-15 18:55 UTC
+-> Generated by aicli 2026-04-15 18:23 UTC
++> Generated by aicli 2026-04-15 18:32 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -33,7 +33,7 @@ _Last updated: 2026-04-15 | Version 3.0.0_
+ - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- database: PostgreSQL 15+ with pgvector extensions + m001-m041 migration framework
++- database: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+ - node_modules_build: npm 8+ with Electron-builder; Vite dev server
+ - database_version: PostgreSQL 15+ with pgvector extensions
+ - build_tooling: npm 8+ + Electron-builder + Vite dev server
 
-
-### `commit` — 2026-04-15
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index c808e3e..161152f 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:55 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-13] yes
- - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
- - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
- - [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
-+- [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
- - [2026-04-15] test: is hook-log working now after m050?
-\ No newline at end of file
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index c808e3e..161152f 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:55 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
- 
- ## Recent Context (last 5 changes)
- 
--- [2026-04-13] yes
- - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
- - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
- - [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
-+- [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
- - [2026-04-15] test: is hook-log working now after m050?
-\ No newline at end of file
-
-
-### `commit` — 2026-04-15
-
-Commit: chore: clean up stale agent context and legacy system documentation file
-Hash: 2725f654
-Code files (5):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - ui/frontend/views/history.js
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-Symbols changed: sgKey
-
-### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
-
-User reports UI changes not fully visible in chat tab: session ID display needs to be in CLI header format at top of right pane (where Phase/tags row is), tag-adding functionality missing from prompts, and existing tags not showing. Need to verify Vite rebuild and check history.js rendering.
 
 ## AI Synthesis
 
-**[2026-04-15]** `claude_cli` — Migration m050 completed, fixing silent DB errors in prompt persistence; hook-log endpoint stability verified. **[2026-04-15]** `claude_cli` — Chat view session list alignment underway: source badges (CLI/UI/Workflow), phase chips, and session ID display (last 5 chars) now match History view rendering for consistency. **[2026-04-15]** `claude_cli` — Timestamp formatting refined: YY/MM/DD-HH:MM format added next to 'YOU' label in both Chat and History prompts for temporal context. **[2026-04-15]** `claude_cli` — Session sticky banner implemented in Chat: displays 'SESSION <full-uuid> ⎘ <phase>' at top of right panel with full session ID + copy button. **[2026-04-15]** `claude_cli` — Per-prompt tagging UI redesigned: inline ＋ Tag button with simplified chip markup; tag creation/approval workflow for message-level granularity. **[2026-04-14]** `claude_cli` — mem_mrr_prompts column schema updated: moved event_id and project_id columns immediately after client_id per database consolidation standards.
+**[2026-04-15]** `claude_cli` — Consolidated AI context files to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; removed legacy _system directory and root-level CLAUDE.md/MEMORY.md. Established single source of truth for agent instructions (Version 3.0.0, UTC timestamp management via /memory command).
+
+**[2026-04-15]** `claude_cli` — Refined Chat view session ID display: monospace badge showing last 5 chars (e.g., ab3f9) positioned in tag bar between entity chips and +Tag button; click-to-copy full UUID; eliminated phase duplication in header (phase shown only once in tab). Improves UX consistency with History view session rendering.
+
+**[Recent]** `development` — Migration m050 fixed silent database errors in prompt persistence via hook-log endpoint. Verified prompt storage/retrieval pipeline now stable and correctly integrated with backend persistence layer.
+
+**[Recent]** `development` — Per-prompt tagging system simplified: inline ✓ button for message-level tag creation with category inference; refactored chip markup without redundant category prefix display in non-category mode; improved tooltip UX.
+
+**[Recent]** `development` — Timestamp formatting standardized across Chat and History views: YY/MM/DD-HH:MM format displayed next to 'YOU' label for temporal context; aligns session rendering with source badges (CLI/UI/Workflow) and phase chips.
+
+**[In Progress]** `development` — Chat history rendering cache invalidation and real-time sync between backend and frontend; exploring polling vs. WebSocket mechanisms to ensure latest prompts and tags reflect immediately in UI.

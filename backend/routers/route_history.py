@@ -202,6 +202,43 @@ def _load_prompt_log_legacy() -> list[dict]:
     return entries
 
 
+def _normalize_jsonl_entry(e: dict) -> dict:
+    """Normalise a history.jsonl entry to match the DB response schema.
+
+    JSONL quirks:
+      - phase / feature stored as top-level fields, not inside tags[]
+      - tags may be [] (empty list) or the string "[]"
+      - user_input field name matches (no rename needed)
+    """
+    raw_tags = e.get("tags") or []
+    if isinstance(raw_tags, str):
+        try:
+            raw_tags = json.loads(raw_tags)
+        except Exception:
+            raw_tags = []
+    tag_list: list[str] = list(raw_tags)
+
+    # Promote top-level phase / feature into tags list
+    phase   = e.get("phase")
+    feature = e.get("feature")
+    if phase   and f"phase:{phase}"     not in tag_list:
+        tag_list.insert(0, f"phase:{phase}")
+    if feature and f"feature:{feature}" not in tag_list:
+        tag_list.append(f"feature:{feature}")
+
+    ts = e.get("ts", "")
+    return {
+        "ts":         ts,
+        "created_at": ts,
+        "source":     e.get("source", "claude_cli"),
+        "session_id": e.get("session_id", ""),
+        "provider":   e.get("provider", "claude"),
+        "user_input": e.get("user_input", ""),
+        "output":     e.get("output", ""),
+        "tags":       tag_list,
+    }
+
+
 @router.get("/chat")
 async def chat_history(
     project: str | None = Query(None),
@@ -213,6 +250,7 @@ async def chat_history(
     """Return unified project history from mem_mrr_prompts (DB-primary).
 
     Falls back to history.jsonl when DB is unavailable.
+    JSONL entries are always merged in so pre-DB-era prompts remain visible.
     Noise entries are filtered. Returns newest-first with pagination.
     """
     p = project or settings.active_project or "default"
@@ -222,24 +260,15 @@ async def chat_history(
             project_id = db.get_or_create_project_id(p)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Total count (excluding noise)
                     noise_filter = " AND NOT (" + " OR ".join(
-                        f"prompt LIKE %s" for _ in range(4)
+                        "prompt LIKE %s" for _ in range(4)
                     ) + ")"
                     noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
 
                     provider_filter = " AND tags->>'source' = %s" if provider else ""
                     provider_arg    = (provider,) if provider else ()
 
-                    cur.execute(
-                        f"""SELECT COUNT(*) FROM mem_mrr_prompts
-                            WHERE project_id=%s
-                              AND prompt IS NOT NULL AND prompt != ''
-                              {noise_filter}{provider_filter}""",
-                        (project_id,) + noise_args + provider_arg,
-                    )
-                    total = cur.fetchone()[0]
-
+                    # Fetch ALL rows (pagination done in Python after JSONL merge)
                     cur.execute(
                         f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
                                    response, tags, created_at
@@ -247,13 +276,12 @@ async def chat_history(
                             WHERE project_id=%s
                               AND prompt IS NOT NULL AND prompt != ''
                               {noise_filter}{provider_filter}
-                            ORDER BY created_at DESC
-                            LIMIT %s OFFSET %s""",
-                        (project_id,) + noise_args + provider_arg + (limit if limit > 0 else 10000, offset),
+                            ORDER BY created_at DESC""",
+                        (project_id,) + noise_args + provider_arg,
                     )
                     rows = cur.fetchall()
 
-            entries = [
+            entries: list[dict] = [
                 {
                     "ts":         r[0] or (r[6].strftime("%Y-%m-%dT%H:%M:%SZ") if r[6] else ""),
                     "created_at": r[6].isoformat() if r[6] else "",
@@ -266,13 +294,29 @@ async def chat_history(
                 }
                 for r in rows
             ]
+
+            # Merge JSONL entries (pre-DB-era prompts) — dedup by ts
+            try:
+                db_ts_set = {e["ts"] for e in entries if e["ts"]}
+                jsonl_raw = _load_unified_history(p, provider)
+                for raw in jsonl_raw:
+                    ne = _normalize_jsonl_entry(raw)
+                    if ne["ts"] and ne["ts"] not in db_ts_set and not _is_noisy(ne):
+                        entries.append(ne)
+                        db_ts_set.add(ne["ts"])
+            except Exception:
+                pass
+
+            entries.sort(key=lambda x: x.get("created_at") or x.get("ts", ""), reverse=True)
+            total = len(entries)
+            page  = entries[offset: offset + limit] if limit > 0 else entries[offset:]
             return {
-                "entries": entries,
-                "total": total,
+                "entries": page,
+                "total":   total,
                 "filtered": 0,
-                "offset": offset,
-                "limit": limit,
-                "has_more": (offset + len(entries)) < total,
+                "offset":  offset,
+                "limit":   limit,
+                "has_more": (offset + len(page)) < total,
             }
         except Exception as e:
             import logging

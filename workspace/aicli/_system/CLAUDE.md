@@ -40,7 +40,7 @@ You are a senior Python software architect with deep expertise in:
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 
 ---
 

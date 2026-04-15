@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 20:57 UTC — do not edit manually.
+> Auto-generated 2026-04-15 21:08 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 572
-- **Last active**: 2026-04-15T20:51:18Z
+- **Sessions**: 573
+- **Last active**: 2026-04-15T21:07:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Chat view session list UI alignment — matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency
-- Timestamp formatting on user prompts — adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context
-- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint
-- Per-prompt tagging system implementation — tag selection/creation UI per individual prompt (inline ＋ Tag button) with storage and retrieval for message-level granularity
-- Session sticky banner in Chat — displaying 'SESSION <full-uuid> ⎘ <phase>' at top of right panel when session opened; full session ID with copy button for accessibility
-- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms
+- Session ID display in Chat view tag bar — showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header
+- Hook-log endpoint stability post-m050 — migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved
+- Per-prompt tagging system refinement — inline ✓ button for tag creation/approval at message level with category inference and simplified chip markup
+- Chat and History views session rendering consistency — matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display
+- Timestamp formatting on user prompts — YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views
+- Chat history rendering cache invalidation — ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket
 
 ## Key Decisions
 
@@ -81,7 +81,7 @@
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 
 ---
 

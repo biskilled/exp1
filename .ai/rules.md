@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 20:51 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 21:07 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -67,12 +67,12 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 - Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline ＋ Tag button
+- AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
 - [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
 - [2026-04-15] I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be a
 - [2026-04-15] test: is hook-log working now after m050?
 - [2026-04-15] I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session su
+- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where

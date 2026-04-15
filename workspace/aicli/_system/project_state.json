@@ -61,7 +61,7 @@
     "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline \uff0b Tag button"
+    "AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Chat view session list UI alignment \u2014 matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency",
-    "Timestamp formatting on user prompts \u2014 adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context",
-    "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint",
-    "Per-prompt tagging system implementation \u2014 tag selection/creation UI per individual prompt (inline \uff0b Tag button) with storage and retrieval for message-level granularity",
-    "Session sticky banner in Chat \u2014 displaying 'SESSION <full-uuid> \u2398 <phase>' at top of right panel when session opened; full session ID with copy button for accessibility",
-    "Chat history rendering cache invalidation \u2014 ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms"
+    "Session ID display in Chat view tag bar \u2014 showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header",
+    "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved",
+    "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
+    "Chat and History views session rendering consistency \u2014 matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display",
+    "Timestamp formatting on user prompts \u2014 YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views",
+    "Chat history rendering cache invalidation \u2014 ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T20:51:53Z",
+  "last_memory_run": "2026-04-15T21:08:06Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -144,15 +144,15 @@
       "Database schema as single source of truth (db_schema.sql) with m001-m050 migration framework; column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "Chat and History views unified session rendering: left sidebar shows source badge + phase chip + session ID (last 5 chars); timestamps in YY/MM/DD-HH:MM format next to YOU; per-prompt tagging with inline \uff0b Tag button"
+      "AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed"
     ],
     "in_progress": [
-      "Chat view session list UI alignment \u2014 matching History view's left-sidebar session rendering with source badges (CLI/UI/Workflow), phase chips, and last 5 chars of session ID in parentheses for consistency",
-      "Timestamp formatting on user prompts \u2014 adding YY/MM/DD-HH:MM format next to 'YOU' label in both Chat and History views for temporal context",
-      "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved via hook-log endpoint",
-      "Per-prompt tagging system implementation \u2014 tag selection/creation UI per individual prompt (inline \uff0b Tag button) with storage and retrieval for message-level granularity",
-      "Session sticky banner in Chat \u2014 displaying 'SESSION <full-uuid> \u2398 <phase>' at top of right panel when session opened; full session ID with copy button for accessibility",
-      "Chat history rendering cache invalidation \u2014 ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket mechanisms"
+      "Session ID display in Chat view tag bar \u2014 showing last 5 chars in monospace badge (ab3f9) between entity chips and +Tag button; click copies full UUID; no phase duplication in header",
+      "Hook-log endpoint stability post-m050 \u2014 migration m050 fixed silent DB errors in prompt persistence; verifying prompts now correctly stored and retrieved",
+      "Per-prompt tagging system refinement \u2014 inline \u2713 button for tag creation/approval at message level with category inference and simplified chip markup",
+      "Chat and History views session rendering consistency \u2014 matching left-sidebar session list with source badges (CLI/UI/Workflow), phase chips, and session ID display",
+      "Timestamp formatting on user prompts \u2014 YY/MM/DD-HH:MM format next to 'YOU' label for temporal context in Chat and History views",
+      "Chat history rendering cache invalidation \u2014 ensuring latest prompts and tags sync in real-time between backend and frontend via polling or WebSocket"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,20 +160,18 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "db_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "schema_migrations": "m001-m050 framework with db_schema.sql as source of truth"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend, PostgreSQL vector database, and Electron desktop UI to capture, synthesize, and surface project context across development workflows. The platform uses Claude for memory synthesis, multi-LLM provider support (OpenAI/DeepSeek/Gemini/Grok), and async DAG workflows for intelligent task routing. Currently stabilizing post-migration (m050), with focus on Chat/History UI alignment, real-time prompt persistence, and per-prompt tagging for fine-grained memory organization.",
-    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Migration m050 completed, fixing silent DB errors in prompt persistence; hook-log endpoint stability verified. **[2026-04-15]** `claude_cli` \u2014 Chat view session list alignment underway: source badges (CLI/UI/Workflow), phase chips, and session ID display (last 5 chars) now match History view rendering for consistency. **[2026-04-15]** `claude_cli` \u2014 Timestamp formatting refined: YY/MM/DD-HH:MM format added next to 'YOU' label in both Chat and History prompts for temporal context. **[2026-04-15]** `claude_cli` \u2014 Session sticky banner implemented in Chat: displays 'SESSION <full-uuid> \u2398 <phase>' at top of right panel with full session ID + copy button. **[2026-04-15]** `claude_cli` \u2014 Per-prompt tagging UI redesigned: inline \uff0b Tag button with simplified chip markup; tag creation/approval workflow for message-level granularity. **[2026-04-14]** `claude_cli` \u2014 mem_mrr_prompts column schema updated: moved event_id and project_id columns immediately after client_id per database consolidation standards."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI + FastAPI backend with an Electron desktop UI, enabling teams to capture, synthesize, and manage project memory across sessions. Built on PostgreSQL 15+ with pgvector embeddings, it features async DAG workflow orchestration, multi-LLM provider support (Claude/OpenAI/DeepSeek/Gemini/Grok), and a unified memory architecture (4-layer: session \u2192 raw capture \u2192 digested events \u2192 work items/facts). Currently refining Chat UX for session management, timestamp display, and per-prompt tagging while stabilizing the hook-log endpoint and cache invalidation patterns post-m050.",
+    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Consolidated AI context files to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; removed legacy _system directory and root-level CLAUDE.md/MEMORY.md. Established single source of truth for agent instructions (Version 3.0.0, UTC timestamp management via /memory command).\n\n**[2026-04-15]** `claude_cli` \u2014 Refined Chat view session ID display: monospace badge showing last 5 chars (e.g., ab3f9) positioned in tag bar between entity chips and +Tag button; click-to-copy full UUID; eliminated phase duplication in header (phase shown only once in tab). Improves UX consistency with History view session rendering.\n\n**[Recent]** `development` \u2014 Migration m050 fixed silent database errors in prompt persistence via hook-log endpoint. Verified prompt storage/retrieval pipeline now stable and correctly integrated with backend persistence layer.\n\n**[Recent]** `development` \u2014 Per-prompt tagging system simplified: inline \u2713 button for message-level tag creation with category inference; refactored chip markup without redundant category prefix display in non-category mode; improved tooltip UX.\n\n**[Recent]** `development` \u2014 Timestamp formatting standardized across Chat and History views: YY/MM/DD-HH:MM format displayed next to 'YOU' label for temporal context; aligns session rendering with source badges (CLI/UI/Workflow) and phase chips.\n\n**[In Progress]** `development` \u2014 Chat history rendering cache invalidation and real-time sync between backend and frontend; exploring polling vs. WebSocket mechanisms to ensure latest prompts and tags reflect immediately in UI."
   }
 }
