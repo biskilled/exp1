@@ -411,8 +411,7 @@ export class HistoryView {
              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
-            <span style="color:var(--muted)">${e.ts?.slice(0, 16) || ''}</span>
-            <span style="color:var(--accent)">${e.provider || ''}</span>
+            <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
             <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
             ${(e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>`<span style="background:rgba(74,144,226,.15);color:#4a90e2;padding:1px 5px;border-radius:3px">${this._escapeHtml(t.slice(6))}</span>`).join('')}
             ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
@@ -435,15 +434,64 @@ export class HistoryView {
         </div>`;
       }).join('');
 
+      // Session key for DOM IDs (safe to use in attribute)
+      const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
+      const sid4   = sid ? sid.slice(-4) : '????';
+      const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
+      const pCount = group.entries.length;
+
       return `
-        <div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">
-          ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:4px;font-family:monospace">session: ${sid.slice(0,20)}…</div>` : ''}
-          ${commitStrip}
-          ${entriesHtml}
+        <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
+          <!-- Session header — always visible, click to toggle -->
+          <div onclick="window._historyView._toggleSession('${sgKey}')"
+               style="display:flex;align-items:center;gap:6px;padding:5px 8px;
+                      background:var(--surface);cursor:pointer;user-select:none;font-size:11px;
+                      border-bottom:1px solid var(--border)">
+            <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
+            <span style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);
+                         padding:1px 5px;border-radius:3px;font-size:10px;color:var(--accent)"
+                  title="Session ID: ${this._escapeHtml(sid || 'none')}">…${this._escapeHtml(sid4)}</span>
+            <span style="color:var(--muted)">${pCount} prompt${pCount !== 1 ? 's' : ''}</span>
+            ${latestTs ? `<span style="color:var(--muted);margin-left:auto">${latestTs}</span>` : ''}
+          </div>
+          <!-- Session body — collapsible -->
+          <div id="sg-body-${sgKey}" style="padding:8px">
+            ${sid ? `<div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:monospace;
+                               padding:3px 6px;background:var(--surface2);border-radius:3px;word-break:break-all">
+                       Session: ${this._escapeHtml(sid)}
+                     </div>` : ''}
+            ${commitStrip}
+            ${entriesHtml}
+          </div>
         </div>`;
     }).join('');
 
     this._renderPageBars(totalFiltered, start);
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** Format ISO timestamp as YY/MM/DD-HH:MM (local time). */
+  _fmtTs(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return ts.slice(0, 16);
+    const YY  = String(d.getFullYear()).slice(2);
+    const MM  = String(d.getMonth() + 1).padStart(2, '0');
+    const DD  = String(d.getDate()).padStart(2, '0');
+    const HH  = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${YY}/${MM}/${DD}-${HH}:${min}`;
+  }
+
+  /** Toggle a session group open/closed. */
+  _toggleSession(sessionKey) {
+    const body = document.getElementById(`sg-body-${sessionKey}`);
+    const icon = document.getElementById(`sg-icon-${sessionKey}`);
+    if (!body) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : '';
+    if (icon) icon.textContent = isOpen ? '▶' : '▼';
   }
 
   // ── Pagination ─────────────────────────────────────────────────────────────

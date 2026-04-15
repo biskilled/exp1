@@ -256,6 +256,7 @@ async def chat_history(
             entries = [
                 {
                     "ts":         r[0] or (r[6].strftime("%Y-%m-%dT%H:%M:%SZ") if r[6] else ""),
+                    "created_at": r[6].isoformat() if r[6] else "",
                     "source":     r[2] or "ui",
                     "session_id": r[1],
                     "provider":   r[2] or "unknown",
