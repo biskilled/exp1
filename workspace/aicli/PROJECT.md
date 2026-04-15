@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Agent context consolidation (2026-04-15) — Consolidated legacy _system/ files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context; removed stale CLAUDE.md and MEMORY.md
-- Memory promotion timing instrumentation (2026-04-15) — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
-- Snapshot generation refactor (2026-04-15) — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary); improved JSON parsing robustness
-- Schema cleanup and refactoring (2026-04-14) — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added explicit FOREIGN KEY constraint for merged_into, added ivfflat embedding index
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
-- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
+- Agent context consolidation — Consolidated legacy _system/ files to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context; removed stale CLAUDE.md and MEMORY.md
+- Memory promotion timing instrumentation — Added time.monotonic() tracking to _run_promote_all_work_items; updated _finish_run calls with t0 parameter for performance measurement
+- Snapshot generation refactor — Switched Claude Sonnet to Haiku for cost efficiency; simplified planner_tags upsert to flat string keys (requirements, action_items, design, code_summary)
+- Schema cleanup and refactoring — mem_ai_work_items table reorganized: removed status_ai dual-status design, reordered columns with seq_num near id, added FOREIGN KEY constraint for merged_into, added ivfflat embedding index
+- Work item pipeline refactor — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added; 4-stage pipeline with provider/model overrides
+- Tag suggestion approval flow — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; category inference on tag creation; improved tooltip UX
