@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 01:14 UTC by aicli /memory_
+_Generated: 2026-04-15 01:15 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI to capture, analyze, and synthesize project development history via semantic search and LLM-driven work item extraction. The platform uses PostgreSQL with pgvector for embeddings, supports multi-provider LLM integration (Claude/OpenAI/etc.), and provides workflow automation through async DAG execution with Cytoscape visualization, currently stabilizing the work item pipeline and tag suggestion workflows after recent schema refactoring.
+aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL (with pgvector), a Python CLI (prompt_toolkit + rich), and an Electron desktop UI (Vanilla JS + Cytoscape.js) to capture, synthesize, and share development context across teams. It implements a 4-layer memory architecture (session → raw capture → LLM-digested events → work items/facts) with async DAG workflows, agent-role-based pipelines, and semantic search via embeddings. Current focus is on schema consolidation, work item pipeline refactoring to support DB-loaded agent roles, and tag suggestion approval UX improvements.
 
 ## Project Facts
 
@@ -242,7 +242,7 @@ Reviewer: ```json
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, only user-facing tags retained (phase, feature, bug, source)
+- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained (phase, feature, bug, source)
 - Agent roles loaded from DB (mng_agent_roles) with fallback prompts; 4-stage work item pipeline (PM→Architect→Developer→Reviewer) with auto_commit flag
 - Database schema as single source of truth (db_schema.sql) with m001-m041 migration framework; column ordering: client_id → project_id → created_at/processed_at/embedding
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
@@ -256,7 +256,7 @@ Reviewer: ```json
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
 - Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation
 - History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
-- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending
 
 ## Active Features / Bugs / Tasks
 
@@ -307,6 +307,41 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `commit` — 2026-04-15
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index c72d0b5..79cffe9 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 23:58 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 00:01 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-15
+
+Commit: chore: restructure _system documentation after claude cli session 2a6b60
+Hash: 514a4b47
+Code files (6):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/routers/route_projects.py
+  - backend/routers/route_snapshots.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+Symbols changed: _parse_snapshot_json
+
+### `commit` — 2026-04-15
+
+Commit: chore: clean up stale _system context files after claude cli session 2a6
+Hash: 4fad48ef
+Generated/internal files: workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/CLAUDE.md
 
 ### `prompt_batch: test-schema-001` — 2026-04-15
 
@@ -400,116 +435,6 @@ index 5ee4b7b..9374030 100644
  -- valid_until NULL = currently valid fact; set to NOW() when superseded.
 
 
-### `prompt_batch: 484c8545-5032-4d6f-a27d-b31f285d6993` — 2026-04-15
-
-Compared Claude Agent SDK (Anthropic's official multi-tool agent framework) with the user's existing aicli multi-agent pipeline (PM → Developer → Tester → Reviewer with feedback loops). Determined aicli architecture is better suited for the use case because it natively supports iterative loop-back (reviewer rejections trigger developer re-work), whereas Claude Agent SDK lacks native orchestration for custom DAG workflows.
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
-index d3e2aed..1415bb3 100644
---- a/backend/core/db_migrations.py
-+++ b/backend/core/db_migrations.py
-@@ -1013,6 +1013,71 @@ def m040_backfill_event_cnt_and_tags(conn) -> None:
-     )
- 
- 
-+def m046_reorder_work_items(conn) -> None:
-+    """Reorder columns in mem_ai_work_items for logical grouping.
-+
-+    New order: id, client_id, project_id, seq_num, category_ai, name_ai,
-+      summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
-+      tags, tags_ai, tag_id_ai, tag_id_user, status_user,
-+      merged_into, start_date, created_at, updated_at, embedding
-+
-+    (desc_ai was already dropped in m044)
-+    """
-+    with conn.cursor() as cur:
-+        cur.execute("ALTER TABLE mem_ai_work_items RENAME TO _bak_046_mem_ai_work_items")
-+        cur.execute("""
-+            CREATE TABLE mem_ai_work_items (
-+                id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-+                client_id              INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-+                project_id             INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-+                seq_num                INT,
-+                category_ai            TEXT        NOT NULL,
-+                name_ai                TEXT        NOT NULL,
-+                summary_ai             TEXT        NOT NULL DEFAULT '',
-+                acceptance_criteria_ai TEXT        NOT NULL DEFAULT '',
-+                action_items_ai        TEXT        NOT NULL DEFAULT '',
-+                score_ai               SMALLINT    NOT NULL DEFAULT 0,
-+                tags                   JSONB       NOT NULL DEFAULT '{}',
-+                tags_ai                JSONB       NOT NULL DEFAULT '{}',
-+                tag_id_ai              UUID        REFERENCES planner_tags(id),
-+                tag_id_user            UUID        REFERENCES planner_tags(id),
-+                status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
-+                merged_into            UUID,
-+                start_date             TIMESTAMPTZ,
-+                created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-+                updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-+                embedding              VECTOR(1536),
-+                UNIQUE(project_id, category_ai, name_ai)
-+            )
-+        """)
-+        cur.execute("""
-+            INSERT INTO mem_ai_work_items
-+              (id, client_id, project_id, seq_num, category_ai, name_ai,
-+               summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
-+               tags, tags_ai, tag_id_ai, tag_id_user, status_user,
-+               merged_into, start_date, created_at, updated_at, embedding)
-+            SELECT
-+              id, client_id, project_id, seq_num, category_ai, name_ai,
-+              summary_ai, acceptance_criteria_ai, action_items_ai, score_ai,
-+              tags, tags_ai, tag_id_ai, tag_id_user, status_user,
-+              merged_into, start_date, created_at, updated_at, embedding
-+            FROM _bak_046_mem_ai_work_items
-+        """)
-+        # Add self-referential FK after data is fully loaded
-+        cur.execute("""
-+            ALTER TABLE mem_ai_work_items
-+            ADD CONSTRAINT fk_wi_merged_into
-+            FOREIGN KEY (merged_into) REFERENCES mem_ai_work_items(id)
-+            ON DELETE SET NULL NOT VALID
-+        """)
-+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id)")
-+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai)")
-+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user)")
-+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL")
-+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL")
-+    conn.commit()
-+
-+
- def m045_add_score_ai(conn) -> None:
-     """Add score_ai (0-5) to mem_ai_work_items.
- 
-@@ -1101,4 +1166,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
-     ("m043_drop_status_ai_code_summary", m043_drop_status_ai_code_summary),
-     ("m044_drop_desc_ai", m044_drop_desc_ai),
-     ("m045_add_score_ai", m045_add_score_ai),
-+    ("m046_reorder_work_items", m046_reorder_work_items),
- ]
-
-
-### `commit` — 2026-04-15
-
-Commit: chore: clean up stale system context files after claude cli session 2a6b
-Hash: 4397d0fe
-Code files (2):
-  - backend/core/db_migrations.py
-  - backend/core/db_schema.sql
-Generated/internal files: workspace/aicli/_system/.agent-context, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
-Symbols changed: m046_reorder_work_items, m045_add_score_ai
-
 ## AI Synthesis
 
-**[2026-04-14]** `schema` — mem_ai_work_items table refactored: removed dual-status design (status_ai removed), reordered columns with seq_num moved near id, added explicit FK constraint on merged_into, added ivfflat embedding index for semantic search.
-
-**[2026-04-14]** `work-items` — Work item pipeline refactored to load agent roles from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added to 4-stage pipeline (PM→Architect→Developer→Reviewer) with _load_role() provider/model overrides.
-
-**[2026-04-13]** `tagging` — Tag suggestion approval flow implemented with ai_tag_suggestion column; approve/remove button handlers refactored to simplified chip markup; category inference on tag creation; tooltip UX improved.
-
-**[2026-04-06]** `history-ui` — History panel rendering only prompts, not full LLM responses; copy-to-clipboard functionality missing; requires frontend implementation for response display.
-
-**[2026-04-06]** `api-fix` — PostgreSQL ON CONFLICT DO UPDATE error in route history batch upsert resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB.
-
-**[2026-04-06]** `schema-sync` — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation for m001-m041 migrations.
+**2026-04-14** `schema` — mem_ai_work_items table reorganized with removed status_ai dual-status design, reordered columns (seq_num near id), explicit FOREIGN KEY for merged_into, and added ivfflat embedding index for performance. **2026-04-14** `pipeline` — Agent roles now loaded from DB (mng_agent_roles) with fallback prompts; RoleCreate/RoleUpdate models updated; 4-stage pipeline (PM→Architect→Developer→Reviewer) supports auto_commit flag with provider/model overrides via _load_role(). **2026-04-13** `tagging` — Tag suggestion approval flow implemented with ai_tag_suggestion column; approve/remove button handlers added; simplified chip markup with category inference; tooltip UX improved from 'No existing tag' to 'Does not exist yet'. **2026-04-06** `database` — PostgreSQL ON CONFLICT DO UPDATE syntax corrected using JSONB merge operator (||) for route_history batch upsert; testing pending on operational DB. **2026-04-06** `ui` — History panel rendering investigation ongoing; currently displays only prompts, not full LLM responses; copy-to-clipboard functionality missing and pending implementation. **2026-04-06** `infrastructure` — aiCli_memory database found out of sync with codebase; schema documentation update and restoration strategy under review.

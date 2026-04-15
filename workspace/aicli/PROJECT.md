@@ -380,4 +380,4 @@ All tables follow a structured naming convention:
 - Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation; improved tooltip UX
 - Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; pending schema documentation update and restoration investigation
 - History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
-- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending
