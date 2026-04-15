@@ -1197,6 +1197,34 @@ def m048_user_id_mirror_tables(conn) -> None:
     log.info("m048_user_id_mirror_tables: user_id added to 5 tables; admin user seeded")
 
 
+def m049_work_item_quality_gate(conn) -> None:
+    """Add quality gate columns to mem_ai_work_items.
+
+    - quality_stage:  'staging' (needs review) | 'approved' | 'rejected'
+    - quality_issues: JSONB dict of per-check failure reasons
+    - dedup_status:   'new' | 'merged' (absorbed duplicate) | 'flagged' (similarity > 0.88)
+    Existing items are backfilled as approved/new (pre-existing = already extracted).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_ai_work_items
+              ADD COLUMN IF NOT EXISTS quality_stage  VARCHAR(20) NOT NULL DEFAULT 'staging',
+              ADD COLUMN IF NOT EXISTS quality_issues JSONB       NOT NULL DEFAULT '{}',
+              ADD COLUMN IF NOT EXISTS dedup_status   VARCHAR(20) NOT NULL DEFAULT 'new'
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wi_quality "
+            "ON mem_ai_work_items(project_id, quality_stage)"
+        )
+        # Backfill existing items as approved (pre-existing = already extracted)
+        cur.execute(
+            "UPDATE mem_ai_work_items SET quality_stage='approved', dedup_status='new' "
+            "WHERE quality_stage='staging'"
+        )
+    conn.commit()
+    log.info("m049_work_item_quality_gate: quality_stage, quality_issues, dedup_status added")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -1233,4 +1261,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m046_reorder_work_items", m046_reorder_work_items),
     ("m047_events_is_system", m047_events_is_system),
     ("m048_user_id_mirror_tables", m048_user_id_mirror_tables),
+    ("m049_work_item_quality_gate", m049_work_item_quality_gate),
 ]

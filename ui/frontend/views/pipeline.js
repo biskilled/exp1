@@ -45,6 +45,11 @@ export async function renderPipeline(container, project) {
 
       <div id="dd-errors" style="margin-bottom:1.2rem"></div>
 
+      <div class="dd-section-label">Work Item Health</div>
+      <div id="dd-health" style="margin-bottom:1.5rem">
+        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
+      </div>
+
       <div class="dd-section-label">LLM Pipeline Costs</div>
       <div id="dd-costs" style="margin-bottom:1.5rem">
         <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
@@ -158,6 +163,7 @@ async function _loadAll(container, project) {
     _renderAI(container, dash?.ai);
     _renderPipeline(container, dash?.pipeline);
     _renderErrors(container, dash?.recent_errors);
+    _renderHealth(container, dash?.health, project);
     _renderCosts(container, costsData);
     _renderRuns(container, runsData);
   } catch (e) {
@@ -417,6 +423,83 @@ function _renderErrors(container, errors) {
 }
 
 // ── LLM Pipeline Costs ────────────────────────────────────────────────────────
+
+function _renderHealth(container, h, project) {
+  const el = container.querySelector('#dd-health');
+  if (!el) return;
+  if (!h) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">No health data</div>';
+    return;
+  }
+
+  const orphanPct   = Math.round((h.orphan_rate   || 0) * 100);
+  const coveragePct = Math.round((h.coverage_rate || 0) * 100);
+  const orphanOk    = orphanPct < 15;
+  const coverageOk  = coveragePct >= 80;
+  const orphanColor = orphanOk ? 'var(--green,#27ae60)' : '#e67e22';
+  const covColor    = coverageOk ? 'var(--green,#27ae60)' : '#e67e22';
+
+  function bar(pct, color) {
+    const filled = Math.round(pct / 10);
+    return Array.from({length: 10}, (_, i) =>
+      `<span style="color:${i < filled ? color : 'var(--border)'};font-size:0.65rem">█</span>`
+    ).join('');
+  }
+
+  const scope = h.scope_breakdown || {};
+  const maxRec = h.max_recommended_wi || 5;
+
+  el.innerHTML = `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:0.85rem 1rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem 1.4rem;margin-bottom:0.75rem">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="font-size:0.65rem;color:var(--muted);width:90px;flex-shrink:0">Orphan Rate</span>
+          <span style="font-size:0.6rem">${bar(orphanPct, orphanColor)}</span>
+          <span style="font-size:0.65rem;color:${orphanColor};flex-shrink:0;font-weight:600">${orphanPct}%</span>
+          <span style="font-size:0.6rem;color:var(--muted)">${orphanOk ? '✓ &lt;15%' : '⚠ &gt;15%'}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="font-size:0.65rem;color:var(--muted);width:90px;flex-shrink:0">Coverage</span>
+          <span style="font-size:0.6rem">${bar(coveragePct, covColor)}</span>
+          <span style="font-size:0.65rem;color:${covColor};flex-shrink:0;font-weight:600">${coveragePct}%</span>
+          <span style="font-size:0.6rem;color:var(--muted)">${coverageOk ? '✓ &gt;80%' : '⚠ &lt;80%'}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;font-size:0.65rem;color:var(--muted);margin-bottom:0.6rem">
+        ${scope.feature != null ? `<span style="color:#3498db">⬡ feature ${scope.feature}</span>` : ''}
+        ${scope.bug != null ? `<span style="color:#e74c3c">⚠ bug ${scope.bug}</span>` : ''}
+        ${scope.task != null ? `<span style="color:#27ae60">✓ task ${scope.task}</span>` : ''}
+        <span>Staging: <b>${h.staging_count || 0}</b></span>
+        <span>Rejected: <b>${h.rejected_count || 0}</b></span>
+        <span>Max recommended: <b>${maxRec}</b></span>
+        <span style="color:var(--muted)">(${h.total_planner_tags || 0} planner tags × 1.5)</span>
+      </div>
+      <button
+        style="font-size:0.65rem;padding:0.22rem 0.7rem;background:var(--surface3,rgba(128,128,128,.15));
+               border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+               color:var(--text2);font-family:var(--font)"
+        onclick="window._runQualityCheck('${project}', this)">
+        Run Quality Check
+      </button>
+      <span id="dd-health-status" style="font-size:0.62rem;color:var(--muted);margin-left:0.5rem"></span>
+    </div>
+  `;
+
+  window._runQualityCheck = async (proj, btn) => {
+    const status = document.getElementById('dd-health-status');
+    btn.disabled = true;
+    if (status) status.textContent = 'Running…';
+    try {
+      const result = await api.pipeline.qualityCheck(proj);
+      if (status) status.textContent =
+        `Done: ${result.approved} approved, ${result.rejected} rejected, ${result.still_staging} staging`;
+    } catch (e) {
+      if (status) status.textContent = `Error: ${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}
 
 function _renderCosts(container, data) {
   const el = container.querySelector('#dd-costs');

@@ -505,6 +505,9 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
     tag_id_ai              UUID        REFERENCES planner_tags(id),
     tag_id_user            UUID        REFERENCES planner_tags(id),
     status_user            VARCHAR(20) NOT NULL DEFAULT 'active',
+    quality_stage          VARCHAR(20) NOT NULL DEFAULT 'staging',  -- 'staging'|'approved'|'rejected'
+    quality_issues         JSONB       NOT NULL DEFAULT '{}',       -- per-check failure reasons
+    dedup_status           VARCHAR(20) NOT NULL DEFAULT 'new',      -- 'new'|'merged'|'flagged'
     merged_into            UUID,
     start_date             TIMESTAMPTZ,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -517,6 +520,7 @@ CREATE TABLE IF NOT EXISTS mem_ai_work_items (
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_pid   ON mem_ai_work_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_cat   ON mem_ai_work_items(category_ai);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_suser ON mem_ai_work_items(status_user);
+CREATE INDEX IF NOT EXISTS idx_wi_quality       ON mem_ai_work_items(project_id, quality_stage);
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq   ON mem_ai_work_items(project_id, seq_num) WHERE seq_num IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_embed ON mem_ai_work_items USING ivfflat(embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
 

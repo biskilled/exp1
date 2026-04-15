@@ -364,9 +364,11 @@ api.workItems = {
     const opts = (projectOrOpts && typeof projectOrOpts === 'object')
       ? projectOrOpts : { project: projectOrOpts, category, status };
     const q = new URLSearchParams({ project: opts.project || '' });
-    if (opts.category) q.set('category', opts.category);
-    if (opts.status)   q.set('status',   opts.status);
-    if (opts.name)     q.set('name',     opts.name);
+    if (opts.category)      q.set('category',      opts.category);
+    if (opts.status)        q.set('status',         opts.status);
+    if (opts.name)          q.set('name',           opts.name);
+    if (opts.quality_stage) q.set('quality_stage',  opts.quality_stage);
+    if (opts.limit)         q.set('limit',          String(opts.limit));
     return _get(`/work-items?${q}`);
   },
   get:          (id, project) => _get(`/work-items/${enc(id)}?project=${enc(project || '')}`),
@@ -494,6 +496,8 @@ api.pipeline = {
   dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
   llmCosts:        (project)                        => _get(`/memory/${enc(project)}/llm-costs`),
+  qualityCheck:    (project)                        => _post(`/memory/${enc(project)}/quality-check`, {}),
+  pruneTags:       (project, keepIds)               => _post(`/memory/${enc(project)}/prune-tags`, { keep_ids: keepIds }),
   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
 };

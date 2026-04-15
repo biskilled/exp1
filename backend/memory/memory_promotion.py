@@ -165,9 +165,11 @@ _SQL_UPDATE_EVENT_AI_TAGS = """
 _SQL_INSERT_EXTRACTED_WORK_ITEM = """
     INSERT INTO mem_ai_work_items
         (project_id, category_ai, name_ai,
-         acceptance_criteria_ai, action_items_ai, tags, seq_num)
+         acceptance_criteria_ai, action_items_ai, tags, seq_num,
+         quality_stage, dedup_status)
     VALUES (%s, %s, %s, %s, %s, %s::jsonb,
-            (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s))
+            (SELECT COALESCE(MAX(seq_num),0)+1 FROM mem_ai_work_items WHERE project_id=%s),
+            'staging', 'new')
     ON CONFLICT (project_id, category_ai, name_ai) DO UPDATE SET
         acceptance_criteria_ai = CASE WHEN EXCLUDED.acceptance_criteria_ai != ''
                                       THEN EXCLUDED.acceptance_criteria_ai
@@ -181,7 +183,43 @@ _SQL_INSERT_EXTRACTED_WORK_ITEM = """
                                     THEN mem_ai_work_items.tags || EXCLUDED.tags
                                     ELSE mem_ai_work_items.tags END,
         updated_at           = NOW()
-    RETURNING id
+    RETURNING id, (xmax = 0) AS inserted
+"""
+
+_SQL_GET_ACTIVE_PLANNER_TAGS = """
+    SELECT pt.name, tc.name AS category, pt.id
+    FROM planner_tags pt
+    JOIN mng_tags_categories tc ON tc.id = pt.category_id
+    WHERE pt.project_id=%s AND pt.status NOT IN ('archived', 'done')
+    ORDER BY tc.name, pt.name
+"""
+
+_SQL_DEDUP_TAG_CHECK = """
+    SELECT id, name_ai FROM mem_ai_work_items
+    WHERE project_id=%s AND category_ai=%s
+      AND created_at > NOW() - INTERVAL '30 days'
+      AND (tags @> %s::jsonb OR name_ai = %s)
+    LIMIT 1
+"""
+
+_SQL_DEDUP_EMBED_CHECK = """
+    SELECT id, name_ai, 1 - (embedding <=> %s::vector) AS sim
+    FROM mem_ai_work_items
+    WHERE project_id=%s AND category_ai=%s AND id != %s::uuid
+      AND embedding IS NOT NULL
+      AND created_at > NOW() - INTERVAL '30 days'
+    ORDER BY embedding <=> %s::vector LIMIT 1
+"""
+
+_SQL_UPDATE_QUALITY_GATE = """
+    UPDATE mem_ai_work_items
+    SET quality_stage=%s, quality_issues=%s::jsonb, dedup_status=%s, updated_at=NOW()
+    WHERE id=%s::uuid AND project_id=%s
+"""
+
+_SQL_COUNT_LINKED_EVENTS = """
+    SELECT COUNT(*) FROM mem_ai_events
+    WHERE work_item_id=%s::uuid AND project_id=%s
 """
 
 # Link a single event row to a work item
@@ -703,7 +741,14 @@ class MemoryPromotion:
              feature/bug value are collapsed into ONE work item via the UNIQUE
              (project_id, category_ai, name_ai) constraint.
           2. AI fallback — only for events with no user tag. Haiku extracts
-             up to 2 slugs per event; limited to avoid explosion.
+             up to 2 slugs per event; limited proportionally to planner tag count.
+
+        Improvements over baseline:
+          - Scope contract: existing planner tags injected into AI prompt context
+          - matched_tag: AI can anchor to an existing tag → direct tag_id_ai set
+          - Cap: max new items = max(5, int(total_planner_tags * 1.5))
+          - Dedup tier 1: tag-set hash check before INSERT
+          - Quality gate: name specificity + evidence count gate post-INSERT
 
         The work_item_id is set on the event row so the link is queryable.
         Returns count of work items created (inserts only, not updates).
@@ -724,10 +769,46 @@ class MemoryPromotion:
         if not events:
             return 0
 
+        # ── 3a. Load planner tags once per run ────────────────────────────────
+        tag_lookup: dict[str, tuple[str, str]] = {}  # name.lower() → (id, category)
+        scope_context = ""
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_GET_ACTIVE_PLANNER_TAGS, (project_id,))
+                    tag_rows = cur.fetchall()
+
+            if tag_rows:
+                by_cat: dict[str, list[str]] = {}
+                for t_name, t_cat, t_id in tag_rows:
+                    tag_lookup[t_name.lower()] = (str(t_id), t_cat)
+                    by_cat.setdefault(t_cat, []).append(t_name)
+
+                lines = ["EXISTING PLANNER TAGS (match to these FIRST — use exact name if work relates to it):"]
+                for cat, names in sorted(by_cat.items()):
+                    lines.append(f"  {cat}: {', '.join(names)}")
+                lines += [
+                    "",
+                    "SCOPE RULES:",
+                    "- Return matched_tag: \"<name>\" when work clearly relates to an existing tag",
+                    "- If no match, return matched_tag: null — a new work item will be proposed",
+                    "- MAX 1 new work item per event (matched items do not count toward this limit)",
+                    "- Be specific: reject vague titles like \"fix bug\", \"add feature\", \"update code\"",
+                    "",
+                ]
+                scope_context = "\n".join(lines)
+        except Exception as e:
+            log.debug(f"extract_work_items: tag load error: {e}")
+
+        # ── 3b. Cap: max new items proportional to planner tag count ─────────
+        total_planner_tags = len(tag_lookup)
+        max_new_items = max(5, int(total_planner_tags * 1.5))
+        new_items_this_run = 0
+
         ai_fallback_prompt = _prompts.content("work_item_extraction") or (
             "Given a digest of development activity, identify at most 2 actionable work items. "
             "Return JSON only: {\"items\": [{\"category\": \"bug|feature|task\", "
-            "\"name\": \"short-slug\", "
+            "\"name\": \"short-slug\", \"matched_tag\": null, "
             "\"acceptance_criteria\": \"- [ ] ...\", \"action_items\": \"- ...\"}]}. "
             "Use lowercase-hyphenated slugs. Return {\"items\": []} if nothing actionable."
         )
@@ -761,6 +842,7 @@ class MemoryPromotion:
             bug_val     = event_tags.get("bug", "").strip()
 
             wi_id: Optional[str] = None
+            wi_name_for_embed: str = ""
 
             # ── Path 1: user tag exists → 1 work item per tag value ──────────
             if feature_val or bug_val:
@@ -771,31 +853,58 @@ class MemoryPromotion:
                     category, tag_name = "feature", feature_val
 
                 canonical_name = tag_name.lower().strip()[:200]
+                wi_name_for_embed = canonical_name
 
-                try:
-                    with db.conn() as conn:
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                (project_id, category, canonical_name,
-                                 "", action_items or "", json.dumps(wi_tags),
-                                 project_id),
-                            )
-                            row = cur.fetchone()
-                            if row:
-                                wi_id = str(row[0])
-                                created += 1
-                except Exception as e:
-                    log.debug(f"extract_work_items tag-path insert error: {e}")
+                # Tier 1 dedup: same-name or matching tags already exist
+                existing_wi_id = self._dedup_tier1(
+                    project_id, category, canonical_name, wi_tags
+                )
+                if existing_wi_id:
+                    wi_id = existing_wi_id
+                else:
+                    try:
+                        with db.conn() as conn:
+                            with conn.cursor() as cur:
+                                cur.execute(
+                                    _SQL_INSERT_EXTRACTED_WORK_ITEM,
+                                    (project_id, category, canonical_name,
+                                     "", action_items or "", json.dumps(wi_tags),
+                                     project_id),
+                                )
+                                row = cur.fetchone()
+                                if row:
+                                    wi_id = str(row[0])
+                                    was_inserted = row[1] if len(row) > 1 else True
+                                    if was_inserted:
+                                        created += 1
+                                        # Link to planner tag if present in lookup
+                                        matched_id = tag_lookup.get(canonical_name, (None, None))[0]
+                                        if matched_id:
+                                            self._set_tag_id_ai(wi_id, matched_id)
+                    except Exception as e:
+                        log.debug(f"extract_work_items tag-path insert error: {e}")
 
             # ── Path 2: no user tag → limited AI extraction (prompt_batch/session_summary only) ──
             # Commit events without explicit feature/bug tags are skipped — they generate noise.
             # Only human-authored prompt batches and session summaries get AI extraction.
             elif event_type in ("prompt_batch", "session_summary"):
-                user_msg = (
-                    f"Event type: {event_type}\nDate: {str(created_at)[:10]}\n\n{content}"
-                )
-                raw = await _call_llm(ai_fallback_prompt, user_msg, max_tokens=400)
+                # 3b. Cap gate — skip AI if we've already created too many new items this run
+                if new_items_this_run >= max_new_items:
+                    log.debug(
+                        f"extract_work_items: cap reached ({new_items_this_run}/{max_new_items}), "
+                        "skipping AI extraction for this event"
+                    )
+                    _mark()
+                    continue
+
+                # 3c. Prepend scope context to user message
+                event_digest = f"Event type: {event_type}\nDate: {str(created_at)[:10]}\n\n{content}"
+                if scope_context:
+                    user_msg = scope_context + "\n---\n\nEVENT TO ANALYSE:\n" + event_digest
+                else:
+                    user_msg = event_digest
+
+                raw = await _call_llm(ai_fallback_prompt, user_msg, max_tokens=600)
                 parsed = _parse_json(raw) if raw else {}
                 items = (parsed.get("items") or [])[:2]  # hard cap: 2 items max per untagged event
 
@@ -803,7 +912,7 @@ class MemoryPromotion:
                     name = (item.get("name") or "").strip().lower()[:200]
                     if not name:
                         continue
-                    # Confidence gate: skip low-confidence extractions to reduce hallucination
+                    # Confidence gate
                     confidence = float(item.get("confidence") or 0.0)
                     if confidence < 0.75:
                         log.debug(f"extract_work_items: skipping '{name}' (confidence={confidence:.2f} < 0.75)")
@@ -811,21 +920,46 @@ class MemoryPromotion:
                     category = item.get("category", "task")
                     ac = (item.get("acceptance_criteria") or "").strip()[:1000]
                     ai_actions = (item.get("action_items") or "").strip()[:1000]
-                    try:
-                        with db.conn() as conn:
-                            with conn.cursor() as cur:
-                                cur.execute(
-                                    _SQL_INSERT_EXTRACTED_WORK_ITEM,
-                                    (project_id, category, name,
-                                     ac, ai_actions, json.dumps(wi_tags),
-                                     project_id),
-                                )
-                                row = cur.fetchone()
-                                if row:
-                                    wi_id = str(row[0])
-                                    created += 1
-                    except Exception as e:
-                        log.debug(f"extract_work_items ai-path insert error: {e}")
+
+                    # 3d. matched_tag handling — directly link to planner tag
+                    matched_tag_name = (item.get("matched_tag") or "").strip().lower()
+                    pre_linked_tag_id: Optional[str] = None
+                    pre_linked_category: Optional[str] = None
+                    if matched_tag_name and matched_tag_name in tag_lookup:
+                        pre_linked_tag_id, pre_linked_category = tag_lookup[matched_tag_name]
+                        if pre_linked_category:
+                            category = pre_linked_category
+
+                    # Tier 1 dedup check before INSERT
+                    existing_wi_id = self._dedup_tier1(project_id, category, name, wi_tags)
+                    if existing_wi_id:
+                        wi_id = existing_wi_id
+                        # Still link event, but don't count as new
+                    else:
+                        try:
+                            with db.conn() as conn:
+                                with conn.cursor() as cur:
+                                    cur.execute(
+                                        _SQL_INSERT_EXTRACTED_WORK_ITEM,
+                                        (project_id, category, name,
+                                         ac, ai_actions, json.dumps(wi_tags),
+                                         project_id),
+                                    )
+                                    row = cur.fetchone()
+                                    if row:
+                                        wi_id = str(row[0])
+                                        was_inserted = row[1] if len(row) > 1 else True
+                                        if was_inserted:
+                                            # Set tag_id_ai if matched
+                                            if pre_linked_tag_id:
+                                                self._set_tag_id_ai(wi_id, pre_linked_tag_id)
+                                            else:
+                                                # Count only unmatched new items toward the cap
+                                                new_items_this_run += 1
+                                                created += 1
+                                            wi_name_for_embed = name
+                        except Exception as e:
+                            log.debug(f"extract_work_items ai-path insert error: {e}")
 
             # ── Link event → work item ────────────────────────────────────────
             if wi_id:
@@ -837,11 +971,13 @@ class MemoryPromotion:
                     import asyncio as _aio
                     loop = _aio.get_event_loop()
                     if loop.is_running():
+                        if wi_name_for_embed:
+                            loop.create_task(_embed_work_item(
+                                project_id, wi_id, wi_name_for_embed,
+                            ))
+                        # Only run async tag matching for newly inserted items (not dedup-merged)
                         loop.create_task(_match_new_work_item(project, wi_id))
-                        loop.create_task(_embed_work_item(
-                            project_id, wi_id,
-                            locals().get("canonical_name") or locals().get("name") or "",
-                        ))
+                        loop.create_task(self._run_quality_gate_async(project_id, wi_id))
                 except Exception as e:
                     log.debug(f"extract_work_items link error: {e}")
 
@@ -852,6 +988,124 @@ class MemoryPromotion:
             f"events={len(events)} for '{project}'"
         )
         return created
+
+    def _dedup_tier1(
+        self,
+        project_id: int,
+        category: str,
+        name: str,
+        wi_tags: dict,
+    ) -> Optional[str]:
+        """Check for tag-set or name duplicate before INSERT. Returns existing id or None."""
+        try:
+            # Only check if there are meaningful tags to match on
+            tag_filter = {k: v for k, v in wi_tags.items() if k in ("feature", "bug") and v}
+            if not tag_filter and not name:
+                return None
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        _SQL_DEDUP_TAG_CHECK,
+                        (project_id, category, json.dumps(tag_filter), name),
+                    )
+                    row = cur.fetchone()
+            if row:
+                existing_id = str(row[0])
+                log.debug(f"_dedup_tier1: merged '{name}' into existing '{row[1]}' ({existing_id[:8]})")
+                self._mark_dedup(existing_id, project_id, "merged")
+                return existing_id
+        except Exception as e:
+            log.debug(f"_dedup_tier1 error: {e}")
+        return None
+
+    def _mark_dedup(self, wi_id: str, project_id: int, status: str) -> None:
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET dedup_status=%s, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (status, wi_id, project_id),
+                    )
+        except Exception as e:
+            log.debug(f"_mark_dedup error: {e}")
+
+    def _set_tag_id_ai(self, wi_id: str, tag_id: str) -> None:
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE mem_ai_work_items SET tag_id_ai=%s::uuid, updated_at=NOW() "
+                        "WHERE id=%s::uuid",
+                        (tag_id, wi_id),
+                    )
+        except Exception as e:
+            log.debug(f"_set_tag_id_ai error: {e}")
+
+    async def _run_quality_gate_async(self, project_id: int, wi_id: str) -> None:
+        """Async wrapper so quality gate can be fire-and-forget from event loop."""
+        try:
+            await self.run_quality_gate(project_id, wi_id)
+        except Exception as e:
+            log.debug(f"_run_quality_gate_async error ({wi_id[:8]}): {e}")
+
+    async def run_quality_gate(self, project_id: int, wi_id: str) -> str:
+        """Apply quality checks to a single work item. Returns final quality_stage."""
+        _GENERIC_NAMES = frozenset({
+            'fix', 'bug', 'feature', 'task', 'update', 'add', 'change', 'improve',
+            'refactor', 'test', 'review', 'cleanup', 'remove', 'delete',
+        })
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name_ai, dedup_status FROM mem_ai_work_items "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (wi_id, project_id),
+                    )
+                    row = cur.fetchone()
+            if not row:
+                return "staging"
+            name, dedup_status = row[0], row[1]
+
+            # Count linked events
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_COUNT_LINKED_EVENTS, (wi_id, project_id))
+                    event_count = cur.fetchone()[0] or 0
+
+            issues: dict = {}
+            stage = "approved"
+
+            # Name specificity check
+            name_lower = name.lower().strip()
+            first_word = name_lower.split("-")[0] if "-" in name_lower else name_lower
+            if len(name) < 8 or name_lower in _GENERIC_NAMES or first_word in _GENERIC_NAMES:
+                issues["scope"] = f"Name too generic: '{name}'"
+                stage = "rejected"
+
+            # Evidence: at least 2 linked events required
+            if event_count < 2:
+                issues["evidence"] = f"Only {event_count} linked event(s) — need ≥ 2"
+                if stage != "rejected":
+                    stage = "staging"
+
+            # Dedup flag carries over
+            if dedup_status == "flagged":
+                if stage != "rejected":
+                    stage = "staging"
+                issues["coverage"] = "Potential duplicate — similarity > 0.88"
+
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        _SQL_UPDATE_QUALITY_GATE,
+                        (stage, json.dumps(issues), dedup_status, wi_id, project_id),
+                    )
+            return stage
+        except Exception as e:
+            log.debug(f"run_quality_gate error ({wi_id[:8]}): {e}")
+            return "staging"
 
     async def dedup_work_items(self, project: str) -> dict:
         """Merge duplicate work items that share the same feature or bug tag.

@@ -12,6 +12,8 @@ Endpoints:
     GET  /memory/{project}/llm-prompt           — get rendered system prompt (compact|full|gemini)
     POST /memory/{project}/embed-commits        — run Haiku digest + embedding for all unprocessed commits
     POST /memory/{project}/embed-prompts        — process all pending prompts across all sessions
+    POST /memory/{project}/quality-check        — re-run quality gate on staging work items
+    POST /memory/{project}/prune-tags           — delete planner_tags except keep_ids list
 """
 from __future__ import annotations
 
@@ -596,6 +598,96 @@ async def rebuild_work_items(
     }
 
 
+class PruneTagsBody(BaseModel):
+    keep_ids: list[str]  # UUIDs to keep; all others will be deleted
+
+
+@router.post("/{project}/quality-check")
+async def run_quality_check(project: str, background_tasks: BackgroundTasks):
+    """Re-run quality gate on all staging work items.
+
+    Checks name specificity and evidence count for every item with
+    quality_stage='staging', upgrading to 'approved' or 'rejected'.
+    Returns {checked, approved, rejected, still_staging}.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+
+    project_id = db.get_or_create_project_id(project)
+
+    # Load all staging items
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND quality_stage='staging'",
+                    (project_id,),
+                )
+                staging_ids = [str(r[0]) for r in cur.fetchall()]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    from memory.memory_promotion import MemoryPromotion
+    mp = MemoryPromotion()
+    checked = approved = rejected = still_staging = 0
+
+    for wi_id in staging_ids:
+        try:
+            stage = await mp.run_quality_gate(project_id, wi_id)
+            checked += 1
+            if stage == "approved":
+                approved += 1
+            elif stage == "rejected":
+                rejected += 1
+            else:
+                still_staging += 1
+        except Exception as e:
+            log.debug(f"quality_check error for {wi_id}: {e}")
+            still_staging += 1
+
+    return {
+        "project": project,
+        "checked": checked,
+        "approved": approved,
+        "rejected": rejected,
+        "still_staging": still_staging,
+    }
+
+
+@router.post("/{project}/prune-tags")
+async def prune_tags(project: str, body: PruneTagsBody):
+    """Delete all planner_tags for this project EXCEPT those in keep_ids.
+
+    Use this to reset the tag taxonomy to a curated set before a full rebuild.
+    Returns {deleted, kept}.
+    """
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="PostgreSQL not available")
+    if not body.keep_ids:
+        raise HTTPException(status_code=400, detail="keep_ids must not be empty — pass the UUIDs to keep")
+
+    project_id = db.get_or_create_project_id(project)
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Count total before deletion
+                cur.execute("SELECT COUNT(*) FROM planner_tags WHERE project_id=%s", (project_id,))
+                total_before = cur.fetchone()[0] or 0
+
+                # Delete all except keep_ids
+                import psycopg2.extras
+                cur.execute(
+                    "DELETE FROM planner_tags WHERE project_id=%s AND id != ALL(%s::uuid[])",
+                    (project_id, body.keep_ids),
+                )
+                deleted = cur.rowcount
+        kept = total_before - deleted
+        log.info(f"prune_tags: deleted={deleted} kept={kept} for '{project}'")
+        return {"project": project, "deleted": deleted, "kept": kept}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{project}/dedup-work-items")
 async def dedup_work_items(project: str):
     """Merge duplicate work items that share the same feature or bug tag.
@@ -712,6 +804,7 @@ async def get_data_dashboard(project: str):
     ai: dict = {}
     pipeline: dict = {}
     pending: dict = {}
+    health: dict = {}
     recent_errors: list = []
 
     try:
@@ -809,13 +902,20 @@ async def get_data_dashboard(project: str):
                                   COUNT(*) FILTER (WHERE score_ai = 2),
                                   COUNT(*) FILTER (WHERE score_ai = 3),
                                   COUNT(*) FILTER (WHERE score_ai = 4),
-                                  COUNT(*) FILTER (WHERE score_ai = 5)
+                                  COUNT(*) FILTER (WHERE score_ai = 5),
+                                  COUNT(*) FILTER (WHERE quality_stage = 'staging'),
+                                  COUNT(*) FILTER (WHERE quality_stage = 'rejected'),
+                                  COUNT(*) FILTER (WHERE category_ai = 'feature'),
+                                  COUNT(*) FILTER (WHERE category_ai = 'bug'),
+                                  COUNT(*) FILTER (WHERE category_ai = 'task')
                            FROM mem_ai_work_items WHERE project_id = %s""",
                         (project_id,),
                     )
                     r = cur.fetchone()
+                    total_wi = r[0] or 0
+                    unlinked_ai_only = r[8] or 0
                     ai["work_items"] = {
-                        "total":           r[0] or 0,
+                        "total":           total_wi,
                         "last_24h":        r[1] or 0,
                         "last_at":         r[2].isoformat() if r[2] else None,
                         "active":          r[3] or 0,
@@ -823,20 +923,31 @@ async def get_data_dashboard(project: str):
                         "linked":          r[5] or 0,
                         "promoted_24h":    r[6] or 0,
                         "last_promoted_at": r[7].isoformat() if r[7] else None,
-                        "unlinked_ai_only": r[8] or 0,
+                        "unlinked_ai_only": unlinked_ai_only,
                         "ai_suggested":    r[9] or 0,
                         "by_score": {
                             "0": r[10] or 0, "1": r[11] or 0, "2": r[12] or 0,
                             "3": r[13] or 0, "4": r[14] or 0, "5": r[15] or 0,
                         },
+                        "staging":         r[16] or 0,
+                        "rejected":        r[17] or 0,
+                        "by_category": {
+                            "feature": r[18] or 0,
+                            "bug":     r[19] or 0,
+                            "task":    r[20] or 0,
+                        },
                     }
                 except Exception:
                     conn.rollback()
+                    total_wi = 0
+                    unlinked_ai_only = 0
                     ai["work_items"] = {"total": 0, "last_24h": 0, "last_at": None,
                                         "active": 0, "done": 0, "linked": 0,
                                         "promoted_24h": 0, "last_promoted_at": None,
                                         "unlinked_ai_only": 0, "ai_suggested": 0,
-                                        "by_score": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0}}
+                                        "by_score": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0},
+                                        "staging": 0, "rejected": 0,
+                                        "by_category": {"feature": 0, "bug": 0, "task": 0}}
 
                 # Feature snapshots (planner_tags with AI content)
                 try:
@@ -911,6 +1022,66 @@ async def get_data_dashboard(project: str):
                     conn.rollback()
                     pending["work_items_unmatched"] = 0
 
+                # ── Health KPIs ───────────────────────────────────────────
+                health: dict = {}
+                try:
+                    # Count features (category_id matching 'feature' category)
+                    cur.execute(
+                        """SELECT COUNT(DISTINCT pt.id)
+                           FROM planner_tags pt
+                           JOIN mng_tags_categories tc ON tc.id=pt.category_id AND tc.name='feature'
+                           WHERE pt.project_id=%s AND pt.status NOT IN ('archived', 'done')""",
+                        (project_id,),
+                    )
+                    total_features = cur.fetchone()[0] or 0
+
+                    # Features with at least 1 linked work item
+                    cur.execute(
+                        """SELECT COUNT(DISTINCT pt.id)
+                           FROM planner_tags pt
+                           JOIN mng_tags_categories tc ON tc.id=pt.category_id AND tc.name='feature'
+                           WHERE pt.project_id=%s AND pt.status NOT IN ('archived', 'done')
+                             AND EXISTS (
+                               SELECT 1 FROM mem_ai_work_items wi
+                               WHERE (wi.tag_id_user=pt.id OR wi.tag_id_ai=pt.id)
+                                 AND wi.project_id=%s
+                             )""",
+                        (project_id, project_id),
+                    )
+                    features_with_wi = cur.fetchone()[0] or 0
+
+                    # Total active planner tags
+                    cur.execute(
+                        "SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status NOT IN ('archived','done')",
+                        (project_id,),
+                    )
+                    total_tags = cur.fetchone()[0] or 0
+
+                    # Re-use earlier values (may be 0 if query failed)
+                    _wi = ai.get("work_items", {})
+                    staging = _wi.get("staging", 0)
+                    rejected = _wi.get("rejected", 0)
+                    _total_wi = _wi.get("total", 0)
+                    _unlinked = _wi.get("unlinked_ai_only", 0)
+
+                    health = {
+                        "orphan_rate":        round(_unlinked / max(_total_wi, 1), 3),
+                        "coverage_rate":      round(features_with_wi / max(total_features, 1), 3),
+                        "staging_count":      staging,
+                        "rejected_count":     rejected,
+                        "scope_breakdown":    _wi.get("by_category", {}),
+                        "total_planner_tags": total_tags,
+                        "max_recommended_wi": max(5, int(total_tags * 1.5)),
+                    }
+                except Exception:
+                    conn.rollback()
+                    health = {
+                        "orphan_rate": 0, "coverage_rate": 0,
+                        "staging_count": 0, "rejected_count": 0,
+                        "scope_breakdown": {}, "total_planner_tags": 0,
+                        "max_recommended_wi": 5,
+                    }
+
                 # ── Recent errors ─────────────────────────────────────────
                 try:
                     cur.execute(
@@ -931,14 +1102,15 @@ async def get_data_dashboard(project: str):
     except Exception as e:
         log.warning(f"get_data_dashboard error: {e}")
         return {"mirror": mirror, "ai": ai, "pipeline": pipeline,
-                "pending": pending, "recent_errors": recent_errors, "error": str(e)}
+                "pending": pending, "health": health, "recent_errors": recent_errors, "error": str(e)}
 
     return {
-        "mirror": mirror,
-        "ai": ai,
-        "pipeline": pipeline,
-        "pending": pending,
+        "mirror":        mirror,
+        "ai":            ai,
+        "pipeline":      pipeline,
+        "pending":       pending,
         "recent_errors": recent_errors,
+        "health":        health,
     }
 
 

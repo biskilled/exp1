@@ -110,6 +110,18 @@ export function renderEntities(container) {
                   background:var(--surface2)">
         <span style="font-size:0.6rem;font-weight:700;color:var(--text);letter-spacing:.03em">⬡ WORK ITEMS</span>
         <span id="wi-panel-count" style="font-size:0.55rem;color:var(--muted)"></span>
+        <!-- Quality filter tabs -->
+        <span id="wi-filter-tabs" style="display:flex;gap:2px;margin-left:4px">
+          ${['all','staging','rejected'].map(f =>
+            `<button data-filter="${f}"
+               onclick="window._wiPanelSetFilter('${f}')"
+               style="font-size:0.52rem;padding:0.05rem 0.35rem;border-radius:4px;cursor:pointer;
+                      font-family:var(--font);outline:none;
+                      background:${f==='all'?'var(--accent)':'var(--surface3,rgba(128,128,128,.15))'};
+                      border:1px solid ${f==='all'?'var(--accent)':'var(--border)'};
+                      color:${f==='all'?'#fff':'var(--muted)'}">${f}</button>`
+          ).join('')}
+        </span>
         <span style="flex:1"></span>
         <button id="wi-panel-refresh-btn"
           title="Refresh list and trigger AI tag matching for new items"
@@ -470,18 +482,47 @@ async function _plannerSelectCat(catId, catName) {
 
 let _dragWiData = null;   // { id, name_ai, category_ai } — set while dragging a work item
 let _wiPanelItems = {};   // id → wi object, cache for bottom panel
+let _wiPanelFilter = 'all'; // 'all' | 'staging' | 'rejected'
+
+window._wiPanelSetFilter = function(filter) {
+  _wiPanelFilter = filter;
+  // Update tab button styles
+  document.querySelectorAll('#wi-filter-tabs button').forEach(btn => {
+    const active = btn.dataset.filter === filter;
+    btn.style.background = active ? 'var(--accent)' : 'var(--surface3,rgba(128,128,128,.15))';
+    btn.style.border = `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`;
+    btn.style.color = active ? '#fff' : 'var(--muted)';
+  });
+  // Re-render with filter applied
+  const items = Object.values(_wiPanelItems);
+  const filtered = filter === 'all' ? items : items.filter(wi => wi.quality_stage === filter);
+  _renderWiPanel(filtered, window._wiPanelProject || '');
+};
 
 async function _loadWiPanel(project) {
   const list = document.getElementById('wi-panel-list');
   if (!list) return;
+  window._wiPanelProject = project;
   try {
-    const data = await api.workItems.unlinked(project);
-    const items = data.items || [];
+    const params = _wiPanelFilter !== 'all' ? { quality_stage: _wiPanelFilter } : {};
+    const data = await api.workItems.list({ project, limit: 200, ...params });
+    const allItems = (data.work_items || []).filter(w => !w.merged_into);
     _wiPanelItems = {};
-    items.forEach(wi => { _wiPanelItems[wi.id] = wi; });
+    // Always cache all items (to allow client-side filter switching)
+    if (_wiPanelFilter === 'all') {
+      allItems.forEach(wi => { _wiPanelItems[wi.id] = wi; });
+    } else {
+      // Reload all for cache, then filter
+      const allData = await api.workItems.list({ project, limit: 200 }).catch(() => data);
+      (allData.work_items || []).filter(w => !w.merged_into).forEach(wi => { _wiPanelItems[wi.id] = wi; });
+    }
+    const items = _wiPanelFilter === 'all' ? allItems : allItems;
     _renderWiPanel(items, project);
     const cnt = document.getElementById('wi-panel-count');
-    if (cnt) cnt.textContent = items.length ? `(${items.length} unlinked)` : '(all linked ✓)';
+    if (cnt) {
+      const unlinked = allItems.filter(w => !w.tag_id_user).length;
+      cnt.textContent = unlinked ? `(${unlinked} unlinked)` : '(all linked ✓)';
+    }
   } catch(e) {
     if (list) list.innerHTML = '<div style="padding:0.5rem 1rem;font-size:0.65rem;color:var(--muted)">Could not load work items</div>';
   }
@@ -1173,6 +1214,18 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
     const linked = wi.tag_id_user
       ? `<span style="font-size:0.5rem;color:var(--accent);margin-left:4px">✓</span>`
       : (wi.tag_id_ai ? `<span style="font-size:0.5rem;color:var(--muted);margin-left:4px">✦</span>` : '');
+    // Quality badge
+    const qStage = wi.quality_stage;
+    const qIssues = wi.quality_issues || {};
+    const qBadge = qStage === 'staging'
+      ? `<span style="font-size:0.45rem;padding:0 0.22rem;border-radius:4px;background:#f39c1222;
+                      color:#f39c12;border:1px solid #f39c1244;white-space:nowrap;flex-shrink:0;cursor:default"
+              title="${Object.values(qIssues).join(' | ') || 'Needs review'}">⏳</span>`
+      : (qStage === 'rejected'
+          ? `<span style="font-size:0.45rem;padding:0 0.22rem;border-radius:4px;background:#e74c3c22;
+                          color:#e74c3c;border:1px solid #e74c3c44;white-space:nowrap;flex-shrink:0;cursor:default"
+                  title="${Object.values(qIssues).join(' | ') || 'Quality rejected'}">✗</span>`
+          : '');
 
     return `
       <tr draggable="true" data-wi-id="${wi.id}" data-wi-name="${_esc(wi.name_ai)}"
@@ -1189,6 +1242,7 @@ function _wiRenderRows(byId, catName, catColor, catIcon, project) {
             <span style="font-size:0.5rem;color:${sc};background:${sc}22;
                          padding:0 0.3rem;border-radius:8px;flex-shrink:0;white-space:nowrap">${su}</span>
             ${linked}
+            ${qBadge}
           </div>
           ${descClip ? `<div style="font-size:0.6rem;color:var(--muted);margin-top:0.08rem;
                                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
@@ -1267,11 +1321,24 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
           ? `<span style="font-size:0.58rem;color:var(--muted);border:1px solid var(--border);
                           padding:0.1rem 0.35rem;border-radius:8px;opacity:.7">✦ suggested</span>`
           : '');
+    // Quality stage badge — shown only for staging/rejected
+    const qStage = wi.quality_stage;
+    const qIssues = wi.quality_issues || {};
+    const drawerQualityBadge = qStage === 'staging'
+      ? `<span style="font-size:0.55rem;padding:0.1rem 0.35rem;border-radius:6px;background:#f39c1222;
+                      color:#f39c12;border:1px solid #f39c1244;cursor:default"
+              title="${Object.values(qIssues).join(' | ') || 'Needs review'}">⏳ staging</span>`
+      : (qStage === 'rejected'
+          ? `<span style="font-size:0.55rem;padding:0.1rem 0.35rem;border-radius:6px;background:#e74c3c22;
+                          color:#e74c3c;border:1px solid #e74c3c44;cursor:default"
+                  title="${Object.values(qIssues).join(' | ') || 'Quality rejected'}">✗ rejected</span>`
+          : '');
     inner.innerHTML = `
       <div style="padding:0.9rem 1rem;border-bottom:1px solid var(--border);
-                  display:flex;align-items:center;gap:0.5rem">
+                  display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         ${drawerSeqBadge}
-        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis">${_esc(wi.name_ai)}</strong>
+        <strong style="font-size:0.75rem;flex:1;overflow:hidden;text-overflow:ellipsis;min-width:80px">${_esc(wi.name_ai)}</strong>
+        ${drawerQualityBadge}
         ${linkedTagBadge}
         <button onclick="window._plannerCloseDrawer()"
           style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
@@ -1327,6 +1394,15 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
                     title="${_esc(k)}">${_esc(k)}: ${_esc(String(v))}</span>`;
           }).join('')}
         </div>` : ''}
+
+        <!-- Linked Tag section -->
+        <div>
+          <div style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);
+                      letter-spacing:.06em;margin-bottom:0.35rem">Linked Planner Tag</div>
+          <div id="wi-link-tag-${id}" style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap">
+            <span style="font-size:0.6rem;color:var(--muted)">Loading tags…</span>
+          </div>
+        </div>
 
         <!-- Actions row: Extract Code + Refresh AI -->
         <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1467,6 +1543,61 @@ async function _openWorkItemDrawer(id, catName, project, pane, catColor, catIcon
 
       </div>
     `;
+
+    // Load planner tags async → populate "Linked Tag" select
+    api.tags.list(project).then(tagData => {
+      const el = document.getElementById(`wi-link-tag-${id}`);
+      if (!el) return;
+      // Tags API returns a tree — flatten recursively
+      const flatten = (arr) => arr.flatMap(t => [t, ...flatten(t.children || [])]);
+      const allTags = flatten(Array.isArray(tagData) ? tagData : (tagData.tags || []));
+      const active = allTags.filter(t => t.status !== 'archived' && t.status !== 'done');
+      // Group by category
+      const byCategory = {};
+      active.forEach(t => {
+        const cat = t.category_name || t.category || 'other';
+        (byCategory[cat] = byCategory[cat] || []).push(t);
+      });
+      const currentTagId = wi.tag_id_user || '';
+      const optGroups = Object.entries(byCategory).map(([cat, tags]) =>
+        `<optgroup label="${_esc(cat)}">${
+          tags.map(t => `<option value="${_esc(t.id)}"${t.id===currentTagId?' selected':''}>${_esc(t.name)}</option>`).join('')
+        }</optgroup>`
+      ).join('');
+
+      const currentTagName = active.find(t => t.id === currentTagId)?.name;
+      el.innerHTML = `
+        <select id="wi-link-tag-sel-${id}"
+          style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);
+                 font-family:var(--font);font-size:0.65rem;padding:0.2rem 0.4rem;
+                 border-radius:var(--radius);outline:none"
+          onchange="window._wiLinkTag('${id}','${project}',this.value)">
+          <option value="">— unlinked —</option>
+          ${optGroups}
+        </select>
+        ${currentTagId
+          ? `<button onclick="window._wiLinkTag('${id}','${project}','')"
+               style="background:none;border:1px solid var(--border);color:var(--muted);
+                      font-size:0.6rem;padding:0.2rem 0.4rem;border-radius:var(--radius);
+                      cursor:pointer;font-family:var(--font);outline:none"
+               title="Remove link">✕</button>`
+          : ''}
+      `;
+    }).catch(() => {
+      const el = document.getElementById(`wi-link-tag-${id}`);
+      if (el) el.innerHTML = '<span style="font-size:0.6rem;color:var(--muted)">Could not load tags</span>';
+    });
+
+    window._wiLinkTag = async (wid, proj, tagId) => {
+      try {
+        await api.workItems.patch(wid, proj, { tag_id_user: tagId || null });
+        toast(tagId ? 'Tag linked ✓' : 'Tag unlinked', 'success');
+        // Refresh the drawer with updated data
+        _openWorkItemDrawer(wid, catName, proj, pane, catColor, catIcon);
+        _loadWiPanel(proj);
+        _loadTagLinkedWorkItems(proj).catch(() => {});
+      } catch (e) { toast('Link failed: ' + e.message, 'error'); }
+    };
 
     window._wiDelete = async (wid, proj) => {
       if (!confirm('Delete this work item?')) return;

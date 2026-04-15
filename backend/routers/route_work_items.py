@@ -64,6 +64,7 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.tags, w.tags_ai, w.tag_id_user, w.tag_id_ai,
               w.merged_into, w.start_date,
               w.created_at, w.updated_at, w.seq_num,
+              w.quality_stage, w.quality_issues, w.dedup_status,
               tc.color, tc.icon,
               COALESCE(ev_count.event_count,  0) AS event_count,
               COALESCE(ev_count.prompt_count, 0) AS prompt_count,
@@ -172,7 +173,8 @@ _SQL_GET_WORK_ITEM = (
               w.status_user, w.acceptance_criteria_ai, w.action_items_ai,
               w.summary_ai, w.score_ai,
               w.tags, w.tag_id_user, w.tag_id_ai,
-              w.created_at, w.updated_at, w.seq_num
+              w.created_at, w.updated_at, w.seq_num,
+              w.quality_stage, w.quality_issues, w.dedup_status
        FROM mem_ai_work_items w
        WHERE w.project_id=%s AND w.id=%s::uuid"""
 )
@@ -512,13 +514,14 @@ async def get_unlinked_work_items(project: str | None = Query(None)):
 
 @router.get("")
 async def list_work_items(
-    project:  str | None = Query(None),
-    category: str | None = Query(None),
-    status:   str | None = Query(None),
-    name:     str | None = Query(None),
-    limit:    int        = Query(100),
+    project:       str | None = Query(None),
+    category:      str | None = Query(None),
+    status:        str | None = Query(None),
+    name:          str | None = Query(None),
+    quality_stage: str | None = Query(None),
+    limit:         int        = Query(100),
 ):
-    """List work items, optionally filtered by category, status, or exact name."""
+    """List work items, optionally filtered by category, status, quality_stage, or exact name."""
     if not db.is_available():
         return {"items": [], "project": _project(project), "fallback": True}
     _require_db()
@@ -530,6 +533,8 @@ async def list_work_items(
         where.append("w.category_ai=%s"); params.append(category)
     if status:
         where.append("w.status_user=%s"); params.append(status)
+    if quality_stage:
+        where.append("w.quality_stage=%s"); params.append(quality_stage)
     where.append("w.merged_into IS NULL")   # exclude items absorbed into a merge
     if name:
         where.append("w.name_ai=%s"); params.append(name)
