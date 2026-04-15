@@ -90,10 +90,10 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working",
-    "UI chat history rendering \u2014 Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism",
-    "Backend startup race condition mitigation \u2014 Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases",
-    "Data persistence for tags in session workflow \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow",
+    "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working",
+    "UI chat history rendering with session metadata \u2014 Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker",
+    "Per-prompt tagging system \u2014 Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity",
+    "Session ID and metadata visibility \u2014 Fixed session ID display in both left panel (\u2026xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending",
     "Backend port binding stability \u2014 Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing",
     "Memory items and project_facts table population \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism"
   ],
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T18:47:00Z",
+  "last_memory_run": "2026-04-15T18:56:27Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -147,10 +147,10 @@
       "Tag suggestion with ai_tag_suggestion column and approve/remove buttons; simplified chip markup with category inference on tag creation"
     ],
     "in_progress": [
-      "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working",
-      "UI chat history rendering \u2014 Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism",
-      "Backend startup race condition mitigation \u2014 Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases",
-      "Data persistence for tags in session workflow \u2014 Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow",
+      "Hook-log functionality verification post-m050 \u2014 Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working",
+      "UI chat history rendering with session metadata \u2014 Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker",
+      "Per-prompt tagging system \u2014 Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity",
+      "Session ID and metadata visibility \u2014 Fixed session ID display in both left panel (\u2026xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending",
       "Backend port binding stability \u2014 Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing",
       "Memory items and project_facts table population \u2014 Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism"
     ],
@@ -160,18 +160,14 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_version": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend with a desktop Electron UI, leveraging PostgreSQL with pgvector for semantic search and multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok). The platform implements a 4-layer memory architecture (session \u2192 raw capture \u2192 LLM digests \u2192 work items) with intelligent event filtering, async DAG workflows, and role-based agent pipelines. Currently addressing UI prompt display failures despite correct database persistence (post-m050 migration), backend port binding stability issues, and pending implementation of memory item synthesis logic.",
-    "memory_digest": "**[2026-04-15 18:41]** `claude_cli` \u2014 Migration m050 resolved silent database errors in hook-log endpoint; all prompts now persisting to DB correctly. Root cause was DB constraint violation preventing event storage. **[2026-04-15 18:41]** `claude_cli` \u2014 UI not displaying latest prompts despite correct DB persistence; Vite dev server confirmed serving updated history.js; issue identified as client-side event listener or polling refresh mechanism failure. **[2026-04-15 19:31]** `claude_cli` \u2014 Hook-log functionality verification initiated post-m050; testing whether prompt persistence and auto-refresh now working end-to-end. **[In progress]** Backend startup race condition remains partially unresolved \u2014 retry logic added for empty project list but AiCli project visibility edge cases still under diagnosis. **[In progress]** Tag persistence across session switches failing \u2014 unclear whether UI rendering issue or database serialization failure in tag workflow. **[In progress]** Backend port binding stability \u2014 stale 127.0.0.1:8000 conflicts causing intermittent restart failures; freePort() mitigation implemented pending verification. **[Architectural]** Memory items and project_facts table logic still not implemented despite schema definition; required for complete memory synthesis pipeline. **[Schema]** m050 migration completed; db_schema.sql remains single source of truth with column ordering: client_id \u2192 project_id \u2192 created_at/processed_at/embedding. **[Integration]** Unified tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) functional; per-project tables and shared auth tables operational. **[Context]** AI rules files (rules.md, aicli.mdrules, copilot-instructions.md) auto-generated; legacy _system directory removed; context consolidation complete."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector storage, a Python 3.12 CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) for managing AI-assisted development workflows. The system synthesizes prompts and commits into semantic memory layers (raw capture \u2192 digested events \u2192 work items/facts), supports multiple LLM providers, and enables tag-based filtering and project-level analytics. Currently stabilizing post-migration hook-log functionality, implementing per-prompt tagging, and ensuring session metadata visibility in the chat UI.",
+    "memory_digest": "**[2026-04-15 18:51]** `claude_cli` \u2014 Session ID visibility improved: left panel now shows last 5 characters (\u2026xxxxx format), right pane displays full ID with styled banner and copy button; timestamp display next to YOU prompt marker awaiting implementation. **[2026-04-15 19:31]** `claude_cli` \u2014 Hook-log endpoint testing post-m050 migration; migration fixed silent DB errors and prompt persistence is now confirmed working correctly. **[2025-04-14]** `system` \u2014 Migration m050 implemented fixing silent errors in hook-log endpoint; all prompts now correctly persist to database; UI refresh mechanism still requires real-time polling/event listener implementation. **[Previous]** `context` \u2014 Per-prompt tagging system architecture: add tag selection buttons to each prompt in chat history; store tags per message with category inference on tag creation and approve/remove handlers. **[Previous]** `context` \u2014 Database schema consolidation: mem_ai_events unified table with project_id, session_id, session_desc, event_summary; event filtering for work item digests uses event_type IN ('prompt_batch', 'session_summary'); system metadata stripped during backfill. **[Previous]** `context` \u2014 Tag suggestion UX refactored: ai_tag_suggestion column with clickable \u2713 button creating missing ai_suggestion tags; simplified chip markup without category prefix display."
   }
 }

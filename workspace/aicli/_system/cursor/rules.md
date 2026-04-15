@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:46 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 18:55 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-13] yes
 - [2026-04-13] I still see old tags in event is that intenional? it suppose to show only users tagse merged/updated from all mirror tab
 - [2026-04-14] yes drop that. also change mem_mrr_prompts column order - after client_id add project_id and event_id coumns (move them 
 - [2026-04-15] I still dont see the changes in the ui. also do not see the latest prompts I am writing here (claude cli) with the respo
+- [2026-04-15] I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do no
 - [2026-04-15] test: is hook-log working now after m050?

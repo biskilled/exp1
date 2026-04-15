@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working
-- UI chat history rendering — Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism
-- Backend startup race condition mitigation — Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases
-- Data persistence for tags in session workflow — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
+- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working
+- UI chat history rendering with session metadata — Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker
+- Per-prompt tagging system — Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity
+- Session ID and metadata visibility — Fixed session ID display in both left panel (…xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending
 - Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
 - Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism

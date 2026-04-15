@@ -385,7 +385,16 @@ export class HistoryView {
         const anchorId    = `ha-${entryId}`;
         const sourceId    = e.ts || '';
 
-        // Pre-existing tag chips from DB (string array)
+        // Seed _entryTags from e.tags so system tags (phase/source/feature) always render.
+        // User-added tags from getSourceTags() are merged in on top (loaded earlier).
+        if (e.tags?.length) {
+          const cached = this._entryTags[sourceId] || [];
+          // Keep user-added tags that may not be in e.tags, but ensure e.tags are present
+          const merged = [...new Set([...e.tags, ...cached])];
+          this._entryTags[sourceId] = merged;
+        }
+
+        // Tag chips with remove buttons (system + user-added)
         const existing = this._entryTags[sourceId] || [];
         const existingChips = existing.map(tag => {
           const color = this._tagColor(tag);
@@ -453,22 +462,17 @@ export class HistoryView {
         <div class="history-entry" data-ts="${this._escapeHtml(e.ts || '')}"
              style="border:1px solid ${borderColor};border-left:3px solid ${borderColor};
                     border-radius:6px;padding:8px 10px;margin-bottom:5px">
-          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:5px;font-size:11px">
-            <span style="font-weight:600;color:#27ae60">YOU${this._fmtTs(e.created_at || e.ts) ? ' - ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
-            <span style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-size:10px">${e.source || 'ui'}</span>
-            ${(e.tags||[]).map(t => {
-              const col = this._tagColor(t);
-              const prefix = t.split(':')[0];
-              const label  = t.includes(':') ? t : t;
-              return `<span style="background:${col}22;color:${col};border:1px solid ${col}44;padding:1px 5px;border-radius:3px;font-size:10px">${this._escapeHtml(label)}</span>`;
-            }).join('')}
-            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px">⚠ untagged</span>` : ''}
-            <span id="${anchorId}" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
+          <div style="display:flex;align-items:flex-start;gap:5px;flex-wrap:wrap;margin-bottom:6px;font-size:11px">
+            <span style="font-weight:600;color:#27ae60;white-space:nowrap">YOU${this._fmtTs(e.created_at || e.ts) ? ' — ' + this._fmtTs(e.created_at || e.ts) : ''}</span>
+            <span style="background:var(--surface2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:10px;white-space:nowrap">${this._escapeHtml(e.source || 'ui')}</span>
+            ${isUntagged ? `<span style="color:#e74c3c;font-size:10px;white-space:nowrap">⚠ untagged</span>` : ''}
+            <!-- Tags + Add button — all inline, not hidden at far right -->
+            <span id="${anchorId}" style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;position:relative">
               ${existingChips}
               <button onclick="window._historyView._openEntryTagPicker('${this._escapeHtml(sourceId)}','${anchorId}')"
-                style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;
-                       cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap">
-                + Tag
+                style="font-size:10px;padding:2px 8px;border:1.5px solid var(--accent);border-radius:4px;
+                       cursor:pointer;background:var(--surface);color:var(--accent);white-space:nowrap;font-weight:600;letter-spacing:.2px">
+                ＋ Tag
               </button>
             </span>
           </div>
@@ -483,24 +487,31 @@ export class HistoryView {
       }).join('');
 
       // Session key for DOM IDs (safe to use in attribute)
-      const sgKey  = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
-      const sid5   = sid ? sid.slice(-5) : '?????';
-      const latestTs = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
-      const pCount = group.entries.length;
+      const sgKey      = (sid || 'ns').replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) + '_' + start;
+      const sid5       = sid ? sid.slice(-5) : '?????';
+      const latestTs   = this._fmtTs(group.entries[0]?.created_at || group.entries[0]?.ts || '');
+      const pCount     = group.entries.length;
+      // Extract session-level source + phase from its entries
+      const _sgSrc     = group.entries[0]?.source || 'ui';
+      const _sgLabel   = { claude_cli: 'CLI', ui: 'UI', workflow: 'Workflow' }[_sgSrc] || _sgSrc;
+      const _sgPhases  = [...new Set(group.entries.flatMap(e => (e.tags||[]).filter(t=>t.startsWith('phase:')).map(t=>t.slice(6))))];
+      const _sgPhase   = _sgPhases[0] || '';
 
       return `
         <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">
           <!-- Session header — always visible, click to toggle -->
           <div onclick="window._historyView._toggleSession('${sgKey}')"
-               style="display:flex;align-items:center;gap:6px;padding:5px 8px;
+               style="display:flex;align-items:center;gap:6px;padding:5px 10px;
                       background:var(--surface);cursor:pointer;user-select:none;font-size:11px;
                       border-bottom:1px solid var(--border)">
             <span id="sg-icon-${sgKey}" style="color:var(--muted);font-size:10px;width:8px">▼</span>
+            <span style="font-weight:600;color:var(--text)">${this._escapeHtml(_sgLabel)}</span>
+            ${_sgPhase ? `<span style="background:rgba(59,130,246,.15);color:#3b82f6;padding:1px 6px;border-radius:3px;font-size:10px">${this._escapeHtml(_sgPhase)}</span>` : ''}
             <span style="font-family:monospace;background:var(--surface2);border:1px solid var(--border);
                          padding:1px 5px;border-radius:3px;font-size:10px;color:var(--accent)"
-                  title="Session ID: ${this._escapeHtml(sid || 'none')}">…${this._escapeHtml(sid5)}</span>
-            <span style="color:var(--muted)">${pCount} prompt${pCount !== 1 ? 's' : ''}</span>
-            ${latestTs ? `<span style="color:var(--muted);margin-left:auto">${latestTs}</span>` : ''}
+                  title="Session ID: ${this._escapeHtml(sid || 'none')}">(${this._escapeHtml(sid5)})</span>
+            <span style="color:var(--muted);font-size:10px">${pCount} prompt${pCount !== 1 ? 's' : ''}</span>
+            ${latestTs ? `<span style="color:var(--muted);margin-left:auto;font-size:10px">${latestTs}</span>` : ''}
           </div>
           <!-- Session body — collapsible -->
           <div id="sg-body-${sgKey}" style="padding:8px">

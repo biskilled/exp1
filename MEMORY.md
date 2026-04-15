@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 18:46 UTC by aicli /memory_
+_Generated: 2026-04-15 18:55 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python CLI backend with a desktop Electron UI, leveraging PostgreSQL with pgvector for semantic search and multi-LLM support (Claude, OpenAI, DeepSeek, Gemini, Grok). The platform implements a 4-layer memory architecture (session → raw capture → LLM digests → work items) with intelligent event filtering, async DAG workflows, and role-based agent pipelines. Currently addressing UI prompt display failures despite correct database persistence (post-m050 migration), backend port binding stability issues, and pending implementation of memory item synthesis logic.
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL/pgvector storage, a Python 3.12 CLI, and an Electron desktop UI (Vanilla JS + Cytoscape) for managing AI-assisted development workflows. The system synthesizes prompts and commits into semantic memory layers (raw capture → digested events → work items/facts), supports multiple LLM providers, and enables tag-based filtering and project-level analytics. Currently stabilizing post-migration hook-log functionality, implementing per-prompt tagging, and ensuring session metadata visibility in the chat UI.
 
 ## Project Facts
 
@@ -268,10 +268,10 @@ Reviewer: ```json
 
 ## In Progress
 
-- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in the hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence now working
-- UI chat history rendering — Vite dev server serving updated history.js but latest prompts not displaying in UI despite correct DB storage; investigating client-side event listener and polling refresh mechanism
-- Backend startup race condition mitigation — Retry logic handles empty project list on first load; ongoing diagnosis for AiCli project visibility edge cases
-- Data persistence for tags in session workflow — Tags saved in UI disappearing on session switch; unclear if UI rendering or database serialization failure in tag workflow
+- Hook-log functionality verification post-m050 — Migration m050 fixed silent DB errors in hook-log endpoint; all prompts now stored correctly; testing whether UI auto-refresh and prompt persistence working
+- UI chat history rendering with session metadata — Session ID badge showing last 5 chars in left panel and full ID with copy button in right pane header; timestamp display next to 'YOU' prompt marker
+- Per-prompt tagging system — Adding tag selection/creation UI per individual prompt; implementing tag storage and retrieval for message-level granularity
+- Session ID and metadata visibility — Fixed session ID display in both left panel (…xxxxx format) and right pane (styled banner with copy button); timestamp rendering pending
 - Backend port binding stability — Intermittent app restart failures due to stale 127.0.0.1:8000 conflicts; freePort() mitigation in place pending testing
 - Memory items and project_facts table population — Tables defined in schema but update/query logic not yet implemented; required for improved memory synthesis mechanism
 
@@ -322,6 +322,11 @@ Reviewer: ```json
 ## Recent Memory
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
+
+### `session_summary: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+
+Summary:
+• Database migration m050 implemented to fix silent errors in hook-log endpoint — prompts now correctly persist to DB • UI not displaying latest changes due to missing real-time refresh logic; cache invalidation needed • Chat display not updating with new prompts because frontend isn't polling/listening for updates • User experiencing stale data in both CLI responses and web UI after prompts are submitted
 
 ### `commit` — 2026-04-15
 
@@ -504,22 +509,6 @@ index 59f5051..21f147d 100644
 +      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
 +                      fon
 
-### `commit` — 2026-04-15
-
-diff --git a/ui/frontend/utils/api.js b/ui/frontend/utils/api.js
-index 1a84090..ff7da10 100644
---- a/ui/frontend/utils/api.js
-+++ b/ui/frontend/utils/api.js
-@@ -485,6 +485,7 @@ api.documents = {
- 
- api.pipeline = {
-   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
-+  dashboard:       (project)                        => _get(`/memory/${enc(project)}/data-dashboard`),
-   templates:       (project)                        => _get(`/memory/${enc(project)}/workflow-templates`),
-   runFromSnapshot: (tagId, ucNum, project, wfId)    =>
-     _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
-
-
 ## AI Synthesis
 
-**[2026-04-15 18:41]** `claude_cli` — Migration m050 resolved silent database errors in hook-log endpoint; all prompts now persisting to DB correctly. Root cause was DB constraint violation preventing event storage. **[2026-04-15 18:41]** `claude_cli` — UI not displaying latest prompts despite correct DB persistence; Vite dev server confirmed serving updated history.js; issue identified as client-side event listener or polling refresh mechanism failure. **[2026-04-15 19:31]** `claude_cli` — Hook-log functionality verification initiated post-m050; testing whether prompt persistence and auto-refresh now working end-to-end. **[In progress]** Backend startup race condition remains partially unresolved — retry logic added for empty project list but AiCli project visibility edge cases still under diagnosis. **[In progress]** Tag persistence across session switches failing — unclear whether UI rendering issue or database serialization failure in tag workflow. **[In progress]** Backend port binding stability — stale 127.0.0.1:8000 conflicts causing intermittent restart failures; freePort() mitigation implemented pending verification. **[Architectural]** Memory items and project_facts table logic still not implemented despite schema definition; required for complete memory synthesis pipeline. **[Schema]** m050 migration completed; db_schema.sql remains single source of truth with column ordering: client_id → project_id → created_at/processed_at/embedding. **[Integration]** Unified tables (mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features) functional; per-project tables and shared auth tables operational. **[Context]** AI rules files (rules.md, aicli.mdrules, copilot-instructions.md) auto-generated; legacy _system directory removed; context consolidation complete.
+**[2026-04-15 18:51]** `claude_cli` — Session ID visibility improved: left panel now shows last 5 characters (…xxxxx format), right pane displays full ID with styled banner and copy button; timestamp display next to YOU prompt marker awaiting implementation. **[2026-04-15 19:31]** `claude_cli` — Hook-log endpoint testing post-m050 migration; migration fixed silent DB errors and prompt persistence is now confirmed working correctly. **[2025-04-14]** `system` — Migration m050 implemented fixing silent errors in hook-log endpoint; all prompts now correctly persist to database; UI refresh mechanism still requires real-time polling/event listener implementation. **[Previous]** `context` — Per-prompt tagging system architecture: add tag selection buttons to each prompt in chat history; store tags per message with category inference on tag creation and approve/remove handlers. **[Previous]** `context` — Database schema consolidation: mem_ai_events unified table with project_id, session_id, session_desc, event_summary; event filtering for work item digests uses event_type IN ('prompt_batch', 'session_summary'); system metadata stripped during backfill. **[Previous]** `context` — Tag suggestion UX refactored: ai_tag_suggestion column with clickable ✓ button creating missing ai_suggestion tags; simplified chip markup without category prefix display.
