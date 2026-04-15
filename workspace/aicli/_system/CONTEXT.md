@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-14 23:58 UTC — do not edit manually.
+> Auto-generated 2026-04-15 00:23 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 537
-- **Last active**: 2026-04-14T23:58:23Z
+- **Sessions**: 538
+- **Last active**: 2026-04-15T00:00:19Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Agent roles enhancement (2026-04-14) — auto_commit boolean column added to mng_agent_roles; 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides
-- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; improves pipeline automation workflow
-- Memory mirror tables refactor (2026-04-14) — mem_mrr_prompts columns reordered (project_id/event_id after client_id); m037-m039 migrations applied for schema cleanup
-- Tag suggestion and approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
-- Pipeline execution UI rendering (2026-03-20) — Old MD version displayed on approval panel instead of current output/progress logs; chat panel state management needs investigation
-- Project startup race condition fix (2026-03-20) — Sequential await api.listProjects() prevents empty home screen; edge case where list succeeds but returns empty now handled
+- Schema sync issue (2026-04-06) — aiCli_memory database out of sync with codebase; mem_session.py missing; pending schema documentation update and restoration investigation
+- History UI rendering (2026-04-06) — Only displaying prompts, not full LLM responses; copy-to-clipboard functionality missing; implementation pending
+- Route history batch upsert fix (2026-04-06) — PostgreSQL ON CONFLICT DO UPDATE error resolved via JSONB merge operator (||) syntax correction; testing pending on operational DB
+- Tag suggestion approval flow (2026-04-13) — ai_tag_suggestion column with approve/remove buttons; simplified chip markup; suggested_new tags rendering under investigation
+- Work item pipeline refactor (2026-04-14) — Agent roles loaded from DB with fallback prompts; RoleCreate/RoleUpdate models updated; auto_commit boolean support added
+- Agent roles enhancement (2026-04-14) — 4-stage pipeline uses _load_role() with fallback prompts; all stages support provider/model overrides; memory mirror refactor applied
 
 ## Key Decisions
 

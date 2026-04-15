@@ -2236,19 +2236,22 @@ async def _run_promote_all_work_items(project: str) -> None:
     """Promote all active work items (refresh AI text fields + status)."""
     if not db.is_available():
         return
+    import time as _time
     from core.pipeline_log import _insert_run, _finish_run
     project_id = db.get_or_create_project_id(project)
     run_id = _insert_run(project_id, "work_item_promote", "all")
+    t0 = _time.monotonic()
     try:
         from memory.memory_promotion import MemoryPromotion
         result = await MemoryPromotion().promote_all_work_items(project)
         logging.getLogger(__name__).debug(f"_run_promote_all_work_items: {result}")
         _finish_run(run_id, "ok",
                     items_in=result.get("total", 0),
-                    items_out=result.get("promoted", 0))
+                    items_out=result.get("promoted", 0),
+                    t0=t0)
     except Exception as e:
         logging.getLogger(__name__).debug(f"_run_promote_all_work_items failed: {e}")
-        _finish_run(run_id, "error", error_msg=str(e))
+        _finish_run(run_id, "error", items_in=0, items_out=0, t0=t0, error_msg=str(e))
 
 
 async def _run_work_item_extraction(project: str) -> None:

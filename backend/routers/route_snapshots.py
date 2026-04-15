@@ -48,11 +48,8 @@ _SQL_GET_MEMORY_EVENTS = """
 
 _SQL_UPSERT_SNAPSHOT = """
     UPDATE planner_tags SET
-        summary      = %s,
+        requirements = %s,
         action_items = %s,
-        design       = %s::jsonb,
-        code_summary = %s::jsonb,
-        embedding    = %s,
         updated_at   = NOW()
     WHERE id = %s::uuid
     RETURNING id
@@ -65,9 +62,7 @@ _SQL_MARK_EVENTS_PROCESSED = """
 
 _SQL_GET_SNAPSHOT = """
     SELECT t.id, t.id, t.requirements, t.action_items,
-           t.design, t.code_summary, NULL,
-           NULL, t.updated_at, t.updated_at,
-           t.name AS tag_name
+           t.updated_at, t.name AS tag_name
     FROM planner_tags t
     WHERE t.project_id = %s AND t.name = %s
     LIMIT 1
@@ -81,10 +76,13 @@ _SQL_UPSERT_FACT = """
 """
 
 _DEFAULT_SNAPSHOT_PROMPT = (
-    "Produce a 4-layer feature snapshot as JSON with these keys: "
-    "requirements (string), action_items (string), "
-    "design (object: {high_level, low_level, patterns_used}), "
-    "code_summary (object: {files, key_classes, key_methods, dependencies_added, dependencies_removed}). "
+    "Produce a feature snapshot as JSON with ONLY these 4 flat string keys: "
+    "requirements (2 sentences max), "
+    "action_items (up to 5 items, comma-separated, no newlines), "
+    "design (1-2 sentences, no newlines), "
+    "code_summary (key files and classes only, comma-separated, no newlines). "
+    "CRITICAL: All values must be single-line strings — NO literal newlines inside string values. "
+    "NO nested objects or arrays. Keep each value under 200 chars. "
     "Base your answer only on the provided evidence. Return ONLY valid JSON."
 )
 
@@ -105,8 +103,8 @@ async def _call_sonnet(system_prompt: str, user_message: str) -> str:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=api_key)
         resp = await client.messages.create(
-            model=settings.claude_model,
-            max_tokens=2000,
+            model=settings.haiku_model,
+            max_tokens=4096,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
@@ -125,13 +123,21 @@ async def _embed_text(text: str) -> Optional[list]:
 
 
 def _parse_snapshot_json(text: str) -> dict:
-    clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
-    m = re.search(r"\{[\s\S]*\}", clean)
-    if not m:
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+    # Strip all markdown code fences (opening and closing)
+    clean = re.sub(r"```(?:json)?", "", text).strip().strip("`").strip()
+    start = clean.find("{")
+    if start == -1:
+        _log.warning(f"_parse_snapshot_json: no {{ found in: {clean[:100]!r}")
         return {}
+    # Use Python's JSONDecoder.raw_decode — correctly handles strings with { }
+    decoder = json.JSONDecoder()
     try:
-        return json.loads(m.group())
-    except Exception:
+        obj, _ = decoder.raw_decode(clean, start)
+        return obj if isinstance(obj, dict) else {}
+    except Exception as _e:
+        _log.warning(f"_parse_snapshot_json: raw_decode failed: {_e} | clean[{start}:{start+50}]={clean[start:start+50]!r}")
         return {}
 
 
@@ -182,35 +188,28 @@ async def generate_snapshot(project: str, tag_name: str):
     if not raw:
         raise HTTPException(status_code=502, detail="LLM returned empty response")
 
+    log.debug(f"snapshot raw LLM ({len(raw)} chars): {raw[:300]!r}")
     parsed = _parse_snapshot_json(raw)
+    log.debug(f"snapshot parsed keys: {list(parsed.keys()) if parsed else 'EMPTY'}")
     if not parsed:
         raise HTTPException(status_code=502, detail=f"Could not parse LLM JSON: {raw[:200]}")
 
     # Extract AI-detected relations before consuming the rest of the dict
     ai_relations: list[dict] = parsed.pop("relations", []) or []
 
-    embed_text = " ".join(filter(None, [
-        parsed.get("requirements", ""),
-        parsed.get("action_items", ""),
-    ]))
-    embedding = await _embed_text(embed_text) if embed_text.strip() else None
-
-    design = parsed.get("design", {})
-    code_summary = parsed.get("code_summary", {})
-    file_paths = list(code_summary.get("files", []) if isinstance(code_summary, dict) else [])
+    requirements = parsed.get("requirements", "")
+    action_items = parsed.get("action_items", "")
+    design_notes = parsed.get("design", "")
+    code_notes = parsed.get("code_summary", "")
 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 _SQL_UPSERT_SNAPSHOT,
                 (
-                    parsed.get("requirements", ""),
-                    parsed.get("action_items", ""),
-                    json.dumps(design),
-                    json.dumps(code_summary),
-                    embedding,
+                    requirements,
+                    action_items,
                     tag_id,
-                    project,
                 ),
             )
             snap_row = cur.fetchone()
@@ -220,15 +219,14 @@ async def generate_snapshot(project: str, tag_name: str):
                 cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))
 
     facts_extracted = 0
-    if isinstance(design, dict) and design.get("patterns_used"):
-        patterns = design["patterns_used"]
-        patterns_str = ", ".join(str(p) for p in patterns) if isinstance(patterns, list) else str(patterns)
+    # Store design notes as a project fact if present
+    if design_notes:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_UPSERT_FACT,
-                        (project_id, f"feature.{tag_name}.patterns", patterns_str),
+                        (project_id, f"feature.{tag_name}.design", str(design_notes)),
                     )
             facts_extracted += 1
         except Exception as e:
@@ -265,10 +263,10 @@ async def generate_snapshot(project: str, tag_name: str):
         "snapshot_id":        snap_id,
         "tag_name":           tag_name,
         "project":            project,
-        "requirements":       parsed.get("requirements", ""),
-        "action_items":       parsed.get("action_items", ""),
-        "design":             design,
-        "code_summary":       code_summary,
+        "requirements":       requirements,
+        "action_items":       action_items,
+        "design":             design_notes,
+        "code_summary":       code_notes,
         "events_processed":   len(event_ids),
         "facts_extracted":    facts_extracted,
         "relations_upserted": relations_upserted,
@@ -288,15 +286,10 @@ async def get_snapshot(project: str, tag_name: str):
     if not row:
         raise HTTPException(status_code=404, detail=f"No snapshot found for '{tag_name}'")
     return {
-        "id":               str(row[0]),
-        "tag_id":           str(row[1]),
-        "tag_name":         row[10],
-        "requirements":     row[2],
-        "action_items":     row[3],
-        "design":           row[4],
-        "code_summary":     row[5],
-        "file_paths":       row[6] or [],
-        "work_item_status": row[7],
-        "created_at":       row[8].isoformat() if row[8] else None,
-        "updated_at":       row[9].isoformat() if row[9] else None,
+        "id":           str(row[0]),
+        "tag_id":       str(row[1]),
+        "requirements": row[2],
+        "action_items": row[3],
+        "updated_at":   row[4].isoformat() if row[4] else None,
+        "tag_name":     row[5],
     }
