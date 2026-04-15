@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 22:59 UTC by aicli /memory_
+_Generated: 2026-04-15 23:21 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL/pgvector storage with an Electron desktop UI, providing semantic search, workflow automation, and collaborative memory synthesis across projects. Currently stabilizing database schema (m051: user_id INT refactor + updated_at tracking), implementing session-based tag backlinking for work item consistency, and enhancing work item panel UX with dynamic refresh and event count aggregation. Version 3.0.0 active as of 2026-04-15 with production and development phases in parallel.
 
 ## Project Facts
 
@@ -287,32 +283,32 @@ Reviewer: ```json
 
 ### Doc_type
 
-- **architecture-decision** `[open]`
-- **Test** `[open]`
-- **customer-meeting** `[open]`
 - **high-level-design** `[open]`
+- **Test** `[open]`
 - **low-level-design** `[open]`
+- **architecture-decision** `[open]`
 - **retrospective** `[open]`
+- **customer-meeting** `[open]`
 
 ### Feature
 
-- **auth** `[open]`
-- **entity-routing** `[open]`
-- **test-picker-feature** `[open]`
-- **embeddings** `[open]`
-- **billing** `[open]`
 - **UI** `[open]`
-- **shared-memory** `[open]`
-- **mcp** `[open]`
+- **auth** `[open]`
+- **billing** `[open]`
 - **dropbox** `[open]`
+- **embeddings** `[open]`
+- **entity-routing** `[open]`
 - **graph-workflow** `[open]`
+- **mcp** `[open]`
+- **shared-memory** `[open]`
 - **tagging** `[open]`
+- **test-picker-feature** `[open]`
 
 ### Phase
 
-- **discovery** `[open]`
-- **prod** `[open]`
 - **development** `[open]`
+- **prod** `[open]`
+- **discovery** `[open]`
 
 ### Task
 
@@ -323,122 +319,169 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
+### `commit` — 2026-04-15
 
-Commits: chore: clean up legacy _system context files after claude cli session f6 | chore: remove legacy _system/ agent context and documentation files | chore: remove legacy _system/ context files after claude cli session f66
-Changed: _normalize_jsonl_entry, chat_history, _loadSessions
-Stats:  backend/routers/route_history.py |  84 ++++++++---
- workspace/aicli/PROJECT.md       |  12 +-
- 7 files changed, 233 insertions(+), 189 deletions(-)
+diff --git a/ui/frontend/views/history.js b/ui/frontend/views/history.js
+index d35fe7d..ca28256 100644
+--- a/ui/frontend/views/history.js
++++ b/ui/frontend/views/history.js
+@@ -355,21 +355,29 @@ export class HistoryView {
+            </span>`;
+         }).join('');
+ 
++        const _copyBtn = (id, label) =>
++          `<button onclick="navigator.clipboard.writeText(document.getElementById('${id}').innerText).then(()=>{this.textContent='✓ copied';setTimeout(()=>this.textContent='⎘ copy',1200)})"
++             style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;
++                    cursor:pointer;background:var(--surface);color:var(--muted);white-space:nowrap;margin-left:4px">⎘ copy</button>`;
++
+         const outputHtml = e.output
+           ? `<div style="margin-top:6px">
+-              <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Response</div>
+-              <div id="${entryId}-resp"
++              <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
++                <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Response</span>
++                ${_copyBtn(`${entryId}-resp`, 'copy response')}
++                <span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none;margin-left:2px"
++                    onclick="const el=document.getElementById('${entryId}-resp');
++                             const collapsed=el.dataset.collapsed!=='false';
++                             el.style.maxHeight=collapsed?'none':'200px';
++                             el.dataset.collapsed=collapsed?'false':'true';
++                             this.textContent=collapsed?'▲ collapse':'▼ expand'">▼ expand</span>
++              </div>
++              <div id="${entryId}-resp" data-collapsed="true"
+                 style="color:var(--muted);font-size:12px;border-left:2px solid var(--border);
+                        padding-left:8px;white-space:pre-wrap;word-break:break-word;
+-                       max-height:100px;overflow:hidden;transition:max-height 0.2s">
++                       max-height:200px;overflow-y:auto;transition:max-height 0.2s">
+                 ${this._escapeHtml(e.output)}
+               </div>
+-              ${e.output.length > 200
+-                ? `<span style="font-size:11px;color:var(--accent);cursor:pointer;user-select:none"
+-                    onclick="const el=document.getElementById('${entryId}-resp');
+-                             el.style.maxHeight=el.style.maxHeight==='none'?'100px':'none';
+-                             this.textContent=el.style.maxHeight==='none'?'▲ collapse':'▼ expand'">▼ expand</span>`
+-                : ''}
+             </div>`
+           : '';
+ 
+@@ -417,8 +425,11 @@ export class HistoryView {
+               </button>
+             </span>
+           </div>
+-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Prompt</div>
+-          <div style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
++          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
++            <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Prompt</span>
++            ${_copyBtn(`${entryId}-prompt`, 'copy prompt')}
++          </div>
++          <div id="${entryId}-prompt" style="font-weight:500;margin-bottom:4px;white-space:pre-wrap;word-break:break-word;font-size:13px">${this._escapeHtml(e.user_input || '')}</div>
+           ${outputHtml}
+           ${commitRow}
+         </div>`;
 
-### `prompt_batch: f6648726-1e7f-48bf-b604-4c74bf7c8154` — 2026-04-15
 
-Database refactor initiated: change user_id from string to int across all mirror tables, add user_id column after project_id for consistency, and add updated_at timestamp column after created_at for tracking row modifications.
+### `commit` — 2026-04-15
+
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 1794988..6177158 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-06 01:37 UTC
++> Generated by aicli 2026-04-06 02:08 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+
+
+### `commit` — 2026-04-15
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index b3f5136..4bb2083 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:37 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:08 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,11 +61,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+ - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+ - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+-
+-## Recent Context (last 5 changes)
+-
+-- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
+-- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
+-- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
+-- [2026-04-06] test prompt after fix
+-- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
+\ No newline at end of file
+
+
+### `commit` — 2026-04-15
+
+diff --git a/.ai/rules.md b/.ai/rules.md
+index b3f5136..4bb2083 100644
+--- a/.ai/rules.md
++++ b/.ai/rules.md
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 01:37 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-06 02:08 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -61,11 +61,3 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Phase persistence with red ⚠ badge for missing phase; tag suggestions auto-saved via _acceptSuggestedTag with distinct visual marking
+ - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↩ link) showing only that prompt's commits
+ - Feature snapshot consolidation: rename plannet_tags to feature_snapshot and establish unified linkage to work_items and memory structures
+-
+-## Recent Context (last 5 changes)
+-
+-- [2026-04-05] Yes please. about Sho llm in the ui - make it visible tag
+-- [2026-04-05] I would like to build the aicli_memory.md for scratch in order to get a final view of the memory layer. please describe 
+-- [2026-04-05] About orocess_item / messeges - trigger in /memroy (for all new items at the moment). feature snapshot - imprtoant. curr
+-- [2026-04-06] test prompt after fix
+-- [2026-04-06] I would like to add mng_projects table that will be used for project data. currenlty there all table use project (text) 
+\ No newline at end of file
+
+
+### `commit` — 2026-04-15
+
+Commit: docs: update system context files and trim MEMORY.md after CLI session
+Hash: 25ab487a
+Code files (4):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - ui/frontend/views/history.js
+Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
+Symbols changed: _copyBtn
 
 ### `commit` — 2026-04-15
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index a386242..6525135 100644
+index 3c64f25..cc26abd 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
 @@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
  ## Recent Work
  
--- Work item UI refresh button: replacing 'new work item' creation with refresh/reload functionality to fetch latest work items and update AI suggestions without requiring manual entry
--- AI suggestion display fix: debugging why ai_tag_suggestion column shows empty (EXISTS) instead of actual suggested tags; investigating embedding pipeline trigger and suggestion query logic
--- Work item tag aggregation: refining user_tags extraction from mem_ai_events by session_id and project_id instead of work_item_id to correctly surface feature/bug_ref/bug tags
--- Work item counts accuracy: verifying prompt_count and commit_count calculations use session-based matching (same session as source_event_id) rather than direct work_item_id links
--- Source event ID usage: confirming source_event_id field in mem_ai_work_items serves as anchor for session-based aggregation queries without requiring explicit SELECT visibility
--- First event linkage guarantee: ensuring mem_ai_events.work_item_id updates only link to first work item (WHERE work_item_id IS NULL) to prevent overwrites on subsequent promotions
-+- Work item refresh workflow: replaced 'new work item' button with ↺ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
-+- Event count aggregation: added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
-+- AI tag backlinking: implemented _backlink_tag_to_events() to propagate planner tag assignments back to all events in the source session, mapping category→tag_key (bug/phase/feature)
-+- Work item panel UI refresh: added event_count column header, adjusted colgroup widths (52px per count column), updated empty state messaging to reflect 'refresh' paradigm
-+- Session-based tag propagation: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking, ensuring tag consistency across event-to-work-item relationships
-+- Test coverage: verifying rematchAll API correctness, event_count calculation accuracy, and tag backlinking side-effects on mem_ai_events JSONB tags field
++- UI history display enhancement: expand prompt/LLM response visibility in history panel to show full text instead of truncated summaries
++- Copy-to-clipboard functionality: implement text selection and copying capability in history UI interface
+ - Memory items and project_facts table population: implement missing update logic to enable proper memory functionality as designed
+-- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts at each step
+-- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking across sessions
+-- Feature snapshot unification: merge plannet_tags into properly named feature_snapshot structure with complete work_item relationship mapping
+-- Work item linking: clarify and implement complete linkage between work_item entities and memory/snapshot layers across database and API
+-- Memory endpoint variable scoping: verify code_dir variable fix at line 1120 remains stable and document pattern
++- Memory architecture documentation: comprehensive aicli_memory.md covering all layers, mirroring mechanism, event triggers, and specific prompts
++- LLM model identifier visibility: expose model identifier as visible tag in UI interface for transparency and tracking
++- Feature snapshot unification: merge plannet_tags into feature_snapshot structure with complete work_item relationship mapping
 
-
-### `commit` — 2026-04-15
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 349c48d..cd847f4 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-09 09:56 UTC
-+> Generated by aicli 2026-04-09 10:41 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,6 +61,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
- - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
- - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
--- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
--- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
-\ No newline at end of file
-+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-+- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
-\ No newline at end of file
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index eeac744..baa69b0 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 09:56 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:41 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,9 +61,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
- - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
- - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
--- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
--- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
-+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-+- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
- 
- ## Recent Context (last 5 changes)
- 
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index eeac744..baa69b0 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 09:56 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 10:41 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -61,9 +61,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Work items: FK architecture where mem_ai_events.work_item_id links many events to one work item; mem_mrr_commits.event_id points to mem_ai_events
- - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, embedding pipeline with 0.60 confidence threshold
- - Work item panel: multi-column sortable table with AI tag suggestions + user tags from connected events; sticky headers with fixed table layout
--- Tag display format: 'category:name' when both present, name-only fallback, #4a90e2 default color when ai_tag_color null
- - Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
--- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop; bash start_backend.sh + npm run dev for local
-+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
-+- Source event ID anchoring: mem_ai_work_items.source_event_id serves as pivot for session-based aggregation of prompt_count, commit_count, event_count without explicit work_item_id linking
- 
- ## Recent Context (last 5 changes)
- 
-
-
-## AI Synthesis
-
-**[2026-04-15]** `claude_cli` — Database refactor m051 completed: converted user_id from UUID string to INT across all user/client/mirror tables, added updated_at timestamp columns for audit tracking, preserved legacy UUID in uuid_id column. **[2026-04-15]** `workspace` — Work item refresh workflow implemented: replaced static 'new work item' button with dynamic ↺ refresh triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions. **[2026-04-15]** `memory` — Session-based tag backlinking enabled: _backlink_tag_to_events() propagates planner tag assignments from work items back to all events in source session, ensuring tag consistency across event-to-work-item relationships. **[2026-04-15]** `ui` — Work item panel event count aggregation: added event_count column calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session. **[2026-04-15]** `schema` — Tag propagation system: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking with category→tag_key mapping (bug/phase/feature). **[2026-04-15]** `cleanup` — Legacy context consolidation: removed _system/ directory, verified agent context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; confirmed clean backend startup.

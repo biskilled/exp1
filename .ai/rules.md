@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 22:59 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-15 23:21 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -71,8 +71,8 @@ _Last updated: 2026-04-15 | Version 3.0.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-15] lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where
 - [2026-04-15] The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is
 - [2026-04-15] The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the curre
 - [2026-04-15] it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the rig
 - [2026-04-15] I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) no
+- [2026-04-15] I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppos
