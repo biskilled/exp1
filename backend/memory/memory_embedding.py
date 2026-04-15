@@ -11,8 +11,8 @@ Public API::
     # Batch-digest N prompts in a session → mem_ai_events
     event_id = await embedding.process_prompt_batch(project, session_id, n)
 
-    # Embed a commit diff → mem_ai_events (multi-chunk for large diffs)
-    event_id = await embedding.process_commit(project, commit_id)
+    # Batch-digest all pending commits (grouped by tag context) → mem_ai_events
+    n = await embedding.process_commit_batch(project)
 
     # Embed a document item or meeting → mem_ai_events
     event_id = await embedding.process_item(project, item_id)
@@ -130,26 +130,10 @@ _SQL_UPSERT_EVENT = """
     RETURNING id
 """
 
-_SQL_GET_COMMIT = """
-    SELECT commit_hash, commit_msg, summary, tags, session_id, diff_summary
-    FROM mem_mrr_commits
-    WHERE project_id=%s AND commit_hash=%s
-"""
-
 _SQL_UPDATE_COMMIT_TAGS = """
     UPDATE mem_mrr_commits
     SET tags = tags || %s::jsonb
     WHERE commit_hash = %s
-"""
-
-_SQL_UPDATE_COMMIT_SUMMARY = """
-    UPDATE mem_mrr_commits
-    SET summary = %s
-    WHERE commit_hash = %s AND (summary IS NULL OR summary = '')
-"""
-
-_SQL_SET_LLM = """
-    UPDATE mem_mrr_commits SET llm=%s WHERE commit_hash=%s
 """
 
 _SQL_GET_ITEM = """
@@ -609,74 +593,6 @@ class MemoryEmbedding:
             f"{len(rows)} commits ({len(group_order)} tag groups) for {project}"
         )
         return events_created
-
-    async def process_commit(
-        self,
-        project: str,
-        commit_hash: str,
-    ) -> Optional[str]:
-        """Digest and embed a commit from mem_mrr_commits.
-
-        Uses commit_hash (the natural PK) as the identifier.
-        Returns the mem_ai_events UUID.
-        """
-        if not db.is_available():
-            return None
-        _c_project_id = db.get_or_create_project_id(project)
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_COMMIT, (_c_project_id, commit_hash))
-                    row = cur.fetchone()
-            if not row:
-                return None
-
-            commit_hash_val, commit_msg, existing_summary, mrr_tags, session_id, diff_summary = row
-            mrr_tags = mrr_tags or {}
-        except Exception as e:
-            log.debug(f"process_commit DB error: {e}")
-            return None
-
-        # Guard: skip LLM if diff is below min_diff_lines threshold
-        _min_diff = _read_commit_min_diff_lines(project)
-        _diff_lines = _count_diff_stat_lines(diff_summary or "")
-        if _diff_lines > 0 and _diff_lines < _min_diff:
-            log.debug(f"process_commit: skipping LLM for {commit_hash[:8]} "
-                      f"(diff_lines={_diff_lines} < min={_min_diff})")
-            return None
-
-        user_content = f"Commit: {commit_hash_val[:8]}\n{commit_msg}"
-        if existing_summary:
-            user_content += f"\nSummary: {existing_summary}"
-
-        raw = await _prompts.call("commit_digest", user_content)
-        summary_text, action_items = _parse_haiku_json(raw, commit_msg[:300]) if raw else (commit_msg[:300], "")
-
-        embedding = await _embed(summary_text)
-
-        # Use only user-intent tags from MRR (commit_hash, llm are system metadata)
-        event_id = _upsert_event(
-            project, "commit", commit_hash_val, 0, "full", summary_text, embedding,
-            session_id=session_id,
-            summary=summary_text, action_items=action_items, tags=mrr_tags,
-            event_cnt=1,
-        )
-
-        # Back-propagate summary + link event_id to mem_mrr_commits; set llm model name
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_UPDATE_COMMIT_SUMMARY, (summary_text, commit_hash_val))
-                    cur.execute(_SQL_SET_LLM, (settings.haiku_model, commit_hash_val))
-                    if event_id:
-                        cur.execute(
-                            "UPDATE mem_mrr_commits SET event_id=%s::uuid WHERE commit_hash=%s",
-                            (event_id, commit_hash_val),
-                        )
-        except Exception as e:
-            log.debug(f"process_commit column update error: {e}")
-
-        return event_id
 
     async def process_item(
         self,
