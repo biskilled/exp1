@@ -1,0 +1,241 @@
+"""
+route_backlog.py — API endpoints for the file-based backlog pipeline.
+
+Endpoints:
+    POST /memory/{project}/sync-backlog          — flush pending rows → backlog.md
+    POST /memory/{project}/work-items            — full run_work_items() pipeline
+    GET  /memory/{project}/backlog               — parsed backlog entries as JSON
+    PATCH /memory/{project}/backlog/{ref_id}     — approve/reject/retag single entry
+    GET  /memory/{project}/use-case-section      — read a section from a use case file
+"""
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel
+
+from core.config import settings
+
+log = logging.getLogger(__name__)
+router = APIRouter()
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+class BacklogPatchRequest(BaseModel):
+    approve: Optional[str] = None    # "x" | "-" | " "
+    tag:     Optional[str] = None    # tag override (replaces TAG comment)
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/{project}/sync-backlog")
+async def sync_backlog(
+    project: str,
+    background_tasks: BackgroundTasks,
+    source: Optional[str] = Query(
+        None,
+        description="Filter to a single source: commits|prompts|messages|items. Default = all.",
+    ),
+):
+    """Flush pending mirror rows for a project into backlog.md.
+
+    Threshold check is bypassed — all pending rows are processed regardless
+    of the count threshold in backlog_config.yaml.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+
+    if source:
+        valid = {"commits", "prompts", "messages", "items"}
+        if source not in valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid source '{source}'. Must be one of: {', '.join(sorted(valid))}",
+            )
+        n = await bl.process_pending(source)
+        results = {source: n}
+    else:
+        results = await bl.process_all_pending()
+
+    total = sum(results.values())
+    return {
+        "project":       project,
+        "appended":      total,
+        "by_source":     results,
+        "backlog_file":  str(bl._backlog_path()),
+    }
+
+
+@router.post("/{project}/work-items")
+async def run_work_items_endpoint(
+    project: str,
+    background_tasks: BackgroundTasks,
+):
+    """Run full work-items pipeline as a background task.
+
+    Pipeline:
+        1. Flush all unprocessed mirror rows → backlog.md
+        2. Approve all entries with APPROVE: x
+        3. Create/merge into use_cases/{slug}.md
+        4. Rewrite backlog.md (pending stays, processed/rejected archived)
+    """
+    async def _run():
+        from memory.memory_backlog import run_work_items
+        try:
+            result = await run_work_items(project)
+            log.info(f"work_items: {project} — {result}")
+        except Exception as e:
+            log.warning(f"work_items background error: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "started", "project": project}
+
+
+@router.post("/{project}/work-items/sync")
+async def run_work_items_sync(project: str):
+    """Run work-items pipeline synchronously and return results immediately."""
+    from memory.memory_backlog import run_work_items
+    try:
+        result = await run_work_items(project)
+        return {"project": project, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{project}/backlog")
+async def get_backlog(project: str):
+    """Return all parsed backlog entries as JSON for the UI."""
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+    entries = bl.parse_backlog()
+    return {
+        "project": project,
+        "total":   len(entries),
+        "entries": entries,
+    }
+
+
+@router.patch("/{project}/backlog/{ref_id}")
+async def patch_backlog_entry(
+    project: str,
+    ref_id:  str,
+    body:    BacklogPatchRequest,
+):
+    """Approve, reject, or retag a single backlog entry in-place.
+
+    Updates the inline HTML comment markers directly in backlog.md.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+    path = bl._backlog_path()
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="backlog.md not found")
+
+    text = path.read_text(errors="ignore")
+
+    # Find the chunk containing this ref_id
+    import re as _re
+    chunks = _re.split(r"\n---\n", text)
+
+    updated = False
+    new_chunks: list[str] = []
+    for chunk in chunks:
+        if ref_id in chunk and f"### {ref_id} " in chunk:
+            if body.approve is not None:
+                val = body.approve[:1] if body.approve else " "
+                # Replace APPROVE comment value
+                chunk = _re.sub(
+                    r"<!--\s*APPROVE:\s*\[[ x\-]\]\s*-->",
+                    f"<!-- APPROVE: [{val}] -->",
+                    chunk,
+                )
+            if body.tag is not None:
+                chunk = _re.sub(
+                    r"<!--\s*TAG:\s*.*?-->",
+                    f"<!-- TAG: {body.tag} -->",
+                    chunk,
+                )
+            updated = True
+        new_chunks.append(chunk)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Ref ID '{ref_id}' not found in backlog")
+
+    path.write_text("\n---\n".join(new_chunks))
+    return {"status": "updated", "ref_id": ref_id, "project": project}
+
+
+@router.get("/{project}/use-case-section")
+async def get_use_case_section(
+    project: str,
+    ref: str = Query(..., description="Relative path with optional anchor: use_cases/auth.md#open-bugs"),
+):
+    """Return the content of a section within a use case file.
+
+    The `ref` parameter follows the format `use_cases/{slug}.md[#{anchor}]`.
+    If no anchor is given, returns the full file content.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+
+    code_dir = bl._use_cases_dir().parent.parent  # documents/../  = code_dir
+    # _use_cases_dir returns {code_dir}/documents/use_cases
+    # so parent.parent is code_dir
+    base_dir = bl._use_cases_dir().parent.parent
+
+    # Split ref into path + anchor
+    if "#" in ref:
+        file_part, anchor = ref.split("#", 1)
+    else:
+        file_part, anchor = ref, ""
+
+    target = (base_dir / file_part).resolve()
+
+    # Safety: must stay inside base_dir
+    try:
+        target.relative_to(base_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Path traversal not allowed")
+
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_part}")
+
+    full_text = target.read_text(errors="ignore")
+
+    if not anchor:
+        return {"ref": ref, "content": full_text}
+
+    # Extract section by heading anchor (normalise: lowercase, spaces→hyphens)
+    def _norm(h: str) -> str:
+        return re.sub(r"[^a-z0-9\-]", "", h.lower().replace(" ", "-"))
+
+    lines = full_text.splitlines()
+    section_lines: list[str] = []
+    in_section = False
+    section_level = 0
+
+    for line in lines:
+        heading_m = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if heading_m:
+            level = len(heading_m.group(1))
+            heading_text = heading_m.group(2)
+            if _norm(heading_text) == _norm(anchor):
+                in_section = True
+                section_level = level
+                section_lines.append(line)
+                continue
+            if in_section and level <= section_level:
+                break
+        if in_section:
+            section_lines.append(line)
+
+    if not section_lines:
+        raise HTTPException(status_code=404, detail=f"Section '#{anchor}' not found in {file_part}")
+
+    return {"ref": ref, "content": "\n".join(section_lines)}

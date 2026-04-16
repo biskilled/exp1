@@ -1,0 +1,36 @@
+# backlog_config.yaml — Backlog pipeline configuration
+#
+# Controls how mem_mrr_* rows are digested into documents/backlog.md.
+# Runtime location: {code_dir}/.ai/backlog_config.yaml
+# (auto-copied from this template on first run if missing)
+
+file_name: backlog.md
+rotation: false   # true = daily rotation → backlog_2026-04-16.md
+
+mirroring_event_summary:
+  commits:
+    cnt: 5
+    prompt:
+      desc: "Summarize each commit into deliveries (classes/methods changed, lines +/-).
+             Classify as bug/feature/task. Suggest matching use case slug."
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+  prompts:
+    cnt: 5
+    prompt:
+      desc: "Extract requirements, deliveries (type: code|docs|design), and open action items
+             with acceptance criteria. Classify as bug/feature/task. Suggest use case."
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+  items:
+    cnt: 1
+    prompt:
+      desc: "Summarize item into requirements and action items."
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+  messages:
+    cnt: 20
+    prompt:
+      desc: "Extract decisions and open action items from conversation."
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3

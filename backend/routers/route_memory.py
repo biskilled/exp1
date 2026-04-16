@@ -633,6 +633,14 @@ async def embed_prompts(project: str):
     if sessions_done > 0:
         _record_pipeline_run(project_id, "event")
 
+    # Also flush all pending rows into backlog.md
+    try:
+        from memory.memory_backlog import MemoryBacklog
+        bl = MemoryBacklog(project)
+        await bl.process_all_pending()
+    except Exception as _be:
+        log.debug(f"embed_prompts: backlog flush error: {_be}")
+
     return {
         "project": project,
         "sessions_processed": sessions_done,

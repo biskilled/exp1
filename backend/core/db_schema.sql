@@ -303,6 +303,7 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    file_ref            TEXT,                                         -- pointer into use-case file: 'use_cases/auth.md#open-bugs' (m054)
     UNIQUE(project_id, name, category_id)
 );
 CREATE INDEX IF NOT EXISTS idx_planner_tags_pid    ON planner_tags(project_id);
@@ -328,9 +329,10 @@ CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     source_id  TEXT,                            -- external ID for deduplication
     prompt     TEXT        NOT NULL DEFAULT '',
     response   TEXT        NOT NULL DEFAULT '',
-    tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    tags        JSONB       NOT NULL DEFAULT '{}',
+    backlog_ref TEXT,                                -- ref ID in backlog.md: 'P100042' (m054)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_pid     ON mem_mrr_prompts(project_id);
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_id) WHERE session_id IS NOT NULL;
@@ -361,6 +363,7 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     author            TEXT         NOT NULL DEFAULT '',
     author_email      TEXT         NOT NULL DEFAULT '',
     llm               TEXT,                              -- model name used for digest
+    backlog_ref       TEXT,                              -- ref ID in backlog.md: 'C200001' (m054)
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     committed_at      TIMESTAMPTZ,
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -424,10 +427,11 @@ CREATE TABLE IF NOT EXISTS mem_mrr_items (
     meeting_at TIMESTAMPTZ,
     attendees  TEXT[],
     raw_text   TEXT        NOT NULL,
-    summary    TEXT,
-    tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    summary     TEXT,
+    tags        JSONB       NOT NULL DEFAULT '{}',
+    backlog_ref TEXT,                                -- ref ID in backlog.md: 'I400001' (m054)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_pid  ON mem_mrr_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_items_type ON mem_mrr_items(item_type);
@@ -445,9 +449,10 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
     thread_ref TEXT,
     messages   JSONB       NOT NULL,
     date_range TSTZRANGE,
-    tags       JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    tags        JSONB       NOT NULL DEFAULT '{}',
+    backlog_ref TEXT,                                -- ref ID in backlog.md: 'M300001' (m054)
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(tags);

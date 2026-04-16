@@ -207,6 +207,15 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
             )
 
 
+async def _check_backlog_threshold(project: str, source_type: str) -> None:
+    """Trigger backlog digest if pending row count meets the configured threshold."""
+    try:
+        from memory.memory_backlog import MemoryBacklog
+        await MemoryBacklog(project).check_and_trigger(source_type)
+    except Exception as e:
+        log.debug(f"_check_backlog_threshold({source_type}) error: {e}")
+
+
 def _extract_commit_code_background(project: str, commit_hash: str) -> None:
     """Run tree-sitter symbol extraction and insert rows into mem_mrr_commits_code."""
     import asyncio
@@ -1192,6 +1201,8 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
         background.add_task(_embed_commit_background, project_name, commit_hash)
         # Tree-sitter symbol extraction → mem_mrr_commits_code in background
         background.add_task(_extract_commit_code_background, project_name, commit_hash)
+        # Backlog threshold check — process pending commits if threshold reached
+        background.add_task(_check_backlog_threshold, project_name, "commits")
 
     return {
         "committed": True,

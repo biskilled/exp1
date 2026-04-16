@@ -2436,6 +2436,38 @@ def m053_pr_statistics(conn) -> None:
     log.info("m053_pr_statistics: pr_statistics table + 3 indexes created")
 
 
+def m054_backlog_ref(conn) -> None:
+    """Add backlog_ref column to mirror tables + file_ref to planner_tags + seed P/C/M/I sequences.
+
+    backlog_ref TEXT: tracks which backlog.md entry this row was digested into.
+    NULL = not yet processed by MemoryBacklog. Format: 'P100042', 'C200001', etc.
+
+    file_ref TEXT on planner_tags: pointer into a use-case file section, e.g.
+    'use_cases/auth-refactor.md#open-bugs'. Displayed in Planner property panel.
+
+    pr_seq_counters seeded for 4 source-type prefixes so next_seq() returns
+    predictable starting numbers (P→100000, C→200000, M→300000, I→400000).
+    """
+    with conn.cursor() as cur:
+        for tbl in ("mem_mrr_prompts", "mem_mrr_commits", "mem_mrr_messages", "mem_mrr_items"):
+            cur.execute(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS backlog_ref TEXT")
+            # Partial index: speeds up "WHERE backlog_ref IS NULL" count + fetch
+            short = tbl.replace("mem_mrr_", "")[:8]
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{short}_bref "
+                f"ON {tbl}(project_id) WHERE backlog_ref IS NULL"
+            )
+        cur.execute("ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS file_ref TEXT")
+        for prefix, start in [("P", 100000), ("C", 200000), ("M", 300000), ("I", 400000)]:
+            cur.execute(
+                """INSERT INTO pr_seq_counters(project_id, category, next_val)
+                   SELECT id, %s, %s FROM mng_projects ON CONFLICT DO NOTHING""",
+                (prefix, start + 1),
+            )
+    conn.commit()
+    log.info("m054_backlog_ref: backlog_ref + file_ref columns added; P/C/M/I seq seeds inserted")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2477,4 +2509,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
     ("m052_column_reorder", m052_column_reorder),
     ("m053_pr_statistics", m053_pr_statistics),
+    ("m054_backlog_ref", m054_backlog_ref),
 ]

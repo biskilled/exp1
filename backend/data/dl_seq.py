@@ -23,6 +23,11 @@ SEQ_STARTS: dict[str, int] = {
     "component": 40000,
     "epic":      50000,
     "story":     60000,
+    # Backlog source-type prefixes (single uppercase letter)
+    "P":         100000,   # prompts
+    "C":         200000,   # commits
+    "M":         300000,   # messages
+    "I":         400000,   # items
 }
 
 _DEFAULT_START = 10000

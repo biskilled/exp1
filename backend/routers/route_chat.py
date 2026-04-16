@@ -545,6 +545,15 @@ async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
         log.debug(f"_generate_memory_batch error: {e}")
 
 
+async def _check_backlog_threshold(project: str, source_type: str) -> None:
+    """Trigger backlog digest if pending row count meets the configured threshold."""
+    try:
+        from memory.memory_backlog import MemoryBacklog
+        await MemoryBacklog(project).check_and_trigger(source_type)
+    except Exception as e:
+        log.debug(f"_check_backlog_threshold({source_type}) error: {e}")
+
+
 
 @router.post("/{project}/hook-log")
 async def hook_log_prompt(project: str, body: HookLogRequest):
@@ -608,6 +617,9 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
         batch_size = _get_batch_size(project)
         if count > 0 and count % batch_size == 0:
             asyncio.create_task(_generate_memory_batch(project, body.session_id, batch_size))
+
+        # Backlog threshold check — fire-and-forget after each prompt stored
+        asyncio.create_task(_check_backlog_threshold(project, "prompts"))
 
         return {"ok": True, "ts": ts}
     except Exception as e:
