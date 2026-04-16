@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 23:47 UTC — do not edit manually.
+> Auto-generated 2026-04-15 23:59 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 580
-- **Last active**: 2026-04-15T23:44:55Z
+- **Sessions**: 581
+- **Last active**: 2026-04-15T23:59:07Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -58,12 +58,12 @@
 
 ## In Progress
 
-- Database refactor m051 — converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking
-- Work item panel refresh workflow — replaced static 'new work item' creation with dynamic ↺ refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry
-- Session-based tag backlinking — implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency
-- Event count aggregation — added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
-- Work item UI refinement — adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness
-- Migration framework validation — confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session
+- Incremental sync implementation (run_incremental_sync) — propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change
+- Database schema expansion m051+ — added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization
+- Work item panel event count aggregation — session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance
+- Tag suggestion debugging and validation — investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow
+- Session ordering chronological fix — implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init
+- Commit-per-prompt inline display completion — replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link
 
 ## Key Decisions
 

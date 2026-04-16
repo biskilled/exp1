@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 23:44 UTC by aicli /memory_
+_Generated: 2026-04-15 23:59 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL+pgvector semantic storage and an Electron desktop UI, designed to capture, synthesize, and organize development work through multi-layer memory architecture (session → raw capture → LLM digests → structured work items). Currently in v3.0.0 with active development on incremental tag sync, database performance optimization via aggregation caching, and work item panel refresh workflows that maintain bidirectional tag consistency across sessions, events, and project facts.
 
 ## Project Facts
 
@@ -264,12 +268,12 @@ Reviewer: ```json
 
 ## In Progress
 
-- Database refactor m051 — converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking
-- Work item panel refresh workflow — replaced static 'new work item' creation with dynamic ↺ refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry
-- Session-based tag backlinking — implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency
-- Event count aggregation — added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session
-- Work item UI refinement — adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness
-- Migration framework validation — confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session
+- Incremental sync implementation (run_incremental_sync) — propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change
+- Database schema expansion m051+ — added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization
+- Work item panel event count aggregation — session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance
+- Tag suggestion debugging and validation — investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow
+- Session ordering chronological fix — implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init
+- Commit-per-prompt inline display completion — replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link
 
 ## Active Features / Bugs / Tasks
 
@@ -321,295 +325,349 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-15
 
-Commit: docs: update system context and memory docs after cli session 8b91f9d9
-Hash: 6404b0ea
-Code files (8):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/core/database.py
-  - backend/memory/mem_embeddings.py
-  - backend/memory/memory_embedding.py
-  - backend/memory/memory_mirroring.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md
-Symbols changed: _openai_key, smart_chunk_diff, smart_chunk_markdown, smart_chunk_text, _detect_language, smart_chunk_code
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
-index 2efbb44..1c0f52d 100644
---- a/backend/routers/route_history.py
-+++ b/backend/routers/route_history.py
-@@ -28,7 +28,7 @@ from core.tags import tags_to_list, parse_tag
+diff --git a/backend/memory/memory_embedding.py b/backend/memory/memory_embedding.py
+index d1498cf..ba02c0f 100644
+--- a/backend/memory/memory_embedding.py
++++ b/backend/memory/memory_embedding.py
+@@ -1348,6 +1348,184 @@ async def backfill_entity_tags(project: str) -> None:
+     pass
  
- _SQL_LIST_COMMITS = """
-     SELECT c.commit_hash, c.commit_msg, c.summary, c.tags,
--           c.source, c.session_id, c.committed_at,
-+           c.tags->>'source' AS source, c.session_id, c.committed_at,
-            p.source_id AS prompt_source_id
-     FROM mem_mrr_commits c
-     LEFT JOIN mem_mrr_prompts p ON p.id = c.prompt_id
-@@ -39,14 +39,17 @@ _SQL_LIST_COMMITS = """
  
- _SQL_UPSERT_COMMIT_FROM_LOG = """
-     INSERT INTO mem_mrr_commits
--        (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
--    VALUES (1, %s, %s, %s, %s, %s, %s)
-+        (client_id, project, commit_hash, commit_msg, session_id, committed_at,
-+         tags)
-+    VALUES (1, %s, %s, %s, %s, %s,
-+            jsonb_build_object('source', %s))
-     ON CONFLICT (commit_hash) DO UPDATE SET
-         session_id = CASE
-             WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
-             THEN EXCLUDED.session_id
-             ELSE mem_mrr_commits.session_id
--        END
-+        END,
-+        tags = mem_mrr_commits.tags || EXCLUDED.tags
- """
- 
- _SQL_UPDATE_COMMIT_META = (
-@@ -57,14 +60,14 @@ _SQL_UPDATE_COMMIT_META = (
- # Base form matches by session_id only; extended form adds a committed_at range.
- # Build dynamically in the handler; see session_commits() below.
- _SQL_SESSION_COMMITS_BASE = """
--    SELECT commit_hash, commit_msg, tags, source, committed_at
-+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-           FROM mem_mrr_commits
-          WHERE client_id=1 AND project=%s AND session_id = %s
-          ORDER BY committed_at
- """
- 
- _SQL_SESSION_COMMITS_WITH_WINDOW = """
--    SELECT commit_hash, commit_msg, tags, source, committed_at
-+    SELECT commit_hash, commit_msg, tags, tags->>'source' AS source, committed_at
-           FROM mem_mrr_commits
-          WHERE client_id=1 AND project=%s
-            AND (session_id = %s
-@@ -226,7 +229,7 @@ async def chat_history(
-                     ) + ")"
-                     noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
- 
--                    provider_filter = " AND llm_source = %s" if provider else ""
-+                    provider_filter = " AND tags->>'source' = %s" if provider else ""
-                     provider_arg    = (provider,) if provider else ()
- 
-                     cur.execute(
-@@ -239,7 +242,7 @@ async def chat_history(
-                     total = cur.fetchone()[0]
- 
-                     cur.execute(
--                        f"""SELECT source_id, session_id, llm_source, prompt,
-+                        f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
-                                    response, tags, created_at
-                             FROM mem_mrr_prompts
-                             WHERE client_id=1 AND project=%s
-@@ -322,6 +325,8 @@ async def commits_history(
-                 for r in rows:
-                     if r.get("committed_at"):
-                         r["committed_at"] = r["committed_at"].isoformat()
-+                    if isinstance(r.get("tags"), dict):
-+                        r["tags"] = tags_to_list(r["tags"])
-                 return {"commits": rows, "project": p, "source": "db"}
- 
-     # Fallback: read commit_log.jsonl — no tag enrichment
-@@ -416,14 +421,15 @@ async def sync_commits(project: str | None = Query(None)):
-             commit_hash = raw.get("hash") or raw.get("commit_hash")
-             if not commit_hash:
-                 continue
-+            source_val = raw.get("source", "git")
-             rows.append((
-                 1,                                        # client_id
-                 p,
-                 commit_hash,
-                 raw.get("message", raw.get("msg", "")),
--                raw.get("source", "git"),
-                 raw.get("session_id"),
-                 raw.get("ts"),
-+                json.dumps({"source": source_val}),
-             ))
- 
-     if not rows:
-@@ -431,14 +437,15 @@ async def sync_commits(project: str | None = Query(None)):
- 
-     _SQL_BATCH_UPSERT = """
-         INSERT INTO mem_mrr_commits
--            (client_id, project, commit_hash, commit_msg, source, session_id, committed_at)
-+            (client_id, project, commit_hash, commit_msg, session_id, committed_at, tags)
-         VALUES %s
-         ON CONFLICT (commit_hash) DO UPDATE SET
-             session_id = CASE
-                 WHEN EXCLUDED.session_id IS NOT NULL AND EXCLUDED.session_id != ''
-                 THEN EXCLUDED.session_id
-                 ELSE mem_mrr_commits.session_id
--            END
-+            END,
-+            tags = mem_mrr_commits.tags || EXCLUDED.tags
-     """
-     with db.conn() as conn:
-         with conn.cursor() as cur:
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
-index 89e0789..005d603 100644
---- a/backend/routers/route_entities.py
-+++ b/backend/routers/route_entities.py
-@@ -164,12 +164,14 @@ _SQL_GET_EVENTS_FOR_VALUE = """
- # Expands JSONB dict {"phase":"discovery","feature":"auth"} → "phase:discovery", "feature:auth"
- _SQL_GET_SESSION_TAGS_FROM_MRR = """
-     SELECT DISTINCT (key || ':' || value) AS tag_str
--    FROM mem_mrr_prompts, jsonb_each_text(tags)
--    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
-+    FROM mem_mrr_prompts, jsonb_each_text(tags - 'source' - 'llm')
-+    WHERE client_id=1 AND project=%s AND session_id=%s
-+      AND (tags - 'source' - 'llm') != '{}'::jsonb
-     UNION
-     SELECT DISTINCT (key || ':' || value)
--    FROM mem_mrr_commits, jsonb_each_text(tags)
--    WHERE client_id=1 AND project=%s AND session_id=%s AND tags != '{}'::jsonb
-+    FROM mem_mrr_commits, jsonb_each_text(tags - 'source' - 'llm')
-+    WHERE client_id=1 AND project=%s AND session_id=%s
-+      AND (tags - 'source' - 'llm') != '{}'::jsonb
- """
- 
- # GitHub sync: upsert tag by name+project including short_desc inline
-@@ -1054,19 +1056,21 @@ async def get_events_source_tags(project: str | None = Query(None)):
-     result: dict = {}
-     with db.conn() as conn:
-         with conn.cursor() as cur:
--            # Prompts
-+            # Prompts — only rows with user-facing tags (exclude source/llm-only rows)
-             cur.execute(
-                 "SELECT source_id, tags FROM mem_mrr_prompts "
--                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
-+                "WHERE client_id=1 AND project=%s "
-+                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
-                 (p,),
-             )
-             for source_id, tags in cur.fetchall():
-                 if source_id and tags:
-                     result[source_id] = tags_to_list(tags)
--            # Commits
-+            # Commits — only rows with user-facing tags
-             cur.execute(
-                 "SELECT commit_hash, tags FROM mem_mrr_commits "
--                "WHERE client_id=1 AND project=%s AND tags != '{}'::jsonb",
-+                "WHERE client_id=1 AND project=%s "
-+                "AND (tags - 'source' - 'llm') != '{}'::jsonb",
-                 (p,),
-             )
-             for commit_hash, tags in cur.fetchall():
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/memory/memory_mirroring.py b/backend/memory/memory_mirroring.py
-index 287c593..e90341c 100644
---- a/backend/memory/memory_mirroring.py
-+++ b/backend/memory/memory_mirroring.py
-@@ -77,12 +77,14 @@ _SQL_GET_LAST_N_PROMPTS = """
-     LIMIT %s
- """
- 
--# "Untagged" = tags dict is empty ({})
-+# "Untagged" = no user-facing classification tags (phase/feature/bug etc.)
-+# System keys (source, llm) are always present but do not count as "tagged".
- _SQL_GET_UNTAGGED_PROMPTS = """
-     SELECT source_id, 'prompt' AS source_type,
-            (prompt || ' ' || response)[:500] AS content_preview, created_at
-     FROM mem_mrr_prompts
--    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
-+    WHERE client_id=1 AND project=%s
-+      AND (tags - 'source' - 'llm') = '{}'::jsonb
-     ORDER BY created_at ASC
-     LIMIT %s
- """
-@@ -91,7 +93,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
-     SELECT commit_hash, 'commit' AS source_type,
-            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
-     FROM mem_mrr_commits
--    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
-+    WHERE client_id=1 AND project=%s
-+      AND (tags - 'source' - 'llm') = '{}'::jsonb
-     ORDER BY created_at ASC
-     LIMIT %s
- """
-@@ -99,7 +102,8 @@ _SQL_GET_UNTAGGED_COMMITS = """
- _SQL_GET_UNTAGGED_ITEMS = """
-     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
-     FROM mem_mrr_items
--    WHERE client_id=1 AND project=%s AND tags = '{}'::jsonb
-+    WHERE client_id=1 AND project=%s
-+      AND (tags - 'source' - 'llm') = '{}'::jsonb
-     ORDER BY created_at ASC
-     LIMIT %s
- """
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/core/tags.py b/backend/core/tags.py
-index 7c02326..dbc9556 100644
---- a/backend/core/tags.py
-+++ b/backend/core/tags.py
-@@ -11,6 +11,16 @@ from __future__ import annotations
- 
- import json
- 
-+# Internal pipeline metadata keys stored in tags JSONB but never shown as UI chips.
-+# "source" = which platform sent the data (e.g. "claude_cli", "git")
-+# "llm"    = which model produced digest content (e.g. "claude-haiku-4-5-20251001")
-+_SYSTEM_KEYS: frozenset[str] = frozenset({"source", "llm", "event", "chunk_type"})
++# ── Incremental sync ───────────────────────────────────────────────────────────
 +
-+# JSONB filter expression: strips system keys before comparing to '{}'
-+# Used in WHERE clauses to find rows with user-applied tags only.
-+TAGS_USER_NONEMPTY = "(tags - 'source' - 'llm') != '{}'::jsonb"
-+TAGS_USER_EMPTY    = "(tags - 'source' - 'llm') = '{}'::jsonb"
++_SQL_GET_LAST_EVENT_RUN = """
++    SELECT last_event_run_at
++    FROM pr_statistics
++    WHERE project_id=%s AND last_event_run_at IS NOT NULL
++    ORDER BY stat_date DESC
++    LIMIT 1
++"""
 +
++_SQL_STALE_PROMPTS = """
++    SELECT p.id AS source_id, p.tags, p.event_id
++    FROM mem_mrr_prompts p
++    WHERE p.project_id=%s AND p.event_id IS NOT NULL AND p.updated_at > %s
++"""
++
++_SQL_STALE_COMMITS = """
++    SELECT c.commit_hash AS source_id, c.tags, c.event_id
++    FROM mem_mrr_commits c
++    WHERE c.project_id=%s AND c.event_id IS NOT NULL AND c.updated_at > %s
++"""
++
++_SQL_GET_EVENT_TAGS_AND_WI = """
++    SELECT tags, work_item_id FROM mem_ai_events WHERE id=%s::uuid
++"""
++
++_SQL_UPDATE_EVENT_TAGS = """
++    UPDATE mem_ai_events SET tags=%s::jsonb WHERE id=%s::uuid
++"""
++
++_SQL_UPSERT_PIPELINE_RUN_AT = """
++    INSERT INTO pr_statistics (project_id, stat_date, last_event_run_at)
++    VALUES (%s, CURRENT_DATE, NOW())
++    ON CONFLICT (project_id, stat_date)
++    DO UPDATE SET last_event_run_at=NOW(), updated_at=NOW()
++"""
++
++_USER_INTENT_KEYS = frozenset({"phase", "feature", "bug"})
++
++
++async def run_incremental_sync(project_id: int) -> dict:
++    """Propagate retroactive tag changes to linked mem_ai_events rows.
++
++    Finds mirror rows (prompts + commits) updated after the last embed run
++    and merges changed phase/feature/bug tags into the linked event. If a
++    work item is linked to an updated event its tag matching is re-queued.
++
++    Returns {prompts_synced, commits_synced, events_updated, work_items_rematched}.
++    """
++    if not db.is_available():
++        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
++
++    # 1. Get last_event_run_at baseline
++    baseline = None
++    try:
++        with db.conn() as conn:
++            with conn.cursor() as cur:
++                cur.execute(_SQL_GET_LAST_EVENT_RUN, (project_id,))
++                row = cur.fetchone()
++                if row:
++                    baseline = row[0]
++    except Exception as e:
++        log.debug(f"run_incremental_sync: could not read baseline: {e}")
++
++    if baseline is None:
++        return {
++            "prompts_synced": 0, "commits_synced": 0,
++            "events_updated": 0, "work_items_rematched": 0,
++            "message": "no baseline — run embed-prompts first",
++        }
++
++    # 2. Load stale linked rows
++    stale_prompts: list[tuple] = []
++    stale_commits: list[tuple] = []
++    try:
++        with db.conn() as conn:
++            with conn.cursor() as cur:
++                cur.execute(_SQL_STALE_PROMPTS, (project_id, baseline))
++                stale_prompts = cur.fetchall()
++                cur.execute(_SQL_STALE_COMMITS, (project_id, baseline))
++                stale_commits = cur.fetchall()
++    except Exception as e:
++        log.warning(f"run_incremental_sync: stale query error: {e}")
++        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
++
++    # 3. Merge tags and collect work items to re-match
++    events_updated = 0
++    re_match_set: set[str] = set()
++
++    def _sync_rows(rows: list[tuple]) -> int:
++        """Process (source_id, tags, event_id) rows; return count updated."""
++        updated = 0
++        for _source_id, row_tags, event_id in rows:
++            if not event_id:
++                continue
++            row_tags = row_tags or {}
++            try:
++                with db.conn() as conn:
++                    with conn.cursor() as cur:
++                        cur.execute(_SQL_GET_EVENT_TAGS_AND_WI, (str(event_id),))
++                        ev_row = cur.fetchone()
++                if not ev_row:
++                    continue
++                ev_tags, wi_id = ev_row
++                ev_tags = ev_tags or {}
++
++                # Merge only user-intent keys from mirror row into event tags
++                merged = {**ev_tags}
++                changed = False
++                for k, v in row_tags.items():
++                    if k in _USER_INTENT_KEYS and merged.get(k) != v:
++                        merged[k] = v
++                        changed = True
++
++                if not changed:
++                    continue
++
++                import json as _json
++                with db.conn() as conn:
++                    with conn.cursor() as cur:
++                        cur.execute(_SQL_UPDATE_EVENT_TAGS, (_json.dumps(merged), str(event_id)))
++                updated += 1
++
++                # Queue work item for re-matching if feature/bug changed
++                if wi_id:
++                    old_keys = {k: ev_tags.get(k) for k in _USER_INTENT_KEYS}
++                    new_keys = {k: merged.get(k) for k in _USER_INTENT_KEYS}
++                    if old_keys != new_keys:
++                        re_match_set.add(str(wi_id))
++            except Exception as e:
++                log.debug(f"run_incremental_sync: event {event_id} update error: {e}")
++        return updated
++
++    events_updated += _sync_rows(stale_prompts)
++    events_updated += _sync_rows(stale_commits)
++
++    # 4. Re-match queued work items
++    work_items_rematched = 0
++    if re_match_set:
++        try:
++            from memory.memory_tagging import MemoryTagging
++            mt = MemoryTagging()
++            # pass project name via project_id lookup
++            with db.conn() as conn:
++                with conn.cursor() as cur:
++                    cur.execute("SELECT name FROM mng_projects WHERE id=%s", (project_id,))
++                    prow = cur.fetchone()
++            project_name = prow[0] if prow else str(project_id)
++            for
+
+### `commit` — 2026-04-15
+
+diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
+index a1f1c16..c4c9776 100644
+--- a/workspace/aicli/PROJECT.md
++++ b/workspace/aicli/PROJECT.md
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
  
- def tags_to_dict(tags: list[str] | dict | None) -> dict[str, str]:
-     """Convert wire-format string list → JSONB dict for storage.
-@@ -33,17 +43,21 @@ def tags_to_dict(tags: list[str] | dict | None) -> dict[str, str]:
-     return result
+ ## Recent Work
  
+-- Session ordering refactored: sessions now order by created_at instead of updated_at to maintain chronological list and prevent phase/tag updates from reordering
++- Session ordering by created_at implemented to maintain chronological list and prevent phase/tag updates from reordering sessions
+ - Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
+ - Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
+-- Tag deduplication and cross-view sync: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
++- Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
+ - AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
+ - Planner tab unified redesign: consolidated into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split
+
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
+index d2fe63a..bbbbfe4 100644
+--- a/backend/core/db_schema.sql
++++ b/backend/core/db_schema.sql
+@@ -722,6 +722,28 @@ CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
+ CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_mpr_status ON mem_pipeline_runs(status) WHERE status = 'running';
  
--def tags_to_list(tags: dict | list | None) -> list[str]:
-+def tags_to_list(tags: dict | list | None, *, include_system: bool = False) -> list[str]:
-     """Convert JSONB dict → wire-format string list for API responses.
- 
-     {"phase": "discovery", "feature": "auth"} → ["phase:discovery", "feature:auth"]
-+    System keys (source, llm, event, chunk_type) are excluded by default — they are
-+    internal pipeline metadata, not user-facing classification tags.
-     Already-a-list passthrough (for compat with old code paths).
-     """
-     if not tags:
-         return []
-     if isinstance(tags, list):
-         return [str(t) for t in tags]
--    return [f"{k}:{v}" for k, v in tags.items()]
-+    if include_system:
-+        return [f"{k}:{v}" for k, v in tags.items()]
-+    return [f"{k}:{v}" for k, v in tags.items() if k not in _SYSTEM_KEYS]
- 
- 
- def parse_tag(tag_str: str) -> tuple[str, str]:
++-- pr_statistics: per-project-per-day aggregation cache.
++-- Replaces ~15 individual COUNT queries in data_dashboard with a single
++-- cached JSONB row. Updated by _refresh_stats() in route_memory.py.
++CREATE TABLE IF NOT EXISTS pr_statistics (
++    id                  SERIAL PRIMARY KEY,
++    client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
++    project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
++    stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
++    stats               JSONB        NOT NULL DEFAULT '{}',
++    last_event_run_at   TIMESTAMPTZ,
++    last_fact_run_at    TIMESTAMPTZ,
++    last_wi_run_at      TIMESTAMPTZ,
++    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
++    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
++    UNIQUE (project_id, stat_date)
++);
++CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date ON pr_statistics(project_id, stat_date DESC);
++
++-- Composite index for ev_count CTE in work items list query
++CREATE INDEX IF NOT EXISTS idx_mae_pid_wi
++    ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL;
++
+ -- pr_seq_counters: atomic sequential ID generators (one row per project+category)
+ -- Used to give work items human-readable numbers like #10001.
+ CREATE TABLE IF NOT EXISTS pr_seq_counters (
+@@ -758,7 +780,8 @@ DECLARE
+         'mem_ai_events', 'mem_ai_work_items', 'mem_ai_project_facts',
+         'mem_ai_feature_snapshot',
+         'mem_pipeline_runs',
+-        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges'
++        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges',
++        'pr_statistics'
+     ];
+     _t text;
+ BEGIN
 
 
 ### `commit` — 2026-04-15
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index dbafc66..676245e 100644
+index debaee0..ce2c11e 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-05 18:23 UTC
-+> Generated by aicli 2026-04-05 22:11 UTC
+-> Generated by aicli 2026-04-05 18:10 UTC
++> Generated by aicli 2026-04-05 18:14 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
+-- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
++- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering
+ - Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
+ - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
+ - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
 
+
+### `commit` — 2026-04-15
+
+diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
+index 39da0d7..104806f 100644
+--- a/backend/core/db_migrations.py
++++ b/backend/core/db_migrations.py
+@@ -2387,6 +2387,55 @@ def m052_column_reorder(conn) -> None:  # noqa: C901
+     log.info("m052_column_reorder: 18 tables rebuilt with consistent column ordering")
+ 
+ 
++def m053_pr_statistics(conn) -> None:
++    """Add pr_statistics aggregation cache table + performance indexes.
++
++    Creates a per-project-per-day statistics cache (pr_statistics) to replace
++    the ~15 individual COUNT queries in data_dashboard. Also fixes a stale index
++    on mem_mrr_commits and adds a composite index for the ev_count CTE.
++    """
++    with conn.cursor() as cur:
++        cur.execute("""
++            CREATE TABLE IF NOT EXISTS pr_statistics (
++                id                  SERIAL PRIMARY KEY,
++                client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
++                project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
++                stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
++                stats               JSONB        NOT NULL DEFAULT '{}',
++                last_event_run_at   TIMESTAMPTZ,
++                last_fact_run_at    TIMESTAMPTZ,
++                last_wi_run_at      TIMESTAMPTZ,
++                created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
++                updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
++                UNIQUE (project_id, stat_date)
++            )
++        """)
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date "
++            "ON pr_statistics(project_id, stat_date DESC)"
++        )
++        # Drop existing trigger first to ensure idempotency
++        cur.execute("DROP TRIGGER IF EXISTS set_pr_statistics_updated_at ON pr_statistics")
++        cur.execute("""
++            CREATE TRIGGER set_pr_statistics_updated_at
++            BEFORE UPDATE ON pr_statistics
++            FOR EACH ROW EXECUTE FUNCTION set_updated_at()
++        """)
++        # Fix stale index on mem_mrr_commits referencing dropped committed_at column
++        cur.execute("DROP INDEX IF EXISTS idx_mmrr_c_comm")
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_created "
++            "ON mem_mrr_commits(project_id, created_at DESC)"
++        )
++        # Composite index for the ev_count CTE in work items list query
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mae_pid_wi "
++            "ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL"
++        )
++    conn.commit()
++    log.info("m053_pr_statistics: pr_statistics table + 3 indexes created")
++
++
+ MIGRATIONS: list[tuple[str, Callable]] = [
+     # All migrations through m017 (ai_tags column) were applied via the legacy
+     # ALTER TABLE system in database.py and are tracked as:
+@@ -2427,4 +2476,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
+     ("m050_prompts_source_id_index", m050_prompts_source_id_index),
+     ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
+     ("m052_column_reorder", m052_column_reorder),
++    ("m053_pr_statistics", m053_pr_statistics),
+ ]
+
+
+### `commit` — 2026-04-15
+
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index da83136..302d4fc 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:10 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:14 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
+@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
+ - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
+-- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
++- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering
+ - Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
+ - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
+ - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
+
+
+## AI Synthesis
+
+**2026-04-15** `memory_embedding.py` — Implemented run_incremental_sync() function to propagate retroactive tag changes (phase/feature/bug) from mem_mrr_prompts and mem_mrr_commits back to linked mem_ai_events; automatically queues dependent work items for re-matching when user-intent keys change. **2026-04-15** `db_schema.sql` — Added pr_statistics table for per-project-per-day aggregation caching to replace ~15 individual COUNT queries in data_dashboard with single cached row; added last_event_run_at timestamp baseline for incremental sync. **2026-04-15** `db_schema.sql` — Created composite index idx_mae_pid_wi on mem_ai_events(project_id, work_item_id) to optimize event_count CTE in work item listing queries; improved dashboard query performance. **2026-04-15** `PROJECT.md` — Documented session ordering refactor: sessions now order by created_at instead of updated_at to maintain chronological list and prevent tag/phase updates from reordering. **2026-04-15** `route_chat.py` — Enhanced phase persistence: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase to storage; red ⚠ badge displays across UI/CLI/workflow for missing phase. **2026-04-15** `memory_embedding.py` — Completed commit-per-prompt inline display: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash link); verified tag deduplication (149 total tags, 0 duplicates).

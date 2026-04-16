@@ -90,12 +90,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Database refactor m051 \u2014 converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking",
-    "Work item panel refresh workflow \u2014 replaced static 'new work item' creation with dynamic \u21ba refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry",
-    "Session-based tag backlinking \u2014 implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency",
-    "Event count aggregation \u2014 added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
-    "Work item UI refinement \u2014 adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness",
-    "Migration framework validation \u2014 confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session"
+    "Incremental sync implementation (run_incremental_sync) \u2014 propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change",
+    "Database schema expansion m051+ \u2014 added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization",
+    "Work item panel event count aggregation \u2014 session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance",
+    "Tag suggestion debugging and validation \u2014 investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow",
+    "Session ordering chronological fix \u2014 implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init",
+    "Commit-per-prompt inline display completion \u2014 replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -127,7 +127,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-15T23:45:31Z",
+  "last_memory_run": "2026-04-15T23:59:40Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -147,12 +147,12 @@
       "Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events"
     ],
     "in_progress": [
-      "Database refactor m051 \u2014 converted user_id from UUID string to INT across mng_users, mng_clients, and all mem_mrr_* tables; added updated_at timestamp columns for audit tracking",
-      "Work item panel refresh workflow \u2014 replaced static 'new work item' creation with dynamic \u21ba refresh button triggering /work-items/rematch-all to update AI tag suggestions without manual entry",
-      "Session-based tag backlinking \u2014 implemented _backlink_tag_to_events() to propagate planner tag assignments from work items back to all events in source session, ensuring consistency",
-      "Event count aggregation \u2014 added event_count column to work item panel calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session",
-      "Work item UI refinement \u2014 adjusted colgroup widths for count columns (52px), updated empty state messaging to reflect 'refresh' paradigm, verified rematchAll API correctness",
-      "Migration framework validation \u2014 confirmed m051 clean startup with no errors, backend running correctly; legacy _system/ context files cleaned up after claude cli session"
+      "Incremental sync implementation (run_incremental_sync) \u2014 propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change",
+      "Database schema expansion m051+ \u2014 added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization",
+      "Work item panel event count aggregation \u2014 session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance",
+      "Tag suggestion debugging and validation \u2014 investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow",
+      "Session ordering chronological fix \u2014 implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init",
+      "Commit-per-prompt inline display completion \u2014 replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -160,6 +160,7 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
@@ -169,11 +170,10 @@
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "prompt_management": "core.prompt_loader module with centralized prompt caching",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)"
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining a FastAPI backend + PostgreSQL/pgvector storage with an Electron desktop UI, providing semantic search, workflow automation, and collaborative memory synthesis across projects. Currently stabilizing database schema (m051: user_id INT refactor + updated_at tracking), implementing session-based tag backlinking for work item consistency, and enhancing work item panel UX with dynamic refresh and event count aggregation. Version 3.0.0 active as of 2026-04-15 with production and development phases in parallel.",
-    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Database refactor m051 completed: converted user_id from UUID string to INT across all user/client/mirror tables, added updated_at timestamp columns for audit tracking, preserved legacy UUID in uuid_id column. **[2026-04-15]** `workspace` \u2014 Work item refresh workflow implemented: replaced static 'new work item' button with dynamic \u21ba refresh triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions. **[2026-04-15]** `memory` \u2014 Session-based tag backlinking enabled: _backlink_tag_to_events() propagates planner tag assignments from work items back to all events in source session, ensuring tag consistency across event-to-work-item relationships. **[2026-04-15]** `ui` \u2014 Work item panel event count aggregation: added event_count column calculated via session-based COUNT(*) from mem_ai_events matching source_event_id's session. **[2026-04-15]** `schema` \u2014 Tag propagation system: enabled tag_id field in PATCH /work-items endpoint to trigger async backlinking with category\u2192tag_key mapping (bug/phase/feature). **[2026-04-15]** `cleanup` \u2014 Legacy context consolidation: removed _system/ directory, verified agent context consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; confirmed clean backend startup."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL+pgvector semantic storage and an Electron desktop UI, designed to capture, synthesize, and organize development work through multi-layer memory architecture (session \u2192 raw capture \u2192 LLM digests \u2192 structured work items). Currently in v3.0.0 with active development on incremental tag sync, database performance optimization via aggregation caching, and work item panel refresh workflows that maintain bidirectional tag consistency across sessions, events, and project facts.",
+    "memory_digest": "**2026-04-15** `memory_embedding.py` \u2014 Implemented run_incremental_sync() function to propagate retroactive tag changes (phase/feature/bug) from mem_mrr_prompts and mem_mrr_commits back to linked mem_ai_events; automatically queues dependent work items for re-matching when user-intent keys change. **2026-04-15** `db_schema.sql` \u2014 Added pr_statistics table for per-project-per-day aggregation caching to replace ~15 individual COUNT queries in data_dashboard with single cached row; added last_event_run_at timestamp baseline for incremental sync. **2026-04-15** `db_schema.sql` \u2014 Created composite index idx_mae_pid_wi on mem_ai_events(project_id, work_item_id) to optimize event_count CTE in work item listing queries; improved dashboard query performance. **2026-04-15** `PROJECT.md` \u2014 Documented session ordering refactor: sessions now order by created_at instead of updated_at to maintain chronological list and prevent tag/phase updates from reordering. **2026-04-15** `route_chat.py` \u2014 Enhanced phase persistence: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase to storage; red \u26a0 badge displays across UI/CLI/workflow for missing phase. **2026-04-15** `memory_embedding.py` \u2014 Completed commit-per-prompt inline display: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash link); verified tag deduplication (149 total tags, 0 duplicates)."
   }
 }

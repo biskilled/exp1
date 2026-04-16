@@ -957,19 +957,130 @@ async def extract_work_item_code(item_id: str, project: str | None = Query(None)
 
 @router.post("/rematch-all")
 async def rematch_all_work_items(project: str | None = Query(None), background: BackgroundTasks = None):
-    """Run tag-matching for all unlinked work items (no tag_id_ai set) in the background."""
+    """Link work items to planner tags in two passes.
+
+    Pass 1 (fast, sync): SQL JOIN on tags JSONB feature/bug values → sets tag_id_ai
+    directly for items whose feature/bug slug matches an existing planner tag name.
+    Normalises spaces/hyphens so "auth-refactor" matches "Auth Refactor".
+
+    Pass 2 (async): queues remaining unlinked items (tag_id_ai IS NULL) for the
+    3-level LLM matching pipeline (exact → semantic → Haiku judge).
+    """
     _require_db()
     p = _project(project)
-    with db.conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM mem_ai_work_items WHERE project_id=%s AND tag_id_ai IS NULL AND NOT (tags_ai ? 'suggested_new') AND status_user!='done' LIMIT 100",
-                (db.get_project_id(p),),
-            )
-            ids = [str(r[0]) for r in cur.fetchall()]
+    p_id = db.get_or_create_project_id(p)
+
+    # ── Pass 1: fast SQL-level link via feature/bug JSONB tags ──────────────
+    fast_linked = 0
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE mem_ai_work_items wi
+                    SET tag_id_ai = pt.id, updated_at = NOW()
+                    FROM planner_tags pt
+                    JOIN mng_tags_categories tc ON tc.id = pt.category_id
+                    WHERE wi.project_id = %s
+                      AND wi.tag_id_ai IS NULL
+                      AND wi.tag_id_user IS NULL
+                      AND wi.status_user != 'done'
+                      AND pt.project_id = wi.project_id
+                      AND pt.status != 'archived'
+                      AND (
+                        (tc.name = 'feature'
+                         AND REGEXP_REPLACE(LOWER(pt.name), '[\\s_]+', '-', 'g')
+                             = REGEXP_REPLACE(LOWER(wi.tags->>'feature'), '[\\s_]+', '-', 'g')
+                         AND wi.tags->>'feature' IS NOT NULL AND wi.tags->>'feature' != '')
+                        OR
+                        (tc.name = 'bug'
+                         AND REGEXP_REPLACE(LOWER(pt.name), '[\\s_]+', '-', 'g')
+                             = REGEXP_REPLACE(LOWER(wi.tags->>'bug'), '[\\s_]+', '-', 'g')
+                         AND wi.tags->>'bug' IS NOT NULL AND wi.tags->>'bug' != '')
+                      )
+                """, (p_id,))
+                fast_linked = cur.rowcount or 0
+    except Exception as e:
+        log.warning(f"rematch-all pass1 error: {e}")
+
+    # ── Pass 2: queue remaining unlinked items for LLM matching ─────────────
+    # Removed "NOT (tags_ai ? 'suggested_new')" — previously suggested NEW items
+    # should be re-tried in case a matching planner tag was created since.
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id FROM mem_ai_work_items
+                       WHERE project_id=%s AND tag_id_ai IS NULL
+                         AND tag_id_user IS NULL AND status_user != 'done'
+                       ORDER BY created_at DESC LIMIT 200""",
+                    (p_id,),
+                )
+                ids = [str(r[0]) for r in cur.fetchall()]
+    except Exception as e:
+        log.warning(f"rematch-all pass2 query error: {e}")
+        ids = []
+
     for wi_id in ids:
         background.add_task(_run_matching, p, wi_id)
-    return {"queued": len(ids), "project": p}
+
+    return {"fast_linked": fast_linked, "llm_queued": len(ids), "project": p}
+
+
+@router.post("/cleanup-orphans")
+async def cleanup_orphan_work_items(
+    project: str | None = Query(None),
+    dry_run: bool = Query(True),
+):
+    """Find and optionally delete work items that have no linked events.
+
+    Orphans arise from: manual creation, dedup merges, or failed extraction.
+    Only removes items with quality_stage != 'approved' and no user tag link.
+    Pass ?dry_run=false to actually delete.
+    Returns {found, deleted, kept}.
+    """
+    _require_db()
+    p = _project(project)
+    p_id = db.get_or_create_project_id(p)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT w.id, w.name_ai, w.category_ai, w.quality_stage
+                FROM mem_ai_work_items w
+                WHERE w.project_id = %s
+                  AND w.tag_id_user IS NULL
+                  AND COALESCE(w.quality_stage, 'staging') != 'approved'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM mem_ai_events e
+                    WHERE e.work_item_id = w.id
+                  )
+            """, (p_id,))
+            orphans = cur.fetchall()
+
+    if dry_run or not orphans:
+        return {
+            "dry_run": dry_run,
+            "found": len(orphans),
+            "deleted": 0,
+            "items": [{"id": str(r[0]), "name": r[1], "category": r[2], "stage": r[3]}
+                      for r in orphans[:50]],
+        }
+
+    ids = [r[0] for r in orphans]
+    deleted = 0
+    try:
+        import psycopg2.extras
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM mem_ai_work_items WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                    ([str(i) for i in ids], p_id),
+                )
+                deleted = cur.rowcount or 0
+    except Exception as e:
+        raise HTTPException(500, f"cleanup error: {e}")
+
+    return {"dry_run": False, "found": len(orphans), "deleted": deleted, "kept": len(orphans) - deleted}
 
 
 @router.post("/{item_id}/match")

@@ -310,14 +310,24 @@ class MemoryTagging:
                         'summary': row[2] or '', 'category_name': row[3] or ''}
 
     def _find_exact_tag(self, project: str, name: str) -> dict | None:
+        """Match a work item name to a planner tag, normalising spaces/hyphens/underscores."""
         project_id = db.get_or_create_project_id(project)
+        # Normalised slug: lowercase + collapse whitespace/underscores → hyphens
+        import re as _re
+        name_slug = _re.sub(r'[\s_]+', '-', name.lower().strip())
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT id, name, category_id FROM planner_tags
-                    WHERE project_id = %s AND LOWER(name) = LOWER(%s)
-                      AND status != 'archived' LIMIT 1
-                """, (project_id, name))
+                    WHERE project_id = %s AND status != 'archived'
+                      AND (
+                        LOWER(name) = LOWER(%s)
+                        OR REGEXP_REPLACE(LOWER(name), '[\\s_]+', '-', 'g') = %s
+                        OR REGEXP_REPLACE(LOWER(name), '[-_]+', ' ', 'g')
+                           = REGEXP_REPLACE(LOWER(%s), '[-_]+', ' ', 'g')
+                      )
+                    LIMIT 1
+                """, (project_id, name, name_slug, name))
                 row = cur.fetchone()
                 if not row:
                     return None

@@ -779,9 +779,17 @@ class MemoryPromotion:
                     tag_rows = cur.fetchall()
 
             if tag_rows:
+                import re as _re_tags
+                def _slugify(s: str) -> str:
+                    return _re_tags.sub(r'[\s_]+', '-', s.lower().strip())
+
                 by_cat: dict[str, list[str]] = {}
                 for t_name, t_cat, t_id in tag_rows:
                     tag_lookup[t_name.lower()] = (str(t_id), t_cat)
+                    # Also index by slug (spaces→hyphens) so "Auth Refactor" matches "auth-refactor"
+                    slug = _slugify(t_name)
+                    if slug not in tag_lookup:
+                        tag_lookup[slug] = (str(t_id), t_cat)
                     by_cat.setdefault(t_cat, []).append(t_name)
 
                 lines = ["EXISTING PLANNER TAGS (match to these FIRST — use exact name if work relates to it):"]

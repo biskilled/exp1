@@ -1439,6 +1439,7 @@ async def run_incremental_sync(project_id: int) -> dict:
 
     def _sync_rows(rows: list[tuple]) -> int:
         """Process (source_id, tags, event_id) rows; return count updated."""
+        import json as _json
         updated = 0
         for _source_id, row_tags, event_id in rows:
             if not event_id:
@@ -1465,18 +1466,36 @@ async def run_incremental_sync(project_id: int) -> dict:
                 if not changed:
                     continue
 
-                import json as _json
+                # Update event tags
                 with db.conn() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_SQL_UPDATE_EVENT_TAGS, (_json.dumps(merged), str(event_id)))
                 updated += 1
 
-                # Queue work item for re-matching if feature/bug changed
+                # Also propagate changed user-intent tags to the linked work item's tags JSONB
                 if wi_id:
                     old_keys = {k: ev_tags.get(k) for k in _USER_INTENT_KEYS}
                     new_keys = {k: merged.get(k) for k in _USER_INTENT_KEYS}
                     if old_keys != new_keys:
                         re_match_set.add(str(wi_id))
+                        # Merge new user-intent tags into work item tags JSONB
+                        try:
+                            wi_intent = {k: v for k, v in merged.items()
+                                         if k in _USER_INTENT_KEYS and v}
+                            if wi_intent:
+                                with db.conn() as conn:
+                                    with conn.cursor() as cur:
+                                        cur.execute(
+                                            """UPDATE mem_ai_work_items
+                                               SET tags = tags || %s::jsonb,
+                                                   tag_id_ai = NULL,
+                                                   updated_at = NOW()
+                                               WHERE id = %s::uuid
+                                                 AND tag_id_user IS NULL""",
+                                            (_json.dumps(wi_intent), str(wi_id)),
+                                        )
+                        except Exception as e:
+                            log.debug(f"run_incremental_sync: wi tags update {wi_id[:8]}: {e}")
             except Exception as e:
                 log.debug(f"run_incremental_sync: event {event_id} update error: {e}")
         return updated
