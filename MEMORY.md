@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-16 00:11 UTC by aicli /memory_
+_Generated: 2026-04-16 00:41 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL pgvector storage, a Python CLI, and an Electron desktop UI. It synthesizes developer sessions into structured memory artifacts (work items, project facts, features) using multi-layer processing (raw events → LLM digests → embeddings) and manages complex tagging relationships across prompts, commits, and AI work items. Currently refactoring tag relations into a unified schema while optimizing work item query performance and debugging AI suggestion population.
+**aicli** is a shared AI memory platform (v3.0.0) that captures, synthesizes, and organizes development context across teams. It combines a Python CLI + FastAPI backend with an Electron desktop UI, using PostgreSQL with pgvector for semantic search and Claude Haiku for dual-layer memory synthesis into structured work items, project facts, and tagged events. Currently stabilizing schema unification (mem_tags_relations), optimizing event aggregation for work item panels, and consolidating AI context files into primary directive locations.
 
 ## Project Facts
 
@@ -274,7 +274,7 @@ Reviewer: ```json
 - Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
 - Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
 - AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching when phase/feature/bug tags change
+- Database.py refactoring: removing unused old tables and reducing file length; adding llm_source column after project in all tables with embedding columns per recent request
 - Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init
 
 ## Active Features / Bugs / Tasks
@@ -325,271 +325,40 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-16
+### `prompt_batch: test-mem-ai-001` — 2026-04-16
 
-diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
-index 1c81390..6f359e3 100644
---- a/backend/routers/route_snapshots.py
-+++ b/backend/routers/route_snapshots.py
-@@ -4,9 +4,9 @@ route_snapshots.py — 4-layer feature snapshot generation endpoint.
- Generates structured knowledge artifacts from memory events:
-   1. Load all mem_ai_events for a tag
-   2. Call Sonnet with memory_feature_snapshot prompt from mng_system_roles
--  3. Parse JSON → upsert mem_ai_features
-+  3. Parse JSON → UPDATE planner_tags inline fields (summary, action_items, design, code_summary, embedding)
-   4. Extract project_facts → upsert mem_ai_project_facts
--  5. Embed requirements+action_items → mem_ai_features.embedding
-+  5. Embed requirements+action_items → planner_tags.embedding
-   6. Mark contributing mem_ai_events.processed_at = NOW()
- 
- Endpoints:
-@@ -41,8 +41,9 @@ _SQL_GET_TAG_ID = """
- _SQL_GET_MEMORY_EVENTS = """
-     SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
-     FROM mem_ai_events me
--    JOIN mem_ai_tags mt ON mt.event_id = me.id
--    WHERE mt.tag_id = %s::uuid
-+    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
-+        AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
-+    WHERE r.tag_id = %s::uuid
-       AND me.client_id = 1 AND me.project = %s
-     ORDER BY me.created_at
- """
-@@ -54,19 +55,14 @@ _SQL_GET_SYSTEM_ROLE = """
- """
- 
- _SQL_UPSERT_SNAPSHOT = """
--    INSERT INTO mem_ai_features
--        (client_id, project, tag_id, requirements, action_items,
--         design, code_summary, file_paths, embedding, created_at, updated_at)
--    VALUES (1, %s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
--    ON CONFLICT (client_id, project, tag_id)
--    DO UPDATE SET
--        requirements  = EXCLUDED.requirements,
--        action_items  = EXCLUDED.action_items,
--        design        = EXCLUDED.design,
--        code_summary  = EXCLUDED.code_summary,
--        file_paths    = EXCLUDED.file_paths,
--        embedding     = EXCLUDED.embedding,
--        updated_at    = NOW()
-+    UPDATE planner_tags SET
-+        summary      = %s,
-+        action_items = %s,
-+        design       = %s::jsonb,
-+        code_summary = %s::jsonb,
-+        embedding    = %s,
-+        updated_at   = NOW()
-+    WHERE id = %s::uuid AND project = %s
-     RETURNING id
- """
- 
-@@ -76,13 +72,12 @@ _SQL_MARK_EVENTS_PROCESSED = """
- """
- 
- _SQL_GET_SNAPSHOT = """
--    SELECT fs.id, fs.tag_id, fs.requirements, fs.action_items,
--           fs.design, fs.code_summary, fs.file_paths,
--           fs.work_item_status, fs.created_at, fs.updated_at,
-+    SELECT t.id, t.id, t.requirements, t.action_items,
-+           t.design, t.code_summary, NULL,
-+           NULL, t.updated_at, t.updated_at,
-            t.name AS tag_name
--    FROM mem_ai_features fs
--    JOIN planner_tags t ON t.id = fs.tag_id
--    WHERE fs.client_id = 1 AND fs.project = %s AND t.name = %s
-+    FROM planner_tags t
-+    WHERE t.client_id = 1 AND t.project = %s AND t.name = %s
-     LIMIT 1
- """
- 
-@@ -220,17 +215,17 @@ async def generate_snapshot(project: str, tag_name: str):
-             cur.execute(
-                 _SQL_UPSERT_SNAPSHOT,
-                 (
--                    project, tag_id,
-                     parsed.get("requirements", ""),
-                     parsed.get("action_items", ""),
-                     json.dumps(design),
-                     json.dumps(code_summary),
--                    file_paths or None,
-                     embedding,
-+                    tag_id,
-+                    project,
-                 ),
-             )
-             snap_row = cur.fetchone()
--            snap_id = str(snap_row[0]) if snap_row else None
-+            snap_id = tag_id  # no separate snapshot row; tag_id is the canonical id
- 
-             if event_ids:
-                 cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))
+User initiated testing following memory/AI cleanup operations; no specific results or decisions documented.
 
+### `prompt_batch: 04d3b8ba-c786-4b24-b0d6-ed49009f369d` — 2026-04-16
 
-### `commit` — 2026-04-16
+User requested to add llem_source column after project in all tables with embedding columns (placing it at the end), and to refactor database.py by removing unused old tables and reducing file length.
 
-diff --git a/backend/routers/route_search.py b/backend/routers/route_search.py
-index 560af96..8c922a4 100644
---- a/backend/routers/route_search.py
-+++ b/backend/routers/route_search.py
-@@ -128,9 +128,9 @@ async def get_tagged_context(
-             pass
- 
-     if effective_tag_id:
--        # Filter by applied source tag — join through mem_mrr_tags
-+        # Filter by applied source tag — join through mem_tags_relations
-         filters.append(
--            "p.id IN (SELECT prompt_id FROM mem_mrr_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
-+            "p.source_id IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='prompt')"
-         )
-         params.append(effective_tag_id)
-     else:
+### `prompt_batch: cc2769f9-f6ba-4197-8f12-570d8750f00d` — 2026-04-16
 
+Unable to process - no MCP tool context or project documentation provided. Need clarification on which MCP tool to use and what project files/repository to analyze.
 
-### `commit` — 2026-04-16
+### `prompt_batch: 05e9af57-76f6-4aef-bb28-8347693f4099` — 2026-04-16
 
-diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
-index 0ad8c31..6c53a81 100644
---- a/backend/routers/route_projects.py
-+++ b/backend/routers/route_projects.py
-@@ -22,17 +22,16 @@ from core.database import db
- _SQL_GET_ENTITY_SUMMARY = (
-     """SELECT tc.name AS category, tc.icon,
-               t.id::text, t.name,
--              COALESCE(tm.description, '') AS description,
--              t.status, tm.due_date, t.parent_id::text,
--              COUNT(DISTINCT st.id)                                          AS event_count,
--              COUNT(DISTINCT CASE WHEN st.commit_id IS NOT NULL THEN st.id END) AS commit_count
-+              COALESCE(t.short_desc, '') AS description,
-+              t.status, t.due_date, t.parent_id::text,
-+              COUNT(DISTINCT r.id)                                                     AS event_count,
-+              COUNT(DISTINCT CASE WHEN r.related_type = 'commit' THEN r.id END)       AS commit_count
-        FROM mng_tags_categories tc
-        JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
--       LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
--       LEFT JOIN mem_mrr_tags st ON st.tag_id = t.id
-+       LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
-        WHERE tc.client_id=1 AND t.status != 'archived'
--       GROUP BY tc.name, tc.icon, t.id, t.name, tm.description, t.status, tm.due_date, t.parent_id
--       ORDER BY tc.name, t.status, COUNT(DISTINCT st.id) DESC"""
-+       GROUP BY tc.name, tc.icon, t.id, t.name, t.short_desc, t.status, t.due_date, t.parent_id
-+       ORDER BY tc.name, t.status, COUNT(DISTINCT r.id) DESC"""
- )
- 
- _SQL_GET_SESSIONS_UNSUMMARIZED = (
-@@ -77,13 +76,13 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
-        WHERE me.client_id=1 AND me.project=%s
-          AND me.event_type='prompt_batch'
-          AND EXISTS (
--             SELECT 1 FROM mem_mrr_tags st
--             JOIN mem_mrr_prompts p ON p.id = st.prompt_id
--             WHERE st.tag_id = (
--                 SELECT tag_id FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1
--             )
--             AND p.session_id = me.session_id
--             AND p.client_id=1
-+             SELECT 1 FROM mem_tags_relations r
-+             JOIN mem_mrr_prompts p ON p.source_id = r.related_id
-+             JOIN mem_tags_relations rw ON rw.related_type = 'work_item' AND rw.related_id = %s
-+             WHERE r.tag_id = rw.tag_id
-+               AND r.related_type = 'prompt' AND r.related_layer = 'mirror'
-+               AND p.session_id = me.session_id
-+               AND p.client_id=1
-          )
-        ORDER BY me.created_at
-        LIMIT 10"""
+User rejected current Planner design with 4 tabs (Feature, Tag, Bugs, Tags). Proposes consolidating all management into a single unified tags interface with hierarchical structure: categories > tags > properties (status, description, user, due date), with secondary access via chat (+) button showing active tags listbox.
 
+### `prompt_batch: 319011a7-6351-4e67-b4ad-4812545187c0` — 2026-04-16
 
-### `commit` — 2026-04-16
+Greeting and project context check. User opened conversation about aicli project with recent progress on AI suggestion banners, session tag persistence, planner UI, and port binding.
 
-diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
-index 67c8063..3b8e0d5 100644
---- a/backend/routers/route_memory.py
-+++ b/backend/routers/route_memory.py
-@@ -69,8 +69,8 @@ _SQL_LIST_SESSION_SUMMARIES = """
-            ) AS tags,
-            e.created_at
-     FROM mem_ai_events e
--    LEFT JOIN mem_ai_tags mat ON mat.event_id = e.id
--    LEFT JOIN planner_tags  pt  ON pt.id = mat.tag_id
-+    LEFT JOIN mem_tags_relations r ON r.related_id = e.id::TEXT AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
-+    LEFT JOIN planner_tags  pt  ON pt.id = r.tag_id
-     WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
-     GROUP BY e.id, e.session_id, e.summary, e.open_threads, e.next_steps, e.created_at
-     ORDER BY e.created_at DESC
+### `prompt_batch: test-session-verify` — 2026-04-16
 
-
-### `commit` — 2026-04-16
-
-diff --git a/backend/routers/route_chat.py b/backend/routers/route_chat.py
-index 070b4df..8161f61 100644
---- a/backend/routers/route_chat.py
-+++ b/backend/routers/route_chat.py
-@@ -622,7 +622,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
-                         cur.execute(
-                             "INSERT INTO planner_tags (client_id, project, name, status) "
-                             "VALUES (1, %s, %s, 'active') "
--                            "ON CONFLICT (client_id, project, name) DO NOTHING RETURNING id",
-+                            "ON CONFLICT (client_id, project, name, category_id) DO NOTHING RETURNING id",
-                             (project, tag_name),
-                         )
-                         ins = cur.fetchone()
-@@ -636,12 +636,19 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
-                             tag_id = ins[0]
-                         else:
-                             continue
--                    # Insert source-tag link
-+                    # Insert source-tag link into mem_tags_relations
-+                    # Look up source_id for this prompt (external reference key)
-                     cur.execute(
--                        """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
--                           VALUES (%s::uuid, %s::uuid, TRUE)
--                           ON CONFLICT DO NOTHING""",
--                        (tag_id, prompt_id),
-+                        "SELECT source_id FROM mem_mrr_prompts WHERE id = %s::uuid LIMIT 1",
-+                        (prompt_id,),
-+                    )
-+                    src_row = cur.fetchone()
-+                    src_key = src_row[0] if src_row and src_row[0] else str(prompt_id)
-+                    cur.execute(
-+                        """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
-+                           VALUES (%s, 'mirror', 'prompt', %s)
-+                           ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
-+                        (str(tag_id), src_key),
-                     )
-     except Exception as e:
-         log.debug(f"_tag_prompt_from_context error: {e}")
-
-
-### `commit` — 2026-04-16
-
-diff --git a/backend/migrations/001_consolidation.sql b/backend/migrations/001_consolidation.sql
-index 584f617..e52240b 100644
---- a/backend/migrations/001_consolidation.sql
-+++ b/backend/migrations/001_consolidation.sql
-@@ -110,9 +110,19 @@ CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related
- DO $$
- BEGIN
-   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'mem_mrr_tags') THEN
-+    -- Prompts: use source_id (external timestamp key) where available, else UUID
-     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
--    SELECT tag_id, 'mirror', 'prompt', prompt_id::TEXT, created_at
--    FROM mem_mrr_tags WHERE prompt_id IS NOT NULL
-+    SELECT t.tag_id, 'mirror', 'prompt', p.source_id, t.created_at
-+    FROM mem_mrr_tags t
-+    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
-+    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NOT NULL
-+    ON CONFLICT DO NOTHING;
-+
-+    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-+    SELECT t.tag_id, 'mirror', 'prompt', t.prompt_id::TEXT, t.created_at
-+    FROM mem_mrr_tags t
-+    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
-+    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NULL
-     ON CONFLICT DO NOTHING;
- 
-     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
-
+Verified that the client_id fix has been applied correctly and the prompt is functioning as expected with proper client identification.
 
 ## AI Synthesis
 
-**[2026-04-15]** Schema refactoring — Unified tag relations from multiple tables into single mem_tags_relations table with related_layer/related_type/related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features table, reducing join complexity. **[2026-04-15]** Route consolidation — Updated route_snapshots.py, route_search.py, and route_projects.py to use mem_tags_relations instead of legacy per-table joins (mem_mrr_tags, mem_ai_tags_relations); standardized event count aggregation across all work item queries. **[2026-04-15]** Work item panel optimization — Implemented indexed (project_id, work_item_id) queries for session-based event counting and event_tags backfilling; reduced N+1 patterns in refresh workflow. **[2026-04-15]** Tag suggestion pipeline — Investigating missing ai_suggestion column population in ui_tags query; refactored chip markup to simplified format without category prefix in non-category mode. **[2026-04-15]** Incremental sync — Designed retroactive tag propagation from mem_mrr_prompts/commits to mem_ai_events with dependent work item re-matching for phase/feature/bug changes. **[2026-04-15]** Session ordering — Fixed chronological ordering to use created_at instead of updated_at, preventing phase/tag updates from reordering session list; enhanced phase persistence.
+**[2026-04-15]** `project-facts` — AI context consolidation complete: legacy _system/ directory removed; context files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; Version 3.0.0 rules generated with UTC timestamp.
+
+**[2026-04-15]** `schema-management` — Unified database schema migration in progress: mem_mrr_tags + mem_ai_tags_relations consolidating into single mem_tags_relations table with related_layer/related_type/related_id columns; planner_tags inline fields (summary, action_items, design, code_summary, embedding) now updated directly instead of separate mem_ai_features table.
+
+**[2026-04-15]** `tag-relations-refactor` — Route layer refactoring underway: route_snapshots.py, route_search.py, route_projects.py updated to join through mem_tags_relations instead of legacy per-table joins; event count aggregation consolidated for work item panel accuracy.
+
+**[2026-04-15]** `work-item-optimization` — Event count query optimization: implementing indexed (project_id, work_item_id) queries for session-based counting; reducing N+1 patterns in work item panel display.
+
+**[2026-04-15]** `ai-tag-suggestion` — AI tag suggestion feature debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population during work item refresh workflow; tooltip improved from 'No existing tag' to 'Does not exist yet'.
+
+**[2026-04-15]** `database-refactor` — Database.py cleanup requested: removing unused old tables to reduce file length; adding llm_source column after project in all tables with embedding columns placement.

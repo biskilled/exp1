@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-16 00:11 UTC — do not edit manually.
+> Auto-generated 2026-04-16 00:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 582
-- **Last active**: 2026-04-16T00:10:56Z
+- **Sessions**: 584
+- **Last active**: 2026-04-16T00:41:45Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -64,7 +64,7 @@
 - Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
 - Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
 - AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching when phase/feature/bug tags change
+- Database.py refactoring: removing unused old tables and reducing file length; adding llm_source column after project in all tables with embedding columns per recent request
 - Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init
 
 ## Key Decisions
