@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-15 23:59 UTC — do not edit manually.
+> Auto-generated 2026-04-16 00:11 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 581
-- **Last active**: 2026-04-15T23:59:07Z
+- **Sessions**: 582
+- **Last active**: 2026-04-16T00:10:56Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -55,15 +55,17 @@
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/
+- **database_migrations**: m001-m051 framework with db_schema.sql as source of truth
+- **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
 
 ## In Progress
 
-- Incremental sync implementation (run_incremental_sync) — propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change
-- Database schema expansion m051+ — added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization
-- Work item panel event count aggregation — session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance
-- Tag suggestion debugging and validation — investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow
-- Session ordering chronological fix — implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init
-- Commit-per-prompt inline display completion — replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link
+- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
+- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
+- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
+- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching when phase/feature/bug tags change
+- Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init
 
 ## Key Decisions
 
@@ -78,10 +80,10 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
-- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables
+- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
+- Snapshot generation: planner_tags inline fields (summary, action_items, design, code_summary, embedding) updated directly instead of separate mem_ai_features table
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events
 
 ---
 

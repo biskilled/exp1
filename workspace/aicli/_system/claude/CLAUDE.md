@@ -37,10 +37,10 @@ You are a senior Python software architect with deep expertise in:
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
-- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables
+- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
+- Snapshot generation: planner_tags inline fields (summary, action_items, design, code_summary, embedding) updated directly instead of separate mem_ai_features table
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events
 
 ---
 

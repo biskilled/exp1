@@ -99,7 +99,10 @@ _SQL_STATS_COUNTS = """
       (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s AND status_user='done') AS wi_done,
       (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
          AND tag_id_user IS NULL AND tag_id_ai IS NULL) AS wi_unlinked,
-      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total
+      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total,
+      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
+         AND (tag_id_ai IS NOT NULL OR tag_id_user IS NOT NULL)) AS wi_linked_any,
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NOT NULL) AS prompts_embedded
 """
 
 _SQL_GET_CACHED_STATS = """
@@ -138,18 +141,17 @@ def _get_stats(project_id: int) -> dict:
 
 
 def _refresh_stats(project_id: int) -> dict:
-    """Recompute aggregated counts and upsert into pr_statistics. Returns computed stats."""
-    import datetime
+    """Recompute aggregated counts + KPIs and upsert into pr_statistics. Returns computed stats."""
+    import datetime, json as _json
     try:
         pid = project_id
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_STATS_COUNTS, (pid,) * 10)
+                cur.execute(_SQL_STATS_COUNTS, (pid,) * 12)
                 r = cur.fetchone()
                 if not r:
                     return {}
 
-                # Gather events_by_type separately
                 cur.execute(
                     "SELECT event_type, COUNT(*) FROM mem_ai_events "
                     "WHERE project_id=%s GROUP BY event_type",
@@ -157,22 +159,45 @@ def _refresh_stats(project_id: int) -> dict:
                 )
                 by_type = {row[0]: row[1] for row in cur.fetchall()}
 
+                # Preserve existing last_rebuild block — don't overwrite it here
+                cur.execute(
+                    "SELECT stats->'last_rebuild' FROM pr_statistics "
+                    "WHERE project_id=%s AND stat_date=CURRENT_DATE",
+                    (pid,),
+                )
+                existing_rb = cur.fetchone()
+                last_rebuild = (existing_rb[0] if existing_rb else None) or {}
+
+        wi_total    = r[5] or 0
+        wi_linked   = r[10] or 0
+        p_total     = r[0] or 0
+        p_embedded  = r[11] or 0
+
+        # KPI 1: % of work items with at least one tag link (AI or user)
+        wi_tag_coverage_pct = round(wi_linked / wi_total * 100, 1) if wi_total else 0.0
+        # KPI 2: % of prompts that have been embedded into events
+        embed_coverage_pct  = round(p_embedded / p_total * 100, 1) if p_total else 0.0
+
         stats: dict = {
-            "prompts_total":       r[0] or 0,
-            "prompts_pending":     r[1] or 0,
-            "commits_total":       r[2] or 0,
-            "commits_pending":     r[3] or 0,
-            "events_total":        r[4] or 0,
-            "events_by_type":      by_type,
-            "work_items_total":    r[5] or 0,
-            "work_items_active":   r[6] or 0,
-            "work_items_done":     r[7] or 0,
-            "work_items_unlinked": r[8] or 0,
-            "planner_tags_total":  r[9] or 0,
-            "updated_at":          datetime.datetime.utcnow().isoformat() + "Z",
+            "prompts_total":          p_total,
+            "prompts_pending":        r[1] or 0,
+            "commits_total":          r[2] or 0,
+            "commits_pending":        r[3] or 0,
+            "events_total":           r[4] or 0,
+            "events_by_type":         by_type,
+            "work_items_total":       wi_total,
+            "work_items_active":      r[6] or 0,
+            "work_items_done":        r[7] or 0,
+            "work_items_unlinked":    r[8] or 0,
+            "planner_tags_total":     r[9] or 0,
+            # KPIs
+            "wi_tag_coverage_pct":    wi_tag_coverage_pct,
+            "embed_coverage_pct":     embed_coverage_pct,
+            "updated_at":             datetime.datetime.utcnow().isoformat() + "Z",
+            # Preserve last_rebuild block
+            "last_rebuild":           last_rebuild,
         }
 
-        import json as _json
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(_SQL_UPSERT_STATS, (pid, _json.dumps(stats)))
@@ -180,6 +205,62 @@ def _refresh_stats(project_id: int) -> dict:
     except Exception as e:
         log.warning(f"_refresh_stats error: {e}")
         return {}
+
+
+def _snapshot_counts(project_id: int) -> dict:
+    """Read current event/work-item/KPI counts for a rebuild snapshot. Fast — no LLM."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT
+                      (SELECT COUNT(*) FROM mem_ai_events    WHERE project_id=%s) AS events,
+                      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s) AS work_items,
+                      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
+                         AND (tag_id_ai IS NOT NULL OR tag_id_user IS NOT NULL)) AS wi_linked,
+                      (SELECT COUNT(*) FROM mem_ai_project_facts WHERE project_id=%s) AS facts
+                """, (project_id,) * 4)
+                r = cur.fetchone()
+        wi_total  = r[1] or 0
+        wi_linked = r[2] or 0
+        return {
+            "events":               r[0] or 0,
+            "work_items":           wi_total,
+            "wi_tag_coverage_pct":  round(wi_linked / wi_total * 100, 1) if wi_total else 0.0,
+            "facts":                r[3] or 0,
+        }
+    except Exception as e:
+        log.debug(f"_snapshot_counts error: {e}")
+        return {}
+
+
+def _save_rebuild_snapshot(project_id: int, before: dict, deleted: dict, status: str = "processing",
+                           after: dict | None = None) -> None:
+    """Persist rebuild before/after/deleted counts into pr_statistics.stats['last_rebuild']."""
+    import datetime, json as _json
+    try:
+        import datetime as _dt
+        block = {
+            "rebuilt_at": _dt.datetime.utcnow().isoformat() + "Z",
+            "status":     status,
+            "before":     before,
+            "deleted":    deleted,
+        }
+        if after is not None:
+            block["after"] = after
+        # Merge into existing stats (don't overwrite other keys)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO pr_statistics (project_id, stat_date, stats)
+                    VALUES (%s, CURRENT_DATE, %s::jsonb)
+                    ON CONFLICT (project_id, stat_date)
+                    DO UPDATE SET
+                        stats = pr_statistics.stats || jsonb_build_object('last_rebuild', %s::jsonb),
+                        updated_at = NOW()
+                """, (project_id, _json.dumps({"last_rebuild": block}), _json.dumps(block)))
+    except Exception as e:
+        log.debug(f"_save_rebuild_snapshot error: {e}")
 
 
 def _record_pipeline_run(project_id: int, stage: str) -> None:
@@ -596,6 +677,9 @@ async def rebuild_work_items(
 
     project_id = db.get_or_create_project_id(project)
 
+    # Capture before snapshot immediately (used for both dry-run preview and real rebuild)
+    before_snap = _snapshot_counts(project_id)
+
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
@@ -633,6 +717,7 @@ async def rebuild_work_items(
                     return {
                         "dry_run": True,
                         "project": project,
+                        "before": before_snap,
                         "would_delete": {
                             "work_items": wi_count,
                             "events": ev_count,
@@ -723,11 +808,34 @@ async def rebuild_work_items(
         except Exception as _e:
             log.warning(f"rebuild reprocess commits error: {_e}")
 
-    background_tasks.add_task(_reprocess)
+    # Save before snapshot immediately with status=processing
+    _save_rebuild_snapshot(
+        project_id, before_snap,
+        {"work_items": deleted_wi, "events": deleted_ev},
+        status="processing",
+    )
+
+    # Wrap _reprocess to capture after snapshot when done
+    async def _reprocess_with_stats():
+        await _reprocess()
+        # Capture after state and mark complete
+        after_snap = _snapshot_counts(project_id)
+        _save_rebuild_snapshot(
+            project_id, before_snap,
+            {"work_items": deleted_wi, "events": deleted_ev},
+            status="complete", after=after_snap,
+        )
+        # Refresh full stats row now that processing is done
+        _refresh_stats(project_id)
+        _record_pipeline_run(project_id, "event")
+        _record_pipeline_run(project_id, "wi")
+
+    background_tasks.add_task(_reprocess_with_stats)
 
     return {
         "dry_run": False,
         "project": project,
+        "before": before_snap,
         "deleted": {
             "work_items": deleted_wi,
             "events": deleted_ev,
@@ -965,7 +1073,14 @@ async def get_data_dashboard(
             if row and row[0] and row[1]:
                 age = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc) - row[1].replace(tzinfo=datetime.timezone.utc)
                 if age.total_seconds() < 1800:  # 30 minutes
-                    return {"cached": True, "project": project, **row[0]}
+                    s = row[0]
+                    cached_kpis = {
+                        "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct"),
+                        "embed_coverage_pct":  s.get("embed_coverage_pct"),
+                    }
+                    cached_rebuild = s.get("last_rebuild", {})
+                    return {"cached": True, "project": project, **s,
+                            "kpis": cached_kpis, "rebuild_history": cached_rebuild}
         except Exception as _e:
             log.debug(f"data-dashboard cache lookup error: {_e}")
     mirror: dict = {}
@@ -1272,13 +1387,49 @@ async def get_data_dashboard(
         return {"mirror": mirror, "ai": ai, "pipeline": pipeline,
                 "pending": pending, "health": health, "recent_errors": recent_errors, "error": str(e)}
 
+    # ── KPIs + rebuild history from pr_statistics ─────────────────────────────
+    kpis: dict = {}
+    rebuild_history: dict = {}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT stats FROM pr_statistics "
+                    "WHERE project_id=%s ORDER BY stat_date DESC LIMIT 1",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+        if row and row[0]:
+            s = row[0]
+            kpis = {
+                "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct"),
+                "embed_coverage_pct":  s.get("embed_coverage_pct"),
+            }
+            rebuild_history = s.get("last_rebuild") or {}
+    except Exception:
+        pass
+
+    # Recompute KPIs inline if not cached yet
+    if not kpis.get("wi_tag_coverage_pct") and kpis.get("wi_tag_coverage_pct") != 0:
+        try:
+            s = _refresh_stats(project_id)
+            kpis = {
+                "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct", 0),
+                "embed_coverage_pct":  s.get("embed_coverage_pct", 0),
+            }
+            rebuild_history = s.get("last_rebuild") or {}
+        except Exception:
+            pass
+
     return {
-        "mirror":        mirror,
-        "ai":            ai,
-        "pipeline":      pipeline,
-        "pending":       pending,
-        "recent_errors": recent_errors,
-        "health":        health,
+        "mirror":          mirror,
+        "ai":              ai,
+        "pipeline":        pipeline,
+        "pending":         pending,
+        "recent_errors":   recent_errors,
+        "health":          health,
+        "kpis":            kpis,
+        "rebuild_history": rebuild_history,
     }
 
 

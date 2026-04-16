@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Incremental sync implementation (run_incremental_sync) — propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change
-- Database schema expansion m051+ — added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization
-- Work item panel event count aggregation — session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance
-- Tag suggestion debugging and validation — investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow
-- Session ordering chronological fix — implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init
-- Commit-per-prompt inline display completion — replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link
+- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
+- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
+- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
+- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching when phase/feature/bug tags change
+- Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init

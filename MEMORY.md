@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-15 23:59 UTC by aicli /memory_
+_Generated: 2026-04-16 00:11 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python FastAPI backend with PostgreSQL+pgvector semantic storage and an Electron desktop UI, designed to capture, synthesize, and organize development work through multi-layer memory architecture (session → raw capture → LLM digests → structured work items). Currently in v3.0.0 with active development on incremental tag sync, database performance optimization via aggregation caching, and work item panel refresh workflows that maintain bidirectional tag consistency across sessions, events, and project facts.
+aicli is a shared AI memory platform combining a FastAPI backend with PostgreSQL pgvector storage, a Python CLI, and an Electron desktop UI. It synthesizes developer sessions into structured memory artifacts (work items, project facts, features) using multi-layer processing (raw events → LLM digests → embeddings) and manages complex tagging relationships across prompts, commits, and AI work items. Currently refactoring tag relations into a unified schema while optimizing work item query performance and debugging AI suggestion population.
 
 ## Project Facts
 
@@ -247,6 +247,8 @@ Reviewer: ```json
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/
+- **database_migrations**: m001-m051 framework with db_schema.sql as source of truth
+- **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
 
 ## Key Decisions
 
@@ -261,19 +263,19 @@ Reviewer: ```json
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
-- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; user_id now INT (matches project_id/client_id); updated_at added to all mirror tables
+- Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
+- Snapshot generation: planner_tags inline fields (summary, action_items, design, code_summary, embedding) updated directly instead of separate mem_ai_features table
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Session-based tag propagation: work item panel refresh triggers /work-items/rematch-all to refetch unlinked items and backlink tag assignments to source session events
 
 ## In Progress
 
-- Incremental sync implementation (run_incremental_sync) — propagates retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queues dependent work items for re-matching when phase/feature/bug tags change
-- Database schema expansion m051+ — added pr_statistics table for per-project-per-day aggregation caching (replaces ~15 COUNT queries); added composite index idx_mae_pid_wi for work item event count CTE optimization
-- Work item panel event count aggregation — session-based COUNT(*) from mem_ai_events matching source_event_id; indexed on (project_id, work_item_id) for performance
-- Tag suggestion debugging and validation — investigating missing suggested_new tags in ui_tags query; ai_tag_suggestion column population in work item refresh workflow
-- Session ordering chronological fix — implemented created_at ordering instead of updated_at to prevent tag/phase updates from reordering session list; phase persistence enhanced with database load on init
-- Commit-per-prompt inline display completion — replaced session-level commit strip with inline commits at bottom of each prompt entry with accent left-border and hash link
+- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
+- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
+- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
+- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching when phase/feature/bug tags change
+- Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init
 
 ## Active Features / Bugs / Tasks
 
@@ -323,351 +325,271 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-15
+### `commit` — 2026-04-16
 
-diff --git a/backend/memory/memory_embedding.py b/backend/memory/memory_embedding.py
-index d1498cf..ba02c0f 100644
---- a/backend/memory/memory_embedding.py
-+++ b/backend/memory/memory_embedding.py
-@@ -1348,6 +1348,184 @@ async def backfill_entity_tags(project: str) -> None:
-     pass
+diff --git a/backend/routers/route_snapshots.py b/backend/routers/route_snapshots.py
+index 1c81390..6f359e3 100644
+--- a/backend/routers/route_snapshots.py
++++ b/backend/routers/route_snapshots.py
+@@ -4,9 +4,9 @@ route_snapshots.py — 4-layer feature snapshot generation endpoint.
+ Generates structured knowledge artifacts from memory events:
+   1. Load all mem_ai_events for a tag
+   2. Call Sonnet with memory_feature_snapshot prompt from mng_system_roles
+-  3. Parse JSON → upsert mem_ai_features
++  3. Parse JSON → UPDATE planner_tags inline fields (summary, action_items, design, code_summary, embedding)
+   4. Extract project_facts → upsert mem_ai_project_facts
+-  5. Embed requirements+action_items → mem_ai_features.embedding
++  5. Embed requirements+action_items → planner_tags.embedding
+   6. Mark contributing mem_ai_events.processed_at = NOW()
  
+ Endpoints:
+@@ -41,8 +41,9 @@ _SQL_GET_TAG_ID = """
+ _SQL_GET_MEMORY_EVENTS = """
+     SELECT me.id, me.event_type, me.source_id, me.session_id, me.content, me.importance
+     FROM mem_ai_events me
+-    JOIN mem_ai_tags mt ON mt.event_id = me.id
+-    WHERE mt.tag_id = %s::uuid
++    JOIN mem_tags_relations r ON r.related_id = me.id::TEXT
++        AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
++    WHERE r.tag_id = %s::uuid
+       AND me.client_id = 1 AND me.project = %s
+     ORDER BY me.created_at
+ """
+@@ -54,19 +55,14 @@ _SQL_GET_SYSTEM_ROLE = """
+ """
  
-+# ── Incremental sync ───────────────────────────────────────────────────────────
-+
-+_SQL_GET_LAST_EVENT_RUN = """
-+    SELECT last_event_run_at
-+    FROM pr_statistics
-+    WHERE project_id=%s AND last_event_run_at IS NOT NULL
-+    ORDER BY stat_date DESC
-+    LIMIT 1
-+"""
-+
-+_SQL_STALE_PROMPTS = """
-+    SELECT p.id AS source_id, p.tags, p.event_id
-+    FROM mem_mrr_prompts p
-+    WHERE p.project_id=%s AND p.event_id IS NOT NULL AND p.updated_at > %s
-+"""
-+
-+_SQL_STALE_COMMITS = """
-+    SELECT c.commit_hash AS source_id, c.tags, c.event_id
-+    FROM mem_mrr_commits c
-+    WHERE c.project_id=%s AND c.event_id IS NOT NULL AND c.updated_at > %s
-+"""
-+
-+_SQL_GET_EVENT_TAGS_AND_WI = """
-+    SELECT tags, work_item_id FROM mem_ai_events WHERE id=%s::uuid
-+"""
-+
-+_SQL_UPDATE_EVENT_TAGS = """
-+    UPDATE mem_ai_events SET tags=%s::jsonb WHERE id=%s::uuid
-+"""
-+
-+_SQL_UPSERT_PIPELINE_RUN_AT = """
-+    INSERT INTO pr_statistics (project_id, stat_date, last_event_run_at)
-+    VALUES (%s, CURRENT_DATE, NOW())
-+    ON CONFLICT (project_id, stat_date)
-+    DO UPDATE SET last_event_run_at=NOW(), updated_at=NOW()
-+"""
-+
-+_USER_INTENT_KEYS = frozenset({"phase", "feature", "bug"})
-+
-+
-+async def run_incremental_sync(project_id: int) -> dict:
-+    """Propagate retroactive tag changes to linked mem_ai_events rows.
-+
-+    Finds mirror rows (prompts + commits) updated after the last embed run
-+    and merges changed phase/feature/bug tags into the linked event. If a
-+    work item is linked to an updated event its tag matching is re-queued.
-+
-+    Returns {prompts_synced, commits_synced, events_updated, work_items_rematched}.
-+    """
-+    if not db.is_available():
-+        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
-+
-+    # 1. Get last_event_run_at baseline
-+    baseline = None
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(_SQL_GET_LAST_EVENT_RUN, (project_id,))
-+                row = cur.fetchone()
-+                if row:
-+                    baseline = row[0]
-+    except Exception as e:
-+        log.debug(f"run_incremental_sync: could not read baseline: {e}")
-+
-+    if baseline is None:
-+        return {
-+            "prompts_synced": 0, "commits_synced": 0,
-+            "events_updated": 0, "work_items_rematched": 0,
-+            "message": "no baseline — run embed-prompts first",
-+        }
-+
-+    # 2. Load stale linked rows
-+    stale_prompts: list[tuple] = []
-+    stale_commits: list[tuple] = []
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(_SQL_STALE_PROMPTS, (project_id, baseline))
-+                stale_prompts = cur.fetchall()
-+                cur.execute(_SQL_STALE_COMMITS, (project_id, baseline))
-+                stale_commits = cur.fetchall()
-+    except Exception as e:
-+        log.warning(f"run_incremental_sync: stale query error: {e}")
-+        return {"prompts_synced": 0, "commits_synced": 0, "events_updated": 0, "work_items_rematched": 0}
-+
-+    # 3. Merge tags and collect work items to re-match
-+    events_updated = 0
-+    re_match_set: set[str] = set()
-+
-+    def _sync_rows(rows: list[tuple]) -> int:
-+        """Process (source_id, tags, event_id) rows; return count updated."""
-+        updated = 0
-+        for _source_id, row_tags, event_id in rows:
-+            if not event_id:
-+                continue
-+            row_tags = row_tags or {}
-+            try:
-+                with db.conn() as conn:
-+                    with conn.cursor() as cur:
-+                        cur.execute(_SQL_GET_EVENT_TAGS_AND_WI, (str(event_id),))
-+                        ev_row = cur.fetchone()
-+                if not ev_row:
-+                    continue
-+                ev_tags, wi_id = ev_row
-+                ev_tags = ev_tags or {}
-+
-+                # Merge only user-intent keys from mirror row into event tags
-+                merged = {**ev_tags}
-+                changed = False
-+                for k, v in row_tags.items():
-+                    if k in _USER_INTENT_KEYS and merged.get(k) != v:
-+                        merged[k] = v
-+                        changed = True
-+
-+                if not changed:
-+                    continue
-+
-+                import json as _json
-+                with db.conn() as conn:
-+                    with conn.cursor() as cur:
-+                        cur.execute(_SQL_UPDATE_EVENT_TAGS, (_json.dumps(merged), str(event_id)))
-+                updated += 1
-+
-+                # Queue work item for re-matching if feature/bug changed
-+                if wi_id:
-+                    old_keys = {k: ev_tags.get(k) for k in _USER_INTENT_KEYS}
-+                    new_keys = {k: merged.get(k) for k in _USER_INTENT_KEYS}
-+                    if old_keys != new_keys:
-+                        re_match_set.add(str(wi_id))
-+            except Exception as e:
-+                log.debug(f"run_incremental_sync: event {event_id} update error: {e}")
-+        return updated
-+
-+    events_updated += _sync_rows(stale_prompts)
-+    events_updated += _sync_rows(stale_commits)
-+
-+    # 4. Re-match queued work items
-+    work_items_rematched = 0
-+    if re_match_set:
-+        try:
-+            from memory.memory_tagging import MemoryTagging
-+            mt = MemoryTagging()
-+            # pass project name via project_id lookup
-+            with db.conn() as conn:
-+                with conn.cursor() as cur:
-+                    cur.execute("SELECT name FROM mng_projects WHERE id=%s", (project_id,))
-+                    prow = cur.fetchone()
-+            project_name = prow[0] if prow else str(project_id)
-+            for
-
-### `commit` — 2026-04-15
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index a1f1c16..c4c9776 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ _SQL_UPSERT_SNAPSHOT = """
+-    INSERT INTO mem_ai_features
+-        (client_id, project, tag_id, requirements, action_items,
+-         design, code_summary, file_paths, embedding, created_at, updated_at)
+-    VALUES (1, %s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s, %s, NOW(), NOW())
+-    ON CONFLICT (client_id, project, tag_id)
+-    DO UPDATE SET
+-        requirements  = EXCLUDED.requirements,
+-        action_items  = EXCLUDED.action_items,
+-        design        = EXCLUDED.design,
+-        code_summary  = EXCLUDED.code_summary,
+-        file_paths    = EXCLUDED.file_paths,
+-        embedding     = EXCLUDED.embedding,
+-        updated_at    = NOW()
++    UPDATE planner_tags SET
++        summary      = %s,
++        action_items = %s,
++        design       = %s::jsonb,
++        code_summary = %s::jsonb,
++        embedding    = %s,
++        updated_at   = NOW()
++    WHERE id = %s::uuid AND project = %s
+     RETURNING id
+ """
  
- ## Recent Work
+@@ -76,13 +72,12 @@ _SQL_MARK_EVENTS_PROCESSED = """
+ """
  
--- Session ordering refactored: sessions now order by created_at instead of updated_at to maintain chronological list and prevent phase/tag updates from reordering
-+- Session ordering by created_at implemented to maintain chronological list and prevent phase/tag updates from reordering sessions
- - Phase persistence enhanced: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase, red ⚠ badge for missing phase across UI/CLI/workflow
- - Commit-per-prompt inline display completed: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash ↗ link)
--- Tag deduplication and cross-view sync: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
-+- Tag deduplication and cross-view sync verified: 149 total tags (0 duplicates); removal via ✕ buttons propagates across Chat/History/Commits simultaneously
- - AI suggestion auto-save with tag management: suggestions create tags in proper category via _acceptSuggestedTag; marked distinctly with separate color; appear immediately in Planner
- - Planner tab unified redesign: consolidated into single tags view with category, active/inactive status, short description, created date; removed Feature/Bugs/Tags split
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
-index d2fe63a..bbbbfe4 100644
---- a/backend/core/db_schema.sql
-+++ b/backend/core/db_schema.sql
-@@ -722,6 +722,28 @@ CREATE TABLE IF NOT EXISTS mem_pipeline_runs (
- CREATE INDEX IF NOT EXISTS idx_mpr_project_started ON mem_pipeline_runs(project_id, started_at DESC);
- CREATE INDEX IF NOT EXISTS idx_mpr_status ON mem_pipeline_runs(status) WHERE status = 'running';
+ _SQL_GET_SNAPSHOT = """
+-    SELECT fs.id, fs.tag_id, fs.requirements, fs.action_items,
+-           fs.design, fs.code_summary, fs.file_paths,
+-           fs.work_item_status, fs.created_at, fs.updated_at,
++    SELECT t.id, t.id, t.requirements, t.action_items,
++           t.design, t.code_summary, NULL,
++           NULL, t.updated_at, t.updated_at,
+            t.name AS tag_name
+-    FROM mem_ai_features fs
+-    JOIN planner_tags t ON t.id = fs.tag_id
+-    WHERE fs.client_id = 1 AND fs.project = %s AND t.name = %s
++    FROM planner_tags t
++    WHERE t.client_id = 1 AND t.project = %s AND t.name = %s
+     LIMIT 1
+ """
  
-+-- pr_statistics: per-project-per-day aggregation cache.
-+-- Replaces ~15 individual COUNT queries in data_dashboard with a single
-+-- cached JSONB row. Updated by _refresh_stats() in route_memory.py.
-+CREATE TABLE IF NOT EXISTS pr_statistics (
-+    id                  SERIAL PRIMARY KEY,
-+    client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-+    project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-+    stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
-+    stats               JSONB        NOT NULL DEFAULT '{}',
-+    last_event_run_at   TIMESTAMPTZ,
-+    last_fact_run_at    TIMESTAMPTZ,
-+    last_wi_run_at      TIMESTAMPTZ,
-+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-+    UNIQUE (project_id, stat_date)
-+);
-+CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date ON pr_statistics(project_id, stat_date DESC);
-+
-+-- Composite index for ev_count CTE in work items list query
-+CREATE INDEX IF NOT EXISTS idx_mae_pid_wi
-+    ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL;
-+
- -- pr_seq_counters: atomic sequential ID generators (one row per project+category)
- -- Used to give work items human-readable numbers like #10001.
- CREATE TABLE IF NOT EXISTS pr_seq_counters (
-@@ -758,7 +780,8 @@ DECLARE
-         'mem_ai_events', 'mem_ai_work_items', 'mem_ai_project_facts',
-         'mem_ai_feature_snapshot',
-         'mem_pipeline_runs',
--        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges'
-+        'pr_graph_workflows', 'pr_graph_nodes', 'pr_graph_edges',
-+        'pr_statistics'
-     ];
-     _t text;
+@@ -220,17 +215,17 @@ async def generate_snapshot(project: str, tag_name: str):
+             cur.execute(
+                 _SQL_UPSERT_SNAPSHOT,
+                 (
+-                    project, tag_id,
+                     parsed.get("requirements", ""),
+                     parsed.get("action_items", ""),
+                     json.dumps(design),
+                     json.dumps(code_summary),
+-                    file_paths or None,
+                     embedding,
++                    tag_id,
++                    project,
+                 ),
+             )
+             snap_row = cur.fetchone()
+-            snap_id = str(snap_row[0]) if snap_row else None
++            snap_id = tag_id  # no separate snapshot row; tag_id is the canonical id
+ 
+             if event_ids:
+                 cur.execute(_SQL_MARK_EVENTS_PROCESSED, (event_ids,))
+
+
+### `commit` — 2026-04-16
+
+diff --git a/backend/routers/route_search.py b/backend/routers/route_search.py
+index 560af96..8c922a4 100644
+--- a/backend/routers/route_search.py
++++ b/backend/routers/route_search.py
+@@ -128,9 +128,9 @@ async def get_tagged_context(
+             pass
+ 
+     if effective_tag_id:
+-        # Filter by applied source tag — join through mem_mrr_tags
++        # Filter by applied source tag — join through mem_tags_relations
+         filters.append(
+-            "p.id IN (SELECT prompt_id FROM mem_mrr_tags WHERE tag_id=%s::uuid AND prompt_id IS NOT NULL)"
++            "p.source_id IN (SELECT related_id FROM mem_tags_relations WHERE tag_id=%s::uuid AND related_type='prompt')"
+         )
+         params.append(effective_tag_id)
+     else:
+
+
+### `commit` — 2026-04-16
+
+diff --git a/backend/routers/route_projects.py b/backend/routers/route_projects.py
+index 0ad8c31..6c53a81 100644
+--- a/backend/routers/route_projects.py
++++ b/backend/routers/route_projects.py
+@@ -22,17 +22,16 @@ from core.database import db
+ _SQL_GET_ENTITY_SUMMARY = (
+     """SELECT tc.name AS category, tc.icon,
+               t.id::text, t.name,
+-              COALESCE(tm.description, '') AS description,
+-              t.status, tm.due_date, t.parent_id::text,
+-              COUNT(DISTINCT st.id)                                          AS event_count,
+-              COUNT(DISTINCT CASE WHEN st.commit_id IS NOT NULL THEN st.id END) AS commit_count
++              COALESCE(t.short_desc, '') AS description,
++              t.status, t.due_date, t.parent_id::text,
++              COUNT(DISTINCT r.id)                                                     AS event_count,
++              COUNT(DISTINCT CASE WHEN r.related_type = 'commit' THEN r.id END)       AS commit_count
+        FROM mng_tags_categories tc
+        JOIN planner_tags t ON t.category_id = tc.id AND t.client_id=1 AND t.project=%s
+-       LEFT JOIN planner_tags_meta tm ON tm.tag_id = t.id
+-       LEFT JOIN mem_mrr_tags st ON st.tag_id = t.id
++       LEFT JOIN mem_tags_relations r ON r.tag_id = t.id AND r.related_layer = 'mirror'
+        WHERE tc.client_id=1 AND t.status != 'archived'
+-       GROUP BY tc.name, tc.icon, t.id, t.name, tm.description, t.status, tm.due_date, t.parent_id
+-       ORDER BY tc.name, t.status, COUNT(DISTINCT st.id) DESC"""
++       GROUP BY tc.name, tc.icon, t.id, t.name, t.short_desc, t.status, t.due_date, t.parent_id
++       ORDER BY tc.name, t.status, COUNT(DISTINCT r.id) DESC"""
+ )
+ 
+ _SQL_GET_SESSIONS_UNSUMMARIZED = (
+@@ -77,13 +76,13 @@ _SQL_GET_SESSION_SUMMARIES_FOR_WORK_ITEM = (
+        WHERE me.client_id=1 AND me.project=%s
+          AND me.event_type='prompt_batch'
+          AND EXISTS (
+-             SELECT 1 FROM mem_mrr_tags st
+-             JOIN mem_mrr_prompts p ON p.id = st.prompt_id
+-             WHERE st.tag_id = (
+-                 SELECT tag_id FROM mem_ai_work_items WHERE id=%s::uuid AND client_id=1
+-             )
+-             AND p.session_id = me.session_id
+-             AND p.client_id=1
++             SELECT 1 FROM mem_tags_relations r
++             JOIN mem_mrr_prompts p ON p.source_id = r.related_id
++             JOIN mem_tags_relations rw ON rw.related_type = 'work_item' AND rw.related_id = %s
++             WHERE r.tag_id = rw.tag_id
++               AND r.related_type = 'prompt' AND r.related_layer = 'mirror'
++               AND p.session_id = me.session_id
++               AND p.client_id=1
+          )
+        ORDER BY me.created_at
+        LIMIT 10"""
+
+
+### `commit` — 2026-04-16
+
+diff --git a/backend/routers/route_memory.py b/backend/routers/route_memory.py
+index 67c8063..3b8e0d5 100644
+--- a/backend/routers/route_memory.py
++++ b/backend/routers/route_memory.py
+@@ -69,8 +69,8 @@ _SQL_LIST_SESSION_SUMMARIES = """
+            ) AS tags,
+            e.created_at
+     FROM mem_ai_events e
+-    LEFT JOIN mem_ai_tags mat ON mat.event_id = e.id
+-    LEFT JOIN planner_tags  pt  ON pt.id = mat.tag_id
++    LEFT JOIN mem_tags_relations r ON r.related_id = e.id::TEXT AND r.related_layer = 'ai' AND r.related_type = 'memory_event'
++    LEFT JOIN planner_tags  pt  ON pt.id = r.tag_id
+     WHERE e.client_id=1 AND e.project=%s AND e.event_type='session_summary'
+     GROUP BY e.id, e.session_id, e.summary, e.open_threads, e.next_steps, e.created_at
+     ORDER BY e.created_at DESC
+
+
+### `commit` — 2026-04-16
+
+diff --git a/backend/routers/route_chat.py b/backend/routers/route_chat.py
+index 070b4df..8161f61 100644
+--- a/backend/routers/route_chat.py
++++ b/backend/routers/route_chat.py
+@@ -622,7 +622,7 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
+                         cur.execute(
+                             "INSERT INTO planner_tags (client_id, project, name, status) "
+                             "VALUES (1, %s, %s, 'active') "
+-                            "ON CONFLICT (client_id, project, name) DO NOTHING RETURNING id",
++                            "ON CONFLICT (client_id, project, name, category_id) DO NOTHING RETURNING id",
+                             (project, tag_name),
+                         )
+                         ins = cur.fetchone()
+@@ -636,12 +636,19 @@ async def _tag_prompt_from_context(project: str, prompt_id: str, context_tags: d
+                             tag_id = ins[0]
+                         else:
+                             continue
+-                    # Insert source-tag link
++                    # Insert source-tag link into mem_tags_relations
++                    # Look up source_id for this prompt (external reference key)
+                     cur.execute(
+-                        """INSERT INTO mem_mrr_tags (tag_id, prompt_id, auto_tagged)
+-                           VALUES (%s::uuid, %s::uuid, TRUE)
+-                           ON CONFLICT DO NOTHING""",
+-                        (tag_id, prompt_id),
++                        "SELECT source_id FROM mem_mrr_prompts WHERE id = %s::uuid LIMIT 1",
++                        (prompt_id,),
++                    )
++                    src_row = cur.fetchone()
++                    src_key = src_row[0] if src_row and src_row[0] else str(prompt_id)
++                    cur.execute(
++                        """INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id)
++                           VALUES (%s, 'mirror', 'prompt', %s)
++                           ON CONFLICT (tag_id, related_type, related_id) DO NOTHING""",
++                        (str(tag_id), src_key),
+                     )
+     except Exception as e:
+         log.debug(f"_tag_prompt_from_context error: {e}")
+
+
+### `commit` — 2026-04-16
+
+diff --git a/backend/migrations/001_consolidation.sql b/backend/migrations/001_consolidation.sql
+index 584f617..e52240b 100644
+--- a/backend/migrations/001_consolidation.sql
++++ b/backend/migrations/001_consolidation.sql
+@@ -110,9 +110,19 @@ CREATE INDEX IF NOT EXISTS idx_mem_tags_rel_review ON mem_tags_relations(related
+ DO $$
  BEGIN
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index debaee0..ce2c11e 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-05 18:10 UTC
-+> Generated by aicli 2026-04-05 18:14 UTC
- 
- # aicli — Shared AI Memory Platform
- 
-@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
- - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
--- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
-+- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering
- - Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
- - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
- - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
-
-
-### `commit` — 2026-04-15
-
-diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
-index 39da0d7..104806f 100644
---- a/backend/core/db_migrations.py
-+++ b/backend/core/db_migrations.py
-@@ -2387,6 +2387,55 @@ def m052_column_reorder(conn) -> None:  # noqa: C901
-     log.info("m052_column_reorder: 18 tables rebuilt with consistent column ordering")
- 
- 
-+def m053_pr_statistics(conn) -> None:
-+    """Add pr_statistics aggregation cache table + performance indexes.
+   IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'mem_mrr_tags') THEN
++    -- Prompts: use source_id (external timestamp key) where available, else UUID
+     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
+-    SELECT tag_id, 'mirror', 'prompt', prompt_id::TEXT, created_at
+-    FROM mem_mrr_tags WHERE prompt_id IS NOT NULL
++    SELECT t.tag_id, 'mirror', 'prompt', p.source_id, t.created_at
++    FROM mem_mrr_tags t
++    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
++    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NOT NULL
++    ON CONFLICT DO NOTHING;
 +
-+    Creates a per-project-per-day statistics cache (pr_statistics) to replace
-+    the ~15 individual COUNT queries in data_dashboard. Also fixes a stale index
-+    on mem_mrr_commits and adds a composite index for the ev_count CTE.
-+    """
-+    with conn.cursor() as cur:
-+        cur.execute("""
-+            CREATE TABLE IF NOT EXISTS pr_statistics (
-+                id                  SERIAL PRIMARY KEY,
-+                client_id           INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-+                project_id          INT          NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-+                stat_date           DATE         NOT NULL DEFAULT CURRENT_DATE,
-+                stats               JSONB        NOT NULL DEFAULT '{}',
-+                last_event_run_at   TIMESTAMPTZ,
-+                last_fact_run_at    TIMESTAMPTZ,
-+                last_wi_run_at      TIMESTAMPTZ,
-+                created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-+                updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-+                UNIQUE (project_id, stat_date)
-+            )
-+        """)
-+        cur.execute(
-+            "CREATE INDEX IF NOT EXISTS idx_pr_stats_project_date "
-+            "ON pr_statistics(project_id, stat_date DESC)"
-+        )
-+        # Drop existing trigger first to ensure idempotency
-+        cur.execute("DROP TRIGGER IF EXISTS set_pr_statistics_updated_at ON pr_statistics")
-+        cur.execute("""
-+            CREATE TRIGGER set_pr_statistics_updated_at
-+            BEFORE UPDATE ON pr_statistics
-+            FOR EACH ROW EXECUTE FUNCTION set_updated_at()
-+        """)
-+        # Fix stale index on mem_mrr_commits referencing dropped committed_at column
-+        cur.execute("DROP INDEX IF EXISTS idx_mmrr_c_comm")
-+        cur.execute(
-+            "CREATE INDEX IF NOT EXISTS idx_mmrr_c_created "
-+            "ON mem_mrr_commits(project_id, created_at DESC)"
-+        )
-+        # Composite index for the ev_count CTE in work items list query
-+        cur.execute(
-+            "CREATE INDEX IF NOT EXISTS idx_mae_pid_wi "
-+            "ON mem_ai_events(project_id, work_item_id) WHERE work_item_id IS NOT NULL"
-+        )
-+    conn.commit()
-+    log.info("m053_pr_statistics: pr_statistics table + 3 indexes created")
-+
-+
- MIGRATIONS: list[tuple[str, Callable]] = [
-     # All migrations through m017 (ai_tags column) were applied via the legacy
-     # ALTER TABLE system in database.py and are tracked as:
-@@ -2427,4 +2476,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
-     ("m050_prompts_source_id_index", m050_prompts_source_id_index),
-     ("m051_schema_refactor_user_id_updated_at", m051_schema_refactor_user_id_updated_at),
-     ("m052_column_reorder", m052_column_reorder),
-+    ("m053_pr_statistics", m053_pr_statistics),
- ]
-
-
-### `commit` — 2026-04-15
-
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index da83136..302d4fc 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:10 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-05 18:14 UTC
++    INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
++    SELECT t.tag_id, 'mirror', 'prompt', t.prompt_id::TEXT, t.created_at
++    FROM mem_mrr_tags t
++    JOIN mem_mrr_prompts p ON p.id = t.prompt_id
++    WHERE t.prompt_id IS NOT NULL AND p.source_id IS NULL
+     ON CONFLICT DO NOTHING;
  
- # aicli — Shared AI Memory Platform
- 
-@@ -56,7 +56,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - Data persistence: load_once_on_access, update_on_save pattern; tags in mem_ai_tags_relations with row ID linking and suggested/user-created distinction
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); manual relations via CLI/admin UI
- - Session ordering by created_at (not updated_at) to prevent tag/phase updates from reordering session list
--- Unified UI: Planner tab consolidates all tag management (single tags view with category/status/properties); Chat (+) for tag selection with category filtering
-+- Unified Planner tab: single tags view with category/status/properties (active/inactive, short description, created date); tag management centralized from Chat (+) with category filtering
- - Tag suggestions marked distinctly (separate color/mark) and auto-saved via _acceptSuggestedTag; phase persistence with red ⚠ badge for missing phase
- - Commit-per-prompt inline display: commits at bottom of each prompt entry (accent left-border, hash ↗ link) showing only that prompt's commits
- - Backend: FastAPI + uvicorn; routers/ for API, core/ for infrastructure, data/ (dl_ prefix) for access, agents/ for tools and MCP
+     INSERT INTO mem_tags_relations (tag_id, related_layer, related_type, related_id, created_at)
 
 
 ## AI Synthesis
 
-**2026-04-15** `memory_embedding.py` — Implemented run_incremental_sync() function to propagate retroactive tag changes (phase/feature/bug) from mem_mrr_prompts and mem_mrr_commits back to linked mem_ai_events; automatically queues dependent work items for re-matching when user-intent keys change. **2026-04-15** `db_schema.sql` — Added pr_statistics table for per-project-per-day aggregation caching to replace ~15 individual COUNT queries in data_dashboard with single cached row; added last_event_run_at timestamp baseline for incremental sync. **2026-04-15** `db_schema.sql` — Created composite index idx_mae_pid_wi on mem_ai_events(project_id, work_item_id) to optimize event_count CTE in work item listing queries; improved dashboard query performance. **2026-04-15** `PROJECT.md` — Documented session ordering refactor: sessions now order by created_at instead of updated_at to maintain chronological list and prevent tag/phase updates from reordering. **2026-04-15** `route_chat.py` — Enhanced phase persistence: loads from database on init, PATCH /chat/sessions/{id}/tags saves phase to storage; red ⚠ badge displays across UI/CLI/workflow for missing phase. **2026-04-15** `memory_embedding.py` — Completed commit-per-prompt inline display: replaced session-level commit strip with inline commits at bottom of each prompt entry (accent left-border, hash link); verified tag deduplication (149 total tags, 0 duplicates).
+**[2026-04-15]** Schema refactoring — Unified tag relations from multiple tables into single mem_tags_relations table with related_layer/related_type/related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features table, reducing join complexity. **[2026-04-15]** Route consolidation — Updated route_snapshots.py, route_search.py, and route_projects.py to use mem_tags_relations instead of legacy per-table joins (mem_mrr_tags, mem_ai_tags_relations); standardized event count aggregation across all work item queries. **[2026-04-15]** Work item panel optimization — Implemented indexed (project_id, work_item_id) queries for session-based event counting and event_tags backfilling; reduced N+1 patterns in refresh workflow. **[2026-04-15]** Tag suggestion pipeline — Investigating missing ai_suggestion column population in ui_tags query; refactored chip markup to simplified format without category prefix in non-category mode. **[2026-04-15]** Incremental sync — Designed retroactive tag propagation from mem_mrr_prompts/commits to mem_ai_events with dependent work item re-matching for phase/feature/bug changes. **[2026-04-15]** Session ordering — Fixed chronological ordering to use created_at instead of updated_at, preventing phase/tag updates from reordering session list; enhanced phase persistence.
