@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-16 09:37 UTC — do not edit manually.
+> Auto-generated 2026-04-16 16:17 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 588
-- **Last active**: 2026-04-16T01:32:02Z
+- **Sessions**: 589
+- **Last active**: 2026-04-16T09:43:26Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Schema unification: migrating unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
-- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations; consolidating event count aggregation logic
-- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
-- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- AI context file versioning: automated rule file generation with UTC timestamps (.ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md); Version 3.0.0 baseline established
-- Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to primary context files
+- Column name standardization: migrating committed_at → created_at across mem_mrr_commits schema, route_work_items.py, route_tags.py, and chat.js; ensuring consistent timestamp field naming
+- Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
+- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting and aggregation
+- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population in work item refresh workflow
+- AI context file versioning: Version 3.0.0 baseline established with UTC timestamps; automated rule file generation for .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md
 
 ## Key Decisions
 
