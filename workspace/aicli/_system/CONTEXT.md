@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-16 00:52 UTC — do not edit manually.
+> Auto-generated 2026-04-16 09:37 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 586
-- **Last active**: 2026-04-16T00:52:29Z
+- **Sessions**: 588
+- **Last active**: 2026-04-16T01:32:02Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
-- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
+- Schema unification: migrating unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations; consolidating event count aggregation logic
 - Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
 - AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md
-- AI context file versioning: automated rule file generation with UTC timestamps; Version 3.0.0 established as baseline for ai_rules_file_version
+- AI context file versioning: automated rule file generation with UTC timestamps (.ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md); Version 3.0.0 baseline established
+- Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to primary context files
 
 ## Key Decisions
 
