@@ -215,6 +215,10 @@ class MemoryTagging:
     async def match_work_item_to_tags(self, project: str, work_item_id: str) -> list[dict]:
         """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
 
+        All matching is constrained to planner tags whose category matches the work item's
+        category_ai (feature/bug/task). Phase/doc-type tags are filtered out of primary
+        matching — they may appear as secondary suggestions only.
+
         Returns list of dicts: {tag_id, relation, confidence}.
         Best match is auto-persisted to mem_ai_work_items.tag_id_ai.
         """
@@ -222,14 +226,16 @@ class MemoryTagging:
         if not wi:
             return []
 
-        # Level 1 — exact name match
-        tag = self._find_exact_tag(project, wi['name'])
+        category = wi.get('category_name') or ''  # 'feature' | 'bug' | 'task'
+
+        # Level 1 — exact name match (constrained to same category)
+        tag = self._find_exact_tag(project, wi['name'], category=category)
         if tag:
             result = [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
             self._persist_tag_id_ai(work_item_id, tag['id'])
             return result
 
-        # Level 2 — semantic similarity
+        # Level 2 — semantic similarity (constrained to same category)
         query = ' '.join(filter(None, [wi.get('name', ''), wi.get('description', ''), wi.get('summary', '')]))
         if not query.strip():
             return []
@@ -237,7 +243,7 @@ class MemoryTagging:
         candidates: list[dict] = []
         try:
             emb = await self._embed_text(query)
-            candidates = self._vector_search_tags(project, emb, limit=15)
+            candidates = self._vector_search_tags(project, emb, limit=15, category=category)
         except Exception:
             pass  # no embedding available — fall through to Haiku fallback
 
@@ -258,11 +264,11 @@ class MemoryTagging:
             except Exception:
                 pass
 
-        # Level 4 — no strong/border results: ask Haiku directly on all tags
+        # Level 4 — no strong/border results: ask Haiku on all same-category tags
         # (runs when embedding found no good matches OR tags have no embeddings yet)
         if not results:
             try:
-                all_tags = self._load_all_tags(project)
+                all_tags = self._load_all_tags(project, category=category)
                 if all_tags:
                     judgments = await self._claude_judge_candidates(wi, all_tags)
                     for j in judgments:
@@ -309,61 +315,84 @@ class MemoryTagging:
                 return {'id': str(row[0]), 'name': row[1],
                         'summary': row[2] or '', 'category_name': row[3] or ''}
 
-    def _find_exact_tag(self, project: str, name: str) -> dict | None:
-        """Match a work item name to a planner tag, normalising spaces/hyphens/underscores."""
+    def _find_exact_tag(self, project: str, name: str, category: str = '') -> dict | None:
+        """Match a work item name to a planner tag, normalising spaces/hyphens/underscores.
+
+        When category is given (e.g. 'feature', 'bug', 'task'), only tags in that
+        category are considered. This prevents a feature work item from matching a
+        phase tag named similarly.
+        """
         project_id = db.get_or_create_project_id(project)
-        # Normalised slug: lowercase + collapse whitespace/underscores → hyphens
         import re as _re
         name_slug = _re.sub(r'[\s_]+', '-', name.lower().strip())
+        cat_filter = "AND tc.name = %s" if category else ""
+        params = [project_id, name, name_slug, name]
+        if category:
+            params.append(category)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, name, category_id FROM planner_tags
-                    WHERE project_id = %s AND status != 'archived'
+                cur.execute(f"""
+                    SELECT pt.id, pt.name, pt.category_id FROM planner_tags pt
+                    LEFT JOIN mng_tags_categories tc ON tc.id = pt.category_id
+                    WHERE pt.project_id = %s AND pt.status != 'archived'
+                      {cat_filter}
                       AND (
-                        LOWER(name) = LOWER(%s)
-                        OR REGEXP_REPLACE(LOWER(name), '[\\s_]+', '-', 'g') = %s
-                        OR REGEXP_REPLACE(LOWER(name), '[-_]+', ' ', 'g')
+                        LOWER(pt.name) = LOWER(%s)
+                        OR REGEXP_REPLACE(LOWER(pt.name), '[\\s_]+', '-', 'g') = %s
+                        OR REGEXP_REPLACE(LOWER(pt.name), '[-_]+', ' ', 'g')
                            = REGEXP_REPLACE(LOWER(%s), '[-_]+', ' ', 'g')
                       )
                     LIMIT 1
-                """, (project_id, name, name_slug, name))
+                """, params)
                 row = cur.fetchone()
                 if not row:
                     return None
                 return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
 
-    def _load_all_tags(self, project: str, limit: int = 50) -> list[dict]:
-        """Load all active planner tags with category name, prioritising task/bug/feature."""
+    def _load_all_tags(self, project: str, limit: int = 50, category: str = '') -> list[dict]:
+        """Load active planner tags. When category is given, only return tags of that category."""
         project_id = db.get_or_create_project_id(project)
+        cat_filter = "AND tc.name = %s" if category else ""
+        params = [project_id]
+        if category:
+            params.append(category)
+        params.append(limit)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(f"""
                     SELECT t.id, t.name, t.category_id, t.description, tc.name AS category_name
                     FROM planner_tags t
                     LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
                     WHERE t.project_id = %s AND t.status != 'archived'
-                    ORDER BY
-                        CASE WHEN tc.name IN ('task','bug','feature') THEN 0 ELSE 1 END,
-                        t.created_at DESC
+                    {cat_filter}
+                    ORDER BY t.created_at DESC
                     LIMIT %s
-                """, (project_id, limit))
+                """, params)
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
                          'description': r[3] or '', 'category_name': r[4] or '',
                          'score': 0.0} for r in rows]
 
-    def _vector_search_tags(self, project: str, embedding: list, limit: int = 15) -> list[dict]:
+    def _vector_search_tags(self, project: str, embedding: list, limit: int = 15,
+                            category: str = '') -> list[dict]:
+        """Vector-search planner tags. When category is given, constrain to that category."""
         project_id = db.get_or_create_project_id(project)
+        cat_filter = "AND tc.name = %s" if category else ""
+        params = [embedding, project_id]
+        if category:
+            params.append(category)
+        params += [embedding, limit]
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, name, category_id, description,
-                           1 - (embedding <=> %s::vector) AS score
-                    FROM planner_tags
-                    WHERE project_id = %s AND embedding IS NOT NULL AND status != 'archived'
-                    ORDER BY embedding <=> %s::vector LIMIT %s
-                """, (embedding, project_id, embedding, limit))
+                cur.execute(f"""
+                    SELECT pt.id, pt.name, pt.category_id, pt.description,
+                           1 - (pt.embedding <=> %s::vector) AS score
+                    FROM planner_tags pt
+                    LEFT JOIN mng_tags_categories tc ON tc.id = pt.category_id
+                    WHERE pt.project_id = %s AND pt.embedding IS NOT NULL AND pt.status != 'archived'
+                    {cat_filter}
+                    ORDER BY pt.embedding <=> %s::vector LIMIT %s
+                """, params)
                 rows = cur.fetchall()
                 return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
                          'description': r[3], 'score': float(r[4])} for r in rows]

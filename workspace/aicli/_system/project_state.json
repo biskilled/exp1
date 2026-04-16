@@ -96,8 +96,8 @@
     "Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic",
     "Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel",
     "AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow",
-    "Database.py refactoring: removing unused old tables and reducing file length; adding llm_source column after project in all tables with embedding columns per recent request",
-    "Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init"
+    "Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md",
+    "AI context file versioning: automated rule file generation with UTC timestamps; Version 3.0.0 established as baseline for ai_rules_file_version"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-16T00:43:17Z",
+  "last_memory_run": "2026-04-16T00:52:58Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -153,8 +153,8 @@
       "Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic",
       "Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel",
       "AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow",
-      "Database.py refactoring: removing unused old tables and reducing file length; adding llm_source column after project in all tables with embedding columns per recent request",
-      "Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init"
+      "Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md",
+      "AI context file versioning: automated rule file generation with UTC timestamps; Version 3.0.0 established as baseline for ai_rules_file_version"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -162,16 +162,19 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
+      "mcp": "Stdio MCP server with 12+ tools",
       "deployment_backend": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "mcp": "Stdio MCP server with 12+ tools",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)"
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
+      "embeddings": "text-embedding-3-small (1536-dim vectors)",
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "**aicli** is a shared AI memory platform (v3.0.0) that captures, synthesizes, and organizes development context across teams. It combines a Python CLI + FastAPI backend with an Electron desktop UI, using PostgreSQL with pgvector for semantic search and Claude Haiku for dual-layer memory synthesis into structured work items, project facts, and tagged events. Currently stabilizing schema unification (mem_tags_relations), optimizing event aggregation for work item panels, and consolidating AI context files into primary directive locations.",
-    "memory_digest": "**[2026-04-15]** `project-facts` \u2014 AI context consolidation complete: legacy _system/ directory removed; context files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; Version 3.0.0 rules generated with UTC timestamp.\n\n**[2026-04-15]** `schema-management` \u2014 Unified database schema migration in progress: mem_mrr_tags + mem_ai_tags_relations consolidating into single mem_tags_relations table with related_layer/related_type/related_id columns; planner_tags inline fields (summary, action_items, design, code_summary, embedding) now updated directly instead of separate mem_ai_features table.\n\n**[2026-04-15]** `tag-relations-refactor` \u2014 Route layer refactoring underway: route_snapshots.py, route_search.py, route_projects.py updated to join through mem_tags_relations instead of legacy per-table joins; event count aggregation consolidated for work item panel accuracy.\n\n**[2026-04-15]** `work-item-optimization` \u2014 Event count query optimization: implementing indexed (project_id, work_item_id) queries for session-based counting; reducing N+1 patterns in work item panel display.\n\n**[2026-04-15]** `ai-tag-suggestion` \u2014 AI tag suggestion feature debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population during work item refresh workflow; tooltip improved from 'No existing tag' to 'Does not exist yet'.\n\n**[2026-04-15]** `database-refactor` \u2014 Database.py cleanup requested: removing unused old tables to reduce file length; adding llm_source column after project in all tables with embedding columns placement."
+    "project_summary": "aicli is a shared AI memory platform combining a Python CLI backend (FastAPI + PostgreSQL + pgvector embeddings) with an Electron desktop UI for project teams to capture, synthesize, and query development context across sessions. The system uses multi-layer memory (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 structured work items) with async DAG-based workflows, unified tag relations, and intelligent chunking to maintain coherent AI context while eliminating noise and redundancy.",
+    "memory_digest": "**2026-04-16** `schema_migration` \u2014 Unified mem_tags_relations table consolidates tag-to-entity relationships across mem_ai_tags_relations and mem_mrr_tags; snapshot generation refactored to update planner_tags inline fields (summary, action_items, design, code_summary, embedding) directly. **2026-04-15** `legacy_cleanup` \u2014 Removed _system/ directory containing CONTEXT.md, MEMORY.md, and legacy copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md as primary agent context sources. **2026-04-15** `version_bump` \u2014 Version 3.0.0 released with ai_rules_file_version timestamp tracking (last: 2026-04-15 01:13 UTC); auto-generation mechanism established for rule files. **in_progress** `tag_refactoring` \u2014 Updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table joins; consolidating event count aggregation with indexed queries on (project_id, work_item_id). **in_progress** `ai_tag_suggestions` \u2014 Debugging missing suggested_new tags in ui_tags query; investigating ai_suggestion column population in work item panel refresh workflow with approve/remove button handlers. **in_progress** `event_filtering` \u2014 Event filtering logic (event_type IN 'prompt_batch', 'session_summary') removes per-commit and diff_file noise from aggregation; system metadata stripped during backfill while user-facing tags retained."
   }
 }

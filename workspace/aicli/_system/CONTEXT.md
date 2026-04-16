@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-16 00:44 UTC — do not edit manually.
+> Auto-generated 2026-04-16 00:52 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 585
-- **Last active**: 2026-04-16T00:42:18Z
+- **Sessions**: 586
+- **Last active**: 2026-04-16T00:52:29Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -64,8 +64,8 @@
 - Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
 - Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
 - AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- Database.py refactoring: removing unused old tables and reducing file length; adding llm_source column after project in all tables with embedding columns per recent request
-- Session ordering chronological fix: ensuring created_at ordering prevents tag/phase updates from reordering session list; phase persistence enhanced with database load on init
+- Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md
+- AI context file versioning: automated rule file generation with UTC timestamps; Version 3.0.0 established as baseline for ai_rules_file_version
 
 ## Key Decisions
 

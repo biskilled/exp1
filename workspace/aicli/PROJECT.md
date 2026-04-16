@@ -262,9 +262,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations with related_layer, related_type, related_id; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
-- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation
+- Schema unification: migrating from mem_mrr_tags + mem_ai_tags_relations to unified mem_tags_relations table with related_layer, related_type, related_id columns; snapshot generation now updates planner_tags inline instead of separate mem_ai_features
+- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through mem_tags_relations instead of legacy per-table tag joins; consolidating event count aggregation logic
 - Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting; reducing N+1 query patterns in work item panel
 - AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item refresh workflow
-- Incremental sync implementation: propagating retroactive tag changes from mem_mrr_prompts/commits to linked mem_ai_events; queuing dependent work items for re-matching
-- Database.py refactoring: removing unused old tables (llem_source column placement standardized, file length reduced for maintainability)
+- Legacy _system/ directory cleanup: removed CONTEXT.md, MEMORY.md, and copilot context files; consolidated AI instructions to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md
+- AI context file versioning: automated rule file generation with UTC timestamps; Version 3.0.0 established as baseline for ai_rules_file_version
