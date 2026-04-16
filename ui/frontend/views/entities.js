@@ -753,7 +753,9 @@ function _renderWiPanel(items, project) {
     const aiNew = (wi.tags_ai && wi.tags_ai.suggested_new) ? wi.tags_ai.suggested_new : '';
     const aiNewCat = (wi.tags_ai && wi.tags_ai.suggested_category) ? wi.tags_ai.suggested_category : 'task';
     const aiNewLabel = aiNew ? (aiNewCat + ':' + aiNew) : '';
-    const userTagsList = Array.isArray(wi.user_tags) ? wi.user_tags : [];
+    const userTagsList = wi.user_tag_name
+      ? [(wi.user_tag_category ? wi.user_tag_category + ':' + wi.user_tag_name : wi.user_tag_name)]
+      : [];
 
     // AI row — always shown; show EXISTS first, then NEW if no exists match
     let aiRow;

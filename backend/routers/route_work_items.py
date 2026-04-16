@@ -56,12 +56,22 @@ _SQL_LIST_WORK_ITEMS_BASE = (
               w.created_at, w.updated_at, w.seq_num,
               w.quality_stage, w.quality_issues, w.dedup_status,
               tc.color, tc.icon,
+              pt.name        AS ai_tag_name,
+              ptc.name       AS ai_tag_category,
+              ptc.color      AS ai_tag_color,
+              ut.name        AS user_tag_name,
+              utc.name       AS user_tag_category,
+              utc.color      AS user_tag_color,
               COALESCE(ev_count.event_count,  0) AS event_count,
               COALESCE(ev_count.prompt_count, 0) AS prompt_count,
               COALESCE(ev_count.commit_count, 0) AS commit_count,
               COALESCE(mcount.cnt, 0) AS merge_count
        FROM mem_ai_work_items w
-       LEFT JOIN mng_tags_categories tc ON tc.client_id=1 AND tc.name=w.category_ai
+       LEFT JOIN mng_tags_categories tc  ON tc.client_id=1 AND tc.name=w.category_ai
+       LEFT JOIN planner_tags        pt  ON pt.id = w.tag_id_ai
+       LEFT JOIN mng_tags_categories ptc ON ptc.id = pt.category_id
+       LEFT JOIN planner_tags        ut  ON ut.id = w.tag_id_user
+       LEFT JOIN mng_tags_categories utc ON utc.id = ut.category_id
        LEFT JOIN ev_count ON ev_count.wi_id = w.id::text
        LEFT JOIN mcount ON mcount.wi_id = w.id::text
        WHERE {where}

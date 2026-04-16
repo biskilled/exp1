@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-16 00:41 UTC by aicli /memory_
+_Generated: 2026-04-16 00:42 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-**aicli** is a shared AI memory platform (v3.0.0) that captures, synthesizes, and organizes development context across teams. It combines a Python CLI + FastAPI backend with an Electron desktop UI, using PostgreSQL with pgvector for semantic search and Claude Haiku for dual-layer memory synthesis into structured work items, project facts, and tagged events. Currently stabilizing schema unification (mem_tags_relations), optimizing event aggregation for work item panels, and consolidating AI context files into primary directive locations.
 
 ## Project Facts
 
@@ -348,17 +344,3 @@ Greeting and project context check. User opened conversation about aicli project
 ### `prompt_batch: test-session-verify` — 2026-04-16
 
 Verified that the client_id fix has been applied correctly and the prompt is functioning as expected with proper client identification.
-
-## AI Synthesis
-
-**[2026-04-15]** `project-facts` — AI context consolidation complete: legacy _system/ directory removed; context files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md; Version 3.0.0 rules generated with UTC timestamp.
-
-**[2026-04-15]** `schema-management` — Unified database schema migration in progress: mem_mrr_tags + mem_ai_tags_relations consolidating into single mem_tags_relations table with related_layer/related_type/related_id columns; planner_tags inline fields (summary, action_items, design, code_summary, embedding) now updated directly instead of separate mem_ai_features table.
-
-**[2026-04-15]** `tag-relations-refactor` — Route layer refactoring underway: route_snapshots.py, route_search.py, route_projects.py updated to join through mem_tags_relations instead of legacy per-table joins; event count aggregation consolidated for work item panel accuracy.
-
-**[2026-04-15]** `work-item-optimization` — Event count query optimization: implementing indexed (project_id, work_item_id) queries for session-based counting; reducing N+1 patterns in work item panel display.
-
-**[2026-04-15]** `ai-tag-suggestion` — AI tag suggestion feature debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population during work item refresh workflow; tooltip improved from 'No existing tag' to 'Does not exist yet'.
-
-**[2026-04-15]** `database-refactor` — Database.py cleanup requested: removing unused old tables to reduce file length; adding llm_source column after project in all tables with embedding columns placement.
