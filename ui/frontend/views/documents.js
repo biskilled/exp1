@@ -10,7 +10,6 @@
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';
-import { showWorkflowPicker } from '../utils/workflowPicker.js';
 
 const TREE_W_KEY = 'aicli_docs_tree_w';
 
@@ -251,9 +250,6 @@ function _renderViewer(path, content) {
   if (!viewer) return;
   const isMd = path.endsWith('.md') || path.endsWith('.markdown');
 
-  // Detect feature snapshot files: features/<slug>/feature_ai.md or feature_final.md
-  const featureMatch = path.match(/^features\/([^/]+)\/(feature_ai|feature_final)\.md$/);
-
   viewer.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);flex-shrink:0">
@@ -261,8 +257,6 @@ function _renderViewer(path, content) {
         ${_esc(path)}
       </span>
       <div style="display:flex;gap:0.4rem;flex-shrink:0">
-        ${featureMatch ? `<button class="btn btn-ghost btn-sm" id="doc-workflow-btn"
-                style="font-size:0.65rem;padding:0.15rem 0.5rem;color:var(--accent)">▶ Workflow</button>` : ''}
         <button class="btn btn-ghost btn-sm" id="doc-edit-btn"
                 style="font-size:0.65rem;padding:0.15rem 0.5rem">Edit</button>
         <button class="btn btn-ghost btn-sm" id="doc-delete-btn"
@@ -279,70 +273,6 @@ function _renderViewer(path, content) {
   document.getElementById('doc-edit-btn').addEventListener('click', () => _editDoc(path, content));
   document.getElementById('doc-delete-btn').addEventListener('click', () => _deleteDoc(path));
 
-  if (featureMatch) {
-    const tagSlug = featureMatch[1];
-    document.getElementById('doc-workflow-btn').addEventListener('click', async () => {
-      try {
-        // Find tag by slug match (slugify tag name and compare)
-        const tags = await api.tags.list(_project);
-        const flatTags = [];
-        const flatten = (arr) => arr.forEach(t => { flatTags.push(t); if (t.children) flatten(t.children); });
-        flatten(tags);
-        const _slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        const tag = flatTags.find(t => _slugify(t.name) === tagSlug);
-        if (!tag) { toast('Feature tag not found', 'warning'); return; }
-
-        const snap = await api.tags.getSnapshot(tag.id, _project, 'user')
-          .catch(() => api.tags.getSnapshot(tag.id, _project, 'ai').catch(() => null));
-        if (!snap?.use_cases?.length) { toast('No use cases found in snapshot', 'warning'); return; }
-
-        if (snap.use_cases.length === 1) {
-          const uc = snap.use_cases[0];
-          await showWorkflowPicker(tag.id, uc.use_case_num, uc.use_case_summary, _project);
-        } else {
-          // Multiple use cases — show a quick picker
-          const choice = await _pickUseCase(snap.use_cases);
-          if (choice) await showWorkflowPicker(tag.id, choice.use_case_num, choice.use_case_summary, _project);
-        }
-      } catch (e) {
-        toast(`Workflow error: ${e.message}`, 'error');
-      }
-    });
-  }
-}
-
-async function _pickUseCase(useCases) {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9400;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55)';
-    overlay.innerHTML = `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-                  padding:1.2rem;width:340px;max-width:95vw">
-        <div style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem">Select Use Case</div>
-        ${useCases.map(uc => `
-          <div data-uc="${uc.use_case_num}" style="padding:0.5rem 0.65rem;border-radius:var(--radius);
-               border:1px solid var(--border);margin-bottom:0.35rem;cursor:pointer;font-size:0.78rem;
-               background:var(--surface2)" onmouseenter="this.style.borderColor='var(--accent)'"
-               onmouseleave="this.style.borderColor='var(--border)'">
-            UC${uc.use_case_num}: ${uc.use_case_type||'feature'} — ${(uc.use_case_summary||'').slice(0,60)}
-          </div>
-        `).join('')}
-        <button style="margin-top:0.5rem;width:100%;background:none;border:1px solid var(--border);
-                border-radius:var(--radius);padding:0.35rem;cursor:pointer;font-size:0.75rem;color:var(--muted)"
-                id="uc-cancel-btn">Cancel</button>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    overlay.querySelectorAll('[data-uc]').forEach(el => {
-      el.addEventListener('click', () => {
-        const ucNum = parseInt(el.dataset.uc, 10);
-        const uc = useCases.find(u => u.use_case_num === ucNum);
-        overlay.remove(); resolve(uc || null);
-      });
-    });
-    overlay.querySelector('#uc-cancel-btn').onclick = () => { overlay.remove(); resolve(null); };
-    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(null); }});
-  });
 }
 
 function _editDoc(path, content) {

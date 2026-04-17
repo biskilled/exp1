@@ -339,8 +339,7 @@ api.tags = {
   merge:                 (body)  => _post('/tags/merge', body),
   migrateToAiSuggestions:(proj) => _post(`/tags/migrate-to-ai-suggestions?project=${enc(proj)}`),
   plan:           (id, proj)     => _post(`/tags/${enc(id)}/plan?project=${enc(proj)}`),
-  getSnapshot:    (id, proj, version='ai') => _get(`/tags/${enc(id)}/snapshot?project=${enc(proj)}&version=${enc(version)}`),
-  getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
+getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
   addSource:      (body)         => _post('/tags/source', body),
   removeSource:   (id)           => _del(`/tags/source/${enc(id)}`),
   sessionContext: (proj)         => _get(`/tags/session-context?project=${enc(proj)}`),
@@ -520,8 +519,6 @@ api.pipeline = {
   llmCosts:        (project)                        => _get(`/memory/${enc(project)}/llm-costs`),
   qualityCheck:    (project)                        => _post(`/memory/${enc(project)}/quality-check`, {}),
   pruneTags:       (project, keepIds)               => _post(`/memory/${enc(project)}/prune-tags`, { keep_ids: keepIds }),
-  runFromSnapshot: (tagId, ucNum, project, wfId)    =>
-    _post(`/tags/${enc(tagId)}/snapshot/${ucNum}/run-workflow?project=${enc(project)}&workflow_id=${enc(wfId)}`, {}),
 };
 
 // ── UI log helper — callable from any view ─────────────────────────────────────

@@ -2628,6 +2628,15 @@ def m059_drop_legacy_tables(conn) -> None:
     conn.commit()
 
 
+def m060_drop_feature_snapshot(conn) -> None:
+    """Drop mem_ai_feature_snapshot and its FK columns — feature was never completed."""
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE pr_graph_runs DROP COLUMN IF EXISTS snapshot_id")
+        cur.execute("ALTER TABLE pr_graph_runs DROP COLUMN IF EXISTS use_case_num")
+        cur.execute("DROP TABLE IF EXISTS mem_ai_feature_snapshot CASCADE")
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2675,4 +2684,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m057_drop_events_and_work_items", m057_drop_events_and_work_items),
     ("m058_tag_deps", m058_tag_deps),
     ("m059_drop_legacy_tables", m059_drop_legacy_tables),
+    ("m060_drop_feature_snapshot", m060_drop_feature_snapshot),
 ]

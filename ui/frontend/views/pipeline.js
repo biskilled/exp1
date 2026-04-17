@@ -233,7 +233,6 @@ function _renderAI(container, ai) {
 
   const ev = ai.events || {};
   const wi = ai.work_items || {};
-  const fs = ai.feature_snapshots || {};
 
   // Events by-type breakdown (top 3)
   const byType = ev.by_type || {};
@@ -265,28 +264,6 @@ function _renderAI(container, ai) {
         <span>Last: ${_fmtTime(ev.last_at)}</span>
       </div>
       <div class="dd-card-footer" style="margin-top:0.2rem">${typeLines}</div>
-    </div>`,
-
-    // Feature Snapshots  (row 1, col 2)
-    `<div class="dd-card">
-      <div class="dd-card-hdr">
-        <span class="dd-card-icon">◉</span>
-        <span class="dd-card-title">Feature Snaps</span>
-        <div class="dd-dot" style="background:${_dot(fs.total, fs.last_24h, false)}"></div>
-      </div>
-      <div class="dd-stats">
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(fs.total)}</div>
-          <div class="dd-stat-lbl">Total</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val" style="color:${fs.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(fs.last_24h)}</div>
-          <div class="dd-stat-lbl">24h</div>
-        </div>
-      </div>
-      <div class="dd-card-footer">
-        <span>Last: ${_fmtTime(fs.last_at)}</span>
-      </div>
     </div>`,
 
     // Work Items  (row 2, full-width)
