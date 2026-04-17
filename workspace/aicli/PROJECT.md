@@ -270,3 +270,12 @@ sidebar tabs:
 - Admin dashboard: revenue summary, top users by spend
 - Electron packaging with embedded Python 3.12
 - Semantic search over use case file content (pgvector on chunked .md files)
+
+## Recent Work
+
+- Column name standardization: migrating committed_at → created_at across mem_mrr_commits schema, route_work_items.py, route_tags.py, and chat.js; ensuring consistent timestamp field naming
+- Async DB initialization refactoring: fire-and-forget pattern with db.init() running in executor thread; routes fall back to file storage until database becomes available
+- Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
+- Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
+- AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow
+- pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility

@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-17 18:59 UTC — do not edit manually.
+> Auto-generated 2026-04-17 19:21 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 605
-- **Last active**: 2026-04-17T18:59:07Z
+- **Sessions**: 606
+- **Last active**: 2026-04-17T19:18:05Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -61,11 +61,11 @@
 ## In Progress
 
 - Column name standardization: migrating committed_at → created_at across mem_mrr_commits schema, route_work_items.py, route_tags.py, and chat.js; ensuring consistent timestamp field naming
+- Async DB initialization refactoring: fire-and-forget pattern with db.init() running in executor thread; routes fall back to file storage until database becomes available
 - Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
-- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
-- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting and aggregation
-- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population in work item refresh workflow
-- AI context file versioning: Version 3.0.0 baseline established with UTC timestamps; automated rule file generation for .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md
+- Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
+- AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow
+- pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility
 
 ## Key Decisions
 
@@ -78,12 +78,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; system metadata stripped, user-facing tags retained
 - AI context consolidation: .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md as primary agent context files; legacy _system/ directory removed
 - Database schema as single source of truth (db_schema.sql) with m001-m051 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
 - Snapshot generation: planner_tags inline fields (summary, action_items, design, code_summary, embedding) updated directly instead of separate mem_ai_features table
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background; routes check db.is_available() and fall back to file storage until ready
 
 ---
 
@@ -171,7 +171,7 @@ POST /projects/aicli/memory
   └── Top events → .claude/memory/top_events.md
 
 
-*...192 more lines in PROJECT.md*
+*...201 more lines in PROJECT.md*
 
 ---
 

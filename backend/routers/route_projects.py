@@ -2013,13 +2013,12 @@ async def generate_memory(project_name: str):
         except Exception:
             pass
 
-    # ── Memory pipeline: items, messages, feature snapshots, work item extraction ─
+    # ── Memory pipeline: feature snapshots ───────────────────────────────────────
+    # Items/messages are now handled by the backlog pipeline (backlog_config.yaml).
+    # Work item extraction/promotion removed — replaced by backlog → use cases flow.
     if db.is_available():
         try:
-            asyncio.create_task(_process_unembedded_items_messages(project_name))
-            asyncio.create_task(_run_work_item_extraction(project_name))
             asyncio.create_task(_run_feature_snapshots(project_name))
-            asyncio.create_task(_run_promote_all_work_items(project_name))
         except Exception:
             pass
 
