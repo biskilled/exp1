@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 17:40 UTC by aicli /memory_
+_Generated: 2026-04-17 17:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -323,171 +323,303 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/workspace/aicli/_system/history.jsonl b/backend/workspace/aicli/_system/history.jsonl
-deleted file mode 100644
-index 04e79a4..0000000
---- a/backend/workspace/aicli/_system/history.jsonl
-+++ /dev/null
-@@ -1 +0,0 @@
--{"ts": "2026-03-23T01:07:44Z", "source": "claude_cli", "session_id": "test123", "provider": "claude", "user_input": "test prompt", "output": "", "user": null, "feature": null, "tags": []}
-
-
-### `commit` — 2026-04-17
-
-Commit: docs: update AI assistant rules and memory after session 11163d9b
-Hash: 31002ada
-Code files (1):
-  - backend/workspace/aicli/_system/history.jsonl
-Generated/internal files: workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/CLAUDE.md
-
-### `commit` — 2026-04-17
-
-diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
-index bf759b6..569f0c2 100644
---- a/backend/routers/route_history.py
-+++ b/backend/routers/route_history.py
-@@ -228,7 +228,6 @@ async def chat_history(
-                     cur.execute(
-                         f"""SELECT COUNT(*) FROM mem_mrr_prompts
-                             WHERE client_id=1 AND project=%s
--                              AND event_type='prompt'
-                               AND prompt IS NOT NULL AND prompt != ''
-                               {noise_filter}{provider_filter}""",
-                         (p,) + noise_args + provider_arg,
-@@ -240,7 +239,6 @@ async def chat_history(
-                                    response, phase, tags, metadata, created_at
-                             FROM mem_mrr_prompts
-                             WHERE client_id=1 AND project=%s
--                              AND event_type='prompt'
-                               AND prompt IS NOT NULL AND prompt != ''
-                               {noise_filter}{provider_filter}
-                             ORDER BY created_at DESC
-@@ -272,7 +270,8 @@ async def chat_history(
-                 "has_more": (offset + len(entries)) < total,
-             }
-         except Exception as e:
--            log.warning("chat_history DB read failed, falling back to JSONL: %s", e)
-+            import logging
-+            logging.getLogger(__name__).warning("chat_history DB read failed, falling back to JSONL: %s", e)
+diff --git a/backend/memory/memory_embedding.py b/backend/memory/memory_embedding.py
+index da8feb0..e902855 100644
+--- a/backend/memory/memory_embedding.py
++++ b/backend/memory/memory_embedding.py
+@@ -59,12 +59,12 @@ _EXT_LANG: dict[str, str] = {
  
-     # Fallback: JSONL (when DB unavailable)
-     entries = _load_unified_history(project, provider)
+ _SQL_UPSERT_EVENT = """
+     INSERT INTO mem_ai_events
+-           (client_id, project, source_type, source_id, session_id, session_desc,
++           (client_id, project, event_type, source_id, session_id, session_desc,
+             chunk, chunk_type, content, embedding, cnt_prompts, summary,
+             doc_type, language, file_path, metadata, importance)
+        VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s,
+                %s, %s, %s, %s::jsonb, %s)
+-       ON CONFLICT (client_id, project, source_type, source_id, chunk)
++       ON CONFLICT (client_id, project, event_type, source_id, chunk)
+        DO UPDATE SET
+            content      = EXCLUDED.content,
+            embedding    = EXCLUDED.embedding,
+@@ -93,7 +93,7 @@ _SQL_LOAD_PROMPT = """
+ """
+ 
+ _SQL_SEARCH_TPL = """
+-    SELECT source_type, source_id, chunk, chunk_type, content,
++    SELECT event_type, source_id, chunk, chunk_type, content,
+            language, file_path, doc_type, metadata, session_id,
+            1 - (embedding <=> %s::vector) AS score
+     FROM mem_ai_events
+@@ -232,7 +232,7 @@ class MemoryEmbedding:
+         1. Load last N prompts from mem_mrr_prompts
+         2. Load prompt_batch_digest system role → Haiku digest
+         3. Embed digest → VECTOR(1536)
+-        4. INSERT mem_ai_events (source_type='prompt_batch', cnt_prompts=n)
++        4. INSERT mem_ai_events (event_type='prompt_batch', cnt_prompts=n)
+         Returns the mem_ai_events UUID.
+         """
+         prompts = self._mirroring.get_last_n_prompts(project, session_id, n)
+@@ -473,7 +473,7 @@ class MemoryEmbedding:
+ 
+         if source_types:
+             placeholders = ",".join(["%s"] * len(source_types))
+-            conditions.append(f"source_type IN ({placeholders})")
++            conditions.append(f"event_type IN ({placeholders})")
+             params.extend(source_types)
+ 
+         if tag_id:
+@@ -492,7 +492,7 @@ class MemoryEmbedding:
+                     rows = cur.fetchall()
+             return [
+                 {
+-                    "source_type": r[0],
++                    "event_type": r[0],
+                     "source_id":   r[1],
+                     "chunk":       r[2],
+                     "chunk_type":  r[3],
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
-index 1a5b3ae..d1e8a47 100644
---- a/backend/routers/route_entities.py
-+++ b/backend/routers/route_entities.py
-@@ -1042,7 +1042,7 @@ async def get_events_source_tags(project: str | None = Query(None)):
-                    FROM mem_mrr_tags st
-                    JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
-                    JOIN mng_tags_categories tc ON tc.id = t.category_id
--                   JOIN mem_mrr_commits c ON c.id = st.commit_id AND c.client_id=1 AND c.project=%s
-+                   JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id AND c.client_id=1 AND c.project=%s
-                    WHERE st.commit_id IS NOT NULL
-                    ORDER BY 1, 3""",
-                 (p, p, p, p),
+diff --git a/backend/core/database.py b/backend/core/database.py
+index c450333..7d55fea 100644
+--- a/backend/core/database.py
++++ b/backend/core/database.py
+@@ -534,21 +534,6 @@ CREATE TABLE IF NOT EXISTS pr_seq_counters (
+ ALTER TABLE mem_ai_work_items ADD COLUMN IF NOT EXISTS seq_num INT;
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_wi_seq ON mem_ai_work_items(client_id, project, seq_num) WHERE seq_num IS NOT NULL;
+ 
+--- Session summaries (structured synthesis written by Stop hook)
+-CREATE TABLE IF NOT EXISTS pr_session_summaries (
+-    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+-    client_id    INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+-    project      VARCHAR(255) NOT NULL,
+-    session_id   TEXT         NOT NULL,
+-    summary      TEXT         NOT NULL DEFAULT '',
+-    open_threads TEXT         NOT NULL DEFAULT '',
+-    next_steps   TEXT         NOT NULL DEFAULT '',
+-    tags         TEXT[]       NOT NULL DEFAULT '{}',
+-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+-    UNIQUE(client_id, project, session_id)
+-);
+-CREATE INDEX IF NOT EXISTS idx_pr_ss_cp      ON pr_session_summaries(client_id, project);
+-CREATE INDEX IF NOT EXISTS idx_pr_ss_created ON pr_session_summaries(created_at DESC);
+ """
+ 
+ 
+@@ -685,8 +670,8 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
+     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+     client_id       INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
+     project         VARCHAR(255) NOT NULL,
+-    source_type     TEXT         NOT NULL,
+-    source_id       TEXT         NOT NULL,
++    event_type      TEXT         NOT NULL,  -- 'prompt_batch'|'commit'|'item'|'message'|'session_summary'|'workflow'
++    source_id       TEXT         NOT NULL,  -- UUID or commit hash or session_id
+     session_id      TEXT,
+     session_desc    TEXT,
+     chunk           INT          NOT NULL DEFAULT 0,
+@@ -695,6 +680,9 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
+     embedding       VECTOR(1536),
+     cnt_prompts     INT,
+     summary         TEXT,
++    open_threads    TEXT         NOT NULL DEFAULT '',
++    next_steps      TEXT         NOT NULL DEFAULT '',
++    summary_tags    TEXT[]       NOT NULL DEFAULT '{}',
+     summary_max_resolution_hrs INT  DEFAULT 24,
+     summary_cnt_msg             INT  DEFAULT 20,
+     summary_desc                TEXT,
+@@ -705,11 +693,11 @@ CREATE TABLE IF NOT EXISTS mem_ai_events (
+     importance      SMALLINT     NOT NULL DEFAULT 1,
+     processed_at    TIMESTAMPTZ,
+     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+-    UNIQUE(client_id, project, source_type, source_id, chunk)
++    UNIQUE(client_id, project, event_type, source_id, chunk)
+ );
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_cp      ON mem_ai_events(client_id, project);
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_session ON mem_ai_events(session_id);
+-CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(source_type);
++CREATE INDEX IF NOT EXISTS idx_mem_ai_events_type    ON mem_ai_events(event_type);
+ CREATE INDEX IF NOT EXISTS idx_mem_ai_events_pending ON mem_ai_events(processed_at) WHERE processed_at IS NULL;
+ 
+ -- ── Tagging: mem_mrr_tags (wide junction — all source FKs) ──────────────────
+@@ -842,14 +830,14 @@ END $$;
+ DO $$
+ BEGIN
+   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_memory_events' AND schemaname='public') THEN
+-    INSERT INTO mem_ai_events (id, client_id, project, source_type, source_id,
++    INSERT INTO mem_ai_events (id, client_id, project, event_type, source_id,
+                                 session_id, chunk, chunk_type, content, embedding,
+                                 importance, processed_at, created_at)
+     SELECT id, client_id, project, source_type, source_id::text,
+            session_id, 0, 'full', content, embedding,
+            importance, processed_at, created_at
+     FROM pr_memory_events
+-    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
++    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
+     DROP TABLE IF EXISTS pr_memory_events CASCADE;
+   END IF;
+ END $$;
+@@ -858,14 +846,14 @@ END $$;
+ DO $$
+ BEGIN
+   IF EXISTS (SELECT FROM pg_tables WHERE tablename='pr_embeddings' AND schemaname='public') THEN
+-    INSERT INTO mem_ai_events (client_id, project, source_type, source_id,
++    INSERT INTO mem_ai_events (client_id, project, event_type, source_id,
+                                 chunk, chunk_type, content, embedding,
+                                 doc_type, language, file_path, metadata, created_at)
+     SELECT client_id, project, source_type, source_id,
+            chunk_index, chunk_type, content, embedding,
+            doc_type, language, file_path, metadata, created_at
+     FROM pr_embeddings
+-    ON CONFLICT (client_id, project, source_type, source_id, chunk) DO NOTHING;
++    ON CONFLICT (client_id, project, event_type, source_id, chunk) DO NOTHING;
+     DROP TABLE IF EXISTS pr_embeddings CASCADE;
+   END IF;
+ END $$;
+@@ -885,6 +873,30 @@ END $$;
+ # ─── Column additions to existing tables (memory infra) ──────────────────────
+ 
+ _DDL_MEMORY_INFRA_ALTERS = """
++-- Rename source_type → event_type (idempotent via DO block)
++DO $$ BEGIN
++    IF EXISTS (SELECT 1 FROM information_schema.columns
++               WHERE table_name='mem_ai_events' AND column_name='source_type') THEN
++        ALTER TABLE mem_ai_events RENAME COLUMN source_type TO event_type;
++    END IF;
++END $$;
++-- Add session-summary columns to mem_ai_events (merged from pr_session_summaries)
++ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS open_threads TEXT NOT NULL DEFAULT '';
++ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS next_steps   TEXT NOT NULL DEFAULT '';
++ALTER TABLE mem_ai_events ADD COLUMN IF NOT EXISTS summary_tags TEXT[] NOT NULL DEFAULT '{}';
++-- Migrate any existing pr_session_summaries rows into mem_ai_events
++INSERT INTO mem_ai_events (client_id, project, event_type, source_id, session_i
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/agents/tools/tool_memory.py b/backend/agents/tools/tool_memory.py
+index 5b5016d..3cf9787 100644
+--- a/backend/agents/tools/tool_memory.py
++++ b/backend/agents/tools/tool_memory.py
+@@ -91,7 +91,7 @@ def _handle_search_memory(args: dict) -> str:
+                 with conn.cursor() as cur:
+                     # Text search in mem_ai_events (interaction search)
+                     cur.execute(
+-                        """SELECT me.source_type, me.content, me.created_at
++                        """SELECT me.event_type, me.content, me.created_at
+                            FROM mem_ai_events me
+                            WHERE me.client_id=1 AND me.project=%s
+                              AND me.content ILIKE %s
+
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/agents/mcp/server.py b/backend/agents/mcp/server.py
+index fb8756b..0a5b18e 100644
+--- a/backend/agents/mcp/server.py
++++ b/backend/agents/mcp/server.py
+@@ -729,10 +729,10 @@ async def _dispatch(name: str, args: dict) -> Any:
+                 "mem_ai_events": {
+                     "purpose": "Smart-chunked embeddings for semantic search (pgvector)",
+                     "key_columns": ["id SERIAL PK", "client_id INT", "project TEXT",
+-                                    "source_type VARCHAR(50)", "source_id VARCHAR(255)",
++                                    "event_type VARCHAR(50)", "source_id VARCHAR(255)",
+                                     "chunk_index INT", "content TEXT", "embedding vector(1536)",
+                                     "chunk_type (full/summary/function/class/section)", "language TEXT", "file_path TEXT",
+-                                    "UNIQUE(client_id, project, source_type, source_id, chunk_index)"],
++                                    "UNIQUE(client_id, project, event_type, source_id, chunk_index)"],
+                     "filter": "WHERE client_id=1 AND project=%s",
+                 },
+                 "pr_event_tags": {
 
 
 ### `commit` — 2026-04-17
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 3170981..58177c6 100644
+index ec892c0..4926209 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-01 08:25 UTC
-+> Generated by aicli 2026-04-01 08:27 UTC
+-> Generated by aicli 2026-03-31 22:18 UTC
++> Generated by aicli 2026-03-31 22:24 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -23,9 +23,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - memory_synthesis: Claude Haiku dual-layer with 5 output files
- - chunking: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - mcp: Stdio MCP server with 12+ tools
--- deployment: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev
-+- deployment: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - database_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
--- config_management: config.py with externalized settings; YAML for pipelines; pyproject.toml for IDE
-+- config_management: config.py + YAML pipelines + pyproject.toml
- - db_tables: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
- - llm_provider_adapters: agents/providers/ with pr_ prefix for pricing and provider implementations
- - pipeline_engine: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
-@@ -42,11 +42,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - unified_tables: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
- - deployment_cloud: Railway (Dockerfile + railway.toml)
- - deployment_desktop: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- deployment_local: bash start_backend.sh + ui/npm run dev
- 
- ## Architectural Decisions
- 
- - Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state
--- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) plus per-project schemas
-+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
- - Electron desktop UI: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vanilla JS frontend (no framework/bundler); Vite dev server
- - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
- - All LLM providers as independent adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); Claude Haiku for dual-layer memory synthesis; server holds API keys
-@@ -57,6 +58,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
- - Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements; smart chunking by per-class/function (Python/JS/TS), per-section (MD), per-file (diff)
- - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
--- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed at line 1120
--- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed
-+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local dev via bash start_backend.sh + ui/npm run dev
- - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing_storage in data/provider_storage/
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - ui_components: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - storage_primary: PostgreSQL 15+ with per-project schema
+ - storage_semantic: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- db_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
++- db_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
+ - authentication: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - llm_providers: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - workflow_engine: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+@@ -49,11 +49,11 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval
+ - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+-- Per-project unified event table: mem_ai_events (id, project_id, session_id, session_desc, event_summary) consolidating pr_embeddings/pr_memory_events
+-- Table naming convention: mem_ai_* prefix for consolidated memory tables; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
++- Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary) consolidates pr_embeddings/pr_memory_events
++- Table naming convention: mem_ai_* prefix; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
+ - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
+-- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
++- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
+ - Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer
 \ No newline at end of file
 
 
 ### `commit` — 2026-04-17
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index ace46c6..f3daf43 100644
+index 77df8b0..657cf61 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 08:25 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 08:27 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 22:18 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-31 22:24 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -23,9 +23,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
- - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
- - **mcp**: Stdio MCP server with 12+ tools
--- **deployment**: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev
-+- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
- - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
--- **config_management**: config.py with externalized settings; YAML for pipelines; pyproject.toml for IDE
-+- **config_management**: config.py + YAML pipelines + pyproject.toml
- - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
- - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
- - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
-@@ -42,11 +42,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
- - **deployment_cloud**: Railway (Dockerfile + railway.toml)
- - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- **deployment_local**: bash start_backend.sh + ui/npm run dev
+@@ -15,7 +15,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **ui_components**: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre
+ - **storage_primary**: PostgreSQL 15+ with per-project schema
+ - **storage_semantic**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+-- **db_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
++- **db_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, user_api_keys
+ - **authentication**: JWT (python-jose) + bcrypt + DEV_MODE toggle; 3 roles: admin/paid/free
+ - **llm_providers**: Claude (Haiku for synthesis), OpenAI, DeepSeek, Gemini, Grok
+ - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config; per-node retry/continue logic
+@@ -49,19 +49,19 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - All LLM providers as independent adapters (Claude Haiku for synthesis); server holds API keys; client sends none
+ - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape.js visualization with approval
+ - Memory synthesis: Claude Haiku dual-layer (raw JSONL → interaction_tags → 5 output files); reduces token overhead
+-- Per-project unified event table: mem_ai_events (id, project_id, session_id, session_desc, event_summary) consolidating pr_embeddings/pr_memory_events
+-- Table naming convention: mem_ai_* prefix for consolidated memory tables; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
++- Unified event table mem_ai_events (id, project_id, session_id, session_desc, event_summary) consolidates pr_embeddings/pr_memory_events
++- Table naming convention: mem_ai_* prefix; mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+ - Hierarchical data model: Clients contain multiple Users; authentication pattern: login_as_first_level_hierarchy
+ - _ensure_shared_schema pattern replaces ensure_project_schema; retry logic handles empty project list on first load
+ - Tags load once on project access into memory; cache invalidation on session/project switch forces re-load from DB
+-- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval
++- Manual relations managed via CLI/admin UI; types: depends_on, relates_to, blocks, implements
+ - Memory management pattern: load_once_on_access, update_on_save; triggered by memory endpoint and synthesis layer
  
- ## Key Decisions
+ ## Recent Context (last 5 changes)
  
- - Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state
--- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) plus per-project schemas
-+- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
- - Electron desktop UI: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vanilla JS frontend (no framework/bundler); Vite dev server
- - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
- - All LLM providers as independent adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); Claude Haiku for dual-layer memory synthesis; server holds API keys
-@@ -57,6 +58,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
- - Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements; smart chunking by per-class/function (Python/JS/TS), per-section (MD), per-file (diff)
- - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
--- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed at line 1120
--- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-+- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed
-+- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local dev via bash start_backend.sh + ui/npm run dev
- - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing_storage in data/provider_storage/
+-- [2026-03-31] I am not sure all tagging functionality is implemented as I do not see the mng_ai_tags_relations for example. can you pl
+ - [2026-03-31] I do see the error . it suppose to be mem_ai_tags_relations not mng_ai_tags_relations. can you fix that ?
+ - [2026-03-31] I would like to make sure relation is managed properly.  relation can be managed entries by developers.   Manual relatio
+ - [2026-03-31] I would like to make sure that the final layer include Work Items, Feature Snapshots and Project Facts is well managed  
+-- [2026-03-31] This task is related to current memory update (layer 1)  Create all memory files - I would like to make sure that all fi
+\ No newline at end of file
++- [2026-03-31] This task is related to current memory update (layer 1)  Create all memory files - I would like to make sure that all fi
++- [2026-03-31] perfect. I would like to have an updated aicli_memory with all updated memory strucuture. Also please advise about the n
+\ No newline at end of file
 

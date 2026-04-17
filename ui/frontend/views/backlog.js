@@ -34,17 +34,16 @@ export async function renderBacklog(container, projectName) {
                   display:flex;align-items:center;gap:0.75rem;flex-shrink:0;flex-wrap:wrap">
         <span style="font-size:0.88rem;font-weight:700;color:var(--text);margin-right:0.25rem">Backlog</span>
 
-        <button id="bl-sync-btn" class="btn btn-ghost btn-sm" title="Flush pending mirror rows → backlog.md">
+        <button id="bl-sync-btn" class="btn btn-ghost btn-sm"
+                title="Run LLM digest on pending mirror rows and add new entries to backlog.md">
           ↻ Sync
-        </button>
-        <button id="bl-process-btn" class="btn btn-primary btn-sm" title="Process approved entries → use_cases/ + planner_tags">
-          ▶ Process approved
-        </button>
-        <button id="bl-refresh-btn" class="btn btn-ghost btn-sm" title="Reload entries from backlog.md">
-          ⟳ Reload
         </button>
 
         <span style="flex:1"></span>
+        <button id="bl-process-btn" class="btn btn-outline btn-sm" style="display:none"
+                title="Merge approved entries into use_cases/*.md and planner_tags">
+          ▶ Process approved (<span id="bl-approved-count">0</span>)
+        </button>
         <span id="bl-status" style="font-size:0.72rem;color:var(--muted)"></span>
       </div>
 
@@ -150,7 +149,6 @@ export async function renderBacklog(container, projectName) {
 
   document.getElementById('bl-sync-btn').onclick    = _onSync;
   document.getElementById('bl-process-btn').onclick = _onProcess;
-  document.getElementById('bl-refresh-btn').onclick = _loadAll;
 
   // Initial load
   await _loadAll();
@@ -297,6 +295,14 @@ function _renderEntries(entries) {
   const pending   = entries.filter(e => e.approve === ' ' || !e.approve);
   const approved  = entries.filter(e => e.approve === 'x');
   const rejected  = entries.filter(e => e.approve === '-');
+
+  // Show "Process approved" button only when there are approved entries
+  const processBtn    = document.getElementById('bl-process-btn');
+  const approvedCount = document.getElementById('bl-approved-count');
+  if (processBtn) {
+    processBtn.style.display = approved.length > 0 ? '' : 'none';
+    if (approvedCount) approvedCount.textContent = approved.length;
+  }
 
   if (!entries.length) {
     el.innerHTML = `
