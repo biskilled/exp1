@@ -1401,22 +1401,51 @@ async def process_full_digest(project: str) -> dict:
 
 _USE_CASE_STUB = """\
 # {slug}
-status: 1
-created_at: {created_at}
-updated_at: {created_at}
-total_events: 0
+<!-- STATUS: 1 -->
+<!-- STATUS_VALUES: 1=not started | 2=in progress | 3=done -->
+<!-- CREATED: {created_at} -->
+<!-- UPDATED: {created_at} -->
+<!-- EVENTS: 0 -->
 
 ## Summary
+
 {summary}
 
+## Requirements
+
+- {requirement}
+
 ## Delivery
-_Code stack, commits count, and storage paths — updated on refresh._
 
-## Completed Action Items
-<!-- Entries moved here when done -->
+### Code
 
-## Completed Bugs
-<!-- Entries moved here when done -->
+| Stack | Location | Commits |
+|-------|----------|---------|
+| —     | —        | 0       |
+
+### Documents
+
+| Name | Type | Path | Summary |
+|------|------|------|---------|
+| —    | —    | —    | —       |
+
+---
+
+## Completed
+
+### Action Items
+
+| Done | Events | Summary |
+|------|--------|---------|
+| —    | —      | —       |
+
+### Bugs Fixed
+
+| Fixed | Events | Summary |
+|-------|--------|---------|
+| —     | —      | —       |
+
+---
 
 ## Open Items
 <!-- AI-appended from approved backlog entries -->
@@ -1424,8 +1453,15 @@ _Code stack, commits count, and storage paths — updated on refresh._
 ## Open Bugs
 <!-- AI-appended from approved backlog entries -->
 
+---
+
 ## Events
-<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SYSTEM-MANAGED — rebuilt from mem_backlog_links on every refresh run. -->
+<!-- Do NOT edit manually. To rebuild: POST /memory/{{p}}/regenerate-use-case?slug={slug} -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
 | ID | Source | Date | Summary |
 |----|--------|------|---------|
 """
@@ -1444,6 +1480,7 @@ def _create_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
         stub = _USE_CASE_STUB.format(
             slug=slug,
             summary=entry.get("summary", ""),
+            requirement=entry.get("summary", ""),
             created_at=today,
         )
         path.write_text(stub)

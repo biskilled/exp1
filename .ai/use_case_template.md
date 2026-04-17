@@ -53,36 +53,33 @@ Updated by LLM summary. Edit freely — will be overwritten on llm-summary run.}
 
 ---
 
-## Open
-
-### Action Items
+## Open Items
+<!-- AI-appended from approved backlog entries -->
 
 <!-- Format:  [ ] AI:N  summary (acceptance criteria) | events: N -->
 <!-- AI score: 0=not started  1=discussed  2=design ready  3=partial  4=implemented  5=needs test -->
 
 - [ ] AI:0  {action item description}
   Acceptance: {what "done" looks like}
-  Events: 0
+  Linked: {REF_ID}
 
-### Bugs
+## Open Bugs
+<!-- AI-appended from approved backlog entries -->
 
 <!-- Format:  [ ] AI:N  summary (acceptance criteria) | events: N -->
 
 - [ ] AI:0  {bug description}
   Acceptance: {what "fixed" looks like}
-  Events: 0
+  Linked: {REF_ID}
 
 ---
 
 ## Events
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- This section is SYSTEM-MANAGED.                                        -->
-<!-- It contains a copy of every backlog entry approved into this use case. -->
-<!-- Do NOT edit this section manually — it is rebuilt from mem_backlog_links-->
-<!-- on every refresh run.                                                   -->
-<!-- To rebuild: POST /memory/{project}/regenerate-use-case?slug={slug}     -->
+<!-- SYSTEM-MANAGED — rebuilt from mem_backlog_links on every refresh run. -->
+<!-- Do NOT edit manually. To rebuild: POST /memory/{p}/regenerate-use-case?slug={slug} -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-<!-- EVENTS_START -->
-<!-- EVENTS_END -->
+| ID | Source | Date | Summary |
+|----|--------|------|---------|
