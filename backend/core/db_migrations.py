@@ -2603,6 +2603,24 @@ def m057_drop_events_and_work_items(conn) -> None:
     conn.commit()
 
 
+def m058_tag_deps(conn) -> None:
+    """Add planner_tag_deps table for tag-to-tag dependency links (depends_on)."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS planner_tag_deps (
+                id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id  INT  NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                tag_id      UUID NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+                depends_on  UUID NOT NULL REFERENCES planner_tags(id) ON DELETE CASCADE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (tag_id, depends_on)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tag_deps_tag ON planner_tag_deps(tag_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tag_deps_on  ON planner_tag_deps(depends_on)")
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2648,4 +2666,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m055_cleanup_and_seq", m055_cleanup_and_seq),
     ("m056_drop_event_id_add_backlog_links", m056_drop_event_id_add_backlog_links),
     ("m057_drop_events_and_work_items", m057_drop_events_and_work_items),
+    ("m058_tag_deps", m058_tag_deps),
 ]

@@ -719,6 +719,81 @@ async def delete_value(val_id: str):
     return {"ok": True}
 
 
+# ── Tag dependency links ───────────────────────────────────────────────────────
+
+class DepCreate(BaseModel):
+    depends_on: str   # UUID of the tag this one depends on
+
+
+@router.get("/values/{val_id}/links")
+async def get_value_links(val_id: str, project: str = Query("")):
+    """Return tags that val_id depends on, and tags that depend on val_id."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # depends_on: tags this tag requires
+            cur.execute("""
+                SELECT d.depends_on, t.name, t.status, t.category_id, c.name AS cat_name
+                  FROM planner_tag_deps d
+                  JOIN planner_tags t ON t.id = d.depends_on
+                  JOIN mng_tags_categories c ON c.id = t.category_id
+                 WHERE d.tag_id = %s::uuid
+                 ORDER BY t.name
+            """, (val_id,))
+            depends_on = [
+                {"id": str(r[0]), "name": r[1], "status": r[2],
+                 "category_id": r[3], "category": r[4]}
+                for r in cur.fetchall()
+            ]
+            # required_by: tags that depend on this one
+            cur.execute("""
+                SELECT d.tag_id, t.name, t.status, t.category_id, c.name AS cat_name
+                  FROM planner_tag_deps d
+                  JOIN planner_tags t ON t.id = d.tag_id
+                  JOIN mng_tags_categories c ON c.id = t.category_id
+                 WHERE d.depends_on = %s::uuid
+                 ORDER BY t.name
+            """, (val_id,))
+            required_by = [
+                {"id": str(r[0]), "name": r[1], "status": r[2],
+                 "category_id": r[3], "category": r[4]}
+                for r in cur.fetchall()
+            ]
+    return {"depends_on": depends_on, "required_by": required_by}
+
+
+@router.post("/values/{val_id}/links")
+async def create_value_link(val_id: str, body: DepCreate, project: str = Query("")):
+    """Add a dependency: val_id depends on body.depends_on."""
+    _require_db()
+    if val_id == body.depends_on:
+        raise HTTPException(400, "A tag cannot depend on itself")
+    p = project or settings.active_project or "default"
+    project_id = db.get_or_create_project_id(p)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO planner_tag_deps (project_id, tag_id, depends_on)
+                VALUES (%s, %s::uuid, %s::uuid)
+                ON CONFLICT (tag_id, depends_on) DO NOTHING
+                RETURNING id
+            """, (project_id, val_id, body.depends_on))
+    return {"ok": True}
+
+
+@router.delete("/values/{val_id}/links/{dep_id}")
+async def delete_value_link(val_id: str, dep_id: str):
+    """Remove a dependency link."""
+    _require_db()
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM planner_tag_deps
+                 WHERE tag_id = %s::uuid AND depends_on = %s::uuid
+            """, (val_id, dep_id))
+    return {"ok": True}
+
+
 # ── Events list (now queries mem_mrr_prompts + mem_mrr_commits) ──────────────────────────
 
 @router.get("/events")
