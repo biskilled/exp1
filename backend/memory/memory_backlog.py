@@ -279,18 +279,16 @@ class MemoryBacklog:
         return int(self._source_cfg(source_type).get("cnt", 99999))
 
     def _backlog_path(self) -> Path:
-        code_dir = _get_code_dir(self.project)
         cfg = self._config()
         fname = cfg.get("file_name", "backlog.md")
         if cfg.get("rotation"):
             today = date.today().strftime("%Y-%m-%d")
             fname = f"backlog_{today}.md"
-        base = code_dir if code_dir else Path(settings.workspace_dir) / self.project
+        base = Path(settings.workspace_dir) / self.project
         return base / "documents" / fname
 
     def _use_cases_dir(self) -> Path:
-        code_dir = _get_code_dir(self.project)
-        base = code_dir if code_dir else Path(settings.workspace_dir) / self.project
+        base = Path(settings.workspace_dir) / self.project
         return base / "documents" / "use_cases"
 
     def _get_project_id(self) -> Optional[int]:

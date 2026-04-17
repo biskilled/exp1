@@ -339,7 +339,7 @@ async def reset_all_backlog(project: str):
     deleted_files: list[str] = []
     if uc_dir.exists():
         for md in uc_dir.glob("*.md"):
-            if md.stem != "discovery":
+            if md.stem not in ("discovery", "use_case_template"):
                 md.unlink()
                 deleted_files.append(md.name)
     results["deleted_use_case_files"] = deleted_files
