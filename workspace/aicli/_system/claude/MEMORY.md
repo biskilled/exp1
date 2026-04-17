@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 10:42 UTC by aicli /memory_
+_Generated: 2026-04-17 11:36 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -321,119 +321,493 @@ Reviewer: ```json
 
 > Distilled summaries (Trycycle-reviewed). Feature summaries shown first.
 
-### `commit` — 2026-04-16
-
-Commit: chore: clean up stale agent context and legacy system docs after claude
-Hash: 117ab78b
-Code files (6):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - backend/core/db_migrations.py
-  - backend/memory/memory_embedding.py
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
-Symbols changed: m041_drop_diff_file_chunks, m040_backfill_event_cnt_and_tags
-
-### `commit` — 2026-04-16
+### `commit` — 2026-04-17
 
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 0a92684..a621d73 100644
+index ba7eded..87fb7fb 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
-@@ -376,8 +376,8 @@ All tables follow a structured naming convention:
+@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
+ 
  ## Recent Work
  
- - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
--- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
-+- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic
- - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
--- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
-+- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations
- - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
--- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history
-+- History display rendering: fixed JSONB operator conflict in route_history and addressed prompt + response rendering gaps
+-- Work item refresh workflow: replaced 'new work item' button with ↻ refresh button triggering /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions
+-- Event count aggregation: added event_count column (renamed to 'Digests') to work item panel calculated via session-based COUNT(*) from mem_ai_events matching prompt_batch and session_summary types only
+-- AI tag backlinking implementation: _backlink_tag_to_events() propagates planner tag assignments back to all events in source session, mapping category→tag_key (bug/phase/feature)
+-- Work item panel UI refinement: adjusted colgroup widths (52px per count column), fixed table overflow issues, added proper padding/spacing, updated event_count header label to 'Digests'
+-- Interactive tag suggestion feature: prompt counter + periodic tag reminder system (every 5-10 prompts) to validate prompt relevance to tagged context during long sessions
+-- AI tag display debugging: investigating missing suggested_new tags in ui_tags query and verifying ai_suggestion column population in work item panel refresh workflow
++- Session tagging command (/tag) implementation: added tag_reminder_interval config to aicli.yaml with periodic prompt reminders (every 5-10 prompts) to validate prompt relevance to tagged context
++- MCP set_session_tags tool documentation: updated schema to clarify phase as required, feature/bug_ref as optional, and 'extra' object for flexible tag categories (task, component, doc_type, design, decision, meeting, customer)
++- Tag skill loading in Claude Code: sessions must be restarted to pick up new /tag skill definition; multi-tag syntax supported (phase:development feature:work-items-ui bug:login-500)
++- Work item refresh workflow: refresh button triggers /work-items/rematch-all endpoint to refetch unlinked items and update AI tag suggestions in real-time
++- Event count aggregation: 'Digests' column displays session-based COUNT(*) from mem_ai_events filtered to prompt_batch and session_summary types only
++- AI tag backlinking propagation: tag assignments to work items automatically propagate to all events in source session via category→tag_key mapping (bug/phase/feature)
 
 
-### `commit` — 2026-04-16
+### `commit` — 2026-04-17
+
+diff --git a/backend/routers/route_work_items.py b/backend/routers/route_work_items.py
+index 8b42bbb..53318f3 100644
+--- a/backend/routers/route_work_items.py
++++ b/backend/routers/route_work_items.py
+@@ -74,71 +74,84 @@ _SQL_LIST_WORK_ITEMS_BASE = (
+ )
+ 
+ _SQL_UNLINKED_WORK_ITEMS = """
+-    SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
+-           w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
+-           w.start_date, w.created_at, w.updated_at, w.seq_num,
+-           w.ai_tag_id,
+-           pt.name AS ai_tag_name,
+-           ptc.name  AS ai_tag_category,
++    WITH wi AS (
++        -- base filter once; carry session_id from source_event in one pass
++        SELECT w.id, w.ai_category, w.ai_name, w.ai_desc,
++               w.status_user, w.status_ai, w.requirements, w.summary, w.tags, w.ai_tags,
++               w.start_date, w.created_at, w.updated_at, w.seq_num,
++               w.ai_tag_id, w.source_event_id, w.project_id,
++               e.session_id AS src_session_id
++        FROM mem_ai_work_items w
++        LEFT JOIN mem_ai_events e ON e.id = w.source_event_id
++        WHERE w.project_id = %s AND w.tag_id IS NULL AND w.status_user != 'done'
++    ),
++    prompt_ct AS (
++        SELECT wi.id AS wi_id, COUNT(DISTINCT e.id) AS cnt
++        FROM wi
++        JOIN mem_ai_events e ON e.project_id = wi.project_id
++             AND e.event_type = 'prompt_batch'
++             AND (   (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
++                  OR e.work_item_id = wi.id )
++        GROUP BY wi.id
++    ),
++    commit_ct AS (
++        SELECT wi.id AS wi_id, COUNT(*) AS cnt
++        FROM wi
++        JOIN mem_mrr_commits mc ON mc.project_id = wi.project_id
++             AND wi.src_session_id IS NOT NULL
++             AND mc.session_id = wi.src_session_id
++        GROUP BY wi.id
++    ),
++    digest_ct AS (
++        SELECT wi.id AS wi_id, COUNT(DISTINCT e.id) AS cnt
++        FROM wi
++        JOIN mem_ai_events e ON e.project_id = wi.project_id
++             AND e.event_type IN ('prompt_batch', 'session_summary')
++             AND (   (wi.src_session_id IS NOT NULL AND e.session_id = wi.src_session_id)
++                  OR e.work_item_id = wi.id )
++        GROUP BY wi.id
++    ),
++    merge_ct AS (
++        SELECT merged_into AS wi_id, COUNT(*) AS cnt
++        FROM mem_ai_work_items
++        WHERE project_id = %s AND merged_into IS NOT NULL
++        GROUP BY 1
++    ),
++    user_tag_ct AS (
++        SELECT wi.id AS wi_id,
++               COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb) AS tags
++        FROM wi
++        JOIN mem_ai_events ev ON ev.project_id = wi.project_id
++             AND wi.src_session_id IS NOT NULL
++             AND ev.session_id = wi.src_session_id
++             AND (ev.tags->>'feature' IS NOT NULL
++                  OR ev.tags->>'bug_ref' IS NOT NULL
++                  OR ev.tags->>'bug'     IS NOT NULL)
++        JOIN planner_tags ut ON ut.project_id = wi.project_id
++             AND ut.name IN (ev.tags->>'feature', ev.tags->>'bug_ref', ev.tags->>'bug')
++        GROUP BY wi.id
++    )
++    SELECT wi.id, wi.ai_category, wi.ai_name, wi.ai_desc,
++           wi.status_user, wi.status_ai, wi.requirements, wi.summary, wi.tags, wi.ai_tags,
++           wi.start_date, wi.created_at, wi.updated_at, wi.seq_num,
++           wi.ai_tag_id,
++           pt.name  AS ai_tag_name,
++           ptc.name AS ai_tag_category,
+            ptc.color AS ai_tag_color,
+-           (SELECT COUNT(*) FROM mem_ai_work_items src WHERE src.merged_into = w.id) AS merge_count,
+-           -- Prompt count: session-based OR direct work_item_id link
+-           COALESCE((
+-               SELECT COUNT(*) FROM (
+-                   SELECT id FROM mem_ai_events
+-                   WHERE project_id = w.project_id
+-                     AND event_type = 'prompt_batch'
+-                     AND session_id IS NOT NULL
+-                     AND session_id = (SELECT session_id FROM mem_ai_events
+-                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
+-                   UNION
+-                   SELECT id FROM mem_ai_events
+-                   WHERE project_id = w.project_id AND work_item_id = w.id
+-                     AND event_type = 'prompt_batch'
+-               ) _p
+-           ), 0) AS prompt_count,
+-           -- Commit count: session-based OR direct back-link
+-           COALESCE((
+-               SELECT COUNT(*) FROM mem_mrr_commits mc
+-               WHERE mc.project_id = w.project_id
+-                 AND mc.session_id IS NOT NULL
+-                 AND mc.session_id = (SELECT session_id FROM mem_ai_events
+-                                      WHERE id = w.source_event_id AND session_id IS NOT NULL)
+-           ), 0) AS commit_count,
+-           -- Digest count: prompt_batch + session_summary only (exclude per-commit/diff_file noise)
+-           COALESCE((
+-               SELECT COUNT(*) FROM (
+-                   SELECT id FROM mem_ai_events
+-                   WHERE project_id = w.project_id
+-                     AND event_type IN ('prompt_batch', 'session_summary')
+-                     AND session_id IS NOT NULL
+-                     AND session_id = (SELECT session_id FROM mem_ai_events
+-                                       WHERE id = w.source_event_id AND session_id IS NOT NULL)
+-                   UNION
+-                   SELECT id FROM mem_ai_events
+-                   WHERE project_id = w.project_id AND work_item_id = w.id
+-                     AND event_type IN ('prompt_batch', 'session_summary')
+-               ) _e
+-           ), 0) AS event_count,
+-           -- User tags: planner tags referenced in events from the same session
+-           (SELECT COALESCE(jsonb_agg(DISTINCT ut.name ORDER BY ut.name), '[]'::jsonb)
+-            FROM mem_ai_events ev
+-            JOIN planner_tags ut ON ut.project_id = w.project_id
+-                 AND ut.name IN (
+-                     ev.tags->>'fea
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
+index 84f7bd3..066342b 100644
+--- a/backend/routers/route_entities.py
++++ b/backend/routers/route_entities.py
+@@ -188,6 +188,162 @@ _SQL_UPSERT_TAG_GITHUB = """
+     RETURNING (xmax = 0) AS was_inserted, id::text
+ """
+ 
++# Validate category id exists (global lookup)
++_SQL_GET_CATEGORY_BY_ID = """
++    SELECT id FROM mng_tags_categories WHERE client_id=1 AND id=%s
++"""
++
++# Get category name by id (global lookup)
++_SQL_GET_CATEGORY_NAME_BY_ID = """
++    SELECT name FROM mng_tags_categories WHERE client_id=1 AND id=%s
++"""
++
++# Resolve tag string "category:name" for a planner_tags UUID — used for tagging/events
++_SQL_GET_TAG_STRING_BY_ID = """
++    SELECT tc.name || ':' || t.name
++    FROM planner_tags t
++    JOIN mng_tags_categories tc ON tc.id = t.category_id
++    WHERE t.id=%s::uuid AND t.client_id=1
++    LIMIT 1
++"""
++
++# Work items per category for entity summary augmentation
++_SQL_WI_BY_CATEGORY = """
++    SELECT name, agent_status, acceptance_criteria, implementation_plan, lifecycle_status
++    FROM mem_ai_work_items
++    WHERE project_id=%s AND category_name=%s AND status != 'archived'
++"""
++
++# List commits for events endpoint
++_SQL_LIST_COMMIT_EVENTS = """
++    SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), committed_at
++    FROM mem_mrr_commits WHERE project_id=%s
++    ORDER BY committed_at DESC NULLS LAST LIMIT %s
++"""
++
++# List prompts for events endpoint
++_SQL_LIST_PROMPT_EVENTS = """
++    SELECT source_id, 'prompt', source_id, left(prompt,120), created_at
++    FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt'
++    ORDER BY created_at DESC LIMIT %s
++"""
++
++# Find existing planner_tag by project + name
++_SQL_GET_TAG_BY_NAME = """
++    SELECT id::text FROM planner_tags WHERE project_id=%s AND name=%s
++"""
++
++# Insert session tag with short_desc
++_SQL_INSERT_SESSION_TAG_WITH_DESC = """
++    INSERT INTO planner_tags (project_id, name, category_id, seq_num, short_desc)
++    VALUES (%s, %s, %s, %s, %s) RETURNING id::text
++"""
++
++# Apply a JSONB tag to all prompts in a session
++_SQL_TAG_PROMPTS_BY_SESSION = """
++    UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb
++    WHERE project_id=%s AND session_id=%s
++"""
++
++# Apply a JSONB tag to all commits in a session
++_SQL_TAG_COMMITS_BY_SESSION = """
++    UPDATE mem_mrr_commits SET tags = tags || %s::jsonb
++    WHERE project_id=%s AND session_id=%s
++"""
++
++# Apply a JSONB tag to a single commit by hash
++_SQL_TAG_COMMIT_BY_HASH = """
++    UPDATE mem_mrr_commits SET tags = tags || %s::jsonb
++    WHERE project_id=%s AND commit_hash=%s
++"""
++
++# Propagate tag from commit → its linked prompt
++_SQL_TAG_PROMPT_FROM_COMMIT = """
++    UPDATE mem_mrr_prompts pr
++       SET tags = pr.tags || %s::jsonb
++      FROM mem_mrr_commits c
++     WHERE c.project_id=%s AND c.commit_hash=%s
++       AND pr.id = c.prompt_id
++    RETURNING pr.source_id
++"""
++
++# Apply a JSONB tag to a single prompt by source_id
++_SQL_TAG_PROMPT_BY_SOURCE = """
++    UPDATE mem_mrr_prompts SET tags = tags || %s::jsonb
++    WHERE project_id=%s AND source_id=%s
++"""
++
++# Propagate tag from prompt → its linked commit
++_SQL_TAG_COMMIT_FROM_PROMPT = """
++    UPDATE mem_mrr_commits c
++       SET tags = c.tags || %s::jsonb
++      FROM mem_mrr_prompts p
++     WHERE p.project_id=%s AND p.source_id=%s
++       AND c.prompt_id = p.id
++    RETURNING c.commit_hash
++"""
++
++# Remove a tag key from a commit by hash
++_SQL_UNTAG_COMMIT_BY_HASH = """
++    UPDATE mem_mrr_commits SET tags = tags - %s
++    WHERE project_id=%s AND commit_hash=%s
++"""
++
++# Propagate tag removal from commit → its linked prompt
++_SQL_UNTAG_PROMPT_FROM_COMMIT = """
++    UPDATE mem_mrr_prompts pr
++       SET tags = pr.tags - %s
++      FROM mem_mrr_commits c
++     WHERE c.project_id=%s AND c.commit_hash=%s
++       AND pr.id = c.prompt_id
++    RETURNING pr.source_id
++"""
++
++# Remove a tag key from a prompt by source_id
++_SQL_UNTAG_PROMPT_BY_SOURCE = """
++    UPDATE mem_mrr_prompts SET tags = tags - %s
++    WHERE project_id=%s AND source_id=%s
++"""
++
++# Propagate tag removal from prompt → its linked commit
++_SQL_UNTAG_COMMIT_FROM_PROMPT = """
++    UPDATE mem_mrr_commits c
++       SET tags = c.tags - %s
++      FROM mem_mrr_prompts p
++     WHERE p.project_id=%s AND p.source_id=%s
++       AND c.prompt_id = p.id
++    RETURNING c.commit_hash
++"""
++
++# Remove a tag key from all prompts in a session
++_SQL_UNTAG_PROMPTS_BY_SESSION = """
++    UPDATE mem_mrr_prompts SET tags = tags - %s
++    WHERE project_id=%s AND session_id=%s
++"""
++
++# Remove a tag key from all commits in a session
++_SQL_UNTAG_COMMITS_BY_SESSION = """
++    UPDATE mem_mrr_commits SET tags = tags - %s
++    WHERE project_id=%s AND session_id=%s
++"""
++
++# All tagged prompts for source-tags endpoint (exclude internal-only tags)
++_SQL_GET_TAGGED_PROMPTS = """
++    SELECT source_id, tags FROM mem_mrr_prompts
++    WHERE project_id=%s AND (tags - 'source' - 'llm') != '{}'::jsonb
++"""
++
++# All tagged commits for source-tags endpoint (exclude internal-only tags)
++_SQL_GET_TAGGED_COMMITS = """
++    SELECT commit_hash, tags FROM mem_mrr_commits
++    WHERE project_id=%s AND (tags - 'source' - 'llm') != '{}'::jsonb
++"""
++
++# Set due_date on a planner_tag by id
++_SQL_SET_TAG_DUE_DATE = """
++    UPDATE planner_tags SET due_date=%s WHERE id=%s::uuid
++"""
++
+ # ────────────────────────────────────────────────────────────────────────────────
+ 
+ router = APIRouter()
+@@ -424,13 +580,7 @@ async def entity_summary(project: str | None = Query(None)):
+         try:
+             with db.conn() as conn:
+                 with conn.cursor() as cur:
+-                    cur.execute(
+-                        """SELECT name, agent_status, acceptance_criteria,
+-                                  implementation_plan, lifecycle_status
+-                           FROM mem_ai_work_items
+-                           WHERE project_id=%s AND category_name=%s AND status != 'archived'""",
+-        
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/core/db_migrations.py b/backend/core/db_migrations.py
+index 50b0ef0..4e6a29d 100644
+--- a/backend/core/db_migrations.py
++++ b/backend/core/db_migrations.py
+@@ -169,6 +169,42 @@ def m019_wi_event_fk_columns(conn) -> None:
+     log.info("m019_wi_event_fk_columns: event_id on commits + work_item_id on events applied")
+ 
+ 
++def m020_perf_indexes(conn) -> None:
++    """Add missing composite indexes for query performance.
++
++    The work items and planner queries were doing O(N) correlated subqueries
++    or full-table scans due to missing indexes on frequently-filtered columns.
++    """
++    with conn.cursor() as cur:
++        # mem_ai_events — session_id lookups (used in _SQL_UNLINKED_WORK_ITEMS CTE)
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mae_project_session "
++            "ON mem_ai_events(project_id, session_id) WHERE session_id IS NOT NULL"
++        )
++        # mem_ai_events — event_type filter (prompt_batch/session_summary counts)
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mae_project_etype "
++            "ON mem_ai_events(project_id, event_type)"
++        )
++        # mem_mrr_commits — session_id lookups (commit count per session in work items)
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session "
++            "ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL"
++        )
++        # planner_tags — name lookups (entity/tag search)
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_planner_tags_project_name "
++            "ON planner_tags(project_id, name)"
++        )
++        # mem_ai_work_items — status_user filter (unlinked items query skips 'done')
++        cur.execute(
++            "CREATE INDEX IF NOT EXISTS idx_mawi_project_status_user "
++            "ON mem_ai_work_items(project_id, status_user)"
++        )
++    conn.commit()
++    log.info("m020_perf_indexes: composite indexes applied")
++
++
+ MIGRATIONS: list[tuple[str, Callable]] = [
+     # All migrations through m017 (ai_tags column) were applied via the legacy
+     # ALTER TABLE system in database.py and are tracked as:
+@@ -176,4 +212,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
+     #   work_items_alters_v1, commit_code_v1
+     ("m018_work_items_links", m018_work_items_links),
+     ("m019_wi_event_fk_columns", m019_wi_event_fk_columns),
++    ("m020_perf_indexes", m020_perf_indexes),
+ ]
+
+
+### `commit` — 2026-04-17
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 9902a5f..9478ab9 100644
+index a390f4f..15ff563 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-14 12:41 UTC
-+> Generated by aicli 2026-04-14 13:22 UTC
+-> Generated by aicli 2026-04-09 13:40 UTC
++> Generated by aicli 2026-04-09 13:46 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
-+- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
- - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+@@ -22,10 +22,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - workflow_ui: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - memory_synthesis: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - chunking: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- mcp: Stdio MCP server with 12+ tools
++- mcp: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+ - deployment: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - database_schema: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+-- config_management: config.py + YAML pipelines + pyproject.toml
++- config_management: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
+ - db_tables: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - llm_provider_adapters: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - pipeline_engine: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - billing_storage: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - backend_modules: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - dev_environment: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- database: PostgreSQL 15+ with pgvector extensions
++- database: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
+ - node_modules_build: npm 8+ with Electron-builder; Vite dev server
+ - database_version: PostgreSQL 15+
+ - build_tooling: npm 8+ with Electron-builder; Vite dev server
+@@ -62,5 +62,5 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+ - Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
+\ No newline at end of file
++- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
++- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
+\ No newline at end of file
 
 
-### `commit` — 2026-04-16
+### `commit` — 2026-04-17
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index a742c0d..9f96448 100644
+index e576402..b9fcea7 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 12:41 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 13:40 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-09 13:46 UTC
  
  # aicli — Shared AI Memory Platform
  
-@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
-+- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
- - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
-
-
-### `commit` — 2026-04-16
-
-diff --git a/.ai/rules.md b/.ai/rules.md
-index a742c0d..9f96448 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 12:41 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
+@@ -22,10 +22,10 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **workflow_ui**: Cytoscape.js + cytoscape-dagre; 2-pane approval panel
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
+ - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
+-- **mcp**: Stdio MCP server with 12+ tools
++- **mcp**: Stdio MCP server with 12+ tools (semantic search, work item management, session tagging)
+ - **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+ - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; Shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles, planner_tags, mng_tags_categories
+-- **config_management**: config.py + YAML pipelines + pyproject.toml
++- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml session tagging config
+ - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
+@@ -33,7 +33,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
+ - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
+ - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
+-- **database**: PostgreSQL 15+ with pgvector extensions
++- **database**: PostgreSQL 15+ with pgvector extensions; unified mem_ai_* tables; per-project schema
+ - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
+ - **database_version**: PostgreSQL 15+
+ - **build_tooling**: npm 8+ with Electron-builder; Vite dev server
+@@ -62,13 +62,13 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - AI suggestion system: category-aware matching (task/bug/feature prioritized), Level 4 fallback to suggest new when no matches ≥0.70, 0.60 confidence threshold
+ - Tag backlinking: PATCH /work-items with tag_id triggers _backlink_tag_to_events() propagating assignments to all events in source session
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise from event_count aggregation
+-- Stdio MCP server with 12+ tools for semantic search and work item management; embedding pipeline triggered via /memory endpoint
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb) for desktop
++- Session tagging via /tag command with tag_reminder_interval config (every N prompts); valid_tag_keys enforced (phase required, feature/bug/task/component/doc_type/design/decision/meeting/customer optional)
++- Stdio MCP server with 12+ tools for semantic search, work item management, and session tag updates; embedding pipeline triggered via /memory endpoint
  
- # aicli — Shared AI Memory Platform
+ ## Recent Context (last 5 changes)
  
-@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
- - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
- - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
- - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
--- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
-+- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
- - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
- - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
- - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
+-- [2026-04-09] Can you recheck that ai_tags as I do see new work_item, bit cannot see any sujjeste AI - all i see is mepy AI(EXISTS).. 
+ - [2026-04-09] Where are all the rpompts for ai_tags and work_item are ?
+ - [2026-04-09] I do see same work item working on mention document summery and update ai memory. all internal work such update internal
+ - [2026-04-09] Can you share the quesry you are suing the get all promotps, commit, event per work_item . I want to check that for work
+-- [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
+\ No newline at end of file
++- [2026-04-09] before you desing. is it possible to add some mechanism to our converstion. for example force adding tags and every 5-10
++- [2026-04-09] I have just tried that, got unknow skill /tag. do I have to open a new session ?
+\ No newline at end of file
 
-
-### `commit` — 2026-04-16
-
-Commit: chore: remove legacy flat _system context files after claude cli session
-Hash: e0de141d
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md

@@ -123,7 +123,7 @@ async def _call_haiku(system: str, user: str, model: str, max_tokens: int = 2000
 
 def _get_code_dir(project: str) -> Optional[Path]:
     try:
-        from gitops.git import get_project_code_dir
+        from pipelines.pipeline_git import get_project_code_dir
         cd = get_project_code_dir(project)
         return Path(cd) if cd else None
     except Exception:

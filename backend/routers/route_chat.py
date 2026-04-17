@@ -32,8 +32,8 @@ from memory.memory_sessions import SessionStore
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
            (project_id, session_id, source_id,
-            prompt, response, tags, created_at)
-       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz)
+            prompt, response, tags, created_at, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz, %s)
        ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -605,11 +605,12 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                 pass
         with db.conn() as conn:
             with conn.cursor() as cur:
+                from core.auth import ADMIN_USER_ID as _ADMIN_UID
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
                     (project_id, body.session_id, ts,
                      (body.prompt or "")[:4000], "",
-                     _json.dumps(hook_tags), ts),
+                     _json.dumps(hook_tags), ts, _ADMIN_UID),
                 )
 
         # Fire memory batch digest every N prompts (fire-and-forget)
