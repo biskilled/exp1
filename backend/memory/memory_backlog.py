@@ -926,6 +926,461 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
         )
 
 
+# ── Full-digest pipeline ──────────────────────────────────────────────────────
+
+def _fmt_full_digest_entry(entry: dict) -> str:
+    """Render a full-digest group entry into backlog.md markdown block.
+
+    Format:
+      ### P100042 2026/04/17 — {slug}: {topic}
+      <!-- APPROVE: [x] -->
+      ...
+      **Completed:** (one line per item)
+      **Open Features:** (max 3)
+      **Open Bugs:** (max 3)
+      **Events:** N prompts processed
+    """
+    ref_id   = entry.get("ref_id", "?")
+    d        = entry.get("date", date.today().strftime("%Y/%m/%d"))
+    summary  = entry.get("summary", "")
+    slug     = entry.get("slug", "general")
+    classify = entry.get("classify", "task")
+    match_t  = entry.get("slug_type", "existing")
+
+    completed     = entry.get("completed", [])
+    open_features = entry.get("open_features", [])
+    open_bugs     = entry.get("open_bugs", [])
+    event_ids     = entry.get("event_ids", [])
+    action_items  = entry.get("action_items", [])  # for commit-only entries
+
+    # Commits/standalone get auto-approved; prompt groups also auto-approved in full_digest mode
+    approve_val = "x"
+
+    lines = [
+        f"### {ref_id} {d} — {summary}",
+        "",
+        f"<!-- APPROVE: [{approve_val}] -->",
+        "<!-- TAG: -->",
+        f"<!-- AI_MATCH: {match_t}:{slug} -->",
+        f"<!-- AI_CLASSIFY: {classify} -->",
+        "",
+    ]
+
+    if completed:
+        lines.append("**Completed:**")
+        for item in completed:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    if open_features:
+        lines.append("**Open Features:**")
+        for item in open_features:
+            desc = item.get("desc", item) if isinstance(item, dict) else item
+            acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
+            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+        lines.append("")
+
+    if open_bugs:
+        lines.append("**Open Bugs:**")
+        for item in open_bugs:
+            desc = item.get("desc", item) if isinstance(item, dict) else item
+            acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
+            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+        lines.append("")
+
+    if action_items:
+        lines.append("**Action Items:**")
+        for item in action_items:
+            desc = item.get("desc", item) if isinstance(item, dict) else item
+            acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
+            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+        lines.append("")
+
+    n_events = len(event_ids)
+    if n_events:
+        lines.append(f"**Events:** {n_events} prompt(s) processed")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+class _FullDigest:
+    """Full-pass digest: groups ALL pending prompts by use case (one entry per group).
+
+    Standalone commits (no linked prompt) produce a single action-items summary entry.
+    Unlike process_pending() which works per cnt-threshold, this sees all data at once.
+    """
+
+    def __init__(self, bl: "MemoryBacklog") -> None:
+        self.bl = bl
+        cfg_root = bl._config().get("full_digest", {})
+        self.max_groups    = int(cfg_root.get("max_groups", 7))
+        self.max_open_bugs  = int(cfg_root.get("max_open_bugs", 3))
+        self.max_open_items = int(cfg_root.get("max_open_items", 3))
+        self.grouping_cfg   = cfg_root.get("grouping_prompt", {})
+        self.summary_cfg    = cfg_root.get("summary_prompt", {})
+        self.commits_cfg    = cfg_root.get("commits_summary_prompt", {})
+
+    async def run(self) -> dict:
+        bl         = self.bl
+        project_id = bl._get_project_id()
+        if not project_id:
+            return {"error": "project not found"}
+
+        uc_context = bl._load_use_case_context()
+
+        # 1. Load all pending rows
+        prompt_rows: list[dict] = []
+        standalone_commits: list[dict] = []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    prompt_rows       = bl._fetch_prompts_with_commit_context(cur, project_id)
+                    standalone_commits = bl._fetch_standalone_commits(cur, project_id)
+        except Exception as e:
+            log.warning(f"full_digest: fetch error: {e}")
+
+        if not prompt_rows and not standalone_commits:
+            log.info("full_digest: nothing pending")
+            return {"appended": 0, "groups": 0, "commits_entry": None,
+                    "total_prompts": 0, "total_standalone_commits": 0}
+
+        log.info(
+            f"full_digest: {len(prompt_rows)} prompts, "
+            f"{len(standalone_commits)} standalone commits"
+        )
+
+        # 2. Group prompts
+        groups: list[dict] = []
+        if prompt_rows:
+            groups = await self._group_prompts(prompt_rows, uc_context)
+
+        # 3. Summarize each group
+        entries: list[dict] = []
+        all_prompt_ids: list[str] = []
+        for group in groups:
+            idx_list   = group.get("event_indices", [])
+            slug       = group.get("slug", "general")
+            classify   = group.get("classify", "task")
+            slug_type  = group.get("slug_type", "existing")
+            topic      = group.get("topic", slug)
+            group_rows = [prompt_rows[i] for i in idx_list if i < len(prompt_rows)]
+            if not group_rows:
+                continue
+
+            ref_ids = bl._allocate_refs(project_id, "P", 1)
+            if not ref_ids:
+                continue
+            ref_id = ref_ids[0]
+
+            summary_data = await self._summarize_group(group_rows, slug, classify)
+
+            entries.append({
+                "ref_id":       ref_id,
+                "date":         date.today().strftime("%Y/%m/%d"),
+                "summary":      f"{slug}: {topic}",
+                "slug":         slug,
+                "slug_type":    slug_type,
+                "classify":     classify,
+                "completed":    summary_data.get("completed", []),
+                "open_features": summary_data.get("open_features", [])[:self.max_open_items],
+                "open_bugs":    summary_data.get("open_bugs", [])[:self.max_open_bugs],
+                "event_ids":    [r["id"] for r in group_rows],
+            })
+            all_prompt_ids.extend(r["id"] for r in group_rows)
+
+        # 4. Standalone commits → ONE entry
+        commits_entry: Optional[dict] = None
+        if standalone_commits:
+            c_ref_ids = bl._allocate_refs(project_id, "C", 1)
+            if c_ref_ids:
+                c_summary = await self._summarize_standalone_commits(
+                    standalone_commits, uc_context
+                )
+                commits_entry = {
+                    "ref_id":      c_ref_ids[0],
+                    "date":        date.today().strftime("%Y/%m/%d"),
+                    "summary":     f"standalone commits summary ({len(standalone_commits)} commits)",
+                    "slug":        c_summary.get("slug", "discovery"),
+                    "slug_type":   "existing",
+                    "classify":    "task",
+                    "action_items": c_summary.get("action_items", []),
+                    "event_ids":   [],
+                }
+
+        # 5. Write backlog.md (overwrite pending section, keep archive)
+        all_entries = entries + ([commits_entry] if commits_entry else [])
+        self._write_entries(all_entries)
+
+        # 6. Mark all source rows as processed
+        self._mark_processed(
+            project_id, entries, commits_entry, all_prompt_ids, standalone_commits
+        )
+
+        return {
+            "appended":               len(all_entries),
+            "groups":                 len(entries),
+            "commits_entry":          commits_entry["ref_id"] if commits_entry else None,
+            "total_prompts":          len(prompt_rows),
+            "total_standalone_commits": len(standalone_commits),
+        }
+
+    # ── LLM helpers ─────────────────────────────────────────────────────────
+
+    async def _group_prompts(self, rows: list[dict], uc_context: str) -> list[dict]:
+        """Group all prompts into max max_groups clusters using LLM."""
+        model = self.grouping_cfg.get("llm", settings.haiku_model)
+        desc  = self.grouping_cfg.get("desc", "")
+
+        # Compress each prompt to a short preview for the grouping call
+        compressed: list[str] = []
+        for i, r in enumerate(rows):
+            p    = (r.get("prompt") or "")[:150].replace("\n", " ")
+            dt   = r.get("created_at", "")
+            dt_s = str(dt)[:10] if dt else ""
+            c_ct = len(r.get("commits", []))
+            suffix = f" [{c_ct} commits]" if c_ct else ""
+            compressed.append(f"[{i}] {dt_s} {p}{suffix}")
+
+        system_p = f"""{desc}
+
+Active use cases:
+{uc_context}
+
+Rules:
+- Group into AT MOST {self.max_groups} groups.
+- Each event index must appear in exactly one group.
+- Prefer existing slugs. Create new slug only if truly new capability.
+- New slugs must be lowercase-hyphenated (e.g. "stripe-billing").
+- slug_type: "existing" or "new"
+- classify: "bug" | "feature" | "task"
+
+Return JSON array only. No markdown. No extra text.
+[{{"event_indices":[0,1],"slug":"auth-refactor","slug_type":"existing",
+   "classify":"feature","topic":"JWT auth and session management"}}]"""
+
+        user_p = f"Total prompts: {len(rows)}\n\n" + "\n".join(compressed)
+
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=4000)
+        if not raw:
+            # Fallback: put all in one group
+            return [{"event_indices": list(range(len(rows))), "slug": "discovery",
+                     "slug_type": "existing", "classify": "task",
+                     "topic": "all development work"}]
+
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip()
+        try:
+            groups = json.loads(cleaned)
+            if not isinstance(groups, list):
+                raise ValueError("not a list")
+            # Validate and filter SKIP groups
+            groups = [g for g in groups if g.get("slug", "").upper() != "SKIP" and g.get("event_indices")]
+            # Limit to max_groups
+            groups = groups[:self.max_groups]
+            # Ensure every index is covered (add leftover to last group or new group)
+            covered = {i for g in groups for i in g.get("event_indices", [])}
+            leftover = [i for i in range(len(rows)) if i not in covered]
+            if leftover:
+                if groups:
+                    groups[-1]["event_indices"].extend(leftover)
+                else:
+                    groups.append({"event_indices": leftover, "slug": "discovery",
+                                   "slug_type": "existing", "classify": "task",
+                                   "topic": "general work"})
+            return groups
+        except Exception as e:
+            log.warning(f"full_digest: grouping parse error: {e}\nraw={raw[:200]}")
+            return [{"event_indices": list(range(len(rows))), "slug": "discovery",
+                     "slug_type": "existing", "classify": "task",
+                     "topic": "all development work"}]
+
+    async def _summarize_group(
+        self, rows: list[dict], slug: str, classify: str
+    ) -> dict:
+        """Summarize one group of prompts into completed/open_features/open_bugs."""
+        model = self.summary_cfg.get("llm", settings.haiku_model)
+        desc  = self.summary_cfg.get("desc", "")
+
+        max_f = self.max_open_items
+        max_b = self.max_open_bugs
+
+        # Build context for this group
+        parts: list[str] = []
+        for i, r in enumerate(rows, 1):
+            p    = (r.get("prompt")   or "")[:400]
+            resp = (r.get("response") or "")[:200]
+            block = f"[{i}] PROMPT: {p}\nRESPONSE: {resp}"
+            for ctx in r.get("commits", []):
+                block += f"\n  COMMIT {ctx['hash'][:7]}: {ctx['msg'][:100]}"
+                for sym in ctx.get("symbols", [])[:8]:
+                    cls = f"{sym['class']}." if sym.get("class") else ""
+                    mth = sym.get("method") or ""
+                    nm  = f"{cls}{mth}" if (cls or mth) else sym["file"]
+                    block += f"\n    {sym['file']} {sym['type']}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
+            parts.append(block)
+
+        system_p = f"""{desc}
+
+Use case: {slug}  |  classify: {classify}
+
+Return JSON (no markdown, no extra text):
+{{
+  "completed":     ["done item referencing file/class where known"],
+  "open_features": [{{"desc": "...", "acceptance": "done when ..."}}],
+  "open_bugs":     [{{"desc": "...", "acceptance": "done when ..."}}]
+}}
+
+Limits: completed = any number.  open_features ≤ {max_f}.  open_bugs ≤ {max_b}.
+Be specific; reference file/class/method names. One sentence per item."""
+
+        user_p = "\n\n".join(parts)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=2500)
+
+        if not raw:
+            return {"completed": [], "open_features": [], "open_bugs": []}
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip()
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            m = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except Exception:
+                    pass
+        return {"completed": [], "open_features": [], "open_bugs": []}
+
+    async def _summarize_standalone_commits(
+        self, commits: list[dict], uc_context: str
+    ) -> dict:
+        """Summarize all standalone commits into ONE entry with action_items + slug."""
+        model = self.commits_cfg.get("llm", settings.haiku_model)
+        desc  = self.commits_cfg.get("desc", "")
+
+        parts: list[str] = []
+        for i, c in enumerate(commits, 1):
+            msg = c.get("commit_msg", "")
+            block = f"[{i}] COMMIT: {msg}"
+            for sym in c.get("symbols", [])[:12]:
+                cls = f"{sym['class']}." if sym.get("class") else ""
+                mth = sym.get("method") or ""
+                nm  = f"{cls}{mth}" if (cls or mth) else sym["file"]
+                block += f"\n  {sym['file']} {sym['type']}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
+            parts.append(block)
+
+        system_p = f"""{desc}
+
+Active use cases:
+{uc_context}
+
+These commits have no linked user session (CI/CD, merges, direct pushes).
+The work is already done. Identify any action items the commits suggest are still needed.
+Also suggest the best matching slug from the active use cases (or "discovery" if unclear).
+
+Return JSON only:
+{{
+  "slug":         "best-matching-slug",
+  "action_items": [{{"desc": "...", "acceptance": "..."}}]
+}}"""
+
+        user_p = "\n\n".join(parts)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=1500)
+
+        if not raw:
+            return {"slug": "discovery", "action_items": []}
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip()
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            m = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group())
+                except Exception:
+                    pass
+        return {"slug": "discovery", "action_items": []}
+
+    # ── File I/O ────────────────────────────────────────────────────────────
+
+    def _write_entries(self, entries: list[dict]) -> None:
+        """Overwrite the pending section of backlog.md with new full-digest entries.
+
+        Preserves any existing ## Processed archive section.
+        """
+        path = self.bl._backlog_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        separator = "\n---\n\n"
+        content   = separator.join(_fmt_full_digest_entry(e) for e in entries)
+
+        # Preserve archive section if it exists
+        archive_block = ""
+        if path.exists():
+            existing = path.read_text(errors="ignore")
+            idx = existing.find("\n## Processed ")
+            if idx != -1:
+                archive_block = existing[idx:]
+
+        header = (
+            "# Backlog\n\n"
+            "> Full-digest run — all entries auto-approved (APPROVE: x).\n"
+            "> Run `POST /memory/{project}/work-items` to merge into use cases.\n\n"
+        )
+        path.write_text(header + content + "\n" + archive_block)
+        log.info(f"full_digest: wrote {len(entries)} entries → {path}")
+
+    # ── DB marking ──────────────────────────────────────────────────────────
+
+    def _mark_processed(
+        self,
+        project_id: int,
+        entries: list[dict],
+        commits_entry: Optional[dict],
+        all_prompt_ids: list[str],
+        standalone_commits: list[dict],
+    ) -> None:
+        """Stamp backlog_ref on all source rows that were processed."""
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    # Stamp each prompt with its group's ref_id
+                    for entry in entries:
+                        ref_id = entry["ref_id"]
+                        for pid in entry.get("event_ids", []):
+                            cur.execute(
+                                "UPDATE mem_mrr_prompts SET backlog_ref=%s "
+                                "WHERE id=%s::uuid AND project_id=%s",
+                                (ref_id, pid, project_id),
+                            )
+                            # Stamp commits linked to this prompt
+                            cur.execute(
+                                "UPDATE mem_mrr_commits SET backlog_ref=%s "
+                                "WHERE project_id=%s AND prompt_id=%s::uuid "
+                                "  AND (backlog_ref IS NULL OR backlog_ref <> 'SKIP')",
+                                (ref_id, project_id, pid),
+                            )
+
+                    # Stamp standalone commits
+                    if commits_entry and standalone_commits:
+                        ref_id = commits_entry["ref_id"]
+                        for c in standalone_commits:
+                            cur.execute(
+                                "UPDATE mem_mrr_commits SET backlog_ref=%s "
+                                "WHERE commit_hash=%s AND project_id=%s",
+                                (ref_id, c["id"], project_id),
+                            )
+                conn.commit()
+        except Exception as e:
+            log.warning(f"full_digest: _mark_processed error: {e}")
+
+
+async def process_full_digest(project: str) -> dict:
+    """Module-level convenience: run the full-digest pipeline for a project."""
+    bl = MemoryBacklog(project)
+    fd = _FullDigest(bl)
+    return await fd.run()
+
+
 # ── Use-case file helpers ──────────────────────────────────────────────────────
 
 _USE_CASE_STUB = """\

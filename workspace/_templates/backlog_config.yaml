@@ -363,3 +363,84 @@ use_cases:
       Be concise. One sentence per item. Reference file/class/method names where available.
     llm: claude-haiku-4-5-20251001
     temperature: 0.3
+
+
+# ── Full-digest mode ──────────────────────────────────────────────────────────
+# Triggered by: POST /memory/{project}/sync-backlog?mode=full
+#
+# Unlike the threshold-based mirroring_event_summary above (which processes N
+# rows at a time), full_digest sees ALL pending data at once and produces a
+# compact, structured backlog:
+#
+#   • ALL pending prompts → grouped into at most max_groups use case clusters
+#   • Each group → one backlog entry with completed / open_features / open_bugs
+#   • ALL standalone commits (no user session) → ONE entry with action_items
+#
+# Use this when you want to flush a large backlog (50-500 prompts) into a clean,
+# readable summary instead of many small batch entries.
+#
+# All entries are AUTO-APPROVED (<!-- APPROVE: [x] -->) — run work-items
+# immediately after to merge them into use_cases/*.md.
+
+full_digest:
+  max_groups:    7    # max number of use case groups (caps LLM output size)
+  max_open_bugs: 3    # max open bugs per group
+  max_open_items: 3   # max open features/tasks per group
+
+  # ── Step A: group all prompts into use case clusters (ONE LLM call) ──
+  grouping_prompt:
+    desc: >
+      You are grouping AI development session prompts (user ↔ assistant exchanges)
+      into use case clusters. Each cluster should share a single use case and intent.
+      You receive: a numbered list of compressed prompt previews with dates, and a
+      list of all existing active use case slugs with descriptions.
+      Group into AT MOST max_groups clusters (hard limit — merge related topics).
+      Return a JSON array of groups:
+        [{"event_indices": [0,1,2], "slug": "auth-refactor",
+          "slug_type": "existing|new", "classify": "bug|feature|task",
+          "topic": "one-line group description (max 80 chars)"}]
+      Rules:
+        - Every event index must appear in exactly one group.
+        - Prefer existing slugs over creating new ones (65%+ similarity → reuse).
+        - Only create a new slug if the topic is truly novel. Use lowercase-hyphenated.
+        - classify is the dominant intent across all events in the group.
+        - Merge minor topics (1-2 events) into the closest related group.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.2
+
+  # ── Step B: summarize each group (ONE LLM call per group, up to max_groups) ──
+  summary_prompt:
+    desc: >
+      You are summarizing a group of AI development session prompts for a single use case.
+      The group includes the prompt text, assistant response, and linked git commits with
+      code symbols (file path, class, method, lines added/removed).
+      Extract and return JSON:
+        {
+          "completed":     ["done: specific description referencing file/class/method"],
+          "open_features": [{"desc": "...", "acceptance": "done when ..."}],
+          "open_bugs":     [{"desc": "...", "acceptance": "done when ..."}]
+        }
+      completed: all work that was actually implemented (any number, be specific).
+      open_features: max 3 items — highest-value open feature requests or tasks.
+      open_bugs: max 3 items — confirmed broken behaviour needing a fix.
+      One sentence per item. Reference file/class/method names where available.
+      If no LINKED COMMIT sections appear, completed reflects assistant-described work only.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.3
+
+  # ── Step C: standalone commit summary (ONE LLM call for all unlinked commits) ──
+  commits_summary_prompt:
+    desc: >
+      You are summarizing standalone git commits (no linked user session — CI/CD,
+      merges, direct pushes). The work in these commits is ALREADY DONE.
+      Use commit messages and code symbols (file/class/method/lines) to identify
+      what was delivered and what action items may still remain.
+      Also pick the best matching use case slug from the active use cases list.
+      Return JSON only:
+        {
+          "slug":         "best-matching-slug-from-active-use-cases",
+          "action_items": [{"desc": "...", "acceptance": "done when ..."}]
+        }
+      Keep action_items to at most 5. One sentence each.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.3

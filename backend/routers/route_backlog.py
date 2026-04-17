@@ -41,12 +41,29 @@ async def sync_backlog(
         None,
         description="Filter to a single source: commits|prompts|messages|items. Default = all.",
     ),
+    mode: Optional[str] = Query(
+        None,
+        description="Processing mode. 'full' = full-digest (all pending → max 7 groups, auto-approved).",
+    ),
 ):
     """Flush pending mirror rows for a project into backlog.md.
 
-    Threshold check is bypassed — all pending rows are processed regardless
-    of the count threshold in backlog_config.yaml.
+    Modes:
+      (default) — threshold-based batch processing per cnt in backlog_config.yaml
+      mode=full — full-digest: ALL pending data → max 7 use-case groups, auto-approved
     """
+    if mode == "full":
+        from memory.memory_backlog import process_full_digest
+        result = await process_full_digest(project)
+        from memory.memory_backlog import MemoryBacklog
+        bl = MemoryBacklog(project)
+        return {
+            "project":    project,
+            "mode":       "full",
+            "backlog_file": str(bl._backlog_path()),
+            **result,
+        }
+
     from memory.memory_backlog import MemoryBacklog
     bl = MemoryBacklog(project)
 
@@ -365,6 +382,74 @@ async def get_use_case_events(
                 }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project}/reset-commits")
+async def reset_commits_backlog(project: str):
+    """Reset backlog_ref = NULL on all commits (except SKIP).
+
+    Use before running a fresh full-digest pass to re-process all commit data.
+    SKIP-marked commits (system-only file changes) are preserved.
+    """
+    from core.database import db
+    from memory.memory_backlog import MemoryBacklog
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
+    if not project_id:
+        raise HTTPException(404, "Project not found")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE mem_mrr_commits
+                       SET backlog_ref = NULL
+                       WHERE project_id = %s
+                         AND backlog_ref IS NOT NULL
+                         AND backlog_ref <> 'SKIP'""",
+                    (project_id,),
+                )
+                affected = cur.rowcount
+            conn.commit()
+        return {"project": project, "reset": affected, "note": "SKIP rows preserved"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/{project}/reset-billing")
+async def reset_billing(project: str):
+    """Delete all usage_log rows to reset billing tracking from scratch.
+
+    Called from the data dashboard when the user wants a clean billing period.
+    This deletes ALL mng_usage_logs rows (they are tracking records only,
+    not financial transactions which live in mng_transactions).
+    """
+    from core.database import db
+    from core.auth import ADMIN_USER_ID
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM mng_usage_logs WHERE user_id=%s", (ADMIN_USER_ID,))
+                before = cur.fetchone()[0] or 0
+                cur.execute("DELETE FROM mng_usage_logs WHERE user_id=%s", (ADMIN_USER_ID,))
+                deleted = cur.rowcount
+            conn.commit()
+        return {
+            "project": project,
+            "deleted": deleted,
+            "before":  before,
+            "note":    "mng_usage_logs cleared — billing counter reset to zero",
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @router.post("/{project}/regenerate-use-case")
