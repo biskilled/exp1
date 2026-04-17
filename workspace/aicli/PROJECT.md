@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-15 | Version 3.0.0_
+_Last updated: 2026-04-17 | Version 3.1.0_
 
 ---
 
@@ -19,18 +19,18 @@ No more copy-pasting context. No more re-explaining your architecture.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude Code, aicli CLI, Cursor all read the same knowledge base | ✓ Implemented |
-| 2 | **4-layer memory pipeline** — Mirror → AI Events → Work Items → Project Facts | ✓ Implemented |
-| 3 | **Planner / Work Items** — AI-detected tasks linked to user-managed planner_tags | ✓ Implemented |
+| 2 | **Backlog pipeline** — Mirror → Backlog digest → User review → Use case files | ✓ Implemented |
+| 3 | **Planner** — User-managed tag hierarchy linked to use case files | ✓ Implemented |
 | 4 | **Auto-deploy** — Stop hook → auto_commit_push.sh after every Claude Code session | ✓ Hooks |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
-| 7 | **Semantic search** — pgvector cosine similarity over events + work items | ✓ Implemented |
-| 8 | **Feature snapshots** — Haiku-generated requirements/design per tag | ✓ Implemented |
-| 9 | **MCP server** — 10 tools: search_memory, get_project_state, work items, tags | ✓ Implemented |
+| 7 | **Semantic search** — pgvector cosine similarity over events | ✓ Implemented |
+| 8 | **Feature snapshots** — Haiku-generated requirements/design per planner tag | ✓ Implemented |
+| 9 | **MCP server** — 10 tools: search_memory, get_project_state, tags, backlog | ✓ Implemented |
 
 ---
 
-## 4-Layer Memory Architecture
+## Memory Architecture
 
 ```
 Layer 1 — Raw Capture (mem_mrr_*)
@@ -43,42 +43,42 @@ Layer 1 — Raw Capture (mem_mrr_*)
 Layer 2 — AI Events (mem_ai_events)
   Haiku digest + OpenAI embedding (text-embedding-3-small, 1536-dim)
   event_type: prompt_batch | commit | session_summary | item | workflow
-  is_system=TRUE → system file updates (PROJECT.md etc) skipped for work items
   source_id: batch_{hash8}_{tagfp8} for commits; last prompt UUID for prompt batches
   Tags: only user-intent {phase, feature, bug, source} stored
 
-Layer 3 — Structured Artifacts (mem_ai_*)
-  ├── mem_ai_work_items      AI-detected tasks/bugs/features (score_ai 0-5)
-  └── mem_ai_project_facts   Durable facts ("uses pgvector", "auth is JWT")
+Layer 3 — Structured Artifacts (mem_ai_project_facts)
+  Durable facts ("uses pgvector", "auth is JWT")
 
-Layer 4 — User Tags (planner_tags)
-  Human-owned taxonomy: features, bugs, tasks, phases
+Layer 4 — User Taxonomy (planner_tags)
+  Human-owned hierarchy: features, bugs, tasks, phases
+  file_ref → links to use case .md files
   ← USER OWNS THIS — AI suggests, user confirms
 ```
 
-### How `/memory` syncs context to every LLM tool
+### Backlog Pipeline (5 steps)
+
+```
+Step 1 — Raw capture:   mem_mrr_* (no LLM)
+Step 2 — Backlog:       backlog_config.yaml drives 2-call LLM digest
+           per source type:
+           call 1 — grouping_prompt  (clusters N rows by topic)
+           call 2 — summary_prompt   (per group → requirements + action items)
+           → documents/backlog.md (append-only)
+Step 3 — User review:   Backlog tab — approve (x), reject (-), add tag
+Step 4 — Merge:         POST /memory/{p}/work-items processes approved entries
+           → creates/updates documents/use_cases/{slug}.md
+           → links planner_tag.file_ref → use case file
+Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
+```
+
+### How `/memory` syncs context
 
 ```
 POST /projects/aicli/memory
-  ├── Haiku synthesizes last N events → CLAUDE.md / MEMORY.md / context.md
-  ├── _system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md        ← Claude Code auto-loads
-  ├── _system/claude/MEMORY.md   →  {code_dir}/MEMORY.md        ← referenced in CLAUDE.md
-  ├── _system/cursor/rules.md    →  {code_dir}/.cursor/rules/   ← Cursor reads on open
-  ├── _system/aicli/context.md   →  prepended to every CLI prompt
-  ├── _system/aicli/copilot.md   →  .github/copilot-instructions.md
-  └── background: promote_all_work_items() + run_feature_snapshots()
+  ├── Flush all pending mirror rows → backlog.md
+  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + planner_tags
+  └── Top events → .claude/memory/top_events.md
 ```
-
-### PROJECT.md vs CLAUDE.md vs project_facts
-
-| File | Source | Updated by |
-|------|--------|-----------|
-| `PROJECT.md` | Manual living doc (this file) | Human / Summary tab / `PUT /projects/aicli/summary` |
-| `CLAUDE.md` | Auto-generated from DB | `/memory` POST → `write_root_files()` |
-| `MEMORY.md` | Auto-generated from DB | `/memory` POST → `write_root_files()` |
-| `mem_ai_project_facts` | AI-extracted from events | `extract_project_facts()` in memory_promotion.py |
-
-`mem_ai_project_facts` feeds into `CLAUDE.md` (facts section) but does **not** auto-update `PROJECT.md`.
 
 ---
 
@@ -86,24 +86,23 @@ POST /projects/aicli/memory
 
 ```
 aicli/                          ← Engine (code)
-├── backend/                    ← FastAPI server (python3.12 -m uvicorn main:app)
+├── backend/                    ← FastAPI server
 │   ├── main.py                 ← App init, router registration, DB startup
 │   ├── core/                   ← Infrastructure
 │   │   ├── config.py           ← Settings (env vars, paths)
 │   │   ├── database.py         ← psycopg2 pool + migration runner
-│   │   ├── db_migrations.py    ← m001–m047 migrations
+│   │   ├── db_migrations.py    ← m001–m056 migrations
 │   │   ├── db_schema.sql       ← Single source of truth for table shapes
 │   │   ├── pipeline_log.py     ← mem_pipeline_runs helpers
 │   │   └── prompt_loader.py    ← Load prompts/*.yaml + .md files
 │   ├── routers/                ← HTTP endpoints
 │   │   ├── route_projects.py   ← /projects (CRUD, /memory, /context, /snapshot)
-│   │   ├── route_memory.py     ← /memory (embed-prompts, embed-commits, rebuild, dashboard)
+│   │   ├── route_memory.py     ← /memory (embed, rebuild, dashboard, backlog)
+│   │   ├── route_backlog.py    ← /memory/{p}/backlog endpoints
 │   │   ├── route_git.py        ← /git (commit-push, status, pull, commit-store)
 │   │   ├── route_history.py    ← /history (commits, prompts, sessions, sync)
 │   │   ├── route_chat.py       ← /chat (SSE streaming, hook-log)
-│   │   ├── route_work_items.py ← /work-items (CRUD, promote, tag link)
 │   │   ├── route_tags.py       ← /tags (planner_tags CRUD, deliveries, merge)
-│   │   ├── route_snapshots.py  ← /projects/{p}/snapshot/{tag}
 │   │   ├── route_entities.py   ← /entities (session tags, event tagging)
 │   │   ├── route_search.py     ← /search (semantic search via pgvector)
 │   │   ├── route_agents.py     ← /agents (run, run-pipeline, roles)
@@ -113,42 +112,46 @@ aicli/                          ← Engine (code)
 │   │   ├── route_admin.py      ← /admin (users, api-keys, pricing, usage)
 │   │   ├── route_auth.py       ← /auth (login, register, JWT)
 │   │   ├── route_billing.py    ← /billing (balance, coupons, transactions)
-│   │   ├── route_prompts.py    ← /prompts (role + feature prompt tree)
-│   │   ├── route_files.py      ← /files (code directory browser)
-│   │   └── route_usage.py      ← /usage (per-user LLM cost stats)
+│   │   └── route_files.py      ← /files (code directory browser)
 │   ├── memory/                 ← Memory pipeline classes
 │   │   ├── memory_mirroring.py ← INSERT mem_mrr_* rows; tag operations
 │   │   ├── memory_embedding.py ← Haiku digest + OpenAI embed → mem_ai_events
-│   │   ├── memory_promotion.py ← Work item extraction; feature snapshots; facts
-│   │   ├── memory_tagging.py   ← planner_tags CRUD; 3-level work_item→tag matching
-│   │   ├── memory_files.py     ← Template render → CLAUDE.md / MEMORY.md / context.md
-│   │   ├── memory_sessions.py  ← Layer 2: JSON file sessions for LLM message continuity
-│   │   ├── memory_code_parser.py← tree-sitter symbol extraction for commits
-│   │   ├── memory_planner.py   ← Planner documents (acceptance_criteria sync)
-│   │   └── memory_extraction.py← Work item extraction helpers
+│   │   ├── memory_backlog.py   ← Backlog pipeline; run_work_items(); use case files
+│   │   ├── memory_promotion.py ← Feature snapshots; fact conflicts
+│   │   ├── memory_tagging.py   ← planner_tags CRUD
+│   │   ├── memory_files.py     ← Template render → CLAUDE.md / .cursorrules
+│   │   ├── memory_sessions.py  ← Layer 2: JSON sessions for LLM message continuity
+│   │   └── memory_code_parser.py← tree-sitter symbol extraction for commits
 │   ├── agents/                 ← LLM agent pipeline
 │   │   ├── providers/          ← Claude, OpenAI, DeepSeek, Gemini, Grok adapters
 │   │   └── tools/              ← Agent tool implementations (search, git, memory)
 │   ├── data/                   ← Runtime data (api_keys.json, pricing.json)
 │   └── prompts/                ← System prompts (prompts.yaml + .md files)
-│       └── memory/             ← commit_digest, prompt_batch_digest, work_item_extraction…
+│       └── memory/             ← commit_digest, prompt_batch_digest, session_end_synthesis…
 ├── ui/
 │   ├── electron/               ← Electron shell (BrowserWindow, xterm.js)
 │   └── frontend/               ← Vanilla JS (no framework)
-│       ├── views/              ← chat.js, entities.js, pipeline.js, history.js…
-│       └── api.js              ← Unified fetch wrapper
+│       ├── views/              ← chat.js, entities.js, backlog.js, pipeline.js…
+│       └── utils/api.js        ← Unified fetch wrapper
 ├── cli/                        ← Interactive REPL (prompt_toolkit + rich)
 ├── workspace/                  ← CONTENT (per-project, version-controlled)
-│   ├── _templates/hooks/       ← Canonical hook scripts
+│   ├── _templates/
+│   │   ├── backlog_config.yaml ← Default backlog pipeline config (copied to .ai/ on first run)
+│   │   ├── use_case_template.md← Template for new use case files
+│   │   └── hooks/              ← Canonical hook scripts
 │   └── aicli/
 │       ├── PROJECT.md          ← This file
 │       ├── project.yaml        ← Project config (code_dir, git settings)
+│       ├── documents/
+│       │   ├── backlog.md      ← Append-only backlog inbox
+│       │   └── use_cases/      ← One .md per use case
 │       └── _system/            ← Auto-generated memory files
 │           ├── claude/CLAUDE.md
-│           ├── claude/MEMORY.md
 │           ├── cursor/rules.md
-│           └── aicli/context.md
-└── .aicli/scripts/             ← Hook scripts (auto_commit_push.sh, etc.)
+│           └── llm_prompts/
+└── .aicli/
+    ├── scripts/                ← Hook scripts (auto_commit_push.sh, etc.)
+    └── backlog_config.yaml     ← Runtime backlog config (auto-created from template)
 ```
 
 ---
@@ -169,26 +172,32 @@ aicli/                          ← Engine (code)
 | `mng_session_tags` | Active phase/feature/bug tags per project |
 | `mng_agent_roles` | LLM personas (name, system_prompt, model, react) |
 | `mng_agent_role_versions` | Role audit log |
-| `mng_system_roles` | Memory synthesis prompts (commit_digest, etc.) |
 | `mng_tags_categories` | Planner tag categories (feature/bug/task/phase) |
 
 ### `planner_tags` — User-managed tag hierarchy (1 table)
-Columns: `id, name, category_id, parent_id, creator, description, requirements, acceptance_criteria, action_items, deliveries JSONB, status, priority, due_date, created_at, updated_at`
+Columns: `id, name, category_id, parent_id, creator, description, requirements, acceptance_criteria, action_items, deliveries JSONB, status, priority, due_date, file_ref, created_at, updated_at`
+
+`file_ref` links a tag to its use case file: `documents/use_cases/{slug}.md`
 
 ### `mem_mrr_*` — Layer 1: Raw capture (4 tables)
-| Table | Purpose | Key columns |
-|-------|---------|-------------|
-| `mem_mrr_prompts` | Raw prompt/response | id, project_id, event_id, session_id, prompt, response, tags |
-| `mem_mrr_commits` | Git commits | commit_hash PK, project_id, event_id, commit_msg, tags, diff_summary |
-| `mem_mrr_commits_code` | Per-symbol diffs | commit_hash FK, file_path, symbol_type, full_symbol, diff_snippet |
-| `mem_mrr_items` | Documents/meetings | id, project_id, item_type, title, raw_text |
+| Table | Key columns |
+|-------|-------------|
+| `mem_mrr_prompts` | id, project_id, session_id, prompt, response, tags, backlog_ref |
+| `mem_mrr_commits` | commit_hash PK, project_id, commit_msg, tags, diff_summary, backlog_ref |
+| `mem_mrr_commits_code` | commit_hash FK, file_path, symbol_type, full_symbol, diff_snippet |
+| `mem_mrr_items` | id, project_id, item_type, title, raw_text, backlog_ref |
+| `mem_mrr_messages` | id, project_id, platform, messages JSONB, backlog_ref |
 
-### `mem_ai_*` — Layer 2/3: AI digests + artifacts (3 tables)
+`backlog_ref` — NULL = pending backlog digest; set to ref_id (e.g. `P100042`) once processed.
+
+### `mem_ai_*` — Layer 2/3: AI digests + artifacts (2 active tables)
 | Table | Purpose | Key columns |
 |-------|---------|-------------|
-| `mem_ai_events` | Digested + embedded events | id, project_id, event_type, source_id, tags, is_system, summary, embedding |
-| `mem_ai_work_items` | AI-detected tasks | id, project_id, category_ai, name_ai, summary_ai, score_ai, tag_id_user, tag_id_ai |
+| `mem_ai_events` | Digested + embedded events | id, project_id, event_type, source_id, tags, summary, embedding |
 | `mem_ai_project_facts` | Durable project facts | id, project_id, fact_key, fact_value, valid_until |
+
+### `mem_backlog_links` — Permanent backlog→use case mapping
+`ref_id, project_id, tag_id, use_case_slug, source_type, created_at`
 
 ### `pr_*` — Graph workflows (6 tables)
 `pr_graph_workflows` | `pr_graph_nodes` | `pr_graph_edges` | `pr_graph_runs` | `pr_graph_node_results` | `pr_seq_counters`
@@ -201,42 +210,46 @@ Columns: `id, name, category_id, parent_id, creator, description, requirements, 
 - `REQUIRE_AUTH=false` local dev — no gate
 - `REQUIRE_AUTH=true` Railway — JWT required
 - `DEV_MODE=true` → synthetic admin, no balance deduction
-- Login hierarchy: admin → login_as any user
+
+### Backlog Config (`{code_dir}/.ai/backlog_config.yaml`)
+Each source type (`commits`, `prompts`, `items`, `messages`) has:
+- `cnt` — batch size (trigger threshold)
+- `grouping_prompt` — clusters N raw rows into topic groups
+- `summary_prompt` — per-group summary → requirements + action items
+- `llm` / `temperature` per prompt
+
+Auto-created from `workspace/_templates/backlog_config.yaml` on first run.
+
+### Use Case File Format (`documents/use_cases/{slug}.md`)
+```
+# {slug}
+## Overview
+## Requirements (Open / Closed)
+## Delivery (code table + docs table)
+## Completed (action items + bugs fixed)
+## Open (action items + bugs with AI score)
+## Events (system-managed)
+```
 
 ### Memory Pipeline Triggers
 | Event | Trigger |
 |-------|---------|
-| Prompt batch (every 3 prompts) | `process_prompt_batch()` → mem_ai_events |
-| Commit push | `process_commit_batch()` when ≥5 pending |
-| `/memory` POST | `write_root_files()` + `promote_all_work_items()` + `run_feature_snapshots()` |
+| Commit push | `_check_backlog_threshold(project, "commits")` background task |
+| Prompt stored (hook-log) | `_check_backlog_threshold(project, "prompts")` background task |
+| `/memory` POST | Flush all pending + write context files |
 | Session end (Stop hook) | `session-summary` → `/projects/{p}/memory` |
-
-### Work Item Flow
-```
-mem_ai_events (is_system=FALSE) → extract_work_items_from_events()
-  → confidence ≥ 0.75 → mem_ai_work_items INSERT
-  → match_work_item_to_tags() → tag_id_ai (AI suggestion)
-  → user drag-drop → tag_id_user (confirmed link)
-  → promote_work_item() → refreshes summary_ai, acceptance_criteria_ai, score_ai
-```
-
-### Commit Batch Events
-- Grouped by tag fingerprint `{phase, feature, bug}`
-- `source_id = batch_{first_hash8}_{tagfp8}`
-- `is_system=TRUE` if all changed files are: CLAUDE.md, MEMORY.md, PROJECT.md, .cursorrules, _system/…
-- Back-propagated: `mem_mrr_commits.event_id` → UUID of the batch event
 
 ### UI Tab Structure
 ```
 sidebar tabs:
   summary  → views/summary.js        PROJECT.md viewer/editor
   chat     → views/chat.js           SSE streaming + tag bar + session-commit footer
-  planner  → views/entities.js       2-pane: categories + work items + tag drawer
+  backlog  → views/backlog.js        Inbox review (approve/reject/tag)
+  planner  → views/entities.js       Category list + tag table + use case file preview
   pipeline → views/pipeline.js       Memory pipeline monitoring dashboard
   history  → views/history.js        Chat | Commits | Runs sub-tabs
   workflow → views/workflow.js        YAML workflow editor
   graph    → views/graph_workflow.js  DAG graph editor (Cytoscape.js)
-  prompts  → views/prompts.js        Role + feature prompt tree
   files    → views/code.js           Folder tree + file viewer
   settings → views/settings.js       Billing, backend URL, theme
   admin    → views/admin.js          Users / pricing / api-keys / usage (admin only)
@@ -246,9 +259,9 @@ sidebar tabs:
 
 ## In Progress ◷
 
-- **Work item quality** — score_ai 0-5 (0=noise, 5=critical); confidence gate 0.75 threshold; system commit filtering
-- **Feature snapshot pipeline** — Haiku generates requirements/design/action_items per planner_tag (Haiku model, flat JSON)
-- **Rebuild command** — `POST /memory/{p}/rebuild` deletes open+unlinked work items, resets mirror event_ids, reprocesses from scratch
+- **Backlog pipeline** — 2-step LLM digest (grouping + summary), user review, use case file merge
+- **Use case files** — documents/use_cases/{slug}.md with Events section; system-managed EVENTS_START/END markers
+- **Planner simplification** — tag list + use case file_ref; no work items; all detail managed in .md files
 
 ## Planned ○
 
@@ -256,15 +269,4 @@ sidebar tabs:
 - Stripe real payment integration
 - Admin dashboard: revenue summary, top users by spend
 - Electron packaging with embedded Python 3.12
-- Global role library: `workspace/_templates/roles/` with 6 default roles
-
----
-
-## Recent Work
-
-- Column name standardization: migrating committed_at → created_at across mem_mrr_commits schema, route_work_items.py, route_tags.py, and chat.js; ensuring consistent timestamp field naming
-- Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
-- Tag relations refactoring: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
-- Work item event count optimization: implementing indexed queries on (project_id, work_item_id) for session-based event counting and aggregation
-- AI tag suggestion debugging: investigating missing suggested_new tags in ui_tags query response; verifying ai_suggestion column population in work item refresh workflow
-- AI context file versioning: Version 3.0.0 baseline established with UTC timestamps; automated rule file generation for .ai/rules.md, .cursor/rules/aicli.mdrules, .github/copilot-instructions.md
+- Semantic search over use case file content (pgvector on chunked .md files)

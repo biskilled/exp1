@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-17 18:15 UTC — do not edit manually.
+> Auto-generated 2026-04-17 18:41 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 602
-- **Last active**: 2026-04-17T18:14:52Z
+- **Sessions**: 603
+- **Last active**: 2026-04-17T18:41:20Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -91,7 +91,7 @@
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-15 | Version 3.0.0_
+_Last updated: 2026-04-17 | Version 3.1.0_
 
 ---
 
@@ -110,18 +110,18 @@ No more copy-pasting context. No more re-explaining your architecture.
 | # | Goal | Status |
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude Code, aicli CLI, Cursor all read the same knowledge base | ✓ Implemented |
-| 2 | **4-layer memory pipeline** — Mirror → AI Events → Work Items → Project Facts | ✓ Implemented |
-| 3 | **Planner / Work Items** — AI-detected tasks linked to user-managed planner_tags | ✓ Implemented |
+| 2 | **Backlog pipeline** — Mirror → Backlog digest → User review → Use case files | ✓ Implemented |
+| 3 | **Planner** — User-managed tag hierarchy linked to use case files | ✓ Implemented |
 | 4 | **Auto-deploy** — Stop hook → auto_commit_push.sh after every Claude Code session | ✓ Hooks |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
-| 7 | **Semantic search** — pgvector cosine similarity over events + work items | ✓ Implemented |
-| 8 | **Feature snapshots** — Haiku-generated requirements/design per tag | ✓ Implemented |
-| 9 | **MCP server** — 10 tools: search_memory, get_project_state, work items, tags | ✓ Implemented |
+| 7 | **Semantic search** — pgvector cosine similarity over events | ✓ Implemented |
+| 8 | **Feature snapshots** — Haiku-generated requirements/design per planner tag | ✓ Implemented |
+| 9 | **MCP server** — 10 tools: search_memory, get_project_state, tags, backlog | ✓ Implemented |
 
 ---
 
-## 4-Layer Memory Architecture
+## Memory Architecture
 
 ```
 Layer 1 — Raw Capture (mem_mrr_*)
@@ -134,44 +134,44 @@ Layer 1 — Raw Capture (mem_mrr_*)
 Layer 2 — AI Events (mem_ai_events)
   Haiku digest + OpenAI embedding (text-embedding-3-small, 1536-dim)
   event_type: prompt_batch | commit | session_summary | item | workflow
-  is_system=TRUE → system file updates (PROJECT.md etc) skipped for work items
   source_id: batch_{hash8}_{tagfp8} for commits; last prompt UUID for prompt batches
   Tags: only user-intent {phase, feature, bug, source} stored
 
-Layer 3 — Structured Artifacts (mem_ai_*)
-  ├── mem_ai_work_items      AI-detected tasks/bugs/features (score_ai 0-5)
-  └── mem_ai_project_facts   Durable facts ("uses pgvector", "auth is JWT")
+Layer 3 — Structured Artifacts (mem_ai_project_facts)
+  Durable facts ("uses pgvector", "auth is JWT")
 
-Layer 4 — User Tags (planner_tags)
-  Human-owned taxonomy: features, bugs, tasks, phases
+Layer 4 — User Taxonomy (planner_tags)
+  Human-owned hierarchy: features, bugs, tasks, phases
+  file_ref → links to use case .md files
   ← USER OWNS THIS — AI suggests, user confirms
 ```
 
-### How `/memory` syncs context to every LLM tool
+### Backlog Pipeline (5 steps)
+
+```
+Step 1 — Raw capture:   mem_mrr_* (no LLM)
+Step 2 — Backlog:       backlog_config.yaml drives 2-call LLM digest
+           per source type:
+           call 1 — grouping_prompt  (clusters N rows by topic)
+           call 2 — summary_prompt   (per group → requirements + action items)
+           → documents/backlog.md (append-only)
+Step 3 — User review:   Backlog tab — approve (x), reject (-), add tag
+Step 4 — Merge:         POST /memory/{p}/work-items processes approved entries
+           → creates/updates documents/use_cases/{slug}.md
+           → links planner_tag.file_ref → use case file
+Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
+```
+
+### How `/memory` syncs context
 
 ```
 POST /projects/aicli/memory
-  ├── Haiku synthesizes last N events → CLAUDE.md / MEMORY.md / context.md
-  ├── _system/claude/CLAUDE.md   →  {code_dir}/CLAUDE.md        ← Claude Code auto-loads
-  ├── _system/claude/MEMORY.md   →  {code_dir}/MEMORY.md        ← referenced in CLAUDE.md
-  ├── _system/cursor/rules.md    →  {code_dir}/.cursor/rules/   ← Cursor reads on open
-  ├── _system/aicli/context.md   →  prepended to every CLI prompt
-  ├── _system/aicli/copilot.md   →  .github/copilot-instructions.md
-  └── background: promote_all_work_items() + run_feature_snapshots()
-```
-
-### PROJECT.md vs CLAUDE.md vs project_facts
-
-| File | Source | Updated by |
-|------|--------|-----------|
-| `PROJECT.md` | Manual living doc (this file) | Human / Summary tab / `PUT /projects/aicli/summary` |
-| `CLAUDE.md` | Auto-generated from DB | `/memory` POST → `write_root_files()` |
-| `MEMORY.md` | Auto-generated from DB | `/memory` POST → `write_root_files()` |
-| `mem_ai_project_facts` | AI-extracted from events | `extract_project_facts()` in memory_promotion.py |
+  ├── Flush all pending mirror rows → backlog.md
+  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + planner_tags
+  └── Top events → .claude/memory/top_events.md
 
 
-
-*...190 more lines in PROJECT.md*
+*...192 more lines in PROJECT.md*
 
 ---
 

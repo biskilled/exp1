@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 18:14 UTC by aicli /memory_
+_Generated: 2026-04-17 18:41 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -323,75 +323,544 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-17
 
-Commit: chore: clean up aicli system workspace files after session
-Hash: e2d1f017
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
+diff --git a/documents/backlog.md b/documents/backlog.md
+new file mode 100644
+index 0000000..6866493
+--- /dev/null
++++ b/documents/backlog.md
+@@ -0,0 +1,494 @@
++# Backlog
++
++> Approve entries with `x`, reject with `-`, tag with TAG comment.
++> Run `POST /memory/{project}/work-items` to process approved entries.
++
++### C200001 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200002 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200003 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200004 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200005 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200006 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200007 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200008 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200009 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200010 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200011 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200012 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200013 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200014 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200015 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200016 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200017 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200018 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200019 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200020 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200021 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200022 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200023 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200024 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200025 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200026 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200027 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200028 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200029 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200030 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200031 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200032 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200033 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200034 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200035 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++---
++
++### C200036 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200037 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200038 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200039 2026/04/17 — commits entry
++
++<!-- APPROVE: [x] -->
++<!-- TAG: -->
++<!-- AI_MATCH: none: -->
++<!-- AI_CLASSIFY: task -->
++
++
++---
++
++### C200040 2026/04/17 — commits entry
++
++<
 
 ### `commit` — 2026-04-17
 
-diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 823f4b1..defcebd 100644
---- a/.github/copilot-instructions.md
-+++ b/.github/copilot-instructions.md
-@@ -1,5 +1,5 @@
- # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-03-28 02:13 UTC
-+> Generated by aicli 2026-03-28 02:24 UTC
+diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
+index b625e8b..d0e5390 100644
+--- a/backend/routers/route_entities.py
++++ b/backend/routers/route_entities.py
+@@ -95,18 +95,15 @@ _SQL_GET_CATEGORY_ID = """
+     SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s
+ """
  
- # aicli — Shared AI Memory Platform
+-# planner_tags (UUID PK) — inline metadata + mem_tags_relations count
+-# {where} is injected at call site; caller always provides at least "t.client_id=1"
++# planner_tags (UUID PK) — inline metadata
++# {where} is injected at call site; caller always provides at least "t.project_id=X"
+ _SQL_LIST_VALUES = """
+     SELECT t.id::text, t.category_id, t.name,
+            COALESCE(t.description,'') AS description, t.status,
+-           t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
+-           NULL::int AS seq_num,
+-           0 AS event_count,
++           t.created_at, t.updated_at, t.due_date, t.parent_id::text,
+            tc.name AS category_name, tc.color, tc.icon,
+-           COALESCE(t.requirements,'') AS requirements,
+-           COALESCE(t.acceptance_criteria,'') AS acceptance_criteria,
+-           COALESCE(t.priority, 3) AS priority
++           COALESCE(t.priority, 3) AS priority,
++           COALESCE(t.file_ref, '') AS file_ref
+     FROM planner_tags t
+     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
+     WHERE {where}
+@@ -198,13 +195,6 @@ _SQL_GET_TAG_STRING_BY_ID = """
+     LIMIT 1
+ """
+ 
+-# Work items per category for entity summary augmentation
+-_SQL_WI_BY_CATEGORY = """
+-    SELECT name, agent_status, acceptance_criteria, implementation_plan, lifecycle_status
+-    FROM mem_ai_work_items
+-    WHERE project_id=%s AND category_name=%s AND status != 'archived'
+-"""
+-
+ # List commits for events endpoint
+ _SQL_LIST_COMMIT_EVENTS = """
+     SELECT commit_hash, 'commit', commit_hash, left(commit_msg,120), created_at
+@@ -520,10 +510,9 @@ async def list_values(
+             rows = []
+             for r in cur.fetchall():
+                 row = dict(zip(cols, r))
+-                if row.get("created_at"):
+-                    row["created_at"] = row["created_at"].isoformat()
+-                if row.get("due_date"):
+-                    row["due_date"] = row["due_date"].isoformat()
++                for ts_col in ("created_at", "updated_at", "due_date"):
++                    if row.get(ts_col):
++                        row[ts_col] = row[ts_col].isoformat()
+                 rows.append(row)
+             return {"values": rows, "project": p}
+ 
+@@ -561,10 +550,9 @@ async def list_all_values(project: str | None = Query(None)):
+             by_category: dict[str, list] = {}
+             for r in cur.fetchall():
+                 row = dict(zip(val_cols, r))
+-                if row.get("created_at"):
+-                    row["created_at"] = row["created_at"].isoformat()
+-                if row.get("due_date"):
+-                    row["due_date"] = row["due_date"].isoformat()
++                for ts_col in ("created_at", "updated_at", "due_date"):
++                    if row.get(ts_col):
++                        row[ts_col] = row[ts_col].isoformat()
+                 key = str(row["category_id"])
+                 by_category.setdefault(key, []).append(row)
+ 
+@@ -601,32 +589,11 @@ async def entity_summary(project: str | None = Query(None)):
+             "status": vstatus,
+             "due_date": vdue.isoformat() if vdue else None,
+             "parent_id": vparent,
+-            "lifecycle_status": lc_status or "idea",
++            "lifecycle_status": lc_status or "open",
+             "event_count": event_count,
+             "commit_count": commit_count,
+         })
+ 
+-    # Augment feature/bug/task categories with work_item agent_status
+-    _WORK_ITEM_CATS = {"feature", "bug", "task"}
+-    for cat_name, cat_data in cats.items():
+-        if cat_name not in _WORK_ITEM_CATS:
+-            continue
+-        try:
+-            with db.conn() as conn:
+-                with conn.cursor() as cur:
+-                    cur.execute(_SQL_WI_BY_CATEGORY, (project_id, cat_name))
+-                    wi_map = {r[0]: r for r in cur.fetchall()}
+-            for val in cat_data["values"]:
+-                wi = wi_map.get(val["name"])
+-                if wi:
+-                    _, agent_status, ac, impl, lc = wi
+-                    val["agent_status"]        = agent_status
+-                    val["has_acceptance"]      = bool(ac)
+-                    val["has_implementation"]  = bool(impl)
+-                    val["lifecycle_status"]    = lc or val.get("lifecycle_status", "idea")
+-        except Exception as _we:
+-            log.debug(f"work_items augment for {cat_name}: {_we}")
+-
+     return {"summary": list(cats.values()), "project": p}
+ 
  
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index 1221ec3..b1dc20d 100644
---- a/.cursor/rules/aicli.mdrules
-+++ b/.cursor/rules/aicli.mdrules
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:13 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:24 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+Commit: chore: update 62 files
+Hash: 7bb11602
+Code files (4):
+  - backend/routers/route_entities.py
+  - documents/backlog.md
+  - ui/frontend/utils/api.js
+  - ui/frontend/views/entities.js
+Generated/internal files: workspace/aicli/_system/.agent-context, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md, workspace/aicli/_system/commit_log.jsonl
+Symbols changed: _renderWiPanel, linked, current, isSel, renderEntities, hdr, _wiRowLoading, desc, _plannerSelectCat, _loadWiPanel, allItems, fmtDate, aiNewCat, _ensureWiLoadingStyle, _loadTagLinkedWorkItems
+
+### `commit` — 2026-04-17
+
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ru.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ru.lproj/locale.pak
+deleted file mode 100644
+index 0853325..0000000
+Binary files a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ru.lproj/locale.pak and /dev/null differ
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/.ai/rules.md b/.ai/rules.md
-index 1221ec3..b1dc20d 100644
---- a/.ai/rules.md
-+++ b/.ai/rules.md
-@@ -1,5 +1,5 @@
- # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:13 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-03-28 02:24 UTC
- 
- # aicli — Shared AI Memory Platform
- 
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ro.lproj/locale.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ro.lproj/locale.pak
+deleted file mode 100644
+index 3ea3348..0000000
+Binary files a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/ro.lproj/locale.pak and /dev/null differ
 
 
 ### `commit` — 2026-04-17
 
-Commit: chore: update AI context files and session history
-Hash: 828fb225
-Code files (3):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
-
-### `commit` — 2026-04-17
-
-diff --git a/workspace/_templates/pipelines/standard.yaml b/workspace/_templates/pipelines/standard.yaml
-index 92b4284..63af35a 100644
---- a/workspace/_templates/pipelines/standard.yaml
-+++ b/workspace/_templates/pipelines/standard.yaml
-@@ -30,4 +30,4 @@ on_rejection:
- 
- # Post-run actions
- on_completion:
--  save_memory: true            # persist full workflow result to pr_interactions
-+  save_memory: true            # persist full workflow result to pr_prompts
+diff --git a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/resources.pak b/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/resources.pak
+deleted file mode 100644
+index d7bd7ce..0000000
+Binary files a/old/ui/dist-electron/mac/aicli Desktop.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/resources.pak and /dev/null differ
 

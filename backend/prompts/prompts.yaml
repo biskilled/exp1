@@ -1,84 +1,120 @@
 # Internal system prompts — NOT exposed to users, NOT stored in DB.
+# All files are relative to this directory (backend/prompts/).
 # To switch models or tune costs, change `model` or `max_tokens`.
 # Models: haiku (claude-haiku-4-5-20251001) | sonnet (claude-sonnet-4-6)
+#
+# ── How prompts are loaded ────────────────────────────────────────────────────
+# from core.prompt_loader import prompts
+# text = prompts["commit_digest"]          # → str content of the .md file
+#
+# ── Pipeline overview ─────────────────────────────────────────────────────────
+# Step 1 — Raw capture:   mem_mrr_* tables (no LLM)
+# Step 2 — Backlog:       backlog_config.yaml drives grouping + per-group summary
+#                         (prompts defined per source-type IN that config, not here)
+# Step 3 — AI Events:     mem_ai_events (Haiku digest + OpenAI embedding)
+#                         prompts: prompt_batch_digest, commit_digest, item_digest, etc.
+# Step 4 — Session end:   session_end_synthesis
+# Step 5 — Facts:         conflict_detection (ongoing fact updates)
+# Step 6 — Context files: memory_files.py renders CLAUDE.md / .cursorrules (no LLM)
+# ─────────────────────────────────────────────────────────────────────────────
 
 prompts:
 
-  # ── Commits ────────────────────────────────────────────────────────────────
-  commit_analysis:
-    file: memory/commits/commit_analysis.md
-    model: sonnet       # needs structured JSON + code pattern recognition
-    max_tokens: 800
-
+  # ── Commits ─────────────────────────────────────────────────────────────────
+  # used by: memory/memory_embedding.py (process_commit)
   commit_digest:
     file: memory/commits/commit_digest.md
     model: haiku
     max_tokens: 200
 
+  # used by: memory/memory_code_parser.py (per-symbol LLM summary)
   commit_symbol:
     file: memory/commits/commit_symbol.md
     model: haiku
     max_tokens: 120
 
-  # ── Memory events ──────────────────────────────────────────────────────────
+  # used by: routers/route_git.py (structured JSON diff analysis)
+  commit_analysis:
+    file: memory/commits/commit_analysis.md
+    model: sonnet       # needs structured JSON + code pattern recognition
+    max_tokens: 800
+
+  # ── AI events ───────────────────────────────────────────────────────────────
+  # used by: memory/memory_embedding.py (process_prompt_batch)
   prompt_batch_digest:
     file: memory/prompt_batch_digest.md
     model: haiku
     max_tokens: 250
 
+  # used by: memory/memory_embedding.py (process_item)
   item_digest:
     file: memory/item_digest.md
     model: haiku
     max_tokens: 200
 
+  # used by: memory/memory_embedding.py (process_meeting_item)
   meeting_sections:
     file: memory/meeting_sections.md
     model: haiku
     max_tokens: 1000
 
+  # used by: memory/memory_embedding.py (process_message_chunk)
   message_chunk_digest:
     file: memory/message_chunk_digest.md
     model: haiku
     max_tokens: 200
 
+  # used by: memory/memory_embedding.py (extract_relations)
   relation_extraction:
     file: memory/relation_extraction.md
     model: haiku
     max_tokens: 400
 
+  # ── Session ──────────────────────────────────────────────────────────────────
+  # used by: routers/route_memory.py (POST /session-summary)
   session_end_synthesis:
     file: memory/session_end_synthesis.md
     model: haiku
     max_tokens: 600
 
-  # ── Work items ─────────────────────────────────────────────────────────────
-  work_item_extraction:
-    file: memory/work_items/work_item_extraction.md
-    model: haiku
-    max_tokens: 500
-
-  work_item_promotion:
-    file: memory/work_items/work_item_promotion.md
-    model: haiku
-    max_tokens: 300
-
-  # ── Feature / planner ──────────────────────────────────────────────────────
-  feature_snapshot:
-    file: memory/feature_snapshot.md
-    model: haiku
-    max_tokens: 2500
-
-  feature_snapshot_v2:
-    file: memory/feature_snapshot_v2.md
-    model: haiku
-    max_tokens: 3000
-
+  # ── Project facts ────────────────────────────────────────────────────────────
+  # used by: memory/memory_promotion.py (detect_fact_conflicts)
   conflict_detection:
     file: memory/conflict_detection.md
     model: haiku
     max_tokens: 300
 
-  planner_summary:
+  # ── Feature snapshots ────────────────────────────────────────────────────────
+  # used by: memory/memory_feature_snapshot.py (generate_snapshot)
+  feature_snapshot_v2:
+    file: memory/feature_snapshot_v2.md
+    model: haiku
+    max_tokens: 3000
+
+  # ── DEPRECATED (old work_items pipeline — no longer triggered) ───────────────
+  # These files are kept for reference but the pipeline that called them
+  # (memory_promotion.py extract_work_items / promote_work_item) is no longer
+  # invoked. Use the backlog pipeline (backlog_config.yaml) instead.
+  _deprecated_work_item_extraction:
+    file: memory/work_items/work_item_extraction.md
+    model: haiku
+    max_tokens: 500
+    active: false
+
+  _deprecated_work_item_promotion:
+    file: memory/work_items/work_item_promotion.md
+    model: haiku
+    max_tokens: 300
+    active: false
+
+  _deprecated_feature_snapshot_v1:
+    file: memory/feature_snapshot.md
+    model: haiku
+    max_tokens: 2500
+    active: false
+
+  _deprecated_planner_summary:
     file: memory/planner/planner_summary.md
     model: haiku
     max_tokens: 2000
+    active: false

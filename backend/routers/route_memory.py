@@ -89,20 +89,14 @@ def _require_db():
 _SQL_STATS_COUNTS = """
     SELECT
       (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s) AS prompts_total,
-      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NULL) AS prompts_pending,
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL) AS prompts_pending,
       (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s) AS commits_total,
-      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL) AS commits_pending,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL) AS commits_pending,
       (SELECT COUNT(*) FROM mem_ai_events WHERE project_id=%s) AS events_total,
-      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s) AS wi_total,
-      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
-         AND COALESCE(status_user,'active') NOT IN ('done','archived')) AS wi_active,
-      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s AND status_user='done') AS wi_done,
-      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
-         AND tag_id_user IS NULL AND tag_id_ai IS NULL) AS wi_unlinked,
       (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total,
-      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
-         AND (tag_id_ai IS NOT NULL OR tag_id_user IS NOT NULL)) AS wi_linked_any,
-      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NOT NULL) AS prompts_embedded
+      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status IN ('open','active')) AS tags_active,
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NOT NULL) AS prompts_processed,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NOT NULL) AS commits_processed
 """
 
 _SQL_GET_CACHED_STATS = """
@@ -147,7 +141,7 @@ def _refresh_stats(project_id: int) -> dict:
         pid = project_id
         with db.conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(_SQL_STATS_COUNTS, (pid,) * 12)
+                cur.execute(_SQL_STATS_COUNTS, (pid,) * 9)
                 r = cur.fetchone()
                 if not r:
                     return {}
@@ -168,34 +162,32 @@ def _refresh_stats(project_id: int) -> dict:
                 existing_rb = cur.fetchone()
                 last_rebuild = (existing_rb[0] if existing_rb else None) or {}
 
-        wi_total    = r[5] or 0
-        wi_linked   = r[10] or 0
-        p_total     = r[0] or 0
-        p_embedded  = r[11] or 0
+        p_total      = r[0] or 0
+        p_processed  = r[7] or 0
+        c_total      = r[2] or 0
+        c_processed  = r[8] or 0
 
-        # KPI 1: % of work items with at least one tag link (AI or user)
-        wi_tag_coverage_pct = round(wi_linked / wi_total * 100, 1) if wi_total else 0.0
-        # KPI 2: % of prompts that have been embedded into events
-        embed_coverage_pct  = round(p_embedded / p_total * 100, 1) if p_total else 0.0
+        # KPI: % of mirror rows processed through backlog pipeline
+        prompt_backlog_pct = round(p_processed / p_total * 100, 1) if p_total else 0.0
+        commit_backlog_pct = round(c_processed / c_total * 100, 1) if c_total else 0.0
 
         stats: dict = {
-            "prompts_total":          p_total,
-            "prompts_pending":        r[1] or 0,
-            "commits_total":          r[2] or 0,
-            "commits_pending":        r[3] or 0,
-            "events_total":           r[4] or 0,
-            "events_by_type":         by_type,
-            "work_items_total":       wi_total,
-            "work_items_active":      r[6] or 0,
-            "work_items_done":        r[7] or 0,
-            "work_items_unlinked":    r[8] or 0,
-            "planner_tags_total":     r[9] or 0,
+            "prompts_total":           p_total,
+            "prompts_pending":         r[1] or 0,
+            "prompts_processed":       p_processed,
+            "commits_total":           c_total,
+            "commits_pending":         r[3] or 0,
+            "commits_processed":       c_processed,
+            "events_total":            r[4] or 0,
+            "events_by_type":          by_type,
+            "planner_tags_total":      r[5] or 0,
+            "planner_tags_active":     r[6] or 0,
             # KPIs
-            "wi_tag_coverage_pct":    wi_tag_coverage_pct,
-            "embed_coverage_pct":     embed_coverage_pct,
-            "updated_at":             datetime.datetime.utcnow().isoformat() + "Z",
+            "prompt_backlog_pct":      prompt_backlog_pct,
+            "commit_backlog_pct":      commit_backlog_pct,
+            "updated_at":              datetime.datetime.utcnow().isoformat() + "Z",
             # Preserve last_rebuild block
-            "last_rebuild":           last_rebuild,
+            "last_rebuild":            last_rebuild,
         }
 
         with db.conn() as conn:
@@ -208,26 +200,23 @@ def _refresh_stats(project_id: int) -> dict:
 
 
 def _snapshot_counts(project_id: int) -> dict:
-    """Read current event/work-item/KPI counts for a rebuild snapshot. Fast — no LLM."""
+    """Read current mirror/event/planner counts for a rebuild snapshot. Fast — no LLM."""
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT
-                      (SELECT COUNT(*) FROM mem_ai_events    WHERE project_id=%s) AS events,
-                      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s) AS work_items,
-                      (SELECT COUNT(*) FROM mem_ai_work_items WHERE project_id=%s
-                         AND (tag_id_ai IS NOT NULL OR tag_id_user IS NOT NULL)) AS wi_linked,
+                      (SELECT COUNT(*) FROM mem_ai_events WHERE project_id=%s) AS events,
+                      (SELECT COUNT(*) FROM planner_tags  WHERE project_id=%s) AS tags,
+                      (SELECT COUNT(*) FROM planner_tags  WHERE project_id=%s AND status IN ('open','active')) AS tags_active,
                       (SELECT COUNT(*) FROM mem_ai_project_facts WHERE project_id=%s) AS facts
                 """, (project_id,) * 4)
                 r = cur.fetchone()
-        wi_total  = r[1] or 0
-        wi_linked = r[2] or 0
         return {
-            "events":               r[0] or 0,
-            "work_items":           wi_total,
-            "wi_tag_coverage_pct":  round(wi_linked / wi_total * 100, 1) if wi_total else 0.0,
-            "facts":                r[3] or 0,
+            "events":       r[0] or 0,
+            "tags":         r[1] or 0,
+            "tags_active":  r[2] or 0,
+            "facts":        r[3] or 0,
         }
     except Exception as e:
         log.debug(f"_snapshot_counts error: {e}")
@@ -591,7 +580,7 @@ async def embed_commits(
 async def embed_prompts(project: str):
     """Process all pending prompts across every session for this project.
 
-    For each session that has prompts with event_id IS NULL, runs
+    For each session that has prompts with backlog_ref IS NULL, runs
     process_prompt_batch() to create mem_ai_events rows and back-propagate
     event_id. Useful as a backfill after a session ends without triggering
     the periodic batch digest.
@@ -601,14 +590,14 @@ async def embed_prompts(project: str):
         raise HTTPException(status_code=503, detail="PostgreSQL not available")
 
     project_id = db.get_or_create_project_id(project)
-    # Find all sessions with unprocessed prompts
+    # Find all sessions with unprocessed prompts (not yet digested into backlog)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT session_id, COUNT(*) as cnt
                        FROM mem_mrr_prompts
-                       WHERE project_id=%s AND event_id IS NULL
+                       WHERE project_id=%s AND backlog_ref IS NULL
                        GROUP BY session_id
                        ORDER BY cnt DESC""",
                     (project_id,),
@@ -710,13 +699,13 @@ async def rebuild_work_items(
                 ev_count = cur.fetchone()[0]
 
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NOT NULL",
+                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NOT NULL",
                     (project_id,),
                 )
                 p_backprop = cur.fetchone()[0]
 
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NOT NULL",
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NOT NULL",
                     (project_id,),
                 )
                 c_backprop = cur.fetchone()[0]
@@ -731,8 +720,8 @@ async def rebuild_work_items(
                             "events": ev_count,
                         },
                         "would_reset": {
-                            "prompt_event_ids": p_backprop,
-                            "commit_event_ids": c_backprop,
+                            "prompt_backlog_refs": p_backprop,
+                            "commit_backlog_refs": c_backprop,
                         },
                         "note": "Pass ?dry_run=false to execute",
                     }
@@ -760,7 +749,7 @@ async def rebuild_work_items(
                 )
                 deleted_wi = cur.rowcount
 
-                # 3. Delete auto-generated events (not linked to kept work items)
+                # 3. Delete auto-generated events
                 cur.execute(
                     """DELETE FROM mem_ai_events
                        WHERE project_id = %s
@@ -770,15 +759,15 @@ async def rebuild_work_items(
                 )
                 deleted_ev = cur.rowcount
 
-                # 4. Reset back-propagated event_ids on mirror tables
+                # 4. Reset backlog_ref on mirror tables
                 cur.execute(
-                    "UPDATE mem_mrr_prompts SET event_id = NULL WHERE project_id = %s",
+                    "UPDATE mem_mrr_prompts SET backlog_ref = NULL WHERE project_id = %s",
                     (project_id,),
                 )
                 reset_prompts = cur.rowcount
 
                 cur.execute(
-                    "UPDATE mem_mrr_commits SET event_id = NULL WHERE project_id = %s",
+                    "UPDATE mem_mrr_commits SET backlog_ref = NULL WHERE project_id = %s",
                     (project_id,),
                 )
                 reset_commits = cur.rowcount
@@ -797,7 +786,7 @@ async def rebuild_work_items(
                 with conn2.cursor() as cur2:
                     cur2.execute(
                         """SELECT session_id, COUNT(*) FROM mem_mrr_prompts
-                           WHERE project_id=%s AND event_id IS NULL
+                           WHERE project_id=%s AND backlog_ref IS NULL
                            GROUP BY session_id ORDER BY COUNT(*) DESC""",
                         (project_id,),
                     )
@@ -849,8 +838,8 @@ async def rebuild_work_items(
             "events": deleted_ev,
         },
         "reset": {
-            "prompt_event_ids": reset_prompts,
-            "commit_event_ids": reset_commits,
+            "prompt_backlog_refs": reset_prompts,
+            "commit_backlog_refs": reset_commits,
         },
         "reprocess": "queued in background (embed-prompts + embed-commits)",
     }
@@ -1002,21 +991,19 @@ async def get_pipeline_status(project: str):
                 for pl in pipelines:
                     last_24h[pl] = agg.get(pl, {"ok": 0, "error": 0, "skipped": 0, "last_run": None})
 
-                # Pending commits (not embedded — event_id set by process_commit on completion)
+                # Pending commits (not yet processed into backlog)
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
                     (project_id,),
                 )
                 commits_not_embedded = cur.fetchone()[0] or 0
 
-                # Pending work items (unmatched)
+                # Pending prompts (not yet processed into backlog)
                 cur.execute(
-                    """SELECT COUNT(*) FROM mem_ai_work_items
-                       WHERE project_id=%s AND tag_id_ai IS NULL AND tag_id_user IS NULL
-                         AND status_user != 'done'""",
+                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
                     (project_id,),
                 )
-                work_items_unmatched = cur.fetchone()[0] or 0
+                work_items_unmatched = cur.fetchone()[0] or 0  # reuse field name for compat
 
                 # Recent errors (last 10)
                 cur.execute(
@@ -1083,8 +1070,8 @@ async def get_data_dashboard(
                 if age.total_seconds() < 1800:  # 30 minutes
                     s = row[0]
                     cached_kpis = {
-                        "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct"),
-                        "embed_coverage_pct":  s.get("embed_coverage_pct"),
+                        "prompt_backlog_pct": s.get("prompt_backlog_pct"),
+                        "commit_backlog_pct": s.get("commit_backlog_pct"),
                     }
                     cached_rebuild = s.get("last_rebuild", {})
                     return {"cached": True, "project": project, **s,
@@ -1127,27 +1114,27 @@ async def get_data_dashboard(
                         conn.rollback()
                         mirror[key] = {"total": 0, "last_24h": 0, "last_at": None}
 
-                # Commits: pending embed
+                # Commits: pending backlog processing
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
                         (project_id,),
                     )
-                    mirror["commits"]["pending_embed"] = cur.fetchone()[0] or 0
+                    mirror["commits"]["pending_backlog"] = cur.fetchone()[0] or 0
                 except Exception:
                     conn.rollback()
-                    mirror["commits"]["pending_embed"] = 0
+                    mirror["commits"]["pending_backlog"] = 0
 
-                # Prompts: pending embed
+                # Prompts: pending backlog processing
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_id IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
                         (project_id,),
                     )
-                    mirror["prompts"]["pending_embed"] = cur.fetchone()[0] or 0
+                    mirror["prompts"]["pending_backlog"] = cur.fetchone()[0] or 0
                 except Exception:
                     conn.rollback()
-                    mirror["prompts"]["pending_embed"] = 0
+                    mirror["prompts"]["pending_backlog"] = 0
 
                 # ── AI layer ──────────────────────────────────────────────
                 # Events
@@ -1175,70 +1162,57 @@ async def get_data_dashboard(
                     conn.rollback()
                     ai["events"] = {"total": 0, "last_24h": 0, "last_at": None, "by_type": {}}
 
-                # Work items
+                # Planner tags
                 try:
                     cur.execute(
                         """SELECT COUNT(*),
-                                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours'),
-                                  MAX(created_at),
-                                  COUNT(*) FILTER (WHERE status_user NOT IN ('done','archived')),
-                                  COUNT(*) FILTER (WHERE status_user = 'done'),
-                                  COUNT(*) FILTER (WHERE tag_id_user IS NOT NULL),
+                                  COUNT(*) FILTER (WHERE status IN ('open','active')),
+                                  COUNT(*) FILTER (WHERE status = 'done'),
                                   COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
-                                  MAX(updated_at),
-                                  COUNT(*) FILTER (WHERE tag_id_user IS NULL AND tag_id_ai IS NULL),
-                                  COUNT(*) FILTER (WHERE tag_id_user IS NULL AND tag_id_ai IS NOT NULL),
-                                  COUNT(*) FILTER (WHERE score_ai = 0),
-                                  COUNT(*) FILTER (WHERE score_ai = 1),
-                                  COUNT(*) FILTER (WHERE score_ai = 2),
-                                  COUNT(*) FILTER (WHERE score_ai = 3),
-                                  COUNT(*) FILTER (WHERE score_ai = 4),
-                                  COUNT(*) FILTER (WHERE score_ai = 5),
-                                  COUNT(*) FILTER (WHERE quality_stage = 'staging'),
-                                  COUNT(*) FILTER (WHERE quality_stage = 'rejected'),
-                                  COUNT(*) FILTER (WHERE category_ai = 'feature'),
-                                  COUNT(*) FILTER (WHERE category_ai = 'bug'),
-                                  COUNT(*) FILTER (WHERE category_ai = 'task')
-                           FROM mem_ai_work_items WHERE project_id = %s""",
+                                  MAX(updated_at)
+                           FROM planner_tags WHERE project_id = %s""",
                         (project_id,),
                     )
                     r = cur.fetchone()
-                    total_wi = r[0] or 0
-                    unlinked_ai_only = r[8] or 0
-                    ai["work_items"] = {
-                        "total":           total_wi,
-                        "last_24h":        r[1] or 0,
-                        "last_at":         r[2].isoformat() if r[2] else None,
-                        "active":          r[3] or 0,
-                        "done":            r[4] or 0,
-                        "linked":          r[5] or 0,
-                        "promoted_24h":    r[6] or 0,
-                        "last_promoted_at": r[7].isoformat() if r[7] else None,
-                        "unlinked_ai_only": unlinked_ai_only,
-                        "ai_suggested":    r[9] or 0,
-                        "by_score": {
-                            "0": r[10] or 0, "1": r[11] or 0, "2": r[12] or 0,
-                            "3": r[13] or 0, "4": r[14] or 0, "5": r[15] or 0,
-                        },
-                        "staging":         r[16] or 0,
-                        "rejected":        r[17] or 0,
-                        "by_category": {
-                            "feature": r[18] or 0,
-                            "bug":     r[19] or 0,
-                            "task":    r[20] or 0,
-                        },
+                    ai["planner_tags"] = {
+                        "total":      r[0] or 0,
+                        "active":     r[1] or 0,
+                        "done":       r[2] or 0,
+                        "last_24h":   r[3] or 0,
+                        "last_at":    r[4].isoformat() if r[4] else None,
                     }
                 except Exception:
                     conn.rollback()
-                    total_wi = 0
-                    unlinked_ai_only = 0
-                    ai["work_items"] = {"total": 0, "last_24h": 0, "last_at": None,
-                                        "active": 0, "done": 0, "linked": 0,
-                                        "promoted_24h": 0, "last_promoted_at": None,
-                                        "unlinked_ai_only": 0, "ai_suggested": 0,
-                                        "by_score": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0},
-                                        "staging": 0, "rejected": 0,
-                                        "by_category": {"feature": 0, "bug": 0, "task": 0}}
+                    ai["planner_tags"] = {"total": 0, "active": 0, "done": 0, "last_24h": 0, "last_at": None}
+
+                # Backlog stats
+                try:
+                    cur.execute(
+                        """SELECT
+                             COUNT(*) FILTER (WHERE backlog_ref IS NULL) AS prompts_pending,
+                             COUNT(*) FILTER (WHERE backlog_ref IS NOT NULL) AS prompts_processed
+                           FROM mem_mrr_prompts WHERE project_id = %s""",
+                        (project_id,),
+                    )
+                    r = cur.fetchone()
+                    ai["backlog"] = {
+                        "prompts_pending":   r[0] or 0,
+                        "prompts_processed": r[1] or 0,
+                    }
+                    cur.execute(
+                        """SELECT
+                             COUNT(*) FILTER (WHERE backlog_ref IS NULL) AS commits_pending,
+                             COUNT(*) FILTER (WHERE backlog_ref IS NOT NULL) AS commits_processed
+                           FROM mem_mrr_commits WHERE project_id = %s""",
+                        (project_id,),
+                    )
+                    r = cur.fetchone()
+                    ai["backlog"]["commits_pending"]   = r[0] or 0
+                    ai["backlog"]["commits_processed"] = r[1] or 0
+                except Exception:
+                    conn.rollback()
+                    ai["backlog"] = {"prompts_pending": 0, "prompts_processed": 0,
+                                     "commits_pending": 0, "commits_processed": 0}
 
                 # Feature snapshots (planner_tags with AI content)
                 try:
@@ -1293,54 +1267,27 @@ async def get_data_dashboard(
                 # ── Pending ───────────────────────────────────────────────
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND event_id IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
                         (project_id,),
                     )
-                    pending["commits_not_embedded"] = cur.fetchone()[0] or 0
+                    pending["commits_pending_backlog"] = cur.fetchone()[0] or 0
                 except Exception:
                     conn.rollback()
-                    pending["commits_not_embedded"] = 0
+                    pending["commits_pending_backlog"] = 0
 
                 try:
                     cur.execute(
-                        """SELECT COUNT(*) FROM mem_ai_work_items
-                           WHERE project_id=%s AND tag_id_ai IS NULL AND tag_id_user IS NULL
-                             AND status_user != 'done'""",
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
                         (project_id,),
                     )
-                    pending["work_items_unmatched"] = cur.fetchone()[0] or 0
+                    pending["prompts_pending_backlog"] = cur.fetchone()[0] or 0
                 except Exception:
                     conn.rollback()
-                    pending["work_items_unmatched"] = 0
+                    pending["prompts_pending_backlog"] = 0
 
                 # ── Health KPIs ───────────────────────────────────────────
                 health: dict = {}
                 try:
-                    # Count features (category_id matching 'feature' category)
-                    cur.execute(
-                        """SELECT COUNT(DISTINCT pt.id)
-                           FROM planner_tags pt
-                           JOIN mng_tags_categories tc ON tc.id=pt.category_id AND tc.name='feature'
-                           WHERE pt.project_id=%s AND pt.status NOT IN ('archived', 'done')""",
-                        (project_id,),
-                    )
-                    total_features = cur.fetchone()[0] or 0
-
-                    # Features with at least 1 linked work item
-                    cur.execute(
-                        """SELECT COUNT(DISTINCT pt.id)
-                           FROM planner_tags pt
-                           JOIN mng_tags_categories tc ON tc.id=pt.category_id AND tc.name='feature'
-                           WHERE pt.project_id=%s AND pt.status NOT IN ('archived', 'done')
-                             AND EXISTS (
-                               SELECT 1 FROM mem_ai_work_items wi
-                               WHERE (wi.tag_id_user=pt.id OR wi.tag_id_ai=pt.id)
-                                 AND wi.project_id=%s
-                             )""",
-                        (project_id, project_id),
-                    )
-                    features_with_wi = cur.fetchone()[0] or 0
-
                     # Total active planner tags
                     cur.execute(
                         "SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status NOT IN ('archived','done')",
@@ -1348,29 +1295,33 @@ async def get_data_dashboard(
                     )
                     total_tags = cur.fetchone()[0] or 0
 
-                    # Re-use earlier values (may be 0 if query failed)
-                    _wi = ai.get("work_items", {})
-                    staging = _wi.get("staging", 0)
-                    rejected = _wi.get("rejected", 0)
-                    _total_wi = _wi.get("total", 0)
-                    _unlinked = _wi.get("unlinked_ai_only", 0)
+                    # Tags with file_ref (linked to use case files)
+                    cur.execute(
+                        "SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND file_ref IS NOT NULL",
+                        (project_id,),
+                    )
+                    tags_with_use_case = cur.fetchone()[0] or 0
+
+                    # Backlog coverage
+                    _bl = ai.get("backlog", {})
+                    total_p = (_bl.get("prompts_pending", 0) + _bl.get("prompts_processed", 0))
+                    total_c = (_bl.get("commits_pending", 0) + _bl.get("commits_processed", 0))
+                    prompt_coverage = round(_bl.get("prompts_processed", 0) / max(total_p, 1) * 100, 1)
+                    commit_coverage = round(_bl.get("commits_processed", 0) / max(total_c, 1) * 100, 1)
 
                     health = {
-                        "orphan_rate":        round(_unlinked / max(_total_wi, 1), 3),
-                        "coverage_rate":      round(features_with_wi / max(total_features, 1), 3),
-                        "staging_count":      staging,
-                        "rejected_count":     rejected,
-                        "scope_breakdown":    _wi.get("by_category", {}),
-                        "total_planner_tags": total_tags,
-                        "max_recommended_wi": max(5, int(total_tags * 1.5)),
+                        "total_planner_tags":    total_tags,
+                        "tags_with_use_case":    tags_with_use_case,
+                        "use_case_coverage_pct": round(tags_with_use_case / max(total_tags, 1) * 100, 1),
+                        "prompt_backlog_pct":    prompt_coverage,
+                        "commit_backlog_pct":    commit_coverage,
                     }
                 except Exception:
                     conn.rollback()
                     health = {
-                        "orphan_rate": 0, "coverage_rate": 0,
-                        "staging_count": 0, "rejected_count": 0,
-                        "scope_breakdown": {}, "total_planner_tags": 0,
-                        "max_recommended_wi": 5,
+                        "total_planner_tags": 0, "tags_with_use_case": 0,
+                        "use_case_coverage_pct": 0, "prompt_backlog_pct": 0,
+                        "commit_backlog_pct": 0,
                     }
 
                 # ── Recent errors ─────────────────────────────────────────
@@ -1410,20 +1361,20 @@ async def get_data_dashboard(
         if row and row[0]:
             s = row[0]
             kpis = {
-                "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct"),
-                "embed_coverage_pct":  s.get("embed_coverage_pct"),
+                "prompt_backlog_pct": s.get("prompt_backlog_pct"),
+                "commit_backlog_pct": s.get("commit_backlog_pct"),
             }
             rebuild_history = s.get("last_rebuild") or {}
     except Exception:
         pass
 
     # Recompute KPIs inline if not cached yet
-    if not kpis.get("wi_tag_coverage_pct") and kpis.get("wi_tag_coverage_pct") != 0:
+    if not kpis.get("prompt_backlog_pct") and kpis.get("prompt_backlog_pct") != 0:
         try:
             s = _refresh_stats(project_id)
             kpis = {
-                "wi_tag_coverage_pct": s.get("wi_tag_coverage_pct", 0),
-                "embed_coverage_pct":  s.get("embed_coverage_pct", 0),
+                "prompt_backlog_pct": s.get("prompt_backlog_pct", 0),
+                "commit_backlog_pct": s.get("commit_backlog_pct", 0),
             }
             rebuild_history = s.get("last_rebuild") or {}
         except Exception:

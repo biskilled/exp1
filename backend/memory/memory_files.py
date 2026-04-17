@@ -19,10 +19,8 @@ Per-feature:
 
 Trigger conditions:
   project_facts upsert     → write_root_files()
-  work_items upsert        → write_root_files() + write_feature_files(tag)
+  planner_tag update       → write_root_files()
   session_summaries insert → write_root_files()
-  tag_relations insert     → write_root_files() + write_feature_files(affected tags)
-  feature_snapshots upsert → write_feature_files(tag)
   /memory endpoint         → write_all_files()
 """
 from __future__ import annotations
@@ -46,15 +44,6 @@ _SQL_FACTS = """
     WHERE project_id=%s AND valid_until IS NULL
       AND conflict_status IS DISTINCT FROM 'pending_review'
     ORDER BY category NULLS LAST, fact_key
-"""
-
-_SQL_ACTIVE_WORK_ITEMS = """
-    SELECT wi.name_ai, wi.summary_ai, wi.category_ai,
-           wi.seq_num, t.name AS tag_name
-    FROM mem_ai_work_items wi
-    LEFT JOIN planner_tags t ON t.id = wi.tag_id_user
-    WHERE wi.project_id=%s AND wi.status_user != 'done'
-    ORDER BY wi.created_at DESC
 """
 
 _SQL_LATEST_SESSION = """
@@ -145,13 +134,12 @@ class MemoryFiles:
         ctx: dict = {
             "project":          project,
             "facts_by_cat":     {},      # category → [(key, value)]
-            "active_work":      [],      # list of dicts
+            "active_tags":      [],      # list of dicts from planner_tags (status open/active)
             "latest_session":   None,    # dict or None
             "blockers":         [],      # (from_name, relation, to_name, note)
             "all_relations":    [],
             "features":         {},      # tag_name → snapshot dict
-            "feature_details":  [],      # list of dicts from planner_tags inline fields
-            "blocked_tags":     [],      # (name, description)
+            "blocked_tags":     [],      # (name, description) — status='active' tags
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
         if not db.is_available():
@@ -166,13 +154,15 @@ class MemoryFiles:
                     for cat, key, val in cur.fetchall():
                         ctx["facts_by_cat"].setdefault(cat, []).append((key, val))
 
-                    # Active work items
-                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for ai_name, ai_summary, ai_category, seq_num, tag_name in cur.fetchall():
-                        ctx["active_work"].append({
-                            "name": ai_name, "desc": (ai_summary or "")[:120],
-                            "lifecycle": "active", "category": ai_category,
-                            "seq_num": seq_num, "tag_name": tag_name or ai_name,
+                    # Active planner tags (open/active — drives "Active Features" section)
+                    cur.execute(_SQL_ACTIVE_TAGS, (project_id,))
+                    for t_id, t_name, t_status, t_desc, t_priority, t_due in cur.fetchall():
+                        ctx["active_tags"].append({
+                            "name":        t_name,
+                            "status":      t_status or "open",
+                            "description": (t_desc or "")[:120],
+                            "priority":    t_priority,
+                            "due_date":    t_due.isoformat() if t_due else None,
                         })
 
                     # Latest session summary
@@ -204,31 +194,12 @@ class MemoryFiles:
                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
                     for t_id, t_name, action in cur.fetchall():
                         ctx["features"][t_name] = {
-                            "action_items":    action or "",
-                            "work_item_status": "",
+                            "action_items": action or "",
                         }
 
-                    # Blocked/active tags (description inline on planner_tags)
+                    # Tags with status='active' (for "Do Not Touch" section)
                     cur.execute(_SQL_BLOCKED_TAGS, (project_id,))
                     ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
-
-                    # Feature details: tags with embedding or summary (inline fields)
-                    cur.execute("""
-                        SELECT t.id, t.name, t.description, t.requirements, t.action_items
-                        FROM planner_tags t
-                        WHERE t.project_id = %s AND t.action_items != ''
-                        ORDER BY t.updated_at DESC LIMIT 30
-                    """, (project_id,))
-                    ctx["feature_details"] = [
-                        {
-                            "id":           str(r[0]),
-                            "name":         r[1] or "",
-                            "description":  r[2] or "",
-                            "requirements": r[3] or "",
-                            "action_items": r[4] or "",
-                        }
-                        for r in cur.fetchall()
-                    ]
 
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
@@ -293,14 +264,13 @@ class MemoryFiles:
                 lines.append(f"- **{key}**: {val}")
             lines.append("")
 
-        # Active Work
-        if ctx["active_work"]:
-            lines += ["## Active Work", ""]
-            for wi in ctx["active_work"][:12]:
-                ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
-                tag = wi["tag_name"]
-                summary = wi["desc"] or wi["name"]
-                lines.append(f"- `{ref}{tag}` [{wi['category']}] — {summary}")
+        # Active Features / Use Cases
+        if ctx["active_tags"]:
+            lines += ["## Active Features", ""]
+            for tag in ctx["active_tags"][:12]:
+                due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
+                desc = f" — {tag['description']}" if tag.get("description") else ""
+                lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
             lines.append("")
 
         # Current Blockers
@@ -450,10 +420,10 @@ class MemoryFiles:
             lines.append("")
 
         # Active features (concise)
-        if ctx["active_work"]:
+        if ctx["active_tags"]:
             lines += ["## Active Features (do not break)", ""]
-            for wi in ctx["active_work"][:5]:
-                lines.append(f"{wi['tag_name']}: {(wi['desc'] or wi['name'])[:80]}")
+            for tag in ctx["active_tags"][:5]:
+                lines.append(f"{tag['name']}: {tag['description'][:80]}")
             lines.append("")
 
         constraints = ctx["facts_by_cat"].get("constraint", [])
@@ -487,11 +457,11 @@ class MemoryFiles:
             lines.append("")
 
         # Active features (max 3)
-        active = ctx["active_work"][:3]
+        active = ctx["active_tags"][:3]
         if active:
             lines += ["## Active Features", ""]
-            for wi in active:
-                lines.append(f"- {wi['tag_name']} [{wi['category']}]: {(wi['desc'] or wi['name'])[:80]}")
+            for tag in active:
+                lines.append(f"- {tag['name']} [{tag['status']}]: {tag['description'][:80]}")
             lines.append("")
 
         # Last session (2 sentences)
@@ -531,14 +501,11 @@ class MemoryFiles:
                 lines.append("")
 
         # Active features
-        if ctx["active_work"]:
+        if ctx["active_tags"]:
             lines += ["## Active Features", ""]
-            for wi in ctx["active_work"]:
-                ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
-                lines.append(
-                    f"- `{ref}{wi['tag_name']}` [{wi['category']}]: "
-                    f"{(wi['desc'] or wi['name'])[:120]}"
-                )
+            for tag in ctx["active_tags"]:
+                due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
+                lines.append(f"- `{tag['name']}` [{tag['status']}]: {tag['description'][:120]}{due}")
             lines.append("")
 
         # Blockers
@@ -582,15 +549,14 @@ class MemoryFiles:
                     lines.append(f"- {key}: {val}")
                 lines.append("")
 
-        # All active work items (full summary)
-        if ctx["active_work"]:
-            lines += ["## Active Work Items", ""]
-            for wi in ctx["active_work"]:
-                ref = f"#{wi['seq_num']} " if wi.get("seq_num") else ""
+        # Active planner tags
+        if ctx["active_tags"]:
+            lines += ["## Active Features", ""]
+            for tag in ctx["active_tags"]:
+                due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
                 lines += [
-                    f"### {ref}{wi['tag_name']}",
-                    f"Category: {wi['category']}",
-                    wi["desc"] or wi["name"],
+                    f"### {tag['name']} [{tag['status']}]{due}",
+                    tag["description"] or "",
                     "",
                 ]
 
@@ -604,19 +570,14 @@ class MemoryFiles:
             lines.append("")
 
         # Feature snapshots (active features only)
-        active_tags = {wi["tag_name"] for wi in ctx["active_work"]}
-        active_snaps = {k: v for k, v in ctx["features"].items() if k in active_tags}
+        active_tag_names = {t["name"] for t in ctx["active_tags"]}
+        active_snaps = {k: v for k, v in ctx["features"].items() if k in active_tag_names}
         if active_snaps:
             lines += ["## Feature Snapshots (Active)", ""]
             for tag_name, snap in active_snaps.items():
                 lines += [f"### {tag_name}", ""]
-                if snap.get("requirements"):
-                    lines += ["**Requirements:**", snap["requirements"], ""]
                 if snap.get("action_items"):
                     lines += ["**Action Items:**", snap["action_items"], ""]
-                design = snap.get("design") or {}
-                if isinstance(design, dict) and design.get("high_level"):
-                    lines += ["**Design:**", design["high_level"], ""]
 
         # All relationships
         if ctx["all_relations"]:
