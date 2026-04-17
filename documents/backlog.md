@@ -1297,3 +1297,159 @@ PROMPTS 26/04/17-00:00 P100270 [ ] [discovery] [task] (auto) — Update memory s
   - Document MCP protocol for memory access from new CLI/LLM sessions (acceptance: New sessions can invoke /memory to fetch full context without redundant re-analysis)
   - Test new session initialization using different LLM to verify context inheritance (acceptance: New session demonstrates same understanding of project state as current session)
 
+---
+
+PROMPTS 26/04/17-00:00 P100271 [ ] [discovery] [feature] (auto) — Set up MCP config auto-setup for new projects with IDE support
+
+  Requirements:
+  - MCP config must be supported across all IDEs (Claude CLI, Claude Code, Cursor, OpenAI, DeepSeek, Gemini, Grok)
+  - Non-Cursor/Code IDEs must understand config from aicli (API usage)
+  - Automated setup flow when creating new project
+
+  Completed:
+  - Fixed .mcp.json path typo and unified .cursor/mcp.json format (code)
+  - Auto-commit after AI session — 21 files updated (code)
+
+---
+
+PROMPTS 26/04/17-00:00 P100272 [ ] [general] [bug] (auto) — Fix missing commit-to-prompt linkage for recent 9 commits
+
+  Requirements:
+  - Auto-commit hook must trigger DB sync and Phase 5 processing
+  - POST /git/{project}/commit-push must properly link commits to prompts
+  - Commit log entries must sync to database
+
+  Completed:
+  - Enhanced git router to trigger Phase 5 on auto-commit (code)
+  - Updated system docs and git router enhancements (commit 588663e5) (code)
+
+---
+
+PROMPTS 26/04/17-00:00 P100273 [ ] [discovery] [feature] (auto) — Auto-save AI suggestions as tags in proper category and add to Planner
+
+  Requirements:
+  - AI suggestions must save to session automatically
+  - Tags must save in proper category
+  - Tags must be added to Planner
+  - Fix phase filter/update to load correct stage
+  - Remove update feature option
+
+  Completed:
+  - Made _acceptSuggestedTag async in chat.js:625 (code)
+  - Auto-save to session via _saveEntitiesToSession() with category routing (code)
+  - Updated system state and docs (commit 3efe0544) (code)
+
+---
+
+PROMPTS 26/04/17-00:00 P100274 [ ] [general] [bug] (auto) — Fix phase display on app load and session switching
+
+  Requirements:
+  - Load last phase from DB on app startup (not default to 'required')
+  - Update phase properly when switching chat sessions
+  - Handle missing session.metadata.tags for legacy sessions
+
+  Completed:
+  - Added phase initialization from DB on app load (code)
+  - Fixed session metadata tag handling for phase updates (code)
+  - Updated system files and session state (commit 46647e8c) (code)
+
+---
+
+PROMPTS 26/04/17-00:00 P100275 [ ] [general] [bug] (auto) — Fix phase save/switch issues and add phase filtering to commit history
+
+  Requirements:
+  - Phase changes must save without forcing new session
+  - Session switching must update UI phases correctly
+  - Commit history must display phase per commit
+  - Add phase filtering to History (filter-only) and Chat (update per session)
+  - PATCH /chat/sessions/{id}/tags endpoint required
+
+  Completed:
+  - Removed _sessionId reset from phase change handler (code)
+  - Implemented PATCH /chat/sessions/{id}/tags endpoint (code)
+  - Added phase column and filtering to commit history view (code)
+  - Synced system state and session files (commit 56f91b7b) (code)
+
+---
+
+PROMPTS 26/04/17-00:00 P100276 [ ] [discovery] [bug] (auto) — Fix phase not persisting across chat sessions and missing phase display
+
+  Requirements:
+  - Each phase must get its own new session
+  - Phase tags must persist globally across app reloads
+  - Phase updates must reflect when switching between sessions
+
+  Completed:
+  - Restored `_sessionId = null` logic and `api.putSessionTags()` phase persistence in chat.js (code)
+  - Updated AI context files and memory/history documentation (commit 24034f72) (docs)
+
+  Action items:
+  - Verify phase metadata persists on session init (acceptance: Phase correctly loads after app reload)
+
+---
+
+PROMPTS 26/04/17-00:00 P100277 [ ] [discovery] [bug] (auto) — Ensure phase persists when changing chat sessions without resetting session ID
+
+  Requirements:
+  - Phase change listener must not reset `_sessionId`
+  - Existing sessions must maintain phase when switching between them
+  - Phase API endpoint must handle session phase updates
+
+  Completed:
+  - Updated phase change listener in chat.js to call `api.patchSessionT()` without resetting `_sessionId` (commit bafd251c) (code)
+
+  Action items:
+  - Confirm phase persists across session switches without losing session context (acceptance: Phase change reflected immediately and session ID remains stable)
+
+---
+
+PROMPTS 26/04/17-00:00 P100278 [ ] [discovery] [bug] (auto) — Mark all sessions without phase as invalid with red warning badge
+
+  Requirements:
+  - All sessions (UI, CLI, Workflow) without phase must show red `⚠` badge
+  - Red left border must indicate incomplete mandatory phase field
+  - Phase must be properly saved for CLI sessions
+  - Visual indicators must accurately reflect actual phase configuration state
+
+  Completed:
+  - Removed `s.source === 'ui'` condition to show red badge on all sessions; fixed phase persistence for CLI sessions (commit 15ae3356) (code)
+
+  Action items:
+  - Verify all session types display red warning when phase not configured (acceptance: Red badge appears on UI, CLI, and Workflow sessions without phase)
+  - Confirm phase saves correctly for CLI-sourced sessions (acceptance: Phase persists after CLI session upload and configuration)
+
+---
+
+PROMPTS 26/04/17-00:00 P100279 [ ] [discovery] [feature] (auto) — Maintain stable session ordering by created_at instead of updated_at on phase change
+
+  Requirements:
+  - Phase tag updates must not modify session sort order
+  - Sessions must sort by creation date, not last modified timestamp
+  - Session position in list must remain stable when phase is updated
+
+  Completed:
+  - Backend: removed `updated_at` update in `patch_session_tags`; Frontend: changed `_loadSessions` sort to `created_at` (commit 2eaa14c2) (code)
+
+  Action items:
+  - Verify session order unchanged after phase modification (acceptance: Session list maintains creation-date sort after any phase tag change)
+
+---
+
+PROMPTS 26/04/17-00:00 P100280 [ ] [discovery] [feature] (auto) — Link session phases to History chat and Commit filters with backfill of missing phase data
+
+  Requirements:
+  - Session phase must apply to all prompts in that session
+  - Session phase must apply to all commits linked to that session
+  - History.jsonl entries must have phase field populated
+  - Commit records must display phase in phase column
+  - History and Commit filters must correctly match phase-tagged sessions
+  - Backfill must rewrite matching entries when session tagged after-the-fact
+
+  Completed:
+  - Implemented `_backfill_session_phase()` to rewrite History.jsonl entries with missing phase; linked session phase to Commit phase column (code)
+
+  Action items:
+  - Verify History filter returns prompts matching session phase (acceptance: Filtering by phase shows all prompts from sessions with that phase tag)
+  - Verify Commit filter returns commits matching session phase (acceptance: Commit phase column populated and filter returns all commits from phase-tagged sessions)
+  - Verify backfill correctly rewrites historical entries (acceptance: After session tagging, all related History and Commit entries show correct phase)
+
