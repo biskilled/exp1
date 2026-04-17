@@ -63,6 +63,23 @@ _TABLE: dict[str, str] = {
 # Template location (relative to project root)
 _TEMPLATE_PATH = Path(__file__).parent.parent.parent / "workspace" / "_templates" / "backlog_config.yaml"
 
+# SQL SIMILAR TO pattern for system/generated file paths (no real code symbols)
+_SYSTEM_FILE_PATTERN = (
+    r"%(CLAUDE|MEMORY|\.cursorrules|\.claude|copilot-instructions"
+    r"|backlog_config|project\.yaml|package-lock\.json|yarn\.lock"
+    r"|__pycache__|\.pyc|\.min\.js)%"
+)
+
+
+def _is_system_stat(diff_stat: str) -> bool:
+    """Return True if ALL changed files in a git --stat output look like system files."""
+    lines = [l.strip() for l in diff_stat.splitlines() if "|" in l]
+    if not lines:
+        return True
+    _SYS = ("CLAUDE", "MEMORY", ".cursorrules", ".claude", "copilot", "backlog_config",
+            "project.yaml", "package-lock.json", "yarn.lock", ".pyc", ".min.js")
+    return all(any(s in line for s in _SYS) for line in lines)
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _claude_key() -> Optional[str]:
@@ -141,7 +158,12 @@ _MATCH_RE    = re.compile(r"<!--\s*AI_MATCH:\s*(existing|new|none):(\S*)\s*-->")
 
 
 def _fmt_entry(item: dict) -> str:
-    """Render a digest dict into the backlog.md markdown block."""
+    """Render a digest dict into the backlog.md markdown block.
+
+    Commit entries (ref_id starts with 'C') are auto-approved — they record
+    completed work and do not require user review before merging into use cases.
+    Prompt entries ('P') require explicit user approval.
+    """
     ref_id   = item.get("ref_id", "")
     d        = item.get("date", date.today().strftime("%Y/%m/%d"))
     summary  = item.get("summary", "")
@@ -150,12 +172,15 @@ def _fmt_entry(item: dict) -> str:
     match_type = ai_match.get("type", "none")
     match_slug = ai_match.get("slug", "")
 
+    # Commit entries are auto-approved (work already done)
+    approve_val = "x" if ref_id.startswith("C") else " "
+
     reqs = item.get("requirements", [])
     reqs_txt = "; ".join(str(r) for r in reqs) if reqs else ""
 
     deliveries = item.get("deliveries", [])
     del_lines = "\n".join(
-        f"  `{d.get('desc','')}` ({d.get('type','')})" for d in deliveries
+        f"  `{dv.get('desc','')}` ({dv.get('type','')})" for dv in deliveries
     )
 
     action_items = item.get("action_items", [])
@@ -167,7 +192,7 @@ def _fmt_entry(item: dict) -> str:
     lines = [
         f"### {ref_id} {d} — {summary}",
         "",
-        "<!-- APPROVE: [ ] -->",
+        f"<!-- APPROVE: [{approve_val}] -->",
         "<!-- TAG: -->",
         f"<!-- AI_MATCH: {match_type}:{match_slug} -->",
         f"<!-- AI_CLASSIFY: {classify} -->",
@@ -266,10 +291,19 @@ class MemoryBacklog:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        f"SELECT COUNT(*) FROM {table} WHERE project_id=%s AND backlog_ref IS NULL",
-                        (project_id,),
-                    )
+                    if source_type == "commits":
+                        # Only count unlinked commits (no prompt_id) — those are the ones
+                        # the standalone commit pipeline processes
+                        cur.execute(
+                            "SELECT COUNT(*) FROM mem_mrr_commits "
+                            "WHERE project_id=%s AND backlog_ref IS NULL AND prompt_id IS NULL",
+                            (project_id,),
+                        )
+                    else:
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM {table} WHERE project_id=%s AND backlog_ref IS NULL",
+                            (project_id,),
+                        )
                     return cur.fetchone()[0] or 0
         except Exception as e:
             log.debug(f"_pending_count({source_type}) error: {e}")
@@ -334,7 +368,7 @@ class MemoryBacklog:
             formatted = self._format_rows(source_type, batch)
 
             # Build prompt
-            system_prompt = self._build_system_prompt(p_desc, uc_context)
+            system_prompt = self._build_system_prompt(p_desc, uc_context, source_type)
             user_prompt   = self._build_user_prompt(source_type, formatted, ref_ids)
 
             # Call Haiku
@@ -347,11 +381,12 @@ class MemoryBacklog:
             self._append_to_backlog(items)
             appended += len(items)
 
-            # Mark rows as processed
+            # Mark rows as processed (for prompts: also stamps linked commits)
             self._mark_processed(
                 source_type, project_id,
                 [r["id"] for r in batch],
                 [item["ref_id"] for item in items],
+                rows=batch,
             )
 
         return appended
@@ -371,43 +406,25 @@ class MemoryBacklog:
     # ── Row fetching ───────────────────────────────────────────────────────────
 
     def _fetch_pending_rows(self, source_type: str, project_id: int) -> list[dict]:
-        table = _TABLE[source_type]
+        """Fetch pending (backlog_ref IS NULL) rows for the given source type.
+
+        prompts: enriched with linked commits + commit_code context.
+        commits: ONLY commits with prompt_id IS NULL (standalone, no user session).
+        messages/items: plain fetch.
+        """
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     if source_type == "prompts":
-                        cur.execute(
-                            """SELECT id::text, prompt, response, created_at
-                               FROM mem_mrr_prompts
-                               WHERE project_id=%s AND backlog_ref IS NULL
-                               ORDER BY created_at
-                               LIMIT 500""",
-                            (project_id,),
-                        )
-                        return [
-                            {"id": r[0], "prompt": r[1], "response": r[2], "created_at": r[3]}
-                            for r in cur.fetchall()
-                        ]
+                        return self._fetch_prompts_with_commit_context(cur, project_id)
                     elif source_type == "commits":
-                        cur.execute(
-                            """SELECT commit_hash as id, commit_msg, diff_summary, created_at
-                               FROM mem_mrr_commits
-                               WHERE project_id=%s AND backlog_ref IS NULL
-                               ORDER BY created_at
-                               LIMIT 500""",
-                            (project_id,),
-                        )
-                        return [
-                            {"id": r[0], "commit_msg": r[1], "diff_summary": r[2], "created_at": r[3]}
-                            for r in cur.fetchall()
-                        ]
+                        return self._fetch_standalone_commits(cur, project_id)
                     elif source_type == "messages":
                         cur.execute(
                             """SELECT id::text, platform, channel, messages, created_at
                                FROM mem_mrr_messages
                                WHERE project_id=%s AND backlog_ref IS NULL
-                               ORDER BY created_at
-                               LIMIT 500""",
+                               ORDER BY created_at LIMIT 500""",
                             (project_id,),
                         )
                         return [
@@ -420,8 +437,7 @@ class MemoryBacklog:
                             """SELECT id::text, item_type, title, raw_text, created_at
                                FROM mem_mrr_items
                                WHERE project_id=%s AND backlog_ref IS NULL
-                               ORDER BY created_at
-                               LIMIT 500""",
+                               ORDER BY created_at LIMIT 500""",
                             (project_id,),
                         )
                         return [
@@ -432,6 +448,101 @@ class MemoryBacklog:
         except Exception as e:
             log.debug(f"_fetch_pending_rows({source_type}) error: {e}")
         return []
+
+    def _fetch_prompts_with_commit_context(self, cur, project_id: int) -> list[dict]:
+        """Fetch pending prompts and enrich each with linked commits + code symbols."""
+        cur.execute(
+            """SELECT id::text, prompt, response, created_at
+               FROM mem_mrr_prompts
+               WHERE project_id=%s AND backlog_ref IS NULL
+               ORDER BY created_at LIMIT 500""",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+        result: list[dict] = []
+        for r in rows:
+            prompt_id, prompt, response, created_at = r[0], r[1], r[2], r[3]
+            # Fetch commits linked to this prompt
+            cur.execute(
+                """SELECT commit_hash, commit_msg, diff_summary
+                   FROM mem_mrr_commits
+                   WHERE project_id=%s AND prompt_id=%s::uuid AND backlog_ref IS NULL
+                   ORDER BY created_at""",
+                (project_id, prompt_id),
+            )
+            commits = cur.fetchall()
+            # For each commit, fetch code symbols (skip generated/system files)
+            commit_contexts: list[dict] = []
+            for c_hash, c_msg, c_stat in commits:
+                cur.execute(
+                    """SELECT file_path, file_change, symbol_type, class_name,
+                              method_name, rows_added, rows_removed
+                       FROM mem_mrr_commits_code
+                       WHERE project_id=%s AND commit_hash=%s
+                         AND file_path NOT SIMILAR TO %s
+                       ORDER BY file_path, symbol_type LIMIT 30""",
+                    (project_id, c_hash, _SYSTEM_FILE_PATTERN),
+                )
+                symbols = [
+                    {"file": s[0], "change": s[1], "type": s[2],
+                     "class": s[3], "method": s[4], "+": s[5], "-": s[6]}
+                    for s in cur.fetchall()
+                ]
+                if symbols or c_msg:
+                    commit_contexts.append({
+                        "hash": c_hash[:8], "msg": c_msg, "symbols": symbols,
+                    })
+            result.append({
+                "id": prompt_id, "prompt": prompt, "response": response,
+                "created_at": created_at, "commits": commit_contexts,
+            })
+        return result
+
+    def _fetch_standalone_commits(self, cur, project_id: int) -> list[dict]:
+        """Fetch commits with NO linked prompt (CI/CD, merges, direct pushes).
+
+        Enriched with commit_code symbols for action-item extraction.
+        Commits where ALL code rows are system/generated files are skipped.
+        """
+        cur.execute(
+            """SELECT commit_hash, commit_msg, diff_summary, created_at
+               FROM mem_mrr_commits
+               WHERE project_id=%s AND backlog_ref IS NULL AND prompt_id IS NULL
+               ORDER BY created_at LIMIT 500""",
+            (project_id,),
+        )
+        commits = cur.fetchall()
+        result: list[dict] = []
+        for c_hash, c_msg, c_stat, c_at in commits:
+            cur.execute(
+                """SELECT file_path, file_change, symbol_type, class_name,
+                          method_name, rows_added, rows_removed
+                   FROM mem_mrr_commits_code
+                   WHERE project_id=%s AND commit_hash=%s
+                     AND file_path NOT SIMILAR TO %s
+                   ORDER BY file_path, symbol_type LIMIT 30""",
+                (project_id, c_hash, _SYSTEM_FILE_PATTERN),
+            )
+            symbols = [
+                {"file": s[0], "change": s[1], "type": s[2],
+                 "class": s[3], "method": s[4], "+": s[5], "-": s[6]}
+                for s in cur.fetchall()
+            ]
+            # Skip commits that only touched system/generated files
+            if not symbols and _is_system_stat(c_stat or ""):
+                log.debug(f"backlog: skipping system-only commit {c_hash[:8]}")
+                # Stamp with a sentinel so it's not re-evaluated every time
+                cur.execute(
+                    "UPDATE mem_mrr_commits SET backlog_ref='SKIP' "
+                    "WHERE commit_hash=%s",
+                    (c_hash,),
+                )
+                continue
+            result.append({
+                "id": c_hash, "commit_msg": c_msg, "diff_summary": c_stat,
+                "created_at": c_at, "symbols": symbols,
+            })
+        return result
 
     # ── Ref ID allocation ──────────────────────────────────────────────────────
 
@@ -455,13 +566,35 @@ class MemoryBacklog:
         parts: list[str] = []
         for i, r in enumerate(rows, 1):
             if source_type == "prompts":
-                p = (r.get("prompt") or "")[:500]
+                p    = (r.get("prompt")   or "")[:500]
                 resp = (r.get("response") or "")[:300]
-                parts.append(f"[{i}] PROMPT: {p}\nRESPONSE: {resp}")
+                block = f"[{i}] PROMPT: {p}\nRESPONSE: {resp}"
+                # Append linked commit code context
+                for ctx in r.get("commits", []):
+                    block += f"\n  LINKED COMMIT {ctx['hash']}: {ctx['msg'][:120]}"
+                    for sym in ctx.get("symbols", [])[:15]:
+                        cls = f"{sym['class']}." if sym.get("class") else ""
+                        mth = sym.get("method") or ""
+                        sym_name = f"{cls}{mth}" if (cls or mth) else sym["file"]
+                        block += (
+                            f"\n    {sym['file']} [{sym['change']}]"
+                            f" {sym['type']}: {sym_name}"
+                            f" (+{sym['+'] or 0}/-{sym['-'] or 0})"
+                        )
+                parts.append(block)
             elif source_type == "commits":
                 msg  = r.get("commit_msg", "")
-                diff = (r.get("diff_summary") or "")[:400]
-                parts.append(f"[{i}] COMMIT: {msg}\nSTAT: {diff}")
+                block = f"[{i}] COMMIT: {msg}"
+                for sym in r.get("symbols", [])[:20]:
+                    cls = f"{sym['class']}." if sym.get("class") else ""
+                    mth = sym.get("method") or ""
+                    sym_name = f"{cls}{mth}" if (cls or mth) else sym["file"]
+                    block += (
+                        f"\n  {sym['file']} [{sym['change']}]"
+                        f" {sym['type']}: {sym_name}"
+                        f" (+{sym['+'] or 0}/-{sym['-'] or 0})"
+                    )
+                parts.append(block)
             elif source_type == "messages":
                 msgs = r.get("messages", [])
                 txt  = json.dumps(msgs)[:400] if msgs else ""
@@ -487,25 +620,51 @@ class MemoryBacklog:
             lines.append(f"- {slug}: {overview}")
         return "\n".join(lines) if lines else "No existing use cases."
 
-    def _build_system_prompt(self, p_desc: str, uc_context: str) -> str:
+    def _build_system_prompt(self, p_desc: str, uc_context: str, source_type: str = "prompts") -> str:
+        if source_type == "commits":
+            extra = (
+                "These are standalone commits (no user session) — CI/CD, merges, direct pushes.\n"
+                "Use the CODE CHANGES (file/class/method names) to infer action items.\n"
+                "Deliveries are already done (the commit is the delivery).\n"
+                "Set APPROVE to 'x' automatically — commit entries do not require user review.\n"
+            )
+        else:
+            extra = (
+                "LINKED COMMIT sections show code changes made during this session.\n"
+                "Include those as 'code' deliveries and reference method/class names where relevant.\n"
+                "If LINKED COMMIT sections are absent, the session produced no code changes.\n"
+            )
+
         return f"""{p_desc}
 
+{extra}
 Active use cases for matching:
 {uc_context}
 
-Return a JSON array.  Each element must have these exact keys:
+MANDATORY TAGGING RULES (both tags required on every entry):
+1. ai_match (use case tag): MUST be set to an existing slug, a new slug, or 'none' only if
+   the entry is purely internal/chore with no user value.
+   - type: "existing" if it matches one of the active use cases above
+   - type: "new" if it represents a new capability not yet in the list
+   - type: "none" only for pure chore/system work (rare)
+2. classify (work type tag): MUST be exactly one of: bug | feature | task
+   - bug: fixes broken behaviour
+   - feature: adds new user-facing capability
+   - task: infrastructure, refactor, docs, chore
+
+Return a JSON array. Each element must have these exact keys:
 {{
   "ref_id": "<placeholder, will be filled>",
   "date": "YYYY/MM/DD",
-  "summary": "one-line description",
-  "requirements": ["..."],
-  "deliveries": [{{"type": "code|docs|design", "desc": "..."}}],
-  "action_items": [{{"desc": "...", "acceptance": "user accepts"}}],
+  "summary": "one-line description (max 120 chars)",
+  "requirements": ["requirement 1", "..."],
+  "deliveries": [{{"type": "code|docs|design", "desc": "what was produced/changed"}}],
+  "action_items": [{{"desc": "what still needs to be done", "acceptance": "done when..."}}],
   "classify": "bug|feature|task",
-  "ai_match": {{"type": "existing|new|none", "slug": "slug-name"}}
+  "ai_match": {{"type": "existing|new|none", "slug": "slug-name-or-empty"}}
 }}
 
-Return ONLY the JSON array. No markdown fences."""
+Return ONLY the JSON array. No markdown fences. No extra text."""
 
     def _build_user_prompt(
         self, source_type: str, formatted: str, ref_ids: list[str]
@@ -612,12 +771,16 @@ Return ONLY the JSON array. No markdown fences."""
         project_id: int,
         row_ids: list[str],
         ref_ids: list[str],
+        rows: Optional[list[dict]] = None,
     ) -> None:
-        """SET backlog_ref = ref_id on each source row."""
+        """SET backlog_ref = ref_id on each source row.
+
+        For prompts: also stamps backlog_ref on all commits linked to those prompts
+        (so they are not re-processed as standalone commit entries).
+        """
         if not row_ids or not ref_ids:
             return
         table = _TABLE[source_type]
-        # Primary key column name differs per table
         pk = "commit_hash" if source_type == "commits" else "id"
         try:
             with db.conn() as conn:
@@ -627,6 +790,20 @@ Return ONLY the JSON array. No markdown fences."""
                             f"UPDATE {table} SET backlog_ref=%s WHERE {pk}=%s AND project_id=%s",
                             (ref_id, row_id, project_id),
                         )
+                    # For prompts: stamp linked commits with the same ref so they're not
+                    # picked up by the standalone-commit pipeline
+                    if source_type == "prompts" and rows:
+                        for row, ref_id in zip(rows, ref_ids):
+                            prompt_id = row.get("id")
+                            if not prompt_id:
+                                continue
+                            cur.execute(
+                                """UPDATE mem_mrr_commits
+                                   SET backlog_ref=%s
+                                   WHERE project_id=%s AND prompt_id=%s::uuid
+                                     AND backlog_ref IS NULL""",
+                                (ref_id, project_id, prompt_id),
+                            )
                 conn.commit()
         except Exception as e:
             log.debug(f"_mark_processed error: {e}")

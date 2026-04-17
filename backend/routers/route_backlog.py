@@ -138,16 +138,29 @@ async def get_backlog_stats(project: str):
             with conn.cursor() as cur:
                 for src in sources:
                     tbl = _TABLE[src]
-                    cur.execute(
-                        f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NULL",
-                        (project_id,),
-                    )
-                    pending = cur.fetchone()[0] or 0
-
-                    cur.execute(
-                        f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NOT NULL",
-                        (project_id,),
-                    )
+                    # Commits: only count standalone (no prompt link) as pending
+                    if src == "commits":
+                        cur.execute(
+                            "SELECT COUNT(*) FROM mem_mrr_commits "
+                            "WHERE project_id=%s AND backlog_ref IS NULL AND prompt_id IS NULL",
+                            (project_id,),
+                        )
+                        pending = cur.fetchone()[0] or 0
+                        cur.execute(
+                            "SELECT COUNT(*) FROM mem_mrr_commits "
+                            "WHERE project_id=%s AND backlog_ref IS NOT NULL",
+                            (project_id,),
+                        )
+                    else:
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NULL",
+                            (project_id,),
+                        )
+                        pending = cur.fetchone()[0] or 0
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NOT NULL",
+                            (project_id,),
+                        )
                     processed = cur.fetchone()[0] or 0
 
                     cnt = int(cfg.get(src, {}).get("cnt", 5))
