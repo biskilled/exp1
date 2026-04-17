@@ -26,5 +26,20 @@ that does not yet belong to a named use case.
 <!-- system-managed: rebuilt from mem_backlog_links — do not edit -->
 | ID | Type | Date | Summary |
 |----|------|------|---------|
+| P100013 | prompt | 26/04/17-00:00 | Project management UI/UX improvements and memory updates |
 | P100001 | prompt | 2026-04-17 | discovery: Memory system architecture, project management pl |
 | C200056 | commit | 2026-04-17 | standalone commits summary (58 commits) |
+
+## Open Items
+- [ ] Project management UI/UX improvements and memory updates
+  Linked: P100013
+
+- [ ] standalone commits summary (63 commits)
+  Linked: C200059
+
+## Events
+<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->
+| ID | Source | Date | Summary |
+|----|--------|------|---------|
+| C200059 | commit | 2026-04-17 | standalone commits summary (63 commits) |
+| P100013 | prompt | 2026-04-17 | Project management UI/UX improvements and memory updates |

@@ -245,16 +245,25 @@ async def patch_backlog_entry(
     updated = False
     new_chunks: list[str] = []
     for chunk in chunks:
-        if ref_id in chunk and f"### {ref_id} " in chunk:
+        if ref_id in chunk:
             if body.approve is not None:
                 val = body.approve[:1] if body.approve else " "
-                # Replace APPROVE comment value
+                # New format: SOURCE DATE REF_ID [APPROVE] [slug] [classify] (user) — ...
+                # Replace the [APPROVE] bracket right after the ref_id
+                chunk = _re.sub(
+                    rf"({_re.escape(ref_id)}\s+)\[[+ x\-]*\]",
+                    rf"\1[{val}]",
+                    chunk,
+                )
+                # Legacy format fallback
                 chunk = _re.sub(
                     r"<!--\s*APPROVE:\s*\[[ x\-]\]\s*-->",
                     f"<!-- APPROVE: [{val}] -->",
                     chunk,
                 )
             if body.tag is not None:
+                # New format: replace the [slug] field (5th bracket group)
+                # For simplicity, replace the TAG comment (legacy) or the slug bracket
                 chunk = _re.sub(
                     r"<!--\s*TAG:\s*.*?-->",
                     f"<!-- TAG: {body.tag} -->",
@@ -268,6 +277,85 @@ async def patch_backlog_entry(
 
     path.write_text("\n---\n".join(new_chunks))
     return {"status": "updated", "ref_id": ref_id, "project": project}
+
+
+@router.post("/{project}/reset-all")
+async def reset_all_backlog(project: str):
+    """Full backlog reset: clears all backlog_ref markers, planner_tags, backlog links,
+    and removes all use_cases/*.md except discovery.md.
+
+    Resets the system to a clean state so a fresh sync-backlog run processes everything.
+    SKIP-marked commits (system-only files) are preserved.
+    """
+    from core.database import db
+    from memory.memory_backlog import MemoryBacklog
+    from pathlib import Path
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
+    if not project_id:
+        raise HTTPException(404, "Project not found")
+
+    results: dict = {}
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # 1. Reset backlog_ref on all mirror tables (keep SKIP)
+                for tbl, pk in [
+                    ("mem_mrr_prompts",  "id"),
+                    ("mem_mrr_commits",  "commit_hash"),
+                    ("mem_mrr_messages", "id"),
+                    ("mem_mrr_items",    "id"),
+                ]:
+                    where = (
+                        "WHERE project_id=%s AND backlog_ref IS NOT NULL AND backlog_ref <> 'SKIP'"
+                        if tbl == "mem_mrr_commits"
+                        else "WHERE project_id=%s AND backlog_ref IS NOT NULL"
+                    )
+                    cur.execute(
+                        f"UPDATE {tbl} SET backlog_ref = NULL {where}",
+                        (project_id,),
+                    )
+                    results[f"reset_{tbl}"] = cur.rowcount
+
+                # 2. Delete all planner_tags for this project (categories stay)
+                cur.execute("DELETE FROM planner_tags WHERE project_id=%s", (project_id,))
+                results["deleted_planner_tags"] = cur.rowcount
+
+                # 3. Delete mem_backlog_links
+                cur.execute("DELETE FROM mem_backlog_links WHERE project_id=%s", (project_id,))
+                results["deleted_backlog_links"] = cur.rowcount
+
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+    # 4. Delete use_cases/*.md except discovery.md
+    uc_dir = bl._use_cases_dir()
+    deleted_files: list[str] = []
+    if uc_dir.exists():
+        for md in uc_dir.glob("*.md"):
+            if md.stem != "discovery":
+                md.unlink()
+                deleted_files.append(md.name)
+    results["deleted_use_case_files"] = deleted_files
+
+    # 5. Clear backlog.md
+    bl_path = bl._backlog_path()
+    if bl_path.exists():
+        bl_path.write_text(
+            "# Backlog\n\n"
+            "> Approve entries with `[+]`, reject with `[-]`.\n"
+            "> Run `POST /memory/{project}/work-items` to process approved entries.\n"
+        )
+        results["cleared_backlog"] = True
+
+    results["note"] = "SKIP commits preserved; discovery.md preserved"
+    return {"project": project, **results}
 
 
 @router.get("/{project}/use-case-events")

@@ -148,63 +148,88 @@ def _get_code_dir(project: str) -> Optional[Path]:
 
 
 # ── Entry format helpers ───────────────────────────────────────────────────────
+# Header format:  SOURCE YY/MM/DD-HH:MM REF_ID [APPROVE] [slug] [classify] (user) — summary
+# APPROVE values: [ ] = pending | [+] or [x] = approved | [-] = rejected
 
 _ENTRY_HEADER_RE = re.compile(
-    r"^###\s+([PCMI]\d+)\s+(\d{4}/\d{2}/\d{2})\s+—\s+(.+)$"
+    r"^(PROMPTS|COMMITS|ITEMS|MESSAGES)\s+"
+    r"(\d{2}/\d{2}/\d{2}(?:-\d{2}:\d{2})?)\s+"
+    r"([PCMI]\d+)\s+"
+    r"\[([+ x\-]*)\]\s+"
+    r"\[([^\]]*)\]\s+"
+    r"\[([^\]]*)\]\s+"
+    r"\([^)]*\)\s+"
+    r"—\s+(.+)$"
 )
-_APPROVE_RE  = re.compile(r"<!--\s*APPROVE:\s*\[([ x\-])\]\s*-->")
-_TAG_RE      = re.compile(r"<!--\s*TAG:\s*(.*?)\s*-->")
-_MATCH_RE    = re.compile(r"<!--\s*AI_MATCH:\s*(existing|new|none):(\S*)\s*-->")
+
+_SOURCE_LABEL: dict[str, str] = {
+    "prompts":  "PROMPTS",
+    "commits":  "COMMITS",
+    "messages": "MESSAGES",
+    "items":    "ITEMS",
+}
+_PREFIX_TO_LABEL: dict[str, str] = {
+    "P": "PROMPTS", "C": "COMMITS", "M": "MESSAGES", "I": "ITEMS",
+}
+
+
+def _fmt_date(dt_val) -> str:
+    """Return YY/MM/DD-HH:MM from a date, datetime, or ISO/YYYY-MM-DD string."""
+    if isinstance(dt_val, datetime):
+        return dt_val.strftime("%y/%m/%d-%H:%M")
+    if isinstance(dt_val, date):
+        return dt_val.strftime("%y/%m/%d-00:00")
+    if isinstance(dt_val, str) and dt_val:
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y/%m/%d", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(dt_val[:len(fmt)], fmt).strftime("%y/%m/%d-00:00")
+            except Exception:
+                pass
+    return date.today().strftime("%y/%m/%d-00:00")
 
 
 def _fmt_entry(item: dict) -> str:
-    """Render a digest dict into the backlog.md markdown block.
+    """Render a single-row digest dict into the new backlog.md header format.
 
-    Commit entries (ref_id starts with 'C') are auto-approved — they record
-    completed work and do not require user review before merging into use cases.
-    Prompt entries ('P') require explicit user approval.
+    Commit entries (ref_id starts 'C') are auto-approved.
     """
     ref_id   = item.get("ref_id", "")
-    d        = item.get("date", date.today().strftime("%Y/%m/%d"))
+    prefix   = ref_id[0] if ref_id else "P"
+    src      = _PREFIX_TO_LABEL.get(prefix, "PROMPTS")
+    dt       = _fmt_date(item.get("date", date.today()))
     summary  = item.get("summary", "")
     classify = item.get("classify", "task")
     ai_match = item.get("ai_match", {})
-    match_type = ai_match.get("type", "none")
-    match_slug = ai_match.get("slug", "")
-
-    # Commit entries are auto-approved (work already done)
-    approve_val = "x" if ref_id.startswith("C") else " "
-
-    reqs = item.get("requirements", [])
-    reqs_txt = "; ".join(str(r) for r in reqs) if reqs else ""
-
-    deliveries = item.get("deliveries", [])
-    del_lines = "\n".join(
-        f"  `{dv.get('desc','')}` ({dv.get('type','')})" for dv in deliveries
-    )
-
-    action_items = item.get("action_items", [])
-    ai_lines = "\n".join(
-        f"- [ ] {a.get('desc','')} (acceptance: {a.get('acceptance','')})"
-        for a in action_items
-    )
+    slug     = ai_match.get("slug", "") or "general"
+    approve  = "x" if prefix == "C" else " "
 
     lines = [
-        f"### {ref_id} {d} — {summary}",
-        "",
-        f"<!-- APPROVE: [{approve_val}] -->",
-        "<!-- TAG: -->",
-        f"<!-- AI_MATCH: {match_type}:{match_slug} -->",
-        f"<!-- AI_CLASSIFY: {classify} -->",
+        f"{src} {dt} {ref_id} [{approve}] [{slug}] [{classify}] (auto) — {summary}",
         "",
     ]
-    if reqs_txt:
-        lines.append(f"**Requirements:** {reqs_txt}")
-    if del_lines:
-        lines.append(f"**Deliveries:**\n{del_lines}")
-    if ai_lines:
-        lines.append(f"**Action items:**\n{ai_lines}")
-    lines.append("")
+
+    reqs = item.get("requirements", [])
+    if reqs:
+        lines.append("  Requirements:")
+        for r in reqs:
+            lines.append(f"  - {r}")
+        lines.append("")
+
+    deliveries = item.get("deliveries", [])
+    if deliveries:
+        lines.append("  Completed:")
+        for dv in deliveries:
+            lines.append(f"  - {dv.get('desc','')} ({dv.get('type','')})")
+        lines.append("")
+
+    action_items = item.get("action_items", [])
+    if action_items:
+        lines.append("  Action items:")
+        for a in action_items:
+            acc = a.get("acceptance", "")
+            lines.append(f"  - {a.get('desc','')}" + (f" (acceptance: {acc})" if acc else ""))
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -842,35 +867,31 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
         if not header:
             return None
 
-        ref_id  = header.group(1)
-        dt      = header.group(2)
-        summary = header.group(3)
+        src_type = header.group(1)   # PROMPTS | COMMITS | ...
+        dt       = header.group(2)   # YY/MM/DD-HH:MM
+        ref_id   = header.group(3)   # P100042
+        approve_raw = header.group(4).strip()  # +, x, -, or empty
+        slug     = header.group(5).strip()
+        classify = header.group(6).strip()
+        summary  = header.group(7).strip()
 
-        approve = " "
-        tag     = ""
-        match_type, match_slug = "none", ""
-
-        for line in lines:
-            m = _APPROVE_RE.search(line)
-            if m:
-                approve = m.group(1)
-            m = _TAG_RE.search(line)
-            if m:
-                tag = m.group(1).strip()
-            m = _MATCH_RE.search(line)
-            if m:
-                match_type = m.group(1)
-                match_slug = m.group(2)
+        # Normalise: both + and x mean approved
+        if approve_raw in ("+", "x"):
+            approve = "x"
+        elif approve_raw == "-":
+            approve = "-"
+        else:
+            approve = " "
 
         return {
-            "ref_id":     ref_id,
-            "date":       dt,
-            "summary":    summary,
-            "approve":    approve,   # ' '=pending, 'x'=approved, '-'=rejected
-            "tag":        tag,
-            "match_type": match_type,
-            "match_slug": match_slug,
-            "raw":        chunk,
+            "ref_id":   ref_id,
+            "source":   src_type,
+            "date":     dt,
+            "summary":  summary,
+            "approve":  approve,   # ' '=pending, 'x'=approved, '-'=rejected
+            "slug":     slug,
+            "classify": classify,
+            "raw":      chunk,
         }
 
     # ── Backlog rewrite ────────────────────────────────────────────────────────
@@ -929,76 +950,71 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 # ── Full-digest pipeline ──────────────────────────────────────────────────────
 
 def _fmt_full_digest_entry(entry: dict) -> str:
-    """Render a full-digest group entry into backlog.md markdown block.
+    """Render a full-digest group entry into the new backlog.md format.
 
-    Format:
-      ### P100042 2026/04/17 — {slug}: {topic}
-      <!-- APPROVE: [x] -->
-      ...
-      **Completed:** (one line per item)
-      **Open Features:** (max 3)
-      **Open Bugs:** (max 3)
-      **Events:** N prompts processed
+    Header: SOURCE YY/MM/DD-HH:MM REF_ID [APPROVE] [slug] [classify] (auto) — topic
+    Commits are auto-approved [x]; prompt/item/message groups start pending [ ].
     """
     ref_id   = entry.get("ref_id", "?")
-    d        = entry.get("date", date.today().strftime("%Y/%m/%d"))
-    summary  = entry.get("summary", "")
+    prefix   = ref_id[0] if ref_id else "P"
+    src      = _PREFIX_TO_LABEL.get(prefix, "PROMPTS")
+    dt       = _fmt_date(entry.get("date", date.today()))
     slug     = entry.get("slug", "general")
     classify = entry.get("classify", "task")
-    match_t  = entry.get("slug_type", "existing")
+    # Strip auto-prefix from summary if present (e.g. "auth-refactor: topic" → "topic")
+    raw_summary = entry.get("summary", "")
+    if raw_summary.startswith(f"{slug}: "):
+        summary = raw_summary[len(slug) + 2:]
+    else:
+        summary = raw_summary
+
+    # Commits auto-approved; others pending
+    approve = "x" if prefix == "C" else " "
 
     completed     = entry.get("completed", [])
     open_features = entry.get("open_features", [])
     open_bugs     = entry.get("open_bugs", [])
+    action_items  = entry.get("action_items", [])   # standalone commit items
     event_ids     = entry.get("event_ids", [])
-    action_items  = entry.get("action_items", [])  # for commit-only entries
-
-    # Commits/standalone get auto-approved; prompt groups also auto-approved in full_digest mode
-    approve_val = "x"
 
     lines = [
-        f"### {ref_id} {d} — {summary}",
-        "",
-        f"<!-- APPROVE: [{approve_val}] -->",
-        "<!-- TAG: -->",
-        f"<!-- AI_MATCH: {match_t}:{slug} -->",
-        f"<!-- AI_CLASSIFY: {classify} -->",
+        f"{src} {dt} {ref_id} [{approve}] [{slug}] [{classify}] (auto) — {summary}",
         "",
     ]
 
     if completed:
-        lines.append("**Completed:**")
+        lines.append("  Completed:")
         for item in completed:
-            lines.append(f"- {item}")
+            lines.append(f"  - {item}")
         lines.append("")
 
     if open_features:
-        lines.append("**Open Features:**")
+        lines.append("  Action items:")
         for item in open_features:
             desc = item.get("desc", item) if isinstance(item, dict) else item
             acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
-            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+            lines.append(f"  - {desc}" + (f" (acceptance: {acc})" if acc else ""))
         lines.append("")
 
     if open_bugs:
-        lines.append("**Open Bugs:**")
+        lines.append("  Open bugs:")
         for item in open_bugs:
             desc = item.get("desc", item) if isinstance(item, dict) else item
             acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
-            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+            lines.append(f"  - {desc}" + (f" (acceptance: {acc})" if acc else ""))
         lines.append("")
 
     if action_items:
-        lines.append("**Action Items:**")
+        lines.append("  Action items:")
         for item in action_items:
             desc = item.get("desc", item) if isinstance(item, dict) else item
             acc  = item.get("acceptance", "") if isinstance(item, dict) else ""
-            lines.append(f"- [ ] {desc}" + (f" (acceptance: {acc})" if acc else ""))
+            lines.append(f"  - {desc}" + (f" (acceptance: {acc})" if acc else ""))
         lines.append("")
 
-    n_events = len(event_ids)
-    if n_events:
-        lines.append(f"**Events:** {n_events} prompt(s) processed")
+    n = len(event_ids)
+    if n:
+        lines.append(f"  Events: {n} source row(s) processed")
         lines.append("")
 
     return "\n".join(lines)
@@ -1385,24 +1401,33 @@ async def process_full_digest(project: str) -> dict:
 
 _USE_CASE_STUB = """\
 # {slug}
+status: 1
+created_at: {created_at}
+updated_at: {created_at}
+total_events: 0
 
-## Overview
+## Summary
 {summary}
 
-## Requirements
+## Delivery
+_Code stack, commits count, and storage paths — updated on refresh._
 
-### Closed
+## Completed Action Items
 <!-- Entries moved here when done -->
 
-### Open Features
-<!-- AI-appended: [ref_id] entries from backlog -->
+## Completed Bugs
+<!-- Entries moved here when done -->
 
-### Open Bugs
-<!-- AI-appended: [ref_id] entries from backlog -->
+## Open Items
+<!-- AI-appended from approved backlog entries -->
 
-## Internal Usage
-| ID | Type | Date | Summary |
-|----|------|------|---------|
+## Open Bugs
+<!-- AI-appended from approved backlog entries -->
+
+## Events
+<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->
+| ID | Source | Date | Summary |
+|----|--------|------|---------|
 """
 
 
@@ -1415,9 +1440,11 @@ def _create_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
     uc_dir.mkdir(parents=True, exist_ok=True)
     path = _slug_path(uc_dir, slug)
     if not path.exists():
+        today = date.today().strftime("%Y/%m/%d")
         stub = _USE_CASE_STUB.format(
             slug=slug,
             summary=entry.get("summary", ""),
+            created_at=today,
         )
         path.write_text(stub)
         log.info(f"use_case: created {path}")
@@ -1442,13 +1469,14 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
         log.debug(f"use_case: {ref_id} already in {slug}, skipping")
         return
 
-    # Determine section
-    section_tag = "### Open Bugs" if classify == "bug" else "### Open Features"
+    # Determine section: bugs → Open Bugs, everything else → Open Items
+    section_tag = "## Open Bugs" if classify == "bug" else "## Open Items"
 
     action_items = entry.get("action_items", [])
     acceptance = ""
     if action_items:
-        acceptance = action_items[0].get("acceptance", "")
+        first = action_items[0]
+        acceptance = first.get("acceptance", "") if isinstance(first, dict) else ""
 
     new_item = (
         f"- [ ] {summary}\n"
@@ -1456,28 +1484,27 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
         + (f"  Linked: {ref_id}\n" if ref_id else "")
     )
 
-    # Insert before next section after the target section
+    # Insert after the section heading (before next ## heading)
     if section_tag in text:
         idx = text.index(section_tag) + len(section_tag)
-        text = text[:idx] + "\n" + new_item + text[idx:]
+        # Skip past any comment line immediately after the heading
+        rest = text[idx:]
+        comment_m = re.match(r"\n<!--[^>]*-->", rest)
+        skip = len(comment_m.group()) if comment_m else 0
+        text = text[:idx + skip] + "\n" + new_item + text[idx + skip:]
     else:
         text = text.rstrip() + f"\n\n{section_tag}\n{new_item}"
 
-    # Append to Internal Usage table
+    # Append to Events table
     src_type = ref_id[0] if ref_id else "?"
     type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}.get(src_type, "?")
-    row = f"| {ref_id} | {type_label} | {dt} | {summary[:50]} |"
-    if "## Internal Usage" in text:
-        # Insert row after the header row
-        table_idx = text.index("## Internal Usage")
+    row = f"| {ref_id} | {type_label} | {dt} | {summary[:60]} |"
+    if "## Events" in text:
         lines = text.splitlines()
         insert_at = None
         for i, line in enumerate(lines):
-            if line.startswith("| ID"):
+            if line.startswith("| ID") or line.startswith("| id"):
                 insert_at = i + 2  # after header + separator
-                break
-            if line.startswith("| ") and "|---" in lines[i + 1] if i + 1 < len(lines) else False:
-                insert_at = i + 2
                 break
         if insert_at is not None:
             lines.insert(insert_at, row)
@@ -1485,7 +1512,14 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
         else:
             text = text.rstrip() + f"\n{row}\n"
     else:
-        text = text.rstrip() + "\n\n## Internal Usage\n| ID | Type | Date | Summary |\n|----|------|------|------|\n" + row + "\n"
+        text = (
+            text.rstrip()
+            + "\n\n## Events\n"
+            "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->\n"
+            "| ID | Source | Date | Summary |\n"
+            "|----|--------|------|---------|\n"
+            + row + "\n"
+        )
 
     path.write_text(text)
     log.info(f"use_case: merged {ref_id} → {slug}")
@@ -1558,13 +1592,13 @@ def _regenerate_internal_usage(uc_dir: Path, slug: str, project_id: int) -> None
     if not rows:
         return
 
-    # Build the Internal Usage table rows
+    # Build the Events table rows
     type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}
     table_lines = [
-        "## Internal Usage",
+        "## Events",
         "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->",
-        "| ID | Type | Date | Summary |",
-        "|----|------|------|---------|",
+        "| ID | Source | Date | Summary |",
+        "|----|--------|------|---------|",
     ]
     for ref_id, classify, summary, approved_at in rows:
         src = ref_id[0] if ref_id else "?"
@@ -1576,10 +1610,12 @@ def _regenerate_internal_usage(uc_dir: Path, slug: str, project_id: int) -> None
 
     text = path.read_text(errors="ignore")
 
-    if "## Internal Usage" in text:
-        # Replace everything from "## Internal Usage" to end-of-file
-        idx = text.index("## Internal Usage")
-        text = text[:idx].rstrip() + "\n\n" + new_section
+    # Replace ## Events section (or ## Internal Usage for legacy files) to end-of-file
+    for marker in ("## Events", "## Internal Usage"):
+        if marker in text:
+            idx = text.index(marker)
+            text = text[:idx].rstrip() + "\n\n" + new_section
+            break
     else:
         text = text.rstrip() + "\n\n" + new_section
 
@@ -1720,26 +1756,19 @@ async def run_work_items(project: str) -> dict:
         ap = entry.get("approve", " ")
         if ap == "x":
             # Step 3a: create/merge use-case file
-            tag_override = entry.get("tag", "").strip()
-            match_type   = entry.get("match_type", "none")
-            match_slug   = entry.get("match_slug", "").strip()
-            classify     = entry.get("classify", "use_case")
-            # Normalise classify: "task" → treat as feature in the file, but
-            # keep classify for the seq range
+            classify = entry.get("classify", "use_case")
             if classify not in _CLASSIFY_TO_TAG:
                 classify = "use_case"
 
-            slug = tag_override or match_slug or "general"
+            # Slug comes directly from entry (set in header by user or LLM)
+            slug = entry.get("slug", "").strip() or "general"
             slug = re.sub(r"[^a-z0-9\-]", "-", slug.lower()).strip("-") or "general"
 
             try:
-                if match_type == "new" and not tag_override:
+                if not _slug_path(uc_dir, slug).exists():
                     _create_use_case(uc_dir, slug, entry)
                 else:
-                    if not _slug_path(uc_dir, slug).exists():
-                        _create_use_case(uc_dir, slug, entry)
-                    else:
-                        _merge_into_use_case(uc_dir, slug, entry)
+                    _merge_into_use_case(uc_dir, slug, entry)
                 use_cases_updated.add(slug)
             except Exception as e:
                 log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
