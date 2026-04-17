@@ -550,27 +550,6 @@ async def get_data_dashboard(
                     ai["backlog"] = {"prompts_pending": 0, "prompts_processed": 0,
                                      "commits_pending": 0, "commits_processed": 0}
 
-                # Feature snapshots (planner_tags with AI content)
-                try:
-                    cur.execute(
-                        """SELECT COUNT(*),
-                                  COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
-                                  MAX(updated_at)
-                           FROM planner_tags
-                           WHERE project_id = %s
-                             AND (description IS NOT NULL OR acceptance_criteria IS NOT NULL)""",
-                        (project_id,),
-                    )
-                    r = cur.fetchone()
-                    ai["feature_snapshots"] = {
-                        "total": r[0] or 0,
-                        "last_24h": r[1] or 0,
-                        "last_at": r[2].isoformat() if r[2] else None,
-                    }
-                except Exception:
-                    conn.rollback()
-                    ai["feature_snapshots"] = {"total": 0, "last_24h": 0, "last_at": None}
-
                 # ── Pipeline runs (last 24h) ───────────────────────────────
                 pl_keys = ["commit_embed", "commit_store", "commit_code_extract",
                            "session_summary", "tag_match", "work_item_embed",

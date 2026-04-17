@@ -1,31 +1,25 @@
 """
 prompt_loader.py — File-based system prompt loader.
 
-Each prompt is a self-contained YAML file under backend/prompts/ with fields:
-  name         — human-readable label
-  description  — what the prompt does
-  model        — haiku | sonnet  (resolved to full model ID at load time)
-  max_tokens   — int
-  system       — the system prompt text (multiline YAML literal block)
-  tools        — (optional) list of tool definitions
-  mcp_server   — (optional) MCP server config
+Each YAML file under backend/prompts/ is one of two formats:
+
+  Single-prompt (dict):
+    name, description, model, max_tokens, system, tools?, mcp_server?
+    Key = filename stem (e.g. conflict_detection.yaml → "conflict_detection")
+
+  Multi-prompt (list):
+    Each item has the same fields plus a required `key` field.
+    Key = item["key"] (e.g. commit.yaml with key=commit_analysis → "commit_analysis")
 
 Prompts are NOT stored in the DB and NOT exposed to users.
-The loader walks the directory recursively and uses the stem filename as the key
-(e.g. commits/commit_digest.yaml → key "commit_digest").
 
 Usage::
 
     from core.prompt_loader import prompts
 
-    # Get prompt config (content + model + max_tokens)
-    cfg = prompts.get("commit_digest")   # PromptConfig | None
-
-    # Call the configured model directly
-    result = await prompts.call("commit_digest", user_message)   # → str
-
-    # Just get the system text (for callers that manage their own LLM calls)
-    text = prompts.content("commit_digest")   # str | None
+    cfg = prompts.get("commit_analysis")   # PromptConfig | None
+    result = await prompts.call("commit_symbol", user_message)   # → str
+    text = prompts.content("conflict_detection")   # str | None
 """
 from __future__ import annotations
 
@@ -125,38 +119,40 @@ class PromptLoader:
 
         loaded = 0
         for yaml_file in sorted(_PROMPTS_DIR.rglob("*.yaml")):
-            # Skip the legacy prompts.yaml index file if still present
             if yaml_file.name == "prompts.yaml":
                 continue
             try:
-                data = _yaml.safe_load(yaml_file.read_text()) or {}
+                data = _yaml.safe_load(yaml_file.read_text())
             except Exception as e:
                 log.warning(f"prompt_loader: failed to parse {yaml_file}: {e}")
                 continue
 
-            key        = yaml_file.stem                          # filename without .yaml
-            model_key  = data.get("model", "haiku")
-            model_id   = model_map.get(model_key, model_key)    # fallback: use key as-is
-            max_tokens = int(data.get("max_tokens", 300))
-            system     = (data.get("system") or "").strip()
-            tools      = data.get("tools") or []
-            mcp_server = data.get("mcp_server") or None
-
-            if not system:
-                log.warning(f"prompt_loader: {yaml_file.name} has no 'system' field — skipped")
+            # Support both single-prompt (dict) and multi-prompt (list) formats
+            items: list[tuple[str, dict]]
+            if isinstance(data, list):
+                items = [(item["key"], item) for item in data if isinstance(item, dict) and item.get("key")]
+            elif isinstance(data, dict):
+                items = [(yaml_file.stem, data)]
+            else:
                 continue
 
-            self._configs[key] = PromptConfig(
-                name=data.get("name", key),
-                description=data.get("description", ""),
-                content=system,
-                model=model_id,
-                max_tokens=max_tokens,
-                tools=tools,
-                mcp_server=mcp_server,
-                file_path=yaml_file,
-            )
-            loaded += 1
+            for key, item in items:
+                system = (item.get("system") or "").strip()
+                if not system:
+                    log.warning(f"prompt_loader: {yaml_file.name}[{key}] has no 'system' field — skipped")
+                    continue
+                model_key = item.get("model", "haiku")
+                self._configs[key] = PromptConfig(
+                    name=item.get("name", key),
+                    description=item.get("description", ""),
+                    content=system,
+                    model=model_map.get(model_key, model_key),
+                    max_tokens=int(item.get("max_tokens", 300)),
+                    tools=item.get("tools") or [],
+                    mcp_server=item.get("mcp_server") or None,
+                    file_path=yaml_file,
+                )
+                loaded += 1
 
         log.debug(f"prompt_loader: loaded {loaded} prompts from {_PROMPTS_DIR}")
 

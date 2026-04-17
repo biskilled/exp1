@@ -1,8 +1,8 @@
 """
 memory_tagging.py — Tag management for planner_tags.
 
-Manages planner_tags (parent-child hierarchy): create, list, merge, and
-relation helpers. MRR rows use inline tags TEXT[] — no junction table needed.
+Manages planner_tags (parent-child hierarchy): create, list, and merge.
+MRR rows use inline tags TEXT[] — no junction table.
 
 Public API::
 
@@ -13,7 +13,6 @@ Public API::
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from core.database import db
 
@@ -55,7 +54,7 @@ _SQL_MERGE_TAGS = """
 
 
 class MemoryTagging:
-    """Maps planner_tags to mirroring rows and AI events via mem_tags_relations."""
+    """Manages planner_tags: create, list, merge."""
 
     # ── Core tag operations ─────────────────────────────────────────────────
 
@@ -148,54 +147,3 @@ class MemoryTagging:
         except Exception as e:
             log.debug(f"MemoryTagging.merge_tags error: {e}")
 
-    def tag_from_context(
-        self,
-        project: str,
-        prompt_id: str,
-        context_tags: dict,
-        session_id: str,
-        session_src_desc: Optional[str] = None,
-    ) -> None:
-        """No-op: MRR rows now use inline tags[]; context tagging via hook_log_prompt."""
-        pass
-
-    def add_relation_by_name(
-        self,
-        project: str,
-        from_name: str,
-        relation: str,
-        to_name: str,
-        note: Optional[str] = None,
-        source: str = "manual",
-    ) -> bool:
-        """No-op: mem_tags_relations table dropped. Returns False."""
-        return False
-
-    def upsert_relations_from_list(
-        self,
-        project: str,
-        relations: list[dict],
-        source: str = "ai_snapshot",
-    ) -> int:
-        """Batch-upsert relations extracted by LLM (from snapshot, item, or session).
-
-        Each dict: {from: str, relation: str, to: str, note: str|None}.
-        Creates tags via get_or_create_tag if they don't exist.
-        Returns count of relations upserted.
-        """
-        count = 0
-        for rel in relations:
-            from_name = (rel.get("from") or rel.get("from_tag") or "").strip()
-            to_name   = (rel.get("to")   or rel.get("to_tag")   or "").strip()
-            relation  = (rel.get("relation") or "relates_to").strip()
-            note      = rel.get("note")
-            if not from_name or not to_name:
-                continue
-            if self.add_relation_by_name(project, from_name, relation, to_name,
-                                          note=note, source=source):
-                count += 1
-        return count
-
-    def get_blockers_and_deps(self, project: str) -> list[dict]:
-        """Return blocks/depends_on relations. Placeholder — returns [] after mem_tags_relations drop."""
-        return []

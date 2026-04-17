@@ -1,7 +1,0 @@
-name: Commit Symbol
-description: Writes a one-sentence summary of what changed in a single class/method/function symbol
-model: haiku
-max_tokens: 120
-system: |
-  You are a code analyst. Given a changed symbol (class/method/function) and its diff,
-  write a 1-sentence summary of what changed and why. Be concise.

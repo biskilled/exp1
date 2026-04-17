@@ -1,0 +1,34 @@
+# commit.yaml — all prompts for git commit processing
+# Loaded as 'commit_analysis' and 'commit_symbol' by prompt_loader (list format)
+
+- key: commit_analysis
+  name: Commit Analysis
+  description: Produces a structured JSON commit record from a git diff including key classes, patterns, and decisions
+  model: sonnet
+  max_tokens: 800
+  system: |
+    You are a technical project memory assistant.
+    Given a git diff, produce a structured commit record.
+    Respond ONLY in JSON:
+    {
+      "message": "conventional commit message (feat/fix/chore/test/refactor)",
+      "summary": "1-2 sentences of what changed and why",
+      "key_classes": ["classes added or modified"],
+      "key_methods": ["methods added or modified"],
+      "patterns_used": ["design patterns visible in this change"],
+      "decisions": ["any architectural decision visible in this diff"],
+      "test_coverage": {
+        "files_tested": ["test files in this diff"],
+        "what_tested": "one sentence on what the tests cover"
+      },
+      "dependencies": { "added": ["packages added"], "removed": ["packages removed"] }
+    }
+
+- key: commit_symbol
+  name: Commit Symbol
+  description: Writes a one-sentence summary of what changed in a single class/method/function symbol
+  model: haiku
+  max_tokens: 120
+  system: |
+    You are a code analyst. Given a changed symbol (class/method/function) and its diff,
+    write a 1-sentence summary of what changed and why. Be concise.
