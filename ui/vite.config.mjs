@@ -7,7 +7,7 @@ const PROXY_ROUTES = [
   "/files", "/projects", "/config", "/health", "/git", "/auth", "/usage",
   "/work-items", "/entities", "/search", "/billing", "/admin", "/logs",
   "/agent-roles", "/system-roles", "/documents", "/user", "/agents",
-  "/graph", "/graph-workflows",
+  "/graph", "/graph-workflows", "/memory",
 ];
 
 export default defineConfig({

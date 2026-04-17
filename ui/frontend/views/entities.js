@@ -215,7 +215,7 @@ async function _loadTags() {
   if (!pane || !_catId) return;
   pane.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:2rem;text-align:center">Loading…</div>`;
   try {
-    const data = await api.entities.values(_project, { category_id: _catId });
+    const data = await api.entities.listValues(_project, _catId);
     _tags = data.values || [];
     _renderTags();
   } catch (e) {
