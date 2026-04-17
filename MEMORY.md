@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-16 16:50 UTC by aicli /memory_
+_Generated: 2026-04-17 10:42 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -286,36 +286,36 @@ Reviewer: ```json
 ### Doc_type
 
 - **high-level-design** `[open]`
-- **Test** `[open]`
-- **low-level-design** `[open]`
+- **customer-meeting** `[open]`
 - **architecture-decision** `[open]`
 - **retrospective** `[open]`
-- **customer-meeting** `[open]`
+- **low-level-design** `[open]`
+- **Test** `[open]`
 
 ### Feature
 
-- **UI** `[open]`
 - **auth** `[open]`
 - **billing** `[open]`
-- **dropbox** `[open]`
-- **embeddings** `[open]`
-- **entity-routing** `[open]`
-- **graph-workflow** `[open]`
-- **mcp** `[open]`
 - **shared-memory** `[open]`
+- **UI** `[open]`
+- **graph-workflow** `[open]`
+- **embeddings** `[open]`
 - **tagging** `[open]`
+- **dropbox** `[open]`
 - **test-picker-feature** `[open]`
+- **mcp** `[open]`
+- **entity-routing** `[open]`
 
 ### Phase
 
 - **development** `[open]`
-- **prod** `[open]`
 - **discovery** `[open]`
+- **prod** `[open]`
 
 ### Task
 
-- **implement-projects-tab** `[open]`
 - **memory** `[open]`
+- **implement-projects-tab** `[open]`
 
 ## Recent Memory
 
@@ -323,102 +323,117 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-16
 
+Commit: chore: clean up stale agent context and legacy system docs after claude
+Hash: 117ab78b
+Code files (6):
+  - .ai/rules.md
+  - .cursor/rules/aicli.mdrules
+  - .github/copilot-instructions.md
+  - backend/core/db_migrations.py
+  - backend/memory/memory_embedding.py
+  - workspace/aicli/PROJECT.md
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
+Symbols changed: m041_drop_diff_file_chunks, m040_backfill_event_cnt_and_tags
+
+### `commit` — 2026-04-16
+
 diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 58c33fd..83a2160 100644
+index 0a92684..a621d73 100644
 --- a/workspace/aicli/PROJECT.md
 +++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
+@@ -376,8 +376,8 @@ All tables follow a structured naming convention:
  ## Recent Work
  
--- Work item merge functionality: implemented POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
--- Work items bottom panel: added persistent 210px planner-wi-panel in entities.js with drag-drop merge support, unlink button, and new item creation UI
--- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, and _wiPanelNewItem() creation workflow with toast feedback
--- Schema migration for merged_into column: added merged_into UUID column to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
--- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained only user-facing tags (phase, feature, bug, source)
-+- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
-+- Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
-+- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
-+- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
-+- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
+ - Tag system metadata cleanup: Pass 0-2 completed removing system tags (llm, event, chunk_type, commit_hash, etc.) from 1441 events; retained only user-facing tags (phase, feature, bug, source)
+-- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic to link raw captures to synthesized events
++- mem_mrr_tags redesign: implemented per-source-type UPSERT statements with timestamp tracking and event_id backfill logic
  - Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
+-- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations and cleaned up _old tables
++- Schema migration m037: dropped deprecated importance column from mem_ai_events; executed column reordering migrations
+ - PostgreSQL nohup logging: resolved stale file handle issues by switching to fresh log file paths on backend startup
+-- History display rendering: incomplete prompt + response rendering and copy-to-clipboard gaps; fixed 2026-04-06 JSONB operator conflict in route_history
++- History display rendering: fixed JSONB operator conflict in route_history and addressed prompt + response rendering gaps
 
 
 ### `commit` — 2026-04-16
 
 diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
-index 9a486d4..6c49577 100644
+index 9902a5f..9478ab9 100644
 --- a/.github/copilot-instructions.md
 +++ b/.github/copilot-instructions.md
 @@ -1,5 +1,5 @@
  # aicli — GitHub Copilot Instructions
--> Generated by aicli 2026-04-14 13:24 UTC
-+> Generated by aicli 2026-04-14 14:41 UTC
+-> Generated by aicli 2026-04-14 12:41 UTC
++> Generated by aicli 2026-04-14 13:22 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
++- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
+ - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+ - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 
 
 ### `commit` — 2026-04-16
 
 diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
-index b067896..ccb765e 100644
+index a742c0d..9f96448 100644
 --- a/.cursor/rules/aicli.mdrules
 +++ b/.cursor/rules/aicli.mdrules
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:41 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 12:41 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
++- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
+ - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+ - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 
 
 ### `commit` — 2026-04-16
 
 diff --git a/.ai/rules.md b/.ai/rules.md
-index b067896..ccb765e 100644
+index a742c0d..9f96448 100644
 --- a/.ai/rules.md
 +++ b/.ai/rules.md
 @@ -1,5 +1,5 @@
  # aicli — AI Coding Rules
--> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:24 UTC
-+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 14:41 UTC
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 12:41 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-14 13:22 UTC
  
  # aicli — Shared AI Memory Platform
  
+@@ -61,7 +61,7 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+ - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
+ - Event filtering: event_type IN ('prompt_batch', 'session_summary') for work item digests; excludes per-commit and diff_file noise
+-- mem_mrr_tags mirroring with per-source-type UPSERT logic (prompt/commit/item/message); backfills event_id and work_item_id to link raw captures to synthesized events
++- mem_mrr_tags mirroring with per-source-type UPSERT logic; backfills event_id and work_item_id to link raw captures to synthesized events
+ - Database schema as single source of truth (db_schema.sql) with migration framework (m001-m037); column naming: prefix_noun_adjective order
+ - Work item embedding integration: _embed_work_item() persists 1536-dim vectors for name_ai + desc_ai during /memory command execution
+ - MCP stdio server with 12+ tools including semantic search with vector embeddings on work_items table
 
 
 ### `commit` — 2026-04-16
 
-Commit: chore: remove legacy _system root files and consolidate context into sub
-Hash: be1b4050
+Commit: chore: remove legacy flat _system context files after claude cli session
+Hash: e0de141d
 Code files (4):
   - .ai/rules.md
   - .cursor/rules/aicli.mdrules
   - .github/copilot-instructions.md
   - workspace/aicli/PROJECT.md
-Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json
-
-### `commit` — 2026-04-16
-
-diff --git a/workspace/aicli/PROJECT.md b/workspace/aicli/PROJECT.md
-index 83a2160..cbd7f19 100644
---- a/workspace/aicli/PROJECT.md
-+++ b/workspace/aicli/PROJECT.md
-@@ -375,9 +375,9 @@ All tables follow a structured naming convention:
- 
- ## Recent Work
- 
--- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into tracking; UI drag-drop merge in entities.js with merge_with body param
-+- Schema migration: completed m038-m041 migrations dropping embedding columns and consolidating event/commit processing logic
-+- Memory promotion cleanup: refactored _haiku() and MemoryEmbedding.process_item() to remove legacy diff_file_chunks and extract_commit_code paths
-+- Context file consolidation: migrated legacy _system root files (CLAUDE.md, MEMORY.md, CONTEXT.md) into workspace/aicli/_system/ structure with .agent-context tracking
-+- Work item merge functionality: POST /work-items/{id}/merge endpoint with merged_into UUID tracking and filtered list queries
- - Work items bottom panel: persistent 210px planner-wi-panel with drag-drop merge support, unlink button, and new item creation UI
--- Work item panel API integration: wired api.workItems.merge(), _loadWiPanel() auto-refresh, _wiPanelNewItem() creation workflow with toast feedback
--- Schema migration: merged_into UUID column added to mem_ai_work_items with list filtering (WHERE w.merged_into IS NULL)
--- Tag system metadata cleanup: Pass 0-2 completed removing system tags from 1441 events; retained user-facing tags (phase, feature, bug, source)
--- Event corruption fix: repaired 6 corrupt session_summary events with malformed JSON tag arrays; reset to empty objects {} as baseline
-+- Tag system completion: finished metadata cleanup Pass 0-2, repaired 6 corrupt session_summary events, and removed system tags from 1441 events
-
+Generated/internal files: CLAUDE.md, MEMORY.md, workspace/aicli/_system/.agent-context, workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md
