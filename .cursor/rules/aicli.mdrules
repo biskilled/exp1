@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-17 21:47 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-17 22:03 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -33,7 +33,7 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -70,11 +70,3 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Column standardization: INT primary keys (client_id, project_id, user_id) in order; created_at/updated_at/embedding always at end of all tables
 - Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
-
-## Recent Context (last 5 changes)
-
-- [2026-04-15] The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is
-- [2026-04-15] The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the curre
-- [2026-04-15] it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the rig
-- [2026-04-15] I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) no
-- [2026-04-15] I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppos

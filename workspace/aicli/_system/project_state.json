@@ -28,7 +28,7 @@
     "billing_storage": "data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables",
     "backend_modules": "routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server",
     "dev_environment": "PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root",
-    "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
+    "database": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
     "node_modules_build": "npm 8+ with Electron-builder; Vite dev server",
     "database_version": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
     "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-17T21:48:03Z",
+  "last_memory_run": "2026-04-17T22:03:25Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -162,19 +162,18 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "database_version": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
+      "storage_semantic": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
       "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop",
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
       "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform for software development that captures project context across multiple AI tools and sessions into a unified PostgreSQL database with semantic embeddings, intelligent work item extraction, and feature planning workflows. The project has stabilized its core database schema (m052 migrations complete) with standardized column ordering (INT PKs, timestamps at end) and is now focused on UI refinement (chat session history, session ID visibility) and the feature snapshot layer that merges user requirements with AI-extracted work items for comprehensive project tracking.",
-    "memory_digest": "**[2026-04-15]** `claude_cli` \u2014 Fixed hook-log endpoint (m050) enabling all new prompts to persist correctly; 531 total prompts now loading (389 DB + ~142 JSONL merged) with newest entries sorted first.\n**[2026-04-15]** `claude_cli` \u2014 Resolved stale session ID flash on startup by clearing module-level _sessionId and synchronously reading last_session_id from runtime state; session headers now display source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp.\n**[2026-04-15]** `claude_cli` \u2014 Completed m052 schema migration standardizing all 18 tables with column order: id \u2192 client_id \u2192 project_id \u2192 user_id \u2192 [data] \u2192 created_at \u2192 updated_at \u2192 embedding; removed committed_at from mem_mrr_commits.\n**[2026-04-15]** `claude_cli` \u2014 Executed m051 user ID type conversion: mng_users.id changed from UUID to SERIAL INT; updated_at added to all mirror tables; user_id INT added to all tables after project_id for consistency.\n**[2026-04-13]** `claude_cli` \u2014 Dropped importance column from mem_ai_events (m037); stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; standardized prompts table column ordering.\n**[2026-04-12]** `claude_cli` \u2014 Created mem_ai_feature_snapshot table merging user requirements with work items; streamlined planner_tags by removing summary/design/embedding/extra columns; added deliverables JSONB field for code/document/architecture/PPT tracking."
+    "project_summary": "aicli is a shared AI memory platform combining a Python FastAPI backend with Electron desktop UI, PostgreSQL+pgvector storage, and multi-LLM provider support (Claude, OpenAI, DeepSeek, Gemini, Grok). It implements a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items/facts) with async DAG workflows, semantic search, and intelligent code chunking. Current development focuses on database schema stabilization (m052 migration complete), session management UX fixes, and feature snapshot consolidation for requirement tracking.",
+    "memory_digest": "**2026-04-17** `chat-ui` \u2014 Fixed stale session ID loading by clearing module-level state and reading last_session_id synchronously; session headers now display CLI/UI/Workflow badge, phase chip, truncated session ID, and YY/MM/DD-HH:MM timestamp.\n\n**2026-04-17** `database` \u2014 Completed m051-m052 migrations: converted mng_users.id from UUID to SERIAL INT, standardized all 18 tables to id \u2192 client_id \u2192 project_id \u2192 user_id \u2192 [columns] \u2192 created_at \u2192 updated_at \u2192 embedding column order.\n\n**2026-04-16** `session-history` \u2014 Verified hook-log endpoint functionality post-m050; 531 total prompts now loading correctly (389 from DB + ~142 merged from JSONL), newest sessions (April) load first without stale flashing.\n\n**2026-04-15** `event-cleanup` \u2014 Dropped importance column from event table (m037); stripped system metadata tags from 1441 events, retaining only user-facing phase/feature/bug/source tags; standardized prompts table column order.\n\n**2026-04-14** `memory-snapshot` \u2014 Implemented mem_ai_feature_snapshot table merging user requirements with work items; streamlined planner_tags by removing summary/design/embedding/extra columns; added deliverables JSONB field for tracking code/documents/designs.\n\n**2026-04-10** `schema-consistency` \u2014 Established column standardization across all tables: INT primary keys (client_id, project_id, user_id) in fixed order; created_at/updated_at/embedding always at table end; committed_at removed from mem_mrr_commits for consistency."
   }
 }
