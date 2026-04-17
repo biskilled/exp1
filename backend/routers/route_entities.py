@@ -95,18 +95,15 @@ _SQL_GET_CATEGORY_ID = """
     SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s
 """
 
-# planner_tags (UUID PK) — inline metadata + mem_tags_relations count
-# {where} is injected at call site; caller always provides at least "t.client_id=1"
+# planner_tags (UUID PK) — inline metadata
+# {where} is injected at call site; caller always provides at least "t.project_id=X"
 _SQL_LIST_VALUES = """
     SELECT t.id::text, t.category_id, t.name,
            COALESCE(t.description,'') AS description, t.status,
-           t.created_at, t.due_date, t.parent_id::text, t.status AS lifecycle_status,
-           NULL::int AS seq_num,
-           0 AS event_count,
+           t.created_at, t.updated_at, t.due_date, t.parent_id::text,
            tc.name AS category_name, tc.color, tc.icon,
-           COALESCE(t.requirements,'') AS requirements,
-           COALESCE(t.acceptance_criteria,'') AS acceptance_criteria,
-           COALESCE(t.priority, 3) AS priority
+           COALESCE(t.priority, 3) AS priority,
+           COALESCE(t.file_ref, '') AS file_ref
     FROM planner_tags t
     JOIN mng_tags_categories tc ON tc.id = t.category_id AND tc.client_id=1
     WHERE {where}
@@ -196,13 +193,6 @@ _SQL_GET_TAG_STRING_BY_ID = """
     JOIN mng_tags_categories tc ON tc.id = t.category_id
     WHERE t.id=%s::uuid AND t.client_id=1
     LIMIT 1
-"""
-
-# Work items per category for entity summary augmentation
-_SQL_WI_BY_CATEGORY = """
-    SELECT name, agent_status, acceptance_criteria, implementation_plan, lifecycle_status
-    FROM mem_ai_work_items
-    WHERE project_id=%s AND category_name=%s AND status != 'archived'
 """
 
 # List commits for events endpoint
@@ -520,10 +510,9 @@ async def list_values(
             rows = []
             for r in cur.fetchall():
                 row = dict(zip(cols, r))
-                if row.get("created_at"):
-                    row["created_at"] = row["created_at"].isoformat()
-                if row.get("due_date"):
-                    row["due_date"] = row["due_date"].isoformat()
+                for ts_col in ("created_at", "updated_at", "due_date"):
+                    if row.get(ts_col):
+                        row[ts_col] = row[ts_col].isoformat()
                 rows.append(row)
             return {"values": rows, "project": p}
 
@@ -561,10 +550,9 @@ async def list_all_values(project: str | None = Query(None)):
             by_category: dict[str, list] = {}
             for r in cur.fetchall():
                 row = dict(zip(val_cols, r))
-                if row.get("created_at"):
-                    row["created_at"] = row["created_at"].isoformat()
-                if row.get("due_date"):
-                    row["due_date"] = row["due_date"].isoformat()
+                for ts_col in ("created_at", "updated_at", "due_date"):
+                    if row.get(ts_col):
+                        row[ts_col] = row[ts_col].isoformat()
                 key = str(row["category_id"])
                 by_category.setdefault(key, []).append(row)
 
@@ -601,31 +589,10 @@ async def entity_summary(project: str | None = Query(None)):
             "status": vstatus,
             "due_date": vdue.isoformat() if vdue else None,
             "parent_id": vparent,
-            "lifecycle_status": lc_status or "idea",
+            "lifecycle_status": lc_status or "open",
             "event_count": event_count,
             "commit_count": commit_count,
         })
-
-    # Augment feature/bug/task categories with work_item agent_status
-    _WORK_ITEM_CATS = {"feature", "bug", "task"}
-    for cat_name, cat_data in cats.items():
-        if cat_name not in _WORK_ITEM_CATS:
-            continue
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_WI_BY_CATEGORY, (project_id, cat_name))
-                    wi_map = {r[0]: r for r in cur.fetchall()}
-            for val in cat_data["values"]:
-                wi = wi_map.get(val["name"])
-                if wi:
-                    _, agent_status, ac, impl, lc = wi
-                    val["agent_status"]        = agent_status
-                    val["has_acceptance"]      = bool(ac)
-                    val["has_implementation"]  = bool(impl)
-                    val["lifecycle_status"]    = lc or val.get("lifecycle_status", "idea")
-        except Exception as _we:
-            log.debug(f"work_items augment for {cat_name}: {_we}")
 
     return {"summary": list(cats.values()), "project": p}
 
