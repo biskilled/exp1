@@ -461,13 +461,8 @@ async def merge_tags(body: TagMerge):
 
 @router.post("/{tag_id}/snapshot")
 async def create_feature_snapshot(tag_id: str, project: str = Query(...)):
-    """Run AI feature snapshot: merge tag + work items + events into use-case rows.
-
-    Overwrites all version='ai' rows for this tag and writes features/{tag}/feature_ai.md.
-    """
-    _require_db()
-    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
-    return await MemoryFeatureSnapshot().run_snapshot(project, tag_id)
+    """Feature snapshot generation — not implemented in this build."""
+    raise HTTPException(status_code=501, detail="Feature snapshot generation not available")
 
 
 @router.get("/{tag_id}/snapshot")

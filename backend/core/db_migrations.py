@@ -2621,6 +2621,13 @@ def m058_tag_deps(conn) -> None:
     conn.commit()
 
 
+def m059_drop_legacy_tables(conn) -> None:
+    """Drop orphaned backup table _bak_046_mem_ai_work_items (created by m046, never cleaned up)."""
+    with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS _bak_046_mem_ai_work_items CASCADE")
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2667,4 +2674,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m056_drop_event_id_add_backlog_links", m056_drop_event_id_add_backlog_links),
     ("m057_drop_events_and_work_items", m057_drop_events_and_work_items),
     ("m058_tag_deps", m058_tag_deps),
+    ("m059_drop_legacy_tables", m059_drop_legacy_tables),
 ]
