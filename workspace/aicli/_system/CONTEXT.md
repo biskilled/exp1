@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-17 19:21 UTC — do not edit manually.
+> Auto-generated 2026-04-17 19:24 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 606
-- **Last active**: 2026-04-17T19:18:05Z
+- **Sessions**: 607
+- **Last active**: 2026-04-17T19:23:49Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -28,7 +28,7 @@
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
-- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
+- **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
 - **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles

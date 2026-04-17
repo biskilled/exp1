@@ -316,14 +316,8 @@ async def _stream_response(
         _append_history(project, provider, message, content, session_id, user_id, user_email, ts=_ts, tags=tags)
         _update_runtime_state(project, provider, message, session_id, user_id)
 
-        # Fire-and-forget: embed + proactive feature detection
+        # Fire-and-forget: proactive feature detection
         try:
-            from memory.memory_embedding import embed_and_store as _embed
-            asyncio.create_task(_embed(
-                project, "history", _ts, f"Q: {message}\nA: {content}",
-                chunk_index=0, chunk_type="full",
-                metadata={"provider": provider, "source": "ui"},
-            ))
             # Proactive feature auto-detection (first prompt in new session only)
             if db.is_available():
                 asyncio.create_task(
@@ -535,14 +529,8 @@ def _get_batch_size(project: str) -> int:
 
 
 async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
-    """Generate a Haiku digest + embedding for the last N prompts → mem_ai_events."""
-    try:
-        from memory.memory_embedding import MemoryEmbedding
-        event_id = await MemoryEmbedding().process_prompt_batch(project, session_id, n)
-        if event_id:
-            log.debug(f"Memory batch digest generated for {project}/{session_id}: {event_id}")
-    except Exception as e:
-        log.debug(f"_generate_memory_batch error: {e}")
+    """Placeholder: prompt batch digest removed; backlog handles digestion via MemoryBacklog."""
+    pass
 
 
 async def _check_backlog_threshold(project: str, source_type: str) -> None:

@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 19:18 UTC by aicli /memory_
+_Generated: 2026-04-17 19:23 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform providing a unified Python CLI and Electron desktop UI that synthesizes AI context from code, conversations, and workflows into structured memory (PostgreSQL + pgvector embeddings). It implements a 4-layer memory architecture with async DAG workflow execution, multi-LLM provider support, and JWT authentication, with recent work focusing on async DB initialization, schema unification, and timestamp standardization for production readiness.
+aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI with PostgreSQL/pgvector storage. It synthesizes project knowledge through 4-layer memory architecture (ephemeral → raw → AI-digested → work items), async DAG workflow execution with visual approval, and multi-LLM provider support, currently consolidating schemas, standardizing timestamps, and optimizing tag relations queries while refining AI tag suggestion UX.
 
 ## Project Facts
 
@@ -220,7 +220,7 @@ Reviewer: ```json
 - **memory_synthesis**: Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
-- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)
+- **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
 - **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
@@ -327,181 +327,163 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/pyproject.toml b/backend/pyproject.toml
-index 186ebdb..67cff58 100644
---- a/backend/pyproject.toml
-+++ b/backend/pyproject.toml
-@@ -4,12 +4,11 @@ version = "2.2.0"
- requires-python = ">=3.12"
- 
- [tool.pytest.ini_options]
--pythonpath = ["backend"]
-+pythonpath = ["."]
- testpaths = ["tests"]
- 
- [tool.pyright]
- pythonVersion = "3.12"
--pythonPath = "."
- extraPaths = ["."]
- venvPath = ".."
- venv = ".venv"
+diff --git a/backend/prompts/memory/item_digest.md b/backend/prompts/memory/item_digest.md
+deleted file mode 100644
+index b759452..0000000
+--- a/backend/prompts/memory/item_digest.md
++++ /dev/null
+@@ -1,4 +0,0 @@
+-Summarise this document (requirement, decision, or note).
+-Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet list or empty string", "importance": 5}
+-importance scale (0-10): 1-2=reference/notes, 3-4=minor, 5-6=decision, 7-8=key requirement, 9-10=critical constraint
+-No preamble, no markdown fences.
 
 
 ### `commit` — 2026-04-17
 
-Commit: chore(cli): auto-commit after AI session — 3 file(s) — 2026-03-22 01:33 UTC
-Hash: 58136c1
-Code files (1):
-  - backend/pyproject.toml
-Generated/internal files: workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
-
-### `commit` — 2026-04-17
-
-diff --git a/backend/main.py b/backend/main.py
-index d641f8a..5fdd92c 100644
---- a/backend/main.py
-+++ b/backend/main.py
-@@ -104,7 +104,10 @@ async def health():
- 
- @app.on_event("startup")
- async def startup():
--    db.init()   # connect to PostgreSQL if DATABASE_URL is set; no-op otherwise
-+    import asyncio
-+    # Fire-and-forget: DB init runs in a thread so the server starts immediately.
-+    # Routes check db.is_available() and fall back to file storage until DB connects.
-+    asyncio.get_event_loop().run_in_executor(None, db.init)
- 
-     # Migrate server_data from old .aicli/server_data/ path to ui/backend/data/
-     _migrate_server_data()
-
-
-### `commit` — 2026-04-17
-
-diff --git a/backend/core/database.py b/backend/core/database.py
-index 2f52b8c..4343c2a 100644
---- a/backend/core/database.py
-+++ b/backend/core/database.py
-@@ -521,7 +521,6 @@ ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS order_index      INT     NOT
- ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS max_retry        INT     NOT NULL DEFAULT 3;
- ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS continue_on_fail BOOLEAN NOT NULL DEFAULT FALSE;
- ALTER TABLE pr_graph_nodes ADD COLUMN IF NOT EXISTS auto_commit      BOOLEAN NOT NULL DEFAULT FALSE;
--ALTER TABLE pr_graph_runs  ADD COLUMN IF NOT EXISTS current_node     TEXT    DEFAULT NULL;
- 
- -- Graph edges (scoped via workflow FK)
- CREATE TABLE IF NOT EXISTS pr_graph_edges (
-@@ -552,6 +551,7 @@ CREATE TABLE IF NOT EXISTS pr_graph_runs (
- );
- CREATE INDEX IF NOT EXISTS idx_pr_gr_cp       ON pr_graph_runs(client_id, project);
- CREATE INDEX IF NOT EXISTS idx_pr_gr_workflow ON pr_graph_runs(workflow_id);
-+ALTER TABLE pr_graph_runs ADD COLUMN IF NOT EXISTS current_node TEXT DEFAULT NULL;
- 
- -- Node results per run (scoped via run FK)
- CREATE TABLE IF NOT EXISTS pr_graph_node_results (
-@@ -604,7 +604,11 @@ class _Database:
-             log.info("DATABASE_URL not set — using file-based storage")
-             return
-         try:
--            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, url)
-+            # connect_timeout limits the TCP+auth phase; options=-c sets statement_timeout
-+            # so runaway DDL migrations also time out eventually.
-+            sep = "&" if "?" in url else "?"
-+            conn_url = url + sep + "connect_timeout=10&options=-c%20statement_timeout%3D30000"
-+            self._pool = psycopg2.pool.ThreadedConnectionPool(1, settings.db_pool_max, conn_url)
-             with self.conn() as conn:
-                 self._rename_legacy_tables(conn)
-                 self._ensure_schema(conn)
-@@ -645,7 +649,6 @@ class _Database:
- 
-     # ── Schema creation ────────────────────────────────────────────────────────
- 
--    @staticmethod
-     @staticmethod
-     def _run_ddl_statements(conn, sql: str, label: str) -> None:
-         """Run each semicolon-separated SQL statement individually.
-@@ -689,18 +692,16 @@ class _Database:
-         _Database._seed_role_system_links(conn)
- 
-     def _ensure_shared_schema(self, conn) -> None:
--        """Create all 15 pr_* flat tables. Runs once per process lifetime."""
-+        """Create all 15 pr_* flat tables. Runs once per process lifetime.
-+
-+        Uses statement-by-statement execution so one failed ALTER TABLE
-+        (e.g. on an already-migrated DB) doesn't roll back all table creation.
-+        """
-         if self._shared_schema_ready:
-             return
--        try:
--            with conn.cursor() as cur:
--                cur.execute(_DDL_PR_TABLES)
--            conn.commit()
--            self._shared_schema_ready = True
--            log.info("✅ pr_* flat tables ready")
--        except Exception as e:
--            conn.rollback()
--            log.warning(f"_ensure_shared_schema failed: {e}")
-+        _Database._run_ddl_statements(conn, _DDL_PR_TABLES, "pr_* flat tables")
-+        self._shared_schema_ready = True
-+        log.info("✅ pr_* flat tables ready")
- 
-     # ── One-time data migration ────────────────────────────────────────────────
- 
+diff --git a/backend/prompts/memory/feature_snapshot_v2.md b/backend/prompts/memory/feature_snapshot_v2.md
+deleted file mode 100644
+index d486715..0000000
+--- a/backend/prompts/memory/feature_snapshot_v2.md
++++ /dev/null
+@@ -1,37 +0,0 @@
+-You are a senior technical project analyst. Given a feature tag with its requirements,
+-deliveries, linked work items, and recent AI event digests, produce a structured feature
+-snapshot broken down into use cases.
+-
+-## Rules
+-
+-1. Generate **one use case per delivery entry** from tag.deliveries.
+-   If no deliveries are set, infer use cases from the work item content (max 5).
+-2. Score fields: 0 = not started, 5 = partially done, 10 = fully done.
+-3. Label requirement source as "user" if it came from the tag's requirements/acceptance_criteria
+-   fields; "ai" if inferred from work items or events.
+-4. Keep use_case_summary concise: 2-4 sentences covering purpose and current state.
+-5. If a User-confirmed baseline section is provided, preserve its confirmed action items
+-   and scores unless AI evidence clearly contradicts them.
+-6. Return ONLY valid JSON — no preamble, no markdown fences.
+-
+-## Output schema
+-
+-{
+-  "summary": "2-4 sentence global feature summary",
+-  "use_cases": [
+-    {
+-      "use_case_num": 1,
+-      "use_case_summary": "what this use case does and its current state",
+-      "use_case_type": "feature|bug|task",
+-      "use_case_delivery_category": "code|document|architecture_design|presentation",
+-      "use_case_delivery_type": "python|markdown|visio|...",
+-      "related_work_item_ids": ["uuid1", "uuid2"],
+-      "requirements": [
+-        {"text": "requirement text", "source": "user|ai", "score": 8}
+-      ],
+-      "action_items": [
+-        {"action_item": "what to do", "acceptance": "how to verify", "score": 5}
+-      ]
+-    }
+-  ]
+-}
 
 
 ### `commit` — 2026-04-17
 
-Commit: chore: update system files and session state after claude cli session
-Hash: 31af6e01
-Code files (2):
-  - backend/core/database.py
-  - backend/main.py
-Generated/internal files: workspace/aicli/_system/commit_log.jsonl, workspace/aicli/_system/dev_runtime_state.json, workspace/aicli/_system/history.jsonl
-Symbols changed: _run_ddl_statements, _ensure_shared_schema
+diff --git a/backend/prompts/memory/feature_snapshot.md b/backend/prompts/memory/feature_snapshot.md
+deleted file mode 100644
+index 3773d2b..0000000
+--- a/backend/prompts/memory/feature_snapshot.md
++++ /dev/null
+@@ -1,36 +0,0 @@
+-Given memory events for a feature (from prompt batches, commits, requirements/decisions/meetings,
+-messages, sessions, and agent actions), plus current project facts and work item status,
+-produce a comprehensive 4-layer snapshot.
+-
+-Input sections you may receive:
+-  ## Prompt Batches — summaries of developer prompts
+-  ## Commits — git commit digests
+-  ## Requirements / Decisions / Meetings — items and meeting notes
+-  ## Messages — Slack/Teams thread summaries
+-  ## Sessions — session-level summaries
+-  ## Agent Actions — workflow agent outputs
+-  ## Current Project Facts — durable facts (stack, conventions, constraints)
+-  Work Item Status: lifecycle_status of associated work item
+-
+-Return valid JSON with these keys:
+-  requirements (str): what the feature must do — synthesised from all evidence
+-  action_items (str): remaining work items and next steps
+-  work_item_status (str): current lifecycle status (pass through from input)
+-  design (object): {
+-    high_level: "architectural overview",
+-    low_level: "implementation details",
+-    patterns_used: ["pattern1", "pattern2"]
+-  }
+-  code_summary (object): {
+-    files: ["path/to/file.py"],
+-    key_classes: ["ClassName"],
+-    key_methods: ["method_name"],
+-    dependencies_added: ["package"],
+-    dependencies_removed: ["package"]
+-  }
+-  project_facts (object): key facts from context relevant to this feature {key: value}
+-  relations (array): relationships detected between this and other features/modules.
+-    Each item: {"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}
+-    Use empty array if no clear relationships detected.
+-
+-Base your answer only on the provided evidence. Return ONLY valid JSON, no preamble.
+
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/routers/route_system_roles.py b/backend/routers/route_system_roles.py
-index 7d45baa..e09b198 100644
---- a/backend/routers/route_system_roles.py
-+++ b/backend/routers/route_system_roles.py
-@@ -70,6 +70,25 @@ _SQL_DELETE_ROLE_SYSTEM_LINK = (
- 
- router = APIRouter()
- 
-+# Built-in fallback system roles — returned when PostgreSQL is unavailable.
-+# Mirrors the 7 roles seeded by database._seed_system_roles().
-+_BUILTIN_SYSTEM_ROLES = [
-+    {"id": None, "name": "coding_standards",     "category": "quality",      "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "Clean code conventions, OOP, type hints, docstrings, DRY/SOLID principles."},
-+    {"id": None, "name": "output_format",        "category": "output",       "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "Save all outputs to output/[feature]_YYMMDD_HHMMSS.md."},
-+    {"id": None, "name": "security_principles",  "category": "security",     "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "OWASP Top 10, parameterised SQL, no hardcoded secrets."},
-+    {"id": None, "name": "reviewer_standards",   "category": "review",       "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "Verify all ACs, list tested items, score 1-10, return JSON."},
-+    {"id": None, "name": "doc_output_format",    "category": "output",       "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "Keep docs short, use bullets, include Task/Description/AC or Plan headings."},
-+    {"id": None, "name": "dev_code_format",      "category": "development",  "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "Output complete files using ### File: path\\n```lang blocks; add Summary."},
-+    {"id": None, "name": "dev_naming_conventions","category": "development", "is_active": True, "created_at": None, "updated_at": None,
-+     "description": "mng_ global tables, pr_ project tables, snake_case, no abbreviations."},
-+]
-+
- 
- def _require_db():
-     if not db.is_available():
-@@ -104,8 +123,9 @@ def _row_to_dict(row, include_content: bool = True) -> dict:
- 
- @router.get("/")
- async def list_system_roles(user=Depends(get_optional_user)):
--    _require_db()
-     admin = _is_admin(user)
-+    if not db.is_available():
-+        return {"system_roles": _BUILTIN_SYSTEM_ROLES, "is_admin": admin, "fallback": True}
-     with db.conn() as conn:
-         with conn.cursor() as cur:
-             cur.execute(_SQL_LIST_SYSTEM_ROLES)
+diff --git a/backend/prompts/memory/conflict_detection.md b/backend/prompts/memory/conflict_detection.md
+deleted file mode 100644
+index ed84b4a..0000000
+--- a/backend/prompts/memory/conflict_detection.md
++++ /dev/null
+@@ -1,17 +0,0 @@
+-You are a project memory conflict resolver.
+-Given an old fact value and a new fact value for the same key, decide the correct resolution.
+-
+-Resolution types:
+-  supersede  — new value completely replaces the old (old is stale/wrong)
+-  merge      — both values are partially correct; provide a merged_value combining them
+-  flag       — values are contradictory and require human review
+-
+-Return JSON only:
+-{
+-  "conflict": true|false,
+-  "conflicting_fact_key": "fact key name",
+-  "resolution": "supersede|merge|flag",
+-  "merged_value": "combined value (only for merge resolution, else null)",
+-  "reasoning": "one sentence explaining the decision"
+-}
+-No preamble, no markdown fences.
+
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/prompts/memory/commits/commit_symbol.md b/backend/prompts/memory/commits/commit_symbol.md
+deleted file mode 100644
+index dba6c3c..0000000
+--- a/backend/prompts/memory/commits/commit_symbol.md
++++ /dev/null
+@@ -1 +0,0 @@
+-You are a code analyst. Given a changed symbol (class/method/function) and its diff, write a 1-sentence summary of what changed and why. Be concise.
+
+
+### `commit` — 2026-04-17
+
+diff --git a/backend/prompts/memory/commits/commit_digest.md b/backend/prompts/memory/commits/commit_digest.md
+deleted file mode 100644
+index 17a48e8..0000000
+--- a/backend/prompts/memory/commits/commit_digest.md
++++ /dev/null
+@@ -1,4 +0,0 @@
+-Given a git commit message and context, produce a concise digest.
+-Return JSON only: {"summary": "1-2 sentence digest of what changed and why", "action_items": "", "importance": 5}
+-importance scale (0-10): 1-2=trivial/chore, 3-4=minor fix, 5-6=feature work, 7-8=significant change, 9-10=critical/architectural
+-No preamble, no markdown fences.
 
 
 ## AI Synthesis
 
-**[2026-04-15]** `ai_rules` — Context files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md with Version 3.0.0 baseline; legacy _system/ directory removed from repository. **[2026-03-22]** `async_initialization` — Fire-and-forget async pattern implemented for DB startup: db.init() runs in executor thread while server starts immediately; routes check db.is_available() and fall back to file storage. **[Recent]** `schema_consolidation` — mem_tags_relations unified table refactored with related_layer/related_type/related_id; planner_tags inline snapshot fields replace separate mem_ai_features table. **[Recent]** `timestamp_standardization` — Ongoing migration of committed_at → created_at across mem_mrr_commits, route_work_items.py, route_tags.py, and frontend chat.js. **[Recent]** `tag_suggestion_debugging` — Investigating missing ai_suggestion tags in ui_tags query and verifying work item panel refresh workflow population. **[Recent]** `pytest_config` — Updated pyproject.toml pythonPath from 'backend' to '.' for multi-environment compatibility.
+**2026-04-17** `architecture` — AI context consolidation completed: legacy _system/ directory removed; primary agent context now consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md. **2026-04-17** `schema` — Database unified around mem_ai_* tables with mem_tags_relations consolidation; planner_tags inline snapshot fields replacing separate mem_ai_features table for direct updates. **2026-04-17** `migration` — Column standardization in progress: committed_at → created_at across mem_mrr_commits, route_work_items.py, route_tags.py for consistent timestamp naming. **2026-04-17** `database` — Fire-and-forget async initialization pattern implemented: db.init() runs in executor thread allowing immediate server startup; routes check db.is_available() and fall back to file storage. **2026-04-17** `query-optimization` — Tag relations optimization: updating routes to join through unified mem_tags_relations, reducing N+1 patterns in snapshots/search/projects endpoints. **2026-04-17** `ux` — AI tag suggestion refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population during work item panel refresh. **2026-04-17** `testing` — pytest configuration standardized: pythonPath updated to relative paths (.) in pyproject.toml for multi-environment compatibility. **2026-04-15** `rules` — AI rules file (Version 3.0.0) with memory synthesis mechanisms and tag color defaults (#4a90e2); tag label format: category:name or name-only fallback. **2026-04-15** `memory` — Claude Haiku dual-layer synthesis generating 5 output files with LLM response summarization and auto-tag suggestions; timestamp tracking with deduplication. **2026-04-15** `features` — Active 24 work items tracked: auth, billing, shared-memory, UI, graph-workflow, embeddings, tagging, dropbox, MCP, entity-routing, and 13 additional feature/doc/task tags across dev/discovery/prod phases.

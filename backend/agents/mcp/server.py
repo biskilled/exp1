@@ -26,7 +26,7 @@ Tools:
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
     pr_TABLE   — flat per-project tables with project_id INT FK (replaces project TEXT)
-                 (e.g. mem_mrr_commits, mem_ai_events, mem_ai_work_items, mem_ai_features)
+                 (e.g. mem_mrr_commits, mem_mrr_prompts, mem_ai_project_facts, planner_tags)
 """
 from __future__ import annotations
 
@@ -841,15 +841,6 @@ async def _dispatch(name: str, args: dict) -> Any:
                 },
             },
             "ai_layer_tables": {
-                "mem_ai_events": {
-                    "purpose": "AI-digested embeddings for semantic search — one row per summarised unit (pgvector)",
-                    "key_columns": ["id UUID PK", "client_id INT", "project_id INT FK projects",
-                                    "event_type TEXT (prompt_batch|commit|item|message|session_summary)",
-                                    "source_id TEXT", "session_id TEXT", "chunk INT", "chunk_type TEXT",
-                                    "content TEXT", "embedding VECTOR(1536)", "summary TEXT",
-                                    "UNIQUE(project_id, event_type, source_id, chunk)"],
-                    "filter": "WHERE project_id=%s",
-                },
                 "mem_ai_project_facts": {
                     "purpose": "Durable extracted facts; temporal validity (valid_until NULL = current). Searchable via embedding.",
                     "key_columns": ["id UUID PK", "client_id INT", "project_id INT FK projects",
@@ -858,21 +849,6 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "UNIQUE(project_id, fact_key) WHERE valid_until IS NULL"],
                     "filter": "WHERE project_id=%s AND valid_until IS NULL",
                     "search_endpoint": "GET /work-items/facts/search?query=...&project=...",
-                },
-                "mem_ai_work_items": {
-                    "purpose": "Feature/bug/task items with 4-agent pipeline tracking. Searchable via embedding.",
-                    "key_columns": [
-                        "id UUID PK", "client_id INT FK", "project_id INT FK projects",
-                        "name TEXT", "category_name TEXT", "description TEXT",
-                        "acceptance_criteria_ai TEXT", "action_items_ai TEXT",
-                        "status TEXT  -- open|active|done|archived",
-                        "agent_status TEXT", "agent_run_id TEXT", "lifecycle_status TEXT",
-                        "due_date DATE", "parent_id UUID FK self", "seq_num INT",
-                        "embedding VECTOR(1536)",
-                        "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ",
-                    ],
-                    "filter": "WHERE project_id=%s",
-                    "search_endpoint": "GET /work-items/search?query=...&project=...",
                 },
             },
             "graph_tables": {

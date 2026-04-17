@@ -32,10 +32,10 @@ from routers import (
     route_auth, route_chat, route_history, route_usage, route_workflows,
     route_prompts, route_files, route_projects, route_config_sync, route_admin,
     route_git, route_billing, route_search, route_entities, route_graph_workflows,
-    route_work_items, route_agent_roles, route_system_roles, route_documents,
+    route_agent_roles, route_system_roles, route_documents,
     route_user_api_keys, route_logs, route_agents, route_tags,
 )
-from routers import route_snapshots, route_memory
+from routers import route_memory
 from routers.route_backlog import router as backlog_router
 from pwa_router import router as pwa_router
 
@@ -95,7 +95,6 @@ app.include_router(route_billing.router,        prefix="/billing",        tags=[
 app.include_router(route_search.router,         prefix="/search",         tags=["search"])
 app.include_router(route_entities.router,       prefix="/entities",       tags=["entities"])
 app.include_router(route_graph_workflows.router,prefix="/graph",          tags=["graph_workflows"])
-app.include_router(route_work_items.router,     prefix="/work-items",     tags=["work_items"])
 app.include_router(route_agent_roles.router,    prefix="/agent-roles",    tags=["agent_roles"])
 app.include_router(route_system_roles.router,   prefix="/system-roles",   tags=["system_roles"])
 app.include_router(route_documents.router,      prefix="/documents",      tags=["documents"])
@@ -103,7 +102,6 @@ app.include_router(route_user_api_keys.router,  prefix="/user/api-keys",  tags=[
 app.include_router(route_logs.router,           prefix="/logs",           tags=["logs"])
 app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
 app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
-app.include_router(route_snapshots.router,      prefix="",                tags=["snapshots"])
 app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
 app.include_router(backlog_router,              prefix="/memory",         tags=["backlog"])
 

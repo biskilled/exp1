@@ -18,7 +18,7 @@
     "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
     "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
     "mcp": "Stdio MCP server with 12+ tools",
-    "deployment": "Railway (Dockerfile + railway.toml); Electron-builder (Mac/Windows/Linux)",
+    "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop",
     "database_schema": "mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables",
     "config_management": "config.py + YAML pipelines + pyproject.toml",
     "db_tables": "Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles",
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-17T19:21:54Z",
+  "last_memory_run": "2026-04-17T19:24:27Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -162,17 +162,13 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
-      "embeddings": "text-embedding-3-small (1536-dim vectors)",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "mcp": "Stdio MCP server with 12+ tools",
-      "deployment_backend": "Railway (Dockerfile + railway.toml)",
-      "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework"
+      "database_migrations": "m001-m051 framework with db_schema.sql as source of truth",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
+      "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop"
     },
-    "project_summary": "aicli is a shared AI memory platform providing a unified Python CLI and Electron desktop UI that synthesizes AI context from code, conversations, and workflows into structured memory (PostgreSQL + pgvector embeddings). It implements a 4-layer memory architecture with async DAG workflow execution, multi-LLM provider support, and JWT authentication, with recent work focusing on async DB initialization, schema unification, and timestamp standardization for production readiness.",
-    "memory_digest": "**[2026-04-15]** `ai_rules` \u2014 Context files consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md with Version 3.0.0 baseline; legacy _system/ directory removed from repository. **[2026-03-22]** `async_initialization` \u2014 Fire-and-forget async pattern implemented for DB startup: db.init() runs in executor thread while server starts immediately; routes check db.is_available() and fall back to file storage. **[Recent]** `schema_consolidation` \u2014 mem_tags_relations unified table refactored with related_layer/related_type/related_id; planner_tags inline snapshot fields replace separate mem_ai_features table. **[Recent]** `timestamp_standardization` \u2014 Ongoing migration of committed_at \u2192 created_at across mem_mrr_commits, route_work_items.py, route_tags.py, and frontend chat.js. **[Recent]** `tag_suggestion_debugging` \u2014 Investigating missing ai_suggestion tags in ui_tags query and verifying work item panel refresh workflow population. **[Recent]** `pytest_config` \u2014 Updated pyproject.toml pythonPath from 'backend' to '.' for multi-environment compatibility."
+    "project_summary": "aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI with PostgreSQL/pgvector storage. It synthesizes project knowledge through 4-layer memory architecture (ephemeral \u2192 raw \u2192 AI-digested \u2192 work items), async DAG workflow execution with visual approval, and multi-LLM provider support, currently consolidating schemas, standardizing timestamps, and optimizing tag relations queries while refining AI tag suggestion UX.",
+    "memory_digest": "**2026-04-17** `architecture` \u2014 AI context consolidation completed: legacy _system/ directory removed; primary agent context now consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md. **2026-04-17** `schema` \u2014 Database unified around mem_ai_* tables with mem_tags_relations consolidation; planner_tags inline snapshot fields replacing separate mem_ai_features table for direct updates. **2026-04-17** `migration` \u2014 Column standardization in progress: committed_at \u2192 created_at across mem_mrr_commits, route_work_items.py, route_tags.py for consistent timestamp naming. **2026-04-17** `database` \u2014 Fire-and-forget async initialization pattern implemented: db.init() runs in executor thread allowing immediate server startup; routes check db.is_available() and fall back to file storage. **2026-04-17** `query-optimization` \u2014 Tag relations optimization: updating routes to join through unified mem_tags_relations, reducing N+1 patterns in snapshots/search/projects endpoints. **2026-04-17** `ux` \u2014 AI tag suggestion refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population during work item panel refresh. **2026-04-17** `testing` \u2014 pytest configuration standardized: pythonPath updated to relative paths (.) in pyproject.toml for multi-environment compatibility. **2026-04-15** `rules` \u2014 AI rules file (Version 3.0.0) with memory synthesis mechanisms and tag color defaults (#4a90e2); tag label format: category:name or name-only fallback. **2026-04-15** `memory` \u2014 Claude Haiku dual-layer synthesis generating 5 output files with LLM response summarization and auto-tag suggestions; timestamp tracking with deduplication. **2026-04-15** `features` \u2014 Active 24 work items tracked: auth, billing, shared-memory, UI, graph-workflow, embeddings, tagging, dropbox, MCP, entity-routing, and 13 additional feature/doc/task tags across dev/discovery/prod phases."
   }
 }

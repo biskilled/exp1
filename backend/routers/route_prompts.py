@@ -56,18 +56,9 @@ class PromptWrite(BaseModel):
 @router.put("/")
 async def write_prompt(body: PromptWrite, project: str | None = Query(None)):
     """Create or update a prompt file."""
-    import asyncio
     full_path = _workspace_path(f"prompts/{body.path}", project)
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(body.content)
-    # Embed role files for semantic search (fire-and-forget)
-    if "roles/" in body.path:
-        try:
-            from memory.memory_embedding import embed_and_store as _embed
-            p = project or settings.active_project or "default"
-            asyncio.create_task(_embed(p, "role", body.path, body.content))
-        except Exception:
-            pass
     return {"saved": True, "path": body.path}
 
 

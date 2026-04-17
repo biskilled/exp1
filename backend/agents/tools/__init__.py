@@ -9,21 +9,19 @@ Tool modules:
   tool_file      — read_file, write_file, list_dir
   tool_memory    — search_memory, get_recent_history, get_project_facts,
                    get_tag_context, search_features
-  tool_workitems — list_work_items, create_work_item
 """
 from __future__ import annotations
 
 from agents.tools.tool_git import GIT_TOOL_DEFS, GIT_HANDLERS
 from agents.tools.tool_file import FILE_TOOL_DEFS, FILE_HANDLERS
 from agents.tools.tool_memory import MEMORY_TOOL_DEFS, MEMORY_HANDLERS
-from agents.tools.tool_workitems import WORKITEM_TOOL_DEFS, WORKITEM_HANDLERS
 
 # Master registry: name → {definition, handler}
 AGENT_TOOLS: dict[str, dict] = {}
 
-_all_handlers: dict = {**GIT_HANDLERS, **FILE_HANDLERS, **MEMORY_HANDLERS, **WORKITEM_HANDLERS}
+_all_handlers: dict = {**GIT_HANDLERS, **FILE_HANDLERS, **MEMORY_HANDLERS}
 
-for _def in GIT_TOOL_DEFS + FILE_TOOL_DEFS + MEMORY_TOOL_DEFS + WORKITEM_TOOL_DEFS:
+for _def in GIT_TOOL_DEFS + FILE_TOOL_DEFS + MEMORY_TOOL_DEFS:
     _name = _def["name"]
     _handler = _all_handlers.get(_name)
     if _handler:

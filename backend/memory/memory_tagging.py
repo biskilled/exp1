@@ -1,29 +1,20 @@
 """
-memory_tagging.py — Tag management for planner_tags and work-item matching.
+memory_tagging.py — Tag management for planner_tags.
 
-Manages planner_tags (parent-child hierarchy) and the 3-level work-item-to-tag
-matching pipeline (exact name → semantic embedding → Claude Haiku judgment).
-MRR rows now use inline tags TEXT[] — no junction table needed.
+Manages planner_tags (parent-child hierarchy): create, list, merge, and
+relation helpers. MRR rows use inline tags TEXT[] — no junction table needed.
 
 Public API::
 
     tagging = MemoryTagging()
     tag_id = tagging.get_or_create_tag(project, name, category_id)
     tree = tagging.get_tag_tree(project)
-
-    # Work-item matching
-    matches = await tagging.match_work_item_to_tags(project, work_item_id)
 """
 from __future__ import annotations
 
 import logging
 from typing import Optional
 
-import anthropic
-import json
-import openai
-
-from core.config import settings
 from core.database import db
 
 log = logging.getLogger(__name__)
@@ -120,15 +111,14 @@ class MemoryTagging:
                 "parent_id":     str(r[3]) if r[3] else None,
                 "merged_into":   str(r[4]) if r[4] else None,
                 "status":        r[5],
-                "seq_num":       r[6],
-                "created_at":    r[7].isoformat() if r[7] else None,
-                "category_name": r[8],
-                "color":         r[9] or "#4a90e2",
-                "icon":          r[10] or "⬡",
-                "description":   r[11] or "",
-                "due_date":      r[12].isoformat() if r[12] else None,
-                "priority":      r[13] or 3,
-                "source_count":  r[14] if len(r) > 14 else 0,
+                "created_at":    r[6].isoformat() if r[6] else None,
+                "category_name": r[7],
+                "color":         r[8] or "#4a90e2",
+                "icon":          r[9] or "⬡",
+                "description":   r[10] or "",
+                "due_date":      r[11].isoformat() if r[11] else None,
+                "priority":      r[12] or 3,
+                "source_count":  r[13] if len(r) > 13 else 0,
                 "children":      [],
             }
             for r in rows
@@ -209,297 +199,3 @@ class MemoryTagging:
     def get_blockers_and_deps(self, project: str) -> list[dict]:
         """Return blocks/depends_on relations. Placeholder — returns [] after mem_tags_relations drop."""
         return []
-
-    # ── Work-item to tag matching ───────────────────────────────────────────
-
-    async def match_work_item_to_tags(self, project: str, work_item_id: str) -> list[dict]:
-        """3-level matching: exact name → semantic (>0.85 auto) → Claude judgment (0.70–0.85).
-
-        All matching is constrained to planner tags whose category matches the work item's
-        category_ai (feature/bug/task). Phase/doc-type tags are filtered out of primary
-        matching — they may appear as secondary suggestions only.
-
-        Returns list of dicts: {tag_id, relation, confidence}.
-        Best match is auto-persisted to mem_ai_work_items.tag_id_ai.
-        """
-        wi = self._load_work_item(work_item_id)
-        if not wi:
-            return []
-
-        category = wi.get('category_name') or ''  # 'feature' | 'bug' | 'task'
-
-        # Level 1 — exact name match (constrained to same category)
-        tag = self._find_exact_tag(project, wi['name'], category=category)
-        if tag:
-            result = [{'tag_id': tag['id'], 'relation': 'exact', 'confidence': 1.0}]
-            self._persist_tag_id_ai(work_item_id, tag['id'])
-            return result
-
-        # Level 2 — semantic similarity (constrained to same category)
-        query = ' '.join(filter(None, [wi.get('name', ''), wi.get('description', ''), wi.get('summary', '')]))
-        if not query.strip():
-            return []
-
-        candidates: list[dict] = []
-        try:
-            emb = await self._embed_text(query)
-            candidates = self._vector_search_tags(project, emb, limit=15, category=category)
-        except Exception:
-            pass  # no embedding available — fall through to Haiku fallback
-
-        strong = [c for c in candidates if c['score'] > 0.85]
-        border = [c for c in candidates if 0.70 < c['score'] <= 0.85]
-
-        results = []
-        for c in strong:
-            results.append({'tag_id': c['id'], 'relation': 'similar', 'confidence': c['score']})
-
-        # Level 3 — Claude Haiku judgment for borderline candidates
-        if border:
-            try:
-                judgments = await self._claude_judge_candidates(wi, border)
-                for j in judgments:
-                    if j.get('relation') not in (None, 'none'):
-                        results.append(j)
-            except Exception:
-                pass
-
-        # Level 4 — no strong/border results: ask Haiku on all same-category tags
-        # (runs when embedding found no good matches OR tags have no embeddings yet)
-        if not results:
-            try:
-                all_tags = self._load_all_tags(project, category=category)
-                if all_tags:
-                    judgments = await self._claude_judge_candidates(wi, all_tags)
-                    for j in judgments:
-                        if j.get('relation') not in (None, 'none'):
-                            # Accept existing matches ≥0.70 or any suggested_new
-                            if j.get('suggested_new') or j.get('confidence', 0) >= 0.70:
-                                results.append(j)
-            except Exception:
-                pass
-
-        # Persist best match to tag_id_ai (highest confidence)
-        if results:
-            best = max(results, key=lambda r: r.get('confidence', 0))
-            if best.get('tag_id'):
-                self._persist_tag_id_ai(work_item_id, best['tag_id'])
-
-        return results
-
-    def _persist_tag_id_ai(self, work_item_id: str, tag_id: str) -> None:
-        """Update tag_id_ai on the work item (AI suggestion only — never overwrites tag_id)."""
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE mem_ai_work_items SET tag_id_ai=%s::uuid, updated_at=NOW() "
-                        "WHERE id=%s::uuid AND tag_id_ai IS DISTINCT FROM %s::uuid",
-                        (tag_id, work_item_id, tag_id),
-                    )
-        except Exception as e:
-            log.debug(f"_persist_tag_id_ai error: {e}")
-
-    # ── Private helpers ─────────────────────────────────────────────────────
-
-    def _load_work_item(self, work_item_id: str) -> dict | None:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, name_ai, summary_ai, category_ai
-                    FROM mem_ai_work_items WHERE id = %s
-                """, (work_item_id,))
-                row = cur.fetchone()
-                if not row:
-                    return None
-                return {'id': str(row[0]), 'name': row[1],
-                        'summary': row[2] or '', 'category_name': row[3] or ''}
-
-    def _find_exact_tag(self, project: str, name: str, category: str = '') -> dict | None:
-        """Match a work item name to a planner tag, normalising spaces/hyphens/underscores.
-
-        When category is given (e.g. 'feature', 'bug', 'task'), only tags in that
-        category are considered. This prevents a feature work item from matching a
-        phase tag named similarly.
-        """
-        project_id = db.get_or_create_project_id(project)
-        import re as _re
-        name_slug = _re.sub(r'[\s_]+', '-', name.lower().strip())
-        cat_filter = "AND tc.name = %s" if category else ""
-        params = [project_id, name, name_slug, name]
-        if category:
-            params.append(category)
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"""
-                    SELECT pt.id, pt.name, pt.category_id FROM planner_tags pt
-                    LEFT JOIN mng_tags_categories tc ON tc.id = pt.category_id
-                    WHERE pt.project_id = %s AND pt.status != 'archived'
-                      {cat_filter}
-                      AND (
-                        LOWER(pt.name) = LOWER(%s)
-                        OR REGEXP_REPLACE(LOWER(pt.name), '[\\s_]+', '-', 'g') = %s
-                        OR REGEXP_REPLACE(LOWER(pt.name), '[-_]+', ' ', 'g')
-                           = REGEXP_REPLACE(LOWER(%s), '[-_]+', ' ', 'g')
-                      )
-                    LIMIT 1
-                """, params)
-                row = cur.fetchone()
-                if not row:
-                    return None
-                return {'id': str(row[0]), 'name': row[1], 'category_id': row[2]}
-
-    def _load_all_tags(self, project: str, limit: int = 50, category: str = '') -> list[dict]:
-        """Load active planner tags. When category is given, only return tags of that category."""
-        project_id = db.get_or_create_project_id(project)
-        cat_filter = "AND tc.name = %s" if category else ""
-        params = [project_id]
-        if category:
-            params.append(category)
-        params.append(limit)
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"""
-                    SELECT t.id, t.name, t.category_id, t.description, tc.name AS category_name
-                    FROM planner_tags t
-                    LEFT JOIN mng_tags_categories tc ON tc.id = t.category_id
-                    WHERE t.project_id = %s AND t.status != 'archived'
-                    {cat_filter}
-                    ORDER BY t.created_at DESC
-                    LIMIT %s
-                """, params)
-                rows = cur.fetchall()
-                return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-                         'description': r[3] or '', 'category_name': r[4] or '',
-                         'score': 0.0} for r in rows]
-
-    def _vector_search_tags(self, project: str, embedding: list, limit: int = 15,
-                            category: str = '') -> list[dict]:
-        """Vector-search planner tags. When category is given, constrain to that category."""
-        project_id = db.get_or_create_project_id(project)
-        cat_filter = "AND tc.name = %s" if category else ""
-        params = [embedding, project_id]
-        if category:
-            params.append(category)
-        params += [embedding, limit]
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(f"""
-                    SELECT pt.id, pt.name, pt.category_id, pt.description,
-                           1 - (pt.embedding <=> %s::vector) AS score
-                    FROM planner_tags pt
-                    LEFT JOIN mng_tags_categories tc ON tc.id = pt.category_id
-                    WHERE pt.project_id = %s AND pt.embedding IS NOT NULL AND pt.status != 'archived'
-                    {cat_filter}
-                    ORDER BY pt.embedding <=> %s::vector LIMIT %s
-                """, params)
-                rows = cur.fetchall()
-                return [{'id': str(r[0]), 'name': r[1], 'category_id': r[2],
-                         'description': r[3], 'score': float(r[4])} for r in rows]
-
-    async def _embed_text(self, text: str) -> list:
-        """Embed text using OpenAI text-embedding-3-small."""
-        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
-        resp = await client.embeddings.create(
-            model='text-embedding-3-small',
-            input=text[:8000]
-        )
-        return resp.data[0].embedding
-
-    async def _claude_judge_candidates(self, wi: dict, candidates: list[dict]) -> list[dict]:
-        """Use Claude Haiku to match a work item to tags.
-
-        Returns primary (task/bug/feature, always set) + optional secondary (phase/doc_type).
-        Primary is ALWAYS populated — either an existing match or a suggested new tag name.
-        """
-        cand_text = '\n'.join(
-            f"- [{c.get('category_name','?')}] {c['name']} | {c.get('description','')}"
-            for c in candidates
-        )
-        prompt = (
-            f"WORK ITEM: {wi['name']} — {wi.get('description','')}\n\n"
-            f"AVAILABLE TAGS (format: [category] name | description):\n{cand_text}\n\n"
-            "RULES:\n"
-            "1. PRIMARY must be from 'task', 'bug', or 'feature' category.\n"
-            "   - If an existing tag matches (confidence ≥ 0.70): set primary.tag_name.\n"
-            "   - Otherwise ALWAYS set primary.suggested_new (kebab-case, ≤3 words). NEVER leave both null.\n"
-            "2. SECONDARY (optional): pick one tag from 'phase', 'doc_type', or other non-primary category "
-            "if clearly relevant. Set to null if not sure.\n"
-            "Respond ONLY in JSON:\n"
-            '{"primary":{"tag_name":"name-or-null","category":"task|bug|feature","relation":"exact|similar|none",'
-            '"confidence":0.0-1.0,"suggested_new":"new-name-or-null","suggested_category":"task|bug|feature"},'
-            '"secondary":{"tag_name":"name-or-null","category":"phase|doc_type","relation":"exact|similar",'
-            '"confidence":0.0-1.0,"suggested_new":"new-name-or-null","suggested_category":"phase|doc_type"}}'
-            '\nsecondary can be null if not applicable.'
-        )
-        system = (
-            "You are a technical project memory assistant. "
-            "Match work items to project tags. Always provide a primary suggestion. "
-            "Respond ONLY in valid JSON — no markdown, no explanation."
-        )
-
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        msg = await client.messages.create(
-            model='claude-haiku-4-5-20251001',
-            max_tokens=220,
-            system=system,
-            messages=[{'role': 'user', 'content': prompt}]
-        )
-        text = msg.content[0].text.strip()
-        if text.startswith('```'):
-            text = text.split('```')[1]
-            if text.startswith('json'):
-                text = text[4:]
-            text = text.strip()
-        data = json.loads(text)
-        name_to_id = {c['name']: c['id'] for c in candidates}
-        results = []
-
-        def _parse_entry(m: dict, is_primary: bool) -> dict | None:
-            if not m:
-                return None
-            tag_name     = (m.get('tag_name') or '').strip()
-            suggested_new = (m.get('suggested_new') or '').strip()
-            relation      = m.get('relation', 'none')
-            confidence    = float(m.get('confidence', 0.0))
-            category      = m.get('suggested_category') or m.get('category') or ('task' if is_primary else 'phase')
-
-            if tag_name and relation not in ('none', ''):
-                tid = name_to_id.get(tag_name)
-                if tid and confidence >= 0.70:
-                    return {'tag_id': tid, 'tag_name': tag_name, 'relation': relation, 'confidence': confidence,
-                            'suggested_new': None, 'suggested_category': None, 'is_primary': is_primary}
-            if suggested_new:
-                return {'tag_id': None, 'relation': 'new', 'confidence': 0.60,
-                        'suggested_new': suggested_new, 'suggested_category': category,
-                        'is_primary': is_primary}
-            # Primary must always have something — derive from work item name if Haiku failed
-            if is_primary:
-                fallback = wi['name'].replace('_', '-')[:40]
-                return {'tag_id': None, 'relation': 'new', 'confidence': 0.50,
-                        'suggested_new': fallback, 'suggested_category': 'task',
-                        'is_primary': True}
-            return None
-
-        # Handle both old flat format and new primary/secondary format
-        if isinstance(data, dict) and ('primary' in data or 'secondary' in data):
-            p = _parse_entry(data.get('primary') or {}, is_primary=True)
-            if p:
-                results.append(p)
-            s = _parse_entry(data.get('secondary') or {}, is_primary=False)
-            if s:
-                results.append(s)
-        else:
-            # Legacy flat format
-            entries = data if isinstance(data, list) else [data]
-            for i, m in enumerate(entries[:2]):
-                e = _parse_entry(m, is_primary=(i == 0))
-                if e:
-                    results.append(e)
-
-        # Guarantee at least one result (primary fallback)
-        if not results:
-            results.append({'tag_id': None, 'relation': 'new', 'confidence': 0.50,
-                            'suggested_new': wi['name'].replace('_', '-')[:40],
-                            'suggested_category': 'task', 'is_primary': True})
-        return results

@@ -1,16 +1,13 @@
 """
-search.py — Semantic search over the 5-layer memory system.
+search.py — Tagged context search over mem_mrr_prompts.
 
-Requires PostgreSQL + pgvector + OpenAI API key (for embeddings).
-Returns 503 when pgvector or OpenAI key is unavailable.
+Reads directly from mem_mrr_prompts; no mem_ai_events or pgvector dependency.
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 
 from core.config import settings
 from core.auth import get_optional_user
@@ -18,7 +15,7 @@ from core.database import db
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
-# Base template for tagged-context queries over mem_mrr_prompts (replaces pr_events).
+# Base template for tagged-context queries over mem_mrr_prompts.
 # mem_mrr_prompts has no title/feature column; left(prompt,120) serves as title.
 # {where} is injected at call site.
 _SQL_SEARCH_PROMPTS_BASE = (
@@ -32,59 +29,9 @@ _SQL_SEARCH_PROMPTS_BASE = (
         LIMIT %s"""
 )
 
-_SQL_COUNT_INTERACTIONS_TOTAL = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt'"
-)
-
-_SQL_COUNT_INTERACTIONS_SINCE = (
-    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND event_type='prompt' AND created_at > %s::timestamptz"
-)
-
 # ─────────────────────────────────────────────────────────────────────────────
 
 router = APIRouter()
-
-
-class SearchRequest(BaseModel):
-    query: str
-    project: Optional[str] = None
-    limit: int = 10
-    source_types: Optional[list[str]] = None
-    # Metadata filters for smart-chunk retrieval
-    language: Optional[str] = None
-    doc_type: Optional[str] = None
-    file_path: Optional[str] = None
-    chunk_types: Optional[list[str]] = None
-    # Tag-aware filters — restrict results to events with this phase/feature
-    phase: Optional[str] = None
-    feature: Optional[str] = None
-    # Entity-tag filters — restrict to embeddings tagged with a specific entity value or category
-    entity_name: Optional[str] = None       # e.g. "auth", "UI dropbox"
-    entity_category: Optional[str] = None  # e.g. "bug", "feature", "task"
-
-
-@router.post("/semantic")
-async def semantic_search(body: SearchRequest, user=Depends(get_optional_user)):
-    if not db.is_available():
-        raise HTTPException(503, "PostgreSQL + pgvector required for semantic search")
-
-    from memory.memory_embedding import semantic_search as _search
-    project = body.project or settings.active_project or "default"
-    results = await _search(
-        project=project,
-        query=body.query,
-        limit=max(1, min(body.limit, 50)),
-        source_types=body.source_types or None,
-        language=body.language,
-        doc_type=body.doc_type,
-        file_path=body.file_path,
-        chunk_types=body.chunk_types or None,
-        phase=body.phase,
-        feature=body.feature,
-        entity_name=body.entity_name,
-        entity_category=body.entity_category,
-    )
-    return {"results": results, "query": body.query, "total": len(results)}
 
 
 @router.get("/tagged")
@@ -160,20 +107,3 @@ async def get_tagged_context(
         raise HTTPException(500, str(exc))
 
 
-@router.get("/ingest")
-async def ingest(project: str = Query(""), user=Depends(get_optional_user)):
-    """Trigger bulk embedding ingest for history + roles (background task)."""
-    if not db.is_available():
-        raise HTTPException(503, "PostgreSQL + pgvector required for embeddings")
-
-    p = project or settings.active_project or "default"
-
-    async def _do_ingest():
-        from memory.memory_embedding import ingest_history, ingest_roles
-        h = await ingest_history(p)
-        r = await ingest_roles(p)
-        import logging
-        logging.getLogger(__name__).info(f"Ingest {p}: history={h}, roles={r}")
-
-    asyncio.create_task(_do_ingest())
-    return {"status": "started", "project": p}

@@ -450,15 +450,6 @@ async def merge_tags(body: TagMerge):
 
 # ── Source endpoints ──────────────────────────────────────────────────────────
 
-@router.post("/{tag_id}/plan")
-async def run_planner_for_tag(tag_id: str, project: str = Query(...)):
-    """Run the Planner: synthesise work items, generate document, sync acceptance_criteria."""
-    _require_db()
-    from memory.memory_planner import MemoryPlanner
-    result = await MemoryPlanner().run_planner(project, tag_id)
-    return result
-
-
 @router.post("/{tag_id}/snapshot")
 async def create_feature_snapshot(tag_id: str, project: str = Query(...)):
     """Run AI feature snapshot: merge tag + work items + events into use-case rows.
@@ -525,17 +516,6 @@ async def get_feature_snapshot(
         "summary":    first[7] or "",
         "use_cases":  use_cases,
     }
-
-
-@router.post("/{tag_id}/snapshot/promote")
-async def promote_feature_snapshot(tag_id: str, project: str = Query(...)):
-    """Promote AI snapshot to user version; writes features/{tag}/feature_final.md.
-
-    User version is never overwritten by AI on subsequent snapshot runs.
-    """
-    _require_db()
-    from memory.memory_feature_snapshot import MemoryFeatureSnapshot
-    return await MemoryFeatureSnapshot().promote_to_user(project, tag_id)
 
 
 @router.post("/{tag_id}/snapshot/{use_case_num}/run-workflow")
@@ -873,7 +853,6 @@ async def generate_tag_suggestions(project: str = Query(...)):
     """AI tag suggestions for MRR rows dropped — tags are now set explicitly via hooks.
 
     Returns empty suggestions list for backward compatibility.
-    AI suggestions for work items (mem_ai_work_items) are handled via the pipeline.
     """
     return {
         "suggestions":        [],
@@ -926,27 +905,8 @@ async def get_tag_context(
                 "parent_id":   str(tag_row[3]) if tag_row[3] else None,
             }
 
-            # ── Recent AI events for this project ──────────────────────────
-            cur.execute(
-                """SELECT e.id, e.event_type, e.source_id, LEFT(e.content, 400) AS preview,
-                          e.summary, e.created_at
-                   FROM mem_ai_events e
-                   WHERE e.project_id=%s
-                   ORDER BY e.created_at DESC
-                   LIMIT %s""",
-                (project_id, limit),
-            )
-            ai_events = [
-                {
-                    "id":         str(r[0]),
-                    "event_type": r[1],
-                    "source_id":  r[2],
-                    "preview":    r[3],
-                    "summary":    r[4],
-                    "created_at": r[5].isoformat() if r[5] else None,
-                }
-                for r in cur.fetchall()
-            ]
+            # ── Recent AI events removed (mem_ai_events table dropped) ────
+            ai_events: list[dict] = []
 
             # ── Recent sources (prompts + commits via tags JSONB) ─────────────
             from core.tags import parse_tag as _parse_tag
@@ -985,24 +945,8 @@ async def get_tag_context(
                 for r in cur.fetchall()
             ]
 
-            # ── Work items linked to this tag (via mem_tags_relations for AI layer) ─
-            work_items = []
-            try:
-                cur.execute(
-                    """SELECT wi.id, wi.name, wi.category_name, wi.status
-                       FROM mem_ai_work_items wi
-                       WHERE wi.client_id=1 AND wi.project=%s
-                         AND (wi.name ILIKE %s OR wi.category_name || ':' || wi.name = %s)
-                       ORDER BY wi.created_at DESC
-                       LIMIT 20""",
-                    (project, f"%{tag_info.get('name', '')}%", tag_str_full),
-                )
-                work_items = [
-                    {"id": str(r[0]), "name": r[1], "category": r[2], "status": r[3]}
-                    for r in cur.fetchall()
-                ]
-            except Exception:
-                pass
+            # ── Work items removed (mem_ai_work_items table dropped) ───────
+            work_items: list[dict] = []
 
     return {
         "tag":        tag_info,
@@ -1058,3 +1002,32 @@ async def migrate_tags_to_ai_suggestions(project: str = Query(...)):
                     )
                 moved += 1
     return {"moved": moved}
+
+
+# ── Project facts ─────────────────────────────────────────────────────────────
+
+_SQL_GET_FACTS = (
+    """SELECT id, fact_key, fact_value, category, valid_from
+       FROM mem_ai_project_facts
+       WHERE project_id=%s AND valid_until IS NULL
+       ORDER BY fact_key"""
+)
+
+
+@router.get("/{project}/facts")
+async def get_project_facts(project: str):
+    """Return current project facts (valid_until IS NULL)."""
+    if not db.is_available():
+        return {"facts": [], "project": project, "total": 0, "fallback": True}
+    project_id = db.get_or_create_project_id(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_FACTS, (project_id,))
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    for r in rows:
+        if r.get("valid_from"):
+            r["valid_from"] = r["valid_from"].isoformat()
+        if r.get("id"):
+            r["id"] = str(r["id"])
+    return {"facts": rows, "project": project, "total": len(rows)}

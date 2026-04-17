@@ -194,13 +194,9 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
         ctx["items_in"] = pending
         batch_size = _read_commit_batch_size(project)
         if pending >= batch_size:
-            from memory.memory_embedding import MemoryEmbedding
-            n = await MemoryEmbedding().process_commit_batch(project)
-            log.info(
-                f"_embed_commit_background: {n} batch events from "
-                f"{pending} pending commits for {project}"
+            log.debug(
+                f"_embed_commit_background: {pending} pending commits queued for backlog (batch_size={batch_size})"
             )
-            ctx["items_out"] = n
         else:
             log.debug(
                 f"_embed_commit_background: deferred ({pending} pending < batch_size={batch_size})"
@@ -1197,7 +1193,7 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             commit_author,
             commit_author_email,
         )
-        # Embed the commit (creates mem_ai_events, sets event_id on commit) in background
+        # Threshold-based commit batch check — queues embedding when batch_size reached
         background.add_task(_embed_commit_background, project_name, commit_hash)
         # Tree-sitter symbol extraction → mem_mrr_commits_code in background
         background.add_task(_extract_commit_code_background, project_name, commit_hash)

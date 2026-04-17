@@ -480,13 +480,8 @@ async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None 
 
 
 async def _embed_commits_background(project: str, commit_hashes: list[str]) -> None:
-    """Fire-and-forget: batch-digest all pending commits for the project."""
-    try:
-        from memory.memory_embedding import MemoryEmbedding
-        await MemoryEmbedding().process_commit_batch(project, min_commits=1)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).debug(f"_embed_commits_background error: {e}")
+    """Placeholder: commit batch embedding removed; backlog handles digestion via MemoryBacklog."""
+    pass
 
 
 @router.post("/commits/sync")

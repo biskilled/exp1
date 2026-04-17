@@ -491,4 +491,63 @@
 <!-- AI_MATCH: none: -->
 <!-- AI_CLASSIFY: task -->
 
+---
+
+### C200051 2025/01/01 — Update 62 files
+
+<!-- APPROVE: [x] -->
+<!-- TAG: -->
+<!-- AI_MATCH: none: -->
+<!-- AI_CLASSIFY: task -->
+
+**Deliveries:**
+  `62 files updated` (code)
+
+---
+
+### C200052 2025/01/01 — Update 58 files
+
+<!-- APPROVE: [x] -->
+<!-- TAG: -->
+<!-- AI_MATCH: none: -->
+<!-- AI_CLASSIFY: task -->
+
+**Deliveries:**
+  `58 files updated` (code)
+
+---
+
+### C200053 2025/01/01 — Update 65 files
+
+<!-- APPROVE: [x] -->
+<!-- TAG: -->
+<!-- AI_MATCH: none: -->
+<!-- AI_CLASSIFY: task -->
+
+**Deliveries:**
+  `65 files updated` (code)
+
+---
+
+### C200054 2025/01/01 — Remove legacy _system/ agent context files
+
+<!-- APPROVE: [x] -->
+<!-- TAG: -->
+<!-- AI_MATCH: none: -->
+<!-- AI_CLASSIFY: task -->
+
+**Deliveries:**
+  `Legacy _system/ agent context files removed` (code)
+
+---
+
+### C200055 2025/01/01 — Remove legacy _system/ context files
+
+<!-- APPROVE: [x] -->
+<!-- TAG: -->
+<!-- AI_MATCH: none: -->
+<!-- AI_CLASSIFY: task -->
+
+**Deliveries:**
+  `Legacy _system/ context files removed` (code)
 

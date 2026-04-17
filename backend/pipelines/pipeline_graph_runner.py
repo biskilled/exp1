@@ -108,10 +108,6 @@ _SQL_UPDATE_RUN_CURRENT_NODE = (
     "UPDATE pr_graph_runs SET current_node=%s WHERE id=%s"
 )
 
-_SQL_GET_WORK_ITEM_NAME = (
-    "SELECT category_name, name FROM mem_ai_work_items WHERE id=%s::uuid"
-)
-
 _SQL_GET_RUN_RESUME = (
     "SELECT workflow_id, context, total_cost_usd FROM pr_graph_runs WHERE id=%s"
 )
@@ -749,19 +745,8 @@ async def run_graph_workflow(
     # 1. Load workflow, nodes, edges
     workflow, nodes, edges = _load_workflow_from_db(workflow_id)
 
-    # 2. Load work item if provided
+    # 2. work_item lookup removed (mem_ai_work_items table no longer exists)
     work_item: dict | None = None
-    if work_item_id and db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_WORK_ITEM_NAME, (work_item_id,))
-                    wi = cur.fetchone()
-            if wi:
-                slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
-                work_item = {"id": work_item_id, "category": wi[0], "name": wi[1], "slug": slug}
-        except Exception as _we:
-            log.warning(f"Could not load work_item {work_item_id}: {_we}")
 
     # 3. Build LangGraph (resolve log_dir from workflow config or workspace default)
     log_dir = workflow.get("log_directory", "")
@@ -994,19 +979,7 @@ async def _run_graph_workflow_legacy(
 
     ctx: dict[str, Any] = {"user_input": user_input}
 
-    if work_item_id and db.is_available():
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_GET_WORK_ITEM_NAME, (work_item_id,))
-                    wi = cur.fetchone()
-            if wi:
-                slug = re.sub(r"[^a-z0-9_]", "", wi[1].lower().replace(" ", "_"))
-                ctx["_work_item"] = {
-                    "id": work_item_id, "category": wi[0], "name": wi[1], "slug": slug,
-                }
-        except Exception as _we:
-            log.warning(f"Could not load work_item {work_item_id}: {_we}")
+    # work_item lookup removed (mem_ai_work_items table no longer exists)
 
     total_cost = 0.0
     done_nodes: set[str] = set()

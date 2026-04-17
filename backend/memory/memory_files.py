@@ -12,16 +12,14 @@ Managed files (root):
   {sys_dir}/llm_prompts/gemini_context.md — Gemini Files API upload context
   {code_dir}/CLAUDE.md                    — copy to code root (auto-loaded by Claude CLI)
   {code_dir}/.cursorrules                 — copy to code root (Cursor)
-  {code_dir}/.claude/memory/top_events.md — top-N events injected at session start
 
 Per-feature:
   {code_dir}/features/{tag}/CLAUDE.md     — feature context (auto-loaded when in that dir)
 
 Trigger conditions:
-  project_facts upsert     → write_root_files()
-  planner_tag update       → write_root_files()
-  session_summaries insert → write_root_files()
-  /memory endpoint         → write_all_files()
+  project_facts upsert → write_root_files()
+  planner_tag update   → write_root_files()
+  /memory endpoint     → write_all_files()
 """
 from __future__ import annotations
 
@@ -46,14 +44,6 @@ _SQL_FACTS = """
     ORDER BY category NULLS LAST, fact_key
 """
 
-_SQL_LATEST_SESSION = """
-    SELECT summary, action_items, created_at, session_id
-    FROM mem_ai_events
-    WHERE project_id=%s AND event_type='session_summary'
-    ORDER BY created_at DESC
-    LIMIT 1
-"""
-
 _SQL_BLOCKERS = """
     SELECT NULL, NULL, NULL, NULL WHERE FALSE
 """
@@ -73,16 +63,6 @@ _SQL_BLOCKED_TAGS = """
     SELECT t.id, t.name, t.status, t.description
     FROM planner_tags t
     WHERE t.project_id = %s AND t.status = 'active'
-"""
-
-_SQL_TOP_EVENTS = """
-    SELECT content, event_type, created_at,
-           EXP(-0.01 * EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0) AS relevance,
-           tags, session_id, source_id, event_system
-    FROM mem_ai_events
-    WHERE project_id=%s
-    ORDER BY relevance DESC
-    LIMIT %s
 """
 
 _SQL_ACTIVE_TAGS = """
@@ -135,7 +115,6 @@ class MemoryFiles:
             "project":          project,
             "facts_by_cat":     {},      # category → [(key, value)]
             "active_tags":      [],      # list of dicts from planner_tags (status open/active)
-            "latest_session":   None,    # dict or None
             "blockers":         [],      # (from_name, relation, to_name, note)
             "all_relations":    [],
             "features":         {},      # tag_name → snapshot dict
@@ -164,17 +143,6 @@ class MemoryFiles:
                             "priority":    t_priority,
                             "due_date":    t_due.isoformat() if t_due else None,
                         })
-
-                    # Latest session summary
-                    cur.execute(_SQL_LATEST_SESSION, (project_id,))
-                    row = cur.fetchone()
-                    if row:
-                        ctx["latest_session"] = {
-                            "summary":      row[0] or "",
-                            "action_items": row[1] or "",
-                            "created_at":   row[2].strftime("%Y-%m-%d %H:%M") if row[2] else "",
-                            "session_id":   row[3] or "",
-                        }
 
                     # Blockers and dependencies
                     cur.execute(_SQL_BLOCKERS, (project_id,))
@@ -205,32 +173,6 @@ class MemoryFiles:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
 
         return ctx
-
-    def get_top_events(self, project: str, limit: int = 5) -> list[dict]:
-        """Return top-N events by time-decayed relevance score."""
-        if not db.is_available():
-            return []
-        project_id = db.get_or_create_project_id(project)
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(_SQL_TOP_EVENTS, (project_id, limit))
-                    return [
-                        {
-                            "content":      r[0],
-                            "event_type":   r[1],
-                            "created_at":   r[2].isoformat() if r[2] else "",
-                            "relevance":    float(r[3]) if r[3] else 0.0,
-                            "tags":         r[4] or {},
-                            "session_id":   r[5],
-                            "source_id":    r[6],
-                            "event_system": r[7] or False,
-                        }
-                        for r in cur.fetchall()
-                    ]
-        except Exception as e:
-            log.debug(f"get_top_events error: {e}")
-            return []
 
     def get_active_feature_tags(self, project: str) -> list[str]:
         """Return tag names for active/open tags (active features that have snapshots)."""
@@ -288,21 +230,6 @@ class MemoryFiles:
                 note = f" _{r['note']}_" if r["note"] else ""
                 lines.append(f"- `{r['from']}` depends on `{r['to']}`{note}")
             lines.append("")
-
-        # Last Session
-        sess = ctx.get("latest_session")
-        if sess and sess.get("summary"):
-            lines += [f"## Last Session _{sess['created_at']}_", ""]
-            for bullet in sess["summary"].strip().splitlines():
-                if bullet.strip():
-                    lines.append(bullet if bullet.startswith("-") else f"- {bullet.strip()}")
-            lines.append("")
-            if sess.get("action_items"):
-                lines += ["### Action Items", ""]
-                for item in sess["action_items"].strip().splitlines():
-                    if item.strip():
-                        lines.append(item if item.startswith("-") else f"- {item.strip()}")
-                lines.append("")
 
         # Conventions
         conv_facts = ctx["facts_by_cat"].get("convention", [])
@@ -464,13 +391,6 @@ class MemoryFiles:
                 lines.append(f"- {tag['name']} [{tag['status']}]: {tag['description'][:80]}")
             lines.append("")
 
-        # Last session (2 sentences)
-        sess = ctx.get("latest_session")
-        if sess and sess.get("summary"):
-            bullets = [b.strip().lstrip("- ") for b in sess["summary"].strip().splitlines() if b.strip()]
-            compact = ". ".join(bullets[:2]) + ("." if bullets else "")
-            lines += ["## Last Session", compact, ""]
-
         return "\n".join(lines)
 
     def render_system_full(self, ctx: dict) -> str:
@@ -517,17 +437,6 @@ class MemoryFiles:
                 lines.append(f"- `{r['from']}` blocks `{r['to']}`{note}")
             lines.append("")
 
-        # Last session
-        sess = ctx.get("latest_session")
-        if sess and sess.get("summary"):
-            lines += [f"## Last Session ({sess['created_at']})", ""]
-            for bullet in sess["summary"].strip().splitlines():
-                if bullet.strip():
-                    lines.append(bullet if bullet.startswith("-") else f"- {bullet.strip()}")
-            if sess.get("action_items"):
-                lines += ["", "Action items:", sess["action_items"]]
-            lines.append("")
-
         return "\n".join(lines)
 
     def render_gemini_context(self, ctx: dict) -> str:
@@ -560,15 +469,6 @@ class MemoryFiles:
                     "",
                 ]
 
-        # Latest session (full)
-        sess = ctx.get("latest_session")
-        if sess and sess.get("summary"):
-            lines += [f"## Recent Session ({sess['created_at']})", ""]
-            lines.append(sess["summary"])
-            if sess.get("action_items"):
-                lines += ["", "**Action Items:**", sess["action_items"]]
-            lines.append("")
-
         # Feature snapshots (active features only)
         active_tag_names = {t["name"] for t in ctx["active_tags"]}
         active_snaps = {k: v for k, v in ctx["features"].items() if k in active_tag_names}
@@ -587,25 +487,6 @@ class MemoryFiles:
                 lines.append(f"- `{r['from']}` → **{r['relation']}** → `{r['to']}`{note}")
             lines.append("")
 
-        return "\n".join(lines)
-
-    def render_top_events_md(self, project: str, limit: int = 5) -> str:
-        """Render top-N events as .claude/memory/top_events.md for session injection."""
-        events = self.get_top_events(project, limit)
-        if not events:
-            return ""
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        lines = [
-            "# Recent Memory Events",
-            f"_Top {len(events)} most relevant events — auto-updated at session start ({ts})_",
-            "",
-        ]
-        for i, ev in enumerate(events, 1):
-            stype = ev["event_type"]
-            rel = f"{ev['relevance']:.1f}"
-            content = ev["content"][:200].replace("\n", " ")
-            lines.append(f"{i}. **[{stype} | relevance={rel}]** {content}")
-        lines.append("")
         return "\n".join(lines)
 
     # ── Writers ───────────────────────────────────────────────────────────────
@@ -650,14 +531,6 @@ class MemoryFiles:
         if code_dir and code_dir.exists():
             _write(code_dir / "CLAUDE.md", claude_content)
             _write(code_dir / ".cursorrules", self.render_cursorrules(ctx))
-
-            # Top events for .claude/memory/
-            top_events_content = self.render_top_events_md(project)
-            if top_events_content:
-                _write(
-                    code_dir / ".claude" / "memory" / "top_events.md",
-                    top_events_content,
-                )
 
         return written
 

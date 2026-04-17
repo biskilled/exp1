@@ -5,7 +5,7 @@ Table namespaces:
   mng_         — global + client-scoped (management tables)
   planner_     — project tag hierarchy (planner_tags)
   mem_mrr_     — mirroring layer (raw source data: prompts, commits, items, messages)
-  mem_ai_      — AI/embedding layer (mem_ai_events, mem_ai_work_items, mem_ai_project_facts)
+  mem_ai_      — AI/embedding layer (mem_ai_project_facts)
     pr_          — project-scoped misc (graph_*, seq_counters)
 
 Falls back gracefully when DATABASE_URL is not set — callers check `is_available()`.
@@ -730,7 +730,7 @@ class _Database:
                 "Database tables:\n"
                 "- Global / client-scoped: prefix `mng_` (e.g. mng_users, mng_agent_roles)\n"
                 "- Memory mirror layer: prefix `mem_mrr_` (e.g. mem_mrr_prompts, mem_mrr_commits)\n"
-                "- Memory AI layer: prefix `mem_ai_` (e.g. mem_ai_events, mem_ai_work_items)\n"
+                "- Memory AI layer: prefix `mem_ai_` (e.g. mem_ai_project_facts)\n"
                 "- Planner / tag hierarchy: prefix `planner_` (e.g. planner_tags)\n"
                 "- Graph workflow tables: prefix `pr_` (e.g. pr_graph_workflows, pr_graph_runs)\n"
                 "- Never create new tables outside these namespaces\n"
@@ -988,7 +988,7 @@ def build_where(*conditions: tuple[str, any] | None) -> tuple[str, list]:
             ("project = %s", project),
             ("status = %s", status) if status else None,
         )
-        cur.execute(f"SELECT * FROM mem_ai_work_items {where} ORDER BY created_at", params)
+        cur.execute(f"SELECT * FROM planner_tags {where} ORDER BY created_at", params)
     """
     active = [c for c in conditions if c is not None]
     if not active:

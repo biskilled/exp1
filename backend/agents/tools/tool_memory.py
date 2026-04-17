@@ -2,11 +2,11 @@
 tool_memory.py — Agent tools for reading project memory, history, and tag context.
 
 Provides direct DB access (no HTTP round-trip) for pipeline ReAct agents:
-  - search_memory     : vector + text search over mem_ai_events
+  - search_memory     : text search over mem_mrr_prompts (prompt/response content)
   - get_recent_history: latest prompts from mem_mrr_prompts (with optional tag filter)
   - get_project_facts : current facts from mem_ai_project_facts
-  - get_tag_context   : full context for a tag — events, snapshot, work items, relations
-  - search_features   : search mem_ai_features by tag name or semantic query
+  - get_tag_context   : full context for a tag — snapshot, relations
+  - search_features   : search planner_tags by tag name or semantic query
 
 Assigned to research-oriented roles (PM, Architect, Reviewer) so they can reason
 over past decisions without leaving the agentic loop.
@@ -61,8 +61,8 @@ MEMORY_TOOL_DEFS: list[dict] = [
     {
         "name": "search_memory",
         "description": (
-            "Semantic + text search over the project knowledge base (mem_ai_events). "
-            "Returns relevant digests of past prompt batches, commits, items, and sessions. "
+            "Text search over the project's raw prompt/response history (mem_mrr_prompts). "
+            "Returns matching entries from past AI sessions. "
             "Optionally filter by feature tag name to scope results to a specific tag."
         ),
         "input_schema": {
@@ -108,9 +108,9 @@ MEMORY_TOOL_DEFS: list[dict] = [
         "name": "get_tag_context",
         "description": (
             "Return comprehensive context for a specific feature/bug/task tag. "
-            "Includes: tag description + requirements, recent AI-layer event digests, "
-            "feature snapshot (4-layer: requirements, action_items, design, code_summary), "
-            "associated work items, and tag relations (depends_on, blocks, etc.). "
+            "Includes: tag description + requirements, recent prompts tagged to this feature, "
+            "feature snapshot (requirements, action_items, design, code_summary), "
+            "and tag relations (depends_on, blocks, etc.). "
             "Call this FIRST when starting work on any feature or bug — the PM agent "
             "uses this to orient on full history before creating acceptance criteria."
         ),
@@ -127,7 +127,7 @@ MEMORY_TOOL_DEFS: list[dict] = [
     {
         "name": "search_features",
         "description": (
-            "Search mem_ai_features (4-layer feature snapshots) by tag name or semantic query. "
+            "Search planner_tags (feature snapshots) by tag name or semantic query. "
             "Returns requirements, action_items, design overview, and affected files for matching features."
         ),
         "input_schema": {
@@ -158,83 +158,32 @@ def _handle_search_memory(args: dict) -> str:
             project_id = db.get_or_create_project_id(project)
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # ── Vector search (primary) ───────────────────────────
-                    vec = _embed_sync(query)
-                    if vec:
-                        vs = _vec_str(vec)
-                        if feature:
-                            cur.execute(
-                                """SELECT me.event_type, me.content, me.summary, me.created_at
-                                   FROM mem_ai_events me
-                                   WHERE me.project_id=%s
-                                     AND me.embedding IS NOT NULL
-                                     AND %s = ANY(me.summary_tags)
-                                   ORDER BY me.embedding <=> %s::vector
-                                   LIMIT %s""",
-                                (project_id, feature, vs, limit),
-                            )
-                        else:
-                            cur.execute(
-                                """SELECT event_type, content, summary, created_at
-                                   FROM mem_ai_events
-                                   WHERE project_id=%s
-                                     AND embedding IS NOT NULL
-                                   ORDER BY embedding <=> %s::vector
-                                   LIMIT %s""",
-                                (project_id, vs, limit),
-                            )
-                        rows = cur.fetchall()
-                        for row in rows:
-                            ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
-                            text = (row[2] or row[1] or "")[:400]
-                            results.append(f"[{ts}] {row[0]}: {text}")
-
-                    # ── Work items vector search ───────────────────────────
-                    if vec:
+                    # ── Text search over raw prompt/response history ──────
+                    if feature:
                         cur.execute(
-                            """SELECT category_ai, name_ai,
-                                      status_user, acceptance_criteria_ai, summary_ai
-                               FROM mem_ai_work_items
-                               WHERE project_id=%s
-                                 AND embedding IS NOT NULL
-                                 AND status_user NOT IN ('done', 'archived')
-                               ORDER BY embedding <=> %s::vector
-                               LIMIT %s""",
-                            (project_id, vs, max(2, limit // 2)),
+                            """SELECT p.prompt, p.response, p.created_at
+                               FROM mem_mrr_prompts p
+                               WHERE p.project_id=%s
+                                 AND (p.prompt ILIKE %s OR p.response ILIKE %s)
+                                 AND p.tags @> %s::jsonb
+                               ORDER BY p.created_at DESC LIMIT %s""",
+                            (project_id, f"%{query}%", f"%{query}%",
+                             json.dumps({"feature": feature}), limit),
                         )
-                        for wi_row in cur.fetchall():
-                            cat, name, st, ac, smry = wi_row
-                            body = (smry or "")[:300]
-                            ac_line = f" | ac: {ac[:150]}" if ac else ""
-                            results.append(
-                                f"[work_item:{cat}] {name} (status: {st}): {body}{ac_line}"
-                            )
-
-                    # ── Text fallback ─────────────────────────────────────
-                    if not results:
-                        if feature:
-                            cur.execute(
-                                """SELECT me.event_type, me.content, me.summary, me.created_at
-                                   FROM mem_ai_events me
-                                   WHERE me.project_id=%s
-                                     AND me.content ILIKE %s
-                                     AND %s = ANY(me.summary_tags)
-                                   ORDER BY me.created_at DESC LIMIT %s""",
-                                (project_id, f"%{query}%", feature, limit),
-                            )
-                        else:
-                            cur.execute(
-                                """SELECT event_type, content, summary, created_at
-                                   FROM mem_ai_events
-                                   WHERE project_id=%s
-                                     AND content ILIKE %s
-                                   ORDER BY created_at DESC LIMIT %s""",
-                                (project_id, f"%{query}%", limit),
-                            )
-                        for row in cur.fetchall():
-                            ts = row[3].strftime("%Y-%m-%d") if row[3] else "?"
-                            text = (row[2] or row[1] or "")[:400]
-                            results.append(f"[{ts}] {row[0]}: {text}")
+                    else:
+                        cur.execute(
+                            """SELECT prompt, response, created_at
+                               FROM mem_mrr_prompts
+                               WHERE project_id=%s
+                                 AND (prompt ILIKE %s OR response ILIKE %s)
+                               ORDER BY created_at DESC LIMIT %s""",
+                            (project_id, f"%{query}%", f"%{query}%", limit),
+                        )
+                    for row in cur.fetchall():
+                        ts = row[2].strftime("%Y-%m-%d") if row[2] else "?"
+                        q_snippet = (row[0] or "")[:200]
+                        r_snippet = (row[1] or "")[:200]
+                        results.append(f"[{ts}] Q: {q_snippet}\n  A: {r_snippet}")
     except Exception as e:
         log.debug(f"search_memory DB error: {e}")
 
@@ -445,41 +394,23 @@ def _handle_get_tag_context(args: dict) -> str:
                         if files:
                             lines.append(f"Key files: {', '.join(files[:8])}")
 
-                # ── Recent AI events ──────────────────────────────────────
+                # ── Recent prompts for this tag ───────────────────────────
                 cur.execute(
-                    """SELECT e.event_type, e.content, e.summary, e.created_at
-                       FROM mem_ai_events e
-                       WHERE e.project_id=%s
-                       ORDER BY e.created_at DESC
+                    """SELECT p.prompt, p.response, p.created_at
+                       FROM mem_mrr_prompts p
+                       WHERE p.project_id=%s
+                         AND p.tags @> %s::jsonb
+                       ORDER BY p.created_at DESC
                        LIMIT %s""",
-                    (project_id, limit),
+                    (project_id, json.dumps({"feature": tag_name}), limit),
                 )
-                events = cur.fetchall()
-                if events:
-                    lines.append(f"\n--- Recent AI Events (last {len(events)}) ---")
-                    for ev in events:
-                        ts = ev[3].strftime("%Y-%m-%d") if ev[3] else "?"
-                        text = (ev[2] or ev[1] or "")[:250]
-                        lines.append(f"[{ts}] {ev[0]}: {text}")
-
-                # ── Work items ────────────────────────────────────────────
-                cur.execute(
-                    """SELECT name, category_name, lifecycle_status, status,
-                              acceptance_criteria, seq_num
-                       FROM mem_ai_work_items
-                       WHERE project_id=%s AND name ILIKE %s
-                       ORDER BY created_at DESC LIMIT 5""",
-                    (project_id, f"%{tag_name}%"),
-                )
-                wis = cur.fetchall()
-                if wis:
-                    lines.append("\n--- Work Items ---")
-                    for wi in wis:
-                        ref = f"#{wi[5]}" if wi[5] else ""
-                        ac  = (wi[4] or "")[:150]
-                        lines.append(f"  {ref} [{wi[1]}] {wi[0]} ({wi[2]}/{wi[3]})")
-                        if ac:
-                            lines.append(f"    AC: {ac}")
+                prompts = cur.fetchall()
+                if prompts:
+                    lines.append(f"\n--- Recent Prompts (last {len(prompts)}) ---")
+                    for pr in prompts:
+                        ts = pr[2].strftime("%Y-%m-%d") if pr[2] else "?"
+                        q_snippet = (pr[0] or "")[:200]
+                        lines.append(f"[{ts}] Q: {q_snippet}")
 
                 # ── Relations ─────────────────────────────────────────────
                 cur.execute(

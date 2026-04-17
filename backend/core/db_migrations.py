@@ -2595,6 +2595,14 @@ def m056_drop_event_id_add_backlog_links(conn) -> None:
     )
 
 
+def m057_drop_events_and_work_items(conn) -> None:
+    """Drop mem_ai_events and mem_ai_work_items — replaced by backlog pipeline and use case files."""
+    with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS mem_ai_events CASCADE")
+        cur.execute("DROP TABLE IF EXISTS mem_ai_work_items CASCADE")
+    conn.commit()
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2639,4 +2647,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m054_backlog_ref", m054_backlog_ref),
     ("m055_cleanup_and_seq", m055_cleanup_and_seq),
     ("m056_drop_event_id_add_backlog_links", m056_drop_event_id_add_backlog_links),
+    ("m057_drop_events_and_work_items", m057_drop_events_and_work_items),
 ]
