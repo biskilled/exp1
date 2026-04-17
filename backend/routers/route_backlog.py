@@ -240,6 +240,145 @@ async def patch_backlog_entry(
     return {"status": "updated", "ref_id": ref_id, "project": project}
 
 
+@router.get("/{project}/use-case-events")
+async def get_use_case_events(
+    project: str,
+    tag_id: Optional[str] = Query(None, description="planner_tags UUID"),
+    slug: Optional[str]   = Query(None, description="use_case_slug (alternative to tag_id)"),
+):
+    """Return all backlog refs linked to a use case, with their source row details.
+
+    Queries mem_backlog_links then joins back to mem_mrr_* tables so the UI
+    can show a full audit trail of which raw prompts/commits contributed to
+    a use case — even if the .md file is edited or deleted.
+
+    At least one of tag_id or slug must be supplied.
+    """
+    if not tag_id and not slug:
+        raise HTTPException(status_code=400, detail="Provide tag_id or slug")
+
+    from memory.memory_backlog import MemoryBacklog
+    from core.database import db
+
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Resolve slug from tag_id if needed
+                if tag_id and not slug:
+                    cur.execute(
+                        "SELECT use_case_slug FROM mem_backlog_links "
+                        "WHERE project_id=%s AND tag_id=%s::uuid LIMIT 1",
+                        (project_id, tag_id),
+                    )
+                    row = cur.fetchone()
+                    slug = row[0] if row else None
+
+                if not slug:
+                    return {"project": project, "slug": slug, "events": []}
+
+                # Fetch all links for this slug
+                cur.execute(
+                    """SELECT ref_id, classify, summary, approved_at, tag_id::text
+                       FROM mem_backlog_links
+                       WHERE project_id=%s AND use_case_slug=%s
+                       ORDER BY approved_at""",
+                    (project_id, slug),
+                )
+                links = cur.fetchall()
+
+                events = []
+                for ref_id, classify, summary, approved_at, t_id in links:
+                    # Determine source type from prefix letter
+                    prefix = ref_id[0] if ref_id else ""
+                    src_map = {"P": "prompts", "C": "commits", "M": "messages", "I": "items"}
+                    src_type = src_map.get(prefix)
+
+                    source_row: dict = {}
+                    if src_type == "prompts":
+                        cur.execute(
+                            "SELECT id::text, left(prompt,200), created_at FROM mem_mrr_prompts "
+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
+                            (project_id, ref_id),
+                        )
+                        source_row = [
+                            {"id": r[0], "prompt_preview": r[1], "created_at": str(r[2])}
+                            for r in cur.fetchall()
+                        ]
+                    elif src_type == "commits":
+                        cur.execute(
+                            "SELECT commit_hash_short, commit_msg, created_at FROM mem_mrr_commits "
+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
+                            (project_id, ref_id),
+                        )
+                        source_row = [
+                            {"hash": r[0], "msg": r[1], "created_at": str(r[2])}
+                            for r in cur.fetchall()
+                        ]
+                    elif src_type == "items":
+                        cur.execute(
+                            "SELECT id::text, title, item_type, created_at FROM mem_mrr_items "
+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
+                            (project_id, ref_id),
+                        )
+                        source_row = [
+                            {"id": r[0], "title": r[1], "type": r[2], "created_at": str(r[3])}
+                            for r in cur.fetchall()
+                        ]
+
+                    events.append({
+                        "ref_id":      ref_id,
+                        "source_type": src_type,
+                        "classify":    classify,
+                        "summary":     summary,
+                        "approved_at": str(approved_at) if approved_at else None,
+                        "tag_id":      t_id,
+                        "source_rows": source_row,
+                    })
+
+                return {
+                    "project":  project,
+                    "slug":     slug,
+                    "tag_id":   tag_id,
+                    "total":    len(events),
+                    "events":   events,
+                }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{project}/regenerate-use-case")
+async def regenerate_use_case(
+    project: str,
+    slug: str = Query(..., description="use_case slug to regenerate Internal Usage for"),
+):
+    """Rebuild the ## Internal Usage section of a use case file from mem_backlog_links.
+
+    Use this if the section was accidentally deleted or edited by a user.
+    """
+    from memory.memory_backlog import MemoryBacklog, _regenerate_internal_usage
+
+    bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    uc_dir = bl._use_cases_dir()
+    path = uc_dir / f"{slug}.md"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"use_cases/{slug}.md not found")
+
+    _regenerate_internal_usage(uc_dir, slug, project_id)
+    return {"status": "regenerated", "slug": slug, "project": project}
+
+
 @router.get("/{project}/use-case-section")
 async def get_use_case_section(
     project: str,

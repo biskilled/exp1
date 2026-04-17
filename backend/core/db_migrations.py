@@ -2542,6 +2542,59 @@ def m055_cleanup_and_seq(conn) -> None:  # noqa: C901
     )
 
 
+def m056_drop_event_id_add_backlog_links(conn) -> None:
+    """Drop obsolete event_id from mirror tables; create mem_backlog_links.
+
+    event_id on mem_mrr_* was used by the old mem_ai_events digest pipeline to
+    back-propagate the event UUID after a batch digest.  The new file-based
+    backlog pipeline (m054) uses backlog_ref instead, so event_id is now dead
+    weight.  The mem_ai_events table itself is kept for historical queries.
+
+    mem_backlog_links is the stable DB mapping that survives .md file edits:
+        ref_id (P100042)  →  tag_id (planner_tags UUID)  →  use_case_slug
+    It is written when an entry is approved via run_work_items().
+    The ## Internal Usage section in use_cases/*.md is regenerated from this
+    table if it is ever deleted or corrupted.
+    """
+    with conn.cursor() as cur:
+        # Drop event_id from all 4 mirror tables (no-op if already dropped)
+        for tbl in ("mem_mrr_prompts", "mem_mrr_commits", "mem_mrr_messages", "mem_mrr_items"):
+            cur.execute(f"ALTER TABLE {tbl} DROP COLUMN IF EXISTS event_id")
+        # Drop the now-orphaned indexes that were on event_id
+        for idx in (
+            "idx_mmrr_p_event",
+            "idx_mmrr_c_event",
+        ):
+            cur.execute(f"DROP INDEX IF EXISTS {idx}")
+
+        # Create backlog linkage table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_backlog_links (
+                id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id    INT  NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                ref_id        TEXT NOT NULL,
+                tag_id        UUID REFERENCES planner_tags(id) ON DELETE SET NULL,
+                use_case_slug TEXT NOT NULL,
+                classify      TEXT,
+                summary       TEXT,
+                approved_at   TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE (project_id, ref_id)
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_tag  "
+            "ON mem_backlog_links(tag_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_proj "
+            "ON mem_backlog_links(project_id, use_case_slug)"
+        )
+    conn.commit()
+    log.info(
+        "m056: event_id dropped from 4 mirror tables; mem_backlog_links created"
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2585,4 +2638,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m053_pr_statistics", m053_pr_statistics),
     ("m054_backlog_ref", m054_backlog_ref),
     ("m055_cleanup_and_seq", m055_cleanup_and_seq),
+    ("m056_drop_event_id_add_backlog_links", m056_drop_event_id_add_backlog_links),
 ]

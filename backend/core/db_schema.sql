@@ -322,21 +322,20 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
 -- ============================================================================
 
 -- mem_mrr_prompts: every prompt/response pair from all providers and UIs
--- tags JSONB carries inline metadata: {source, phase, feature, bug, work-item, session_id}
--- event_id: set after prompt batch digest in mem_ai_events (back-propagated by process_prompt_batch)
--- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
+-- tags JSONB carries inline metadata: {source, phase, feature, bug, session_id}
+-- backlog_ref: set when this row is digested into backlog.md (NULL = pending)
+-- user_id: INT FK to mng_users (m051); hook-log rows stamped with ADMIN_USER_ID (m056)
 CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
     user_id    INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
-    event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
     session_id TEXT,
     source_id  TEXT,                            -- external ID for deduplication
     prompt     TEXT        NOT NULL DEFAULT '',
     response   TEXT        NOT NULL DEFAULT '',
     tags        JSONB       NOT NULL DEFAULT '{}',
-    backlog_ref TEXT,                                -- ref ID in backlog.md: 'P100042' (m054)
+    backlog_ref TEXT,                           -- ref ID in backlog.md: 'P100042' (m054)
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -345,14 +344,14 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL;
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
 CREATE INDEX        IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags);
-CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL;
 
 -- mem_mrr_commits: git commits with AI-generated metadata
 -- commit_hash is the natural PK (git SHA).
 -- tags = user intent: {phase, feature, bug} — sourced from mng_session_tags at push time.
--- event_id IS NULL means process_commit_batch() has not processed this commit yet.
+-- backlog_ref: set when this commit is digested into backlog.md (NULL = pending)
+-- prompt_id: linked to the prompt active in the same session (if any)
 -- Detailed per-symbol code data lives in mem_mrr_commits_code (one row per symbol).
--- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
+-- user_id: INT FK to mng_users (m051)
 CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     commit_hash       VARCHAR(64)  PRIMARY KEY,
     commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
@@ -364,22 +363,18 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
     diff_summary      TEXT         NOT NULL DEFAULT '',  -- git --stat output
     tags              JSONB        NOT NULL DEFAULT '{}',
     prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
-    event_id          UUID,                              -- FK to mem_ai_events.id (set after batch digest)
     session_id        VARCHAR(255),
     author            TEXT         NOT NULL DEFAULT '',
     author_email      TEXT         NOT NULL DEFAULT '',
     llm               TEXT,                              -- model name used for digest
     backlog_ref       TEXT,                              -- ref ID in backlog.md: 'C200001' (m054)
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    committed_at      TIMESTAMPTZ,
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid            ON mem_mrr_commits(project_id);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm           ON mem_mrr_commits(committed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_session        ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt         ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags           ON mem_mrr_commits USING gin(tags);
-CREATE INDEX IF NOT EXISTS idx_mmrr_c_event          ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL;
 
 -- mem_mrr_commits_code: per-symbol code statistics for each commit
@@ -462,6 +457,34 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
 CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(tags);
+
+-- mem_backlog_links: stable DB mapping from backlog ref_id → planner_tag (use case)
+-- Written when an entry is approved in run_work_items().
+-- Survives .md file edits/deletion — the ## Internal Usage section in
+-- use_cases/*.md is rebuilt from this table on demand.
+--
+-- DB linkage chain:
+--   mem_mrr_*.backlog_ref  = 'P100042'     raw row  → backlog entry
+--   mem_backlog_links.ref_id = 'P100042'   backlog entry → use case
+--   mem_backlog_links.tag_id = UUID         use case → planner_tags
+--
+-- To find all source events for a use case:
+--   SELECT p.* FROM mem_mrr_prompts p
+--     JOIN mem_backlog_links l ON l.ref_id = p.backlog_ref
+--    WHERE l.tag_id = '{use_case_tag_uuid}'
+CREATE TABLE IF NOT EXISTS mem_backlog_links (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id    INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+    ref_id        TEXT        NOT NULL,       -- P100042 / C200001 / M300001 / I400001
+    tag_id        UUID        REFERENCES planner_tags(id) ON DELETE SET NULL,
+    use_case_slug TEXT        NOT NULL,       -- slug = planner_tags.name
+    classify      TEXT,                       -- bug / feature / task / use_case
+    summary       TEXT,                       -- one-line summary from backlog entry
+    approved_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (project_id, ref_id)              -- one ref belongs to exactly one use case
+);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_tag  ON mem_backlog_links(tag_id);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_proj ON mem_backlog_links(project_id, use_case_slug);
 
 -- ============================================================================
 -- SECTION 4: mem_ai_* — Layer 2/3: AI Digests + Structured Artifacts

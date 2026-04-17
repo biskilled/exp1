@@ -859,6 +859,102 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
     log.info(f"use_case: merged {ref_id} → {slug}")
 
 
+# ── mem_backlog_links helpers ─────────────────────────────────────────────────
+
+def _insert_backlog_link(
+    project_id: int,
+    ref_id: str,
+    tag_id: Optional[str],
+    use_case_slug: str,
+    classify: str,
+    summary: str,
+) -> None:
+    """Insert or update a mem_backlog_links row for an approved backlog entry.
+
+    This is the stable DB record that survives .md file edits/deletion.
+    UNIQUE(project_id, ref_id) — one backlog entry can only belong to one use case.
+    """
+    if not db.is_available():
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mem_backlog_links
+                       (project_id, ref_id, tag_id, use_case_slug, classify, summary)
+                       VALUES (%s, %s, %s::uuid, %s, %s, %s)
+                       ON CONFLICT (project_id, ref_id) DO UPDATE SET
+                           tag_id        = COALESCE(EXCLUDED.tag_id, mem_backlog_links.tag_id),
+                           use_case_slug = EXCLUDED.use_case_slug,
+                           classify      = EXCLUDED.classify,
+                           summary       = EXCLUDED.summary,
+                           approved_at   = NOW()""",
+                    (project_id, ref_id, tag_id, use_case_slug, classify, summary or ""),
+                )
+            conn.commit()
+    except Exception as e:
+        log.warning(f"_insert_backlog_link({ref_id}→{use_case_slug}) error: {e}")
+
+
+def _regenerate_internal_usage(uc_dir: Path, slug: str, project_id: int) -> None:
+    """Rebuild the ## Internal Usage table in a use case file from mem_backlog_links.
+
+    Called when the section is missing or when run_work_items() finishes.
+    Safe to call multiple times — always rebuilds from DB truth.
+    """
+    path = _slug_path(uc_dir, slug)
+    if not path.exists():
+        return
+    if not db.is_available():
+        return
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT ref_id, classify, summary, approved_at
+                       FROM mem_backlog_links
+                       WHERE project_id=%s AND use_case_slug=%s
+                       ORDER BY approved_at""",
+                    (project_id, slug),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        log.debug(f"_regenerate_internal_usage query error: {e}")
+        return
+
+    if not rows:
+        return
+
+    # Build the Internal Usage table rows
+    type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}
+    table_lines = [
+        "## Internal Usage",
+        "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->",
+        "| ID | Type | Date | Summary |",
+        "|----|------|------|---------|",
+    ]
+    for ref_id, classify, summary, approved_at in rows:
+        src = ref_id[0] if ref_id else "?"
+        t = type_label.get(src, "?")
+        dt = approved_at.strftime("%Y-%m-%d") if approved_at else ""
+        table_lines.append(f"| {ref_id} | {t} | {dt} | {(summary or '')[:60]} |")
+
+    new_section = "\n".join(table_lines) + "\n"
+
+    text = path.read_text(errors="ignore")
+
+    if "## Internal Usage" in text:
+        # Replace everything from "## Internal Usage" to end-of-file
+        idx = text.index("## Internal Usage")
+        text = text[:idx].rstrip() + "\n\n" + new_section
+    else:
+        text = text.rstrip() + "\n\n" + new_section
+
+    path.write_text(text)
+    log.info(f"_regenerate_internal_usage: rebuilt {len(rows)} rows → {slug}.md")
+
+
 # ── Planner-tag helpers ───────────────────────────────────────────────────────
 
 # Map classify value → (mng_tags_categories.name, pr_seq_counters.category, display prefix)
@@ -1017,6 +1113,7 @@ async def run_work_items(project: str) -> dict:
                 log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
 
             # Step 3b: upsert planner_tag with seq_num + file_ref
+            tag_uuid: Optional[str] = None
             if project_id:
                 uc_path = _slug_path(uc_dir, slug)
                 # file_ref relative to code_dir (or absolute fallback)
@@ -1035,11 +1132,11 @@ async def run_work_items(project: str) -> dict:
                     description=entry.get("summary", ""),
                 )
                 if tag_result:
-                    tag_id, seq_num = tag_result
+                    tag_uuid, seq_num = tag_result
                     display_id = _tag_display_id(classify, seq_num)
                     tags_created.append({
                         "slug":       slug,
-                        "tag_id":     tag_id,
+                        "tag_id":     tag_uuid,
                         "seq_num":    seq_num,
                         "display_id": display_id,
                         "classify":   classify,
@@ -1049,6 +1146,16 @@ async def run_work_items(project: str) -> dict:
                         f"backlog: planner_tag {display_id} ({slug}) "
                         f"linked to {entry['ref_id']}"
                     )
+
+                # Step 3c: insert stable DB linkage record
+                _insert_backlog_link(
+                    project_id=project_id,
+                    ref_id=entry["ref_id"],
+                    tag_id=tag_uuid,
+                    use_case_slug=slug,
+                    classify=classify,
+                    summary=entry.get("summary", ""),
+                )
 
             approved_ids.append(entry["ref_id"])
 
@@ -1060,6 +1167,15 @@ async def run_work_items(project: str) -> dict:
     # Step 5: rewrite backlog
     if approved_ids or rejected_ids:
         bl.rewrite(keep=pending, processed=approved_ids, rejected=rejected_ids)
+
+    # Step 6: regenerate ## Internal Usage in all touched use case files
+    # (rebuilds from mem_backlog_links — survives manual edits/deletion)
+    if project_id:
+        for slug in use_cases_updated:
+            try:
+                _regenerate_internal_usage(uc_dir, slug, project_id)
+            except Exception as e:
+                log.debug(f"run_work_items: regenerate_internal_usage({slug}) error: {e}")
 
     return {
         "flushed":           total_flushed,
