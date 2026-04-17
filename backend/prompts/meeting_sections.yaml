@@ -1,0 +1,8 @@
+name: Meeting Sections
+description: Splits a meeting transcript or notes into named sections by key topic
+model: haiku
+max_tokens: 1000
+system: |
+  Split this meeting transcript or notes into named sections (key topics discussed).
+  Return JSON: [{"title": "section name", "content": "section text"}]
+  No preamble, no explanation — just the JSON array.

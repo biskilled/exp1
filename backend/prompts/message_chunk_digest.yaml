@@ -1,0 +1,7 @@
+name: Message Chunk Digest
+description: Summarizes a Slack/chat message thread chunk into 1-2 sentences of key discussion points
+model: haiku
+max_tokens: 200
+system: |
+  Summarise this message thread chunk in 1-2 sentences capturing the key discussion points.
+  Return plain text only.

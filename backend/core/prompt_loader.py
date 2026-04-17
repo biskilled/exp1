@@ -1,9 +1,18 @@
 """
 prompt_loader.py — File-based system prompt loader.
 
-Loads internal system prompts from backend/prompts/.
-Configuration in backend/prompts/prompts.yaml specifies model + max_tokens per prompt.
+Each prompt is a self-contained YAML file under backend/prompts/ with fields:
+  name         — human-readable label
+  description  — what the prompt does
+  model        — haiku | sonnet  (resolved to full model ID at load time)
+  max_tokens   — int
+  system       — the system prompt text (multiline YAML literal block)
+  tools        — (optional) list of tool definitions
+  mcp_server   — (optional) MCP server config
+
 Prompts are NOT stored in the DB and NOT exposed to users.
+The loader walks the directory recursively and uses the stem filename as the key
+(e.g. commits/commit_digest.yaml → key "commit_digest").
 
 Usage::
 
@@ -15,34 +24,37 @@ Usage::
     # Call the configured model directly
     result = await prompts.call("commit_digest", user_message)   # → str
 
-    # Just get the text (for callers that manage their own LLM calls)
+    # Just get the system text (for callers that manage their own LLM calls)
     text = prompts.content("commit_digest")   # str | None
 """
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-# Resolved at import time — same directory as this file's parent / prompts
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 @dataclass
 class PromptConfig:
     name: str
-    content: str
-    model: str        # resolved model ID (e.g. "claude-haiku-4-5-20251001")
+    description: str
+    content: str          # the system prompt text
+    model: str            # resolved model ID (e.g. "claude-haiku-4-5-20251001")
     max_tokens: int
-    file_path: Path
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    mcp_server: Optional[dict[str, Any]] = None
+    file_path: Optional[Path] = None
 
 
 class PromptLoader:
     """
-    Reads backend/prompts/prompts.yaml and the referenced .md files once on first access.
+    Walks backend/prompts/ recursively for *.yaml files on first access.
+    Each YAML file is one prompt; its stem filename is the lookup key.
     Thread-safe for reads (writes never happen at runtime).
     """
 
@@ -58,7 +70,7 @@ class PromptLoader:
         return self._configs.get(name)
 
     def content(self, name: str) -> Optional[str]:
-        """Return just the prompt text, or None if not found."""
+        """Return just the system prompt text, or None if not found."""
         cfg = self.get(name)
         return cfg.content if cfg else None
 
@@ -66,7 +78,7 @@ class PromptLoader:
                    max_tokens: Optional[int] = None) -> str:
         """Load the prompt, call the configured model, return the response text.
 
-        Falls back gracefully to '' if the prompt file is missing or the API call fails.
+        Falls back gracefully to '' if the prompt is missing or the API call fails.
         """
         cfg = self.get(name)
         if not cfg or not cfg.content:
@@ -75,24 +87,28 @@ class PromptLoader:
         tokens = max_tokens or cfg.max_tokens
         return await _call_model(cfg.model, cfg.content, user_message, tokens)
 
+    def list_names(self) -> list[str]:
+        """Return all loaded prompt keys."""
+        self._ensure_loaded()
+        return list(self._configs.keys())
+
     # ── Internal ────────────────────────────────────────────────────────────
 
     def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        self._loaded = True  # set early to avoid re-entrant loading
+        self._loaded = True
         self._load()
 
     def _load(self) -> None:
-        yaml_path = _PROMPTS_DIR / "prompts.yaml"
-        if not yaml_path.exists():
-            log.warning(f"prompt_loader: {yaml_path} not found — no prompts loaded")
+        if not _PROMPTS_DIR.exists():
+            log.warning(f"prompt_loader: prompts directory not found: {_PROMPTS_DIR}")
             return
+
         try:
-            import yaml
-            data = yaml.safe_load(yaml_path.read_text()) or {}
-        except Exception as e:
-            log.warning(f"prompt_loader: failed to parse prompts.yaml: {e}")
+            import yaml as _yaml
+        except ImportError:
+            log.warning("prompt_loader: PyYAML not installed — no prompts loaded")
             return
 
         try:
@@ -108,25 +124,37 @@ class PromptLoader:
             }
 
         loaded = 0
-        for name, cfg in (data.get("prompts") or {}).items():
-            rel_path   = cfg.get("file", "")
-            model_key  = cfg.get("model", "haiku")
-            max_tokens = int(cfg.get("max_tokens", 300))
-            model_id   = model_map.get(model_key, model_key)  # fallback: use key as-is
+        for yaml_file in sorted(_PROMPTS_DIR.rglob("*.yaml")):
+            # Skip the legacy prompts.yaml index file if still present
+            if yaml_file.name == "prompts.yaml":
+                continue
+            try:
+                data = _yaml.safe_load(yaml_file.read_text()) or {}
+            except Exception as e:
+                log.warning(f"prompt_loader: failed to parse {yaml_file}: {e}")
+                continue
 
-            file_path = _PROMPTS_DIR / rel_path
-            if not file_path.exists():
-                log.warning(f"prompt_loader: prompt file not found: {file_path}")
-                content = ""
-            else:
-                content = file_path.read_text().strip()
+            key        = yaml_file.stem                          # filename without .yaml
+            model_key  = data.get("model", "haiku")
+            model_id   = model_map.get(model_key, model_key)    # fallback: use key as-is
+            max_tokens = int(data.get("max_tokens", 300))
+            system     = (data.get("system") or "").strip()
+            tools      = data.get("tools") or []
+            mcp_server = data.get("mcp_server") or None
 
-            self._configs[name] = PromptConfig(
-                name=name,
-                content=content,
+            if not system:
+                log.warning(f"prompt_loader: {yaml_file.name} has no 'system' field — skipped")
+                continue
+
+            self._configs[key] = PromptConfig(
+                name=data.get("name", key),
+                description=data.get("description", ""),
+                content=system,
                 model=model_id,
                 max_tokens=max_tokens,
-                file_path=file_path,
+                tools=tools,
+                mcp_server=mcp_server,
+                file_path=yaml_file,
             )
             loaded += 1
 

@@ -172,7 +172,7 @@ async function _loadCats() {
       ? cats.map(c => `
           <button class="pl-cat-btn ${c.id === _catId ? 'active' : ''}"
                   data-catid="${c.id}"
-                  onclick="window._plSelectCat(${c.id}, ${JSON.stringify(c.name)}, ${JSON.stringify(c.color || '#4a90e2')})">
+                  onclick="window._plSelectCat(${c.id}, ${_esc(JSON.stringify(c.name))}, ${_esc(JSON.stringify(c.color || '#4a90e2'))})">
             <span style="color:${_esc(c.color||'#888')}">${_esc(c.icon||'⬡')}</span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
             <span class="pl-cat-count">${c.value_count ?? 0}</span>
