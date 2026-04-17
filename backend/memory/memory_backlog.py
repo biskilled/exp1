@@ -859,19 +859,119 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
     log.info(f"use_case: merged {ref_id} → {slug}")
 
 
+# ── Planner-tag helpers ───────────────────────────────────────────────────────
+
+# Map classify value → (mng_tags_categories.name, pr_seq_counters.category, display prefix)
+_CLASSIFY_TO_TAG: dict[str, tuple[str, str, str]] = {
+    "use_case": ("use_case", "uc",   "UC"),
+    "feature":  ("feature",  "feat", "F"),
+    "bug":      ("bug",      "bug",  "B"),
+    "task":     ("task",     "feat", "F"),   # tasks fall into feature range
+}
+
+_DEFAULT_TAG_CFG = ("use_case", "uc", "UC")
+
+
+def _upsert_planner_tag(
+    project: str,
+    project_id: int,
+    name: str,
+    classify: str,
+    file_ref: str,
+    description: str = "",
+) -> Optional[tuple[str, int]]:
+    """Find or create a planner_tag row for this use-case / feature / bug.
+
+    Assigns a seq_num on creation (never changes it later).
+    Sets file_ref to point at the use-case .md file.
+    Returns (tag_id: str, seq_num: int) or None on failure.
+    """
+    if not db.is_available():
+        return None
+
+    cat_name, seq_cat, _ = _CLASSIFY_TO_TAG.get(classify, _DEFAULT_TAG_CFG)
+
+    try:
+        from data.dl_seq import next_seq
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Resolve category_id
+                cur.execute(
+                    "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s",
+                    (cat_name,),
+                )
+                row = cur.fetchone()
+                cat_id = row[0] if row else None
+
+                # Check if a tag already exists for this name + category in this project
+                cur.execute(
+                    """SELECT id::text, seq_num FROM planner_tags
+                       WHERE project_id=%s AND name=%s
+                         AND (category_id=%s OR category_id IS NULL)
+                       LIMIT 1""",
+                    (project_id, name, cat_id),
+                )
+                existing = cur.fetchone()
+
+                if existing:
+                    tag_id, seq_num = existing
+                    # Update file_ref if provided
+                    if file_ref:
+                        cur.execute(
+                            "UPDATE planner_tags SET file_ref=%s, updated_at=NOW() WHERE id=%s::uuid",
+                            (file_ref, tag_id),
+                        )
+                    conn.commit()
+                    return (tag_id, seq_num)
+
+                # Allocate seq_num
+                seq_num = next_seq(cur, project_id, seq_cat)
+
+                cur.execute(
+                    """INSERT INTO planner_tags
+                       (project_id, name, category_id, description, status,
+                        creator, seq_num, file_ref)
+                       VALUES (%s, %s, %s, %s, 'open', 'ai', %s, %s)
+                       ON CONFLICT (project_id, name, category_id) DO UPDATE SET
+                           file_ref    = COALESCE(EXCLUDED.file_ref, planner_tags.file_ref),
+                           seq_num     = COALESCE(planner_tags.seq_num, EXCLUDED.seq_num),
+                           updated_at  = NOW()
+                       RETURNING id::text, seq_num""",
+                    (project_id, name, cat_id, description or name, seq_num, file_ref),
+                )
+                result = cur.fetchone()
+                conn.commit()
+
+                if result:
+                    return (result[0], result[1])
+    except Exception as e:
+        log.warning(f"_upsert_planner_tag({name}, {classify}) error: {e}")
+    return None
+
+
+def _tag_display_id(classify: str, seq_num: int) -> str:
+    """Return human-readable tag ID: UC10001, F20001, B30001."""
+    _, _, prefix = _CLASSIFY_TO_TAG.get(classify, _DEFAULT_TAG_CFG)
+    return f"{prefix}{seq_num}"
+
+
 # ── run_work_items ────────────────────────────────────────────────────────────
 
 async def run_work_items(project: str) -> dict:
-    """Full pipeline: flush pending → approve → create/merge use cases.
+    """Full pipeline: flush pending → approve → create/merge use cases + planner_tags.
 
     1. Flush all unprocessed mirror rows into backlog.md
     2. Parse backlog.md
-    3. For approved (APPROVE: x) entries: create/merge into use_cases/{slug}.md
+    3. For approved (APPROVE: x) entries:
+       a. Create/merge into use_cases/{slug}.md
+       b. Upsert planner_tag with seq_num, file_ref pointing to .md file
     4. For rejected (APPROVE: -) entries: archive them
     5. Rewrite backlog.md
     6. Return summary stats
     """
     bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
 
     # Step 1: flush
     flushed = await bl.process_all_pending()
@@ -884,33 +984,71 @@ async def run_work_items(project: str) -> dict:
     rejected_ids: list[str] = []
     pending: list[dict] = []
     use_cases_updated: set[str] = set()
+    tags_created: list[dict] = []
 
     uc_dir = bl._use_cases_dir()
 
     for entry in entries:
         ap = entry.get("approve", " ")
         if ap == "x":
-            # Step 3: create/merge
+            # Step 3a: create/merge use-case file
             tag_override = entry.get("tag", "").strip()
             match_type   = entry.get("match_type", "none")
             match_slug   = entry.get("match_slug", "").strip()
+            classify     = entry.get("classify", "use_case")
+            # Normalise classify: "task" → treat as feature in the file, but
+            # keep classify for the seq range
+            if classify not in _CLASSIFY_TO_TAG:
+                classify = "use_case"
 
             slug = tag_override or match_slug or "general"
-            # Sanitise slug (lowercase, hyphens only)
             slug = re.sub(r"[^a-z0-9\-]", "-", slug.lower()).strip("-") or "general"
 
             try:
                 if match_type == "new" and not tag_override:
                     _create_use_case(uc_dir, slug, entry)
                 else:
-                    # existing or has tag override
                     if not _slug_path(uc_dir, slug).exists():
                         _create_use_case(uc_dir, slug, entry)
                     else:
                         _merge_into_use_case(uc_dir, slug, entry)
                 use_cases_updated.add(slug)
             except Exception as e:
-                log.warning(f"run_work_items: merge error for {entry['ref_id']}: {e}")
+                log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
+
+            # Step 3b: upsert planner_tag with seq_num + file_ref
+            if project_id:
+                uc_path = _slug_path(uc_dir, slug)
+                # file_ref relative to code_dir (or absolute fallback)
+                code_dir = _get_code_dir(project)
+                if code_dir and uc_path.is_relative_to(code_dir):
+                    file_ref = str(uc_path.relative_to(code_dir))
+                else:
+                    file_ref = f"documents/use_cases/{slug}.md"
+
+                tag_result = _upsert_planner_tag(
+                    project=project,
+                    project_id=project_id,
+                    name=slug,
+                    classify=classify,
+                    file_ref=file_ref,
+                    description=entry.get("summary", ""),
+                )
+                if tag_result:
+                    tag_id, seq_num = tag_result
+                    display_id = _tag_display_id(classify, seq_num)
+                    tags_created.append({
+                        "slug":       slug,
+                        "tag_id":     tag_id,
+                        "seq_num":    seq_num,
+                        "display_id": display_id,
+                        "classify":   classify,
+                        "ref_id":     entry["ref_id"],
+                    })
+                    log.info(
+                        f"backlog: planner_tag {display_id} ({slug}) "
+                        f"linked to {entry['ref_id']}"
+                    )
 
             approved_ids.append(entry["ref_id"])
 
@@ -930,4 +1068,5 @@ async def run_work_items(project: str) -> dict:
         "rejected":          len(rejected_ids),
         "pending":           len(pending),
         "use_cases_updated": sorted(use_cases_updated),
+        "tags_created":      tags_created,
     }

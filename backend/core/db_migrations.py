@@ -2468,6 +2468,80 @@ def m054_backlog_ref(conn) -> None:
     log.info("m054_backlog_ref: backlog_ref + file_ref columns added; P/C/M/I seq seeds inserted")
 
 
+def m055_cleanup_and_seq(conn) -> None:  # noqa: C901
+    """Drop legacy tables; re-add seq_num to planner_tags; seed use_case category + seq counters.
+
+    Legacy tables removed (all dropped in earlier migrations; safe IF NOT EXISTS):
+        mem_tags_relations, pr_embeddings, pr_memory_events, pr_session_summaries,
+        pr_memory_tags, pr_source_tags, pr_tags, pr_tag_meta, mng_entity_categories,
+        mng_entity_values, mng_entity_value_links, pr_events, pr_prompt_tags,
+        planner_tags_meta, mem_mrr_tags, mem_ai_tags, mem_ai_tags_relations, mem_ai_features
+
+    New seq ranges (separate from work-item sequences — use prefix in category name):
+        "uc"   → 10000+  (use_case planner tags)
+        "feat" → 20000+  (feature  planner tags)
+        "bug"  → 30000+  (bug      planner tags)
+
+    planner_tags.seq_num INT — human-readable ID within a project (e.g. UC10001 = uc seq 10001).
+    """
+    _LEGACY_TABLES = [
+        "mem_tags_relations",
+        "pr_embeddings",
+        "pr_memory_events",
+        "pr_session_summaries",
+        "pr_memory_tags",
+        "pr_source_tags",
+        "pr_tags",
+        "pr_tag_meta",
+        "mng_entity_categories",
+        "mng_entity_values",
+        "mng_entity_value_links",
+        "pr_events",
+        "pr_prompt_tags",
+        "planner_tags_meta",
+        "mem_mrr_tags",
+        "mem_ai_tags",
+        "mem_ai_tags_relations",
+        "mem_ai_features",
+    ]
+    with conn.cursor() as cur:
+        # 1. Drop legacy tables (CASCADE to handle any residual FK references)
+        for tbl in _LEGACY_TABLES:
+            cur.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+            log.debug(f"m055: dropped legacy table {tbl} (if existed)")
+
+        # 2. Add seq_num back to planner_tags (was dropped in m026; now a clean human-readable ID)
+        cur.execute(
+            "ALTER TABLE planner_tags ADD COLUMN IF NOT EXISTS seq_num INT"
+        )
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_planner_tags_seq "
+            "ON planner_tags(project_id, seq_num) WHERE seq_num IS NOT NULL"
+        )
+
+        # 3. Seed "use_case" into mng_tags_categories (idempotent)
+        cur.execute(
+            """INSERT INTO mng_tags_categories (client_id, name, color, icon, description)
+               VALUES (1, 'use_case', '#06b6d4', '◻', 'Use case — organised requirement set')
+               ON CONFLICT (client_id, name) DO NOTHING"""
+        )
+
+        # 4. Seed pr_seq_counters for the three planner-tag sequences across all projects
+        for cat, start in [("uc", 10000), ("feat", 20000), ("bug", 30000)]:
+            cur.execute(
+                """INSERT INTO pr_seq_counters (project_id, category, next_val)
+                   SELECT id, %s, %s FROM mng_projects ON CONFLICT DO NOTHING""",
+                (cat, start + 1),
+            )
+
+    conn.commit()
+    log.info(
+        "m055: %d legacy tables dropped; seq_num on planner_tags; "
+        "use_case category + uc/feat/bug seq seeds added",
+        len(_LEGACY_TABLES),
+    )
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2510,4 +2584,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m052_column_reorder", m052_column_reorder),
     ("m053_pr_statistics", m053_pr_statistics),
     ("m054_backlog_ref", m054_backlog_ref),
+    ("m055_cleanup_and_seq", m055_cleanup_and_seq),
 ]

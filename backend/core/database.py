@@ -829,8 +829,9 @@ class _Database:
     def _seed_tag_categories(conn) -> None:
         """Seed default tag categories into mng_tags_categories."""
         _SEED_CATS = [
-            ("feature",      "#22c55e", "⚡", "New functionality"),
-            ("bug",          "#ef4444", "🐛", "Defect or unexpected behaviour"),
+            ("use_case",     "#06b6d4", "◻",  "Use case — organised requirement set (UC 10000+)"),
+            ("feature",      "#22c55e", "⚡", "New functionality (F 20000+)"),
+            ("bug",          "#ef4444", "🐛", "Defect or unexpected behaviour (B 30000+)"),
             ("task",         "#3b82f6", "✓",  "Process or maintenance work"),
             ("design",       "#a855f7", "◈",  "Architecture or UX design"),
             ("decision",     "#f59e0b", "⚑",  "Architectural or product decision"),

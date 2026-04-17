@@ -218,17 +218,6 @@ class TagMerge(BaseModel):
     into_name: str
 
 
-class SourceTagCreate(BaseModel):
-    tag_id: str
-    related_type: str  # 'prompt' | 'commit' | 'item' | 'message' | 'work_item' | 'session'
-    related_id: str
-    related_layer: str = "mirror"  # 'mirror' | 'ai'
-
-
-class RelationUpdate(BaseModel):
-    related_approved: Optional[str] = None  # 'approved' | 'rejected' | None (reset to pending)
-
-
 class CategoryCreate(BaseModel):
     name: str
     color: str = "#4a90e2"
@@ -711,18 +700,6 @@ async def get_tag_sources(tag_id: str, project: str = Query(...)):
     return results
 
 
-@router.post("/source")
-async def add_source_tag(body: SourceTagCreate):
-    """Deprecated: use POST /entities/events/tag-by-source-id with a tag string instead."""
-    raise HTTPException(410, "mem_tags_relations removed — use tag-by-source-id with tag string")
-
-
-@router.delete("/source/{source_tag_id}")
-async def remove_source_tag(source_tag_id: str):
-    """Deprecated: use DELETE /entities/events/tag-by-source-id with a tag string instead."""
-    raise HTTPException(410, "mem_tags_relations removed — use tag-by-source-id with tag string")
-
-
 # ── Session context endpoints ─────────────────────────────────────────────────
 
 @router.get("/session-context")
@@ -891,21 +868,6 @@ async def delete_delivery(delivery_id: int):
 
 # ── AI tag suggestion endpoints ───────────────────────────────────────────────
 
-class SuggestionApplyBody(BaseModel):
-    source_type: str
-    source_id: str
-    tag_name: str
-    session_id: Optional[str] = None
-    session_src_desc: Optional[str] = None
-    layer: str = "mrr"  # 'mrr' = mem_mrr_* row, 'ai' = mem_ai_events row
-
-
-class SuggestionIgnoreBody(BaseModel):
-    source_type: str
-    source_id: str
-    layer: str = "mrr"
-
-
 @router.post("/suggestions/generate")
 async def generate_tag_suggestions(project: str = Query(...)):
     """AI tag suggestions for MRR rows dropped — tags are now set explicitly via hooks.
@@ -919,36 +881,6 @@ async def generate_tag_suggestions(project: str = Query(...)):
         "total_untagged_ai":  0,
         "total_untagged":     0,
     }
-
-
-@router.post("/suggestions/apply")
-async def apply_tag_suggestion(project: str = Query(...), body: SuggestionApplyBody = ...):
-    """Deprecated: AI tag suggestions for MRR rows removed. Use tag-by-source-id instead."""
-    raise HTTPException(410, "AI tag suggestion pipeline for MRR removed — use POST /entities/events/tag-by-source-id")
-
-
-@router.post("/suggestions/ignore")
-async def ignore_tag_suggestion(project: str = Query(...), body: SuggestionIgnoreBody = ...):
-    """Deprecated: AI tag suggestions for MRR rows removed."""
-    raise HTTPException(410, "AI tag suggestion pipeline for MRR removed")
-
-
-# ── Relations endpoints ───────────────────────────────────────────────────────
-
-@router.get("/relations")
-async def get_tag_relations(
-    project: str = Query(...),
-    tag_id: Optional[str] = Query(None),
-    work_item_id: Optional[str] = Query(None),
-):
-    """Deprecated: mem_tags_relations table removed. Returns empty list."""
-    return []
-
-
-@router.patch("/relations/{relation_id}")
-async def update_relation(relation_id: str, body: RelationUpdate):
-    """Deprecated: mem_tags_relations table removed."""
-    raise HTTPException(410, "mem_tags_relations removed")
 
 
 # ── Tag context endpoint ───────────────────────────────────────────────────────

@@ -28,6 +28,13 @@ SEQ_STARTS: dict[str, int] = {
     "C":         200000,   # commits
     "M":         300000,   # messages
     "I":         400000,   # items
+    # Planner-tag sequential IDs (human-readable numbers per project)
+    # Use cases start at 10000 → displayed as UC10001, UC10002 …
+    # Features start at 20000 → displayed as F20001, F20002 …
+    # Bugs     start at 30000 → displayed as B30001, B30002 …
+    "uc":        10000,    # use_case planner tags
+    "feat":      20000,    # feature  planner tags
+    "bug":       30000,    # bug      planner tags
 }
 
 _DEFAULT_START = 10000

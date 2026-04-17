@@ -840,30 +840,6 @@ async def sync_events(
     return {"imported": {"prompt": 0, "commit": 0}, "project": p, "phase5": "noop"}
 
 
-# ── Event tagging (deprecated — use tag-by-source-id) ─────────────────────────
-# These endpoints used pr_events integer IDs which no longer exist.
-
-class TagAdd(BaseModel):
-    entity_value_id: str    # UUID string (was int)
-    auto_tagged:     bool = False
-
-
-@router.post("/events/{event_id}/tag")
-async def add_event_tag(
-    event_id: str, body: TagAdd, background: BackgroundTasks,
-    project: str | None = Query(None),
-):
-    """Deprecated: use POST /entities/events/tag-by-source-id instead."""
-    raise HTTPException(410, "Use POST /entities/events/tag-by-source-id")
-
-
-@router.delete("/events/{event_id}/tag/{value_id}")
-async def remove_event_tag(
-    event_id: str, value_id: str, background: BackgroundTasks,
-    project: str | None = Query(None),
-):
-    """Deprecated: use DELETE /entities/events/tag-by-source-id instead."""
-    raise HTTPException(410, "Use DELETE /entities/events/tag-by-source-id")
 
 
 @router.get("/values/{val_id}/events")
@@ -893,31 +869,6 @@ async def dismiss_suggestions(event_id: str, project: str | None = Query(None)):
     return {"ok": True}
 
 
-# ── Event links (dropped table — stubbed) ──────────────────────────────────────
-
-_LINK_TYPES = {"implements", "fixes", "causes", "relates_to", "references", "closes"}
-
-class LinkCreate(BaseModel):
-    to_event_id: str
-    link_type:   str
-
-
-@router.post("/events/{event_id}/link")
-async def add_event_link(event_id: str, body: LinkCreate, project: str | None = Query(None)):
-    """Stub — pr_event_links table was removed."""
-    raise HTTPException(410, "Event links removed — commit→prompt linking via mem_mrr_commits.prompt_id")
-
-
-@router.delete("/events/{event_id}/link/{to_id}/{link_type}")
-async def remove_event_link(event_id: str, to_id: str, link_type: str, project: str | None = Query(None)):
-    """Stub — pr_event_links table was removed."""
-    raise HTTPException(410, "Event links removed")
-
-
-@router.get("/events/{event_id}/links")
-async def get_event_links(event_id: str, project: str | None = Query(None)):
-    """Stub — pr_event_links table was removed."""
-    return {"outgoing": [], "incoming": [], "event_id": event_id}
 
 
 # ── Session bulk-tag ─────────────────────────────────────────────────────────────
@@ -1146,28 +1097,6 @@ async def get_events_source_tags(project: str | None = Query(None)):
     return result
 
 
-# ── Value dependency links (mng_entity_value_links was dropped) ────────────────
-
-class ValueLinkCreate(BaseModel):
-    to_value_id: str   # UUID string
-    link_type:   str = "blocks"
-
-
-@router.post("/values/{val_id}/links", status_code=201)
-async def add_value_link(val_id: str, body: ValueLinkCreate, project: str | None = Query(None)):
-    """Stub — mng_entity_value_links was removed. Tag dependencies not yet reimplemented."""
-    raise HTTPException(410, "Tag dependency links not yet reimplemented in new schema")
-
-
-@router.delete("/values/{val_id}/links/{to_id}")
-async def remove_value_link(val_id: str, to_id: str, link_type: str = Query("blocks")):
-    raise HTTPException(410, "Tag dependency links not yet reimplemented in new schema")
-
-
-@router.get("/values/{val_id}/links")
-async def get_value_links(val_id: str):
-    """Stub — returns empty until tag links are reimplemented."""
-    return {"outgoing": [], "incoming": [], "value_id": val_id}
 
 
 # ── GitHub Issue Sync ───────────────────────────────────────────────────────────

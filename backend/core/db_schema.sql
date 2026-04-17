@@ -250,8 +250,10 @@ CREATE TABLE IF NOT EXISTS mng_role_system_links (
 CREATE INDEX IF NOT EXISTS idx_mrsl_role   ON mng_role_system_links(role_id);
 CREATE INDEX IF NOT EXISTS idx_mrsl_sysrol ON mng_role_system_links(system_role_id);
 
--- mng_tags_categories: tag type definitions (feature, bug, task, design, etc.)
--- Shared across all projects; seeded at startup.
+-- mng_tags_categories: tag type definitions (use_case, feature, bug, task, design, etc.)
+-- Seeded at startup: use_case (UC 10000+), feature (F 20000+), bug (B 30000+),
+--   task, design, decision, meeting, ai_suggestion.
+-- Shared across all projects; additional categories can be added per client.
 CREATE TABLE IF NOT EXISTS mng_tags_categories (
     id          SERIAL       PRIMARY KEY,
     client_id   INT          NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
@@ -300,12 +302,16 @@ CREATE TABLE IF NOT EXISTS planner_tags (
     due_date            DATE,
     requester           TEXT,
     creator             TEXT        NOT NULL DEFAULT 'user',          -- who created (username or 'ai')
+    seq_num             INT,                                          -- human-readable sequential ID within project (m055)
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updater             TEXT        NOT NULL DEFAULT 'user',          -- who last updated
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     file_ref            TEXT,                                         -- pointer into use-case file: 'use_cases/auth.md#open-bugs' (m054)
     UNIQUE(project_id, name, category_id)
 );
+-- Unique seq_num per project (NULL allowed for tags created before m055)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_planner_tags_seq
+    ON planner_tags(project_id, seq_num) WHERE seq_num IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_planner_tags_pid    ON planner_tags(project_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_parent ON planner_tags(parent_id);
 CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
