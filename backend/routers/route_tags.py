@@ -358,8 +358,14 @@ async def update_tag(tag_id: str, body: TagUpdate):
         fields["name"] = body.name
     if body.category_id is not None:
         fields["category_id"] = body.category_id
-    if body.parent_id is not None:
-        fields["parent_id"] = body.parent_id
+    # parent_id can be explicitly set to None (clear parent) — check model_fields_set
+    # When set to a value, put in fields dict; when explicitly null, handle separately below
+    parent_id_clear = False
+    if "parent_id" in body.model_fields_set:
+        if body.parent_id is not None:
+            fields["parent_id"] = body.parent_id
+        else:
+            parent_id_clear = True  # will emit "parent_id = NULL" in raw SQL
     if body.merged_into is not None:
         fields["merged_into"] = body.merged_into
     if body.status is not None:
@@ -390,7 +396,10 @@ async def update_tag(tag_id: str, body: TagUpdate):
         deliveries_sql = ", deliveries = %s::jsonb"
         deliveries_val = json.dumps(body.deliveries)
 
-    if len(fields) == 1 and deliveries_val is None:  # only updater — nothing to update
+    parent_null_sql = ", parent_id = NULL" if parent_id_clear else ""
+
+    has_normal_fields = len(fields) > 1  # more than just updater
+    if not has_normal_fields and deliveries_val is None and not parent_id_clear:
         return {"ok": True}
 
     with db.conn() as conn:
@@ -399,7 +408,7 @@ async def update_tag(tag_id: str, body: TagUpdate):
             if deliveries_val is not None:
                 vals = vals + [deliveries_val]
             cur.execute(
-                f"UPDATE planner_tags SET {set_clause}{deliveries_sql}, updated_at = NOW() "
+                f"UPDATE planner_tags SET {set_clause}{deliveries_sql}{parent_null_sql}, updated_at = NOW() "
                 f"WHERE id = %s::uuid AND client_id = 1",
                 vals + [tag_id],
             )

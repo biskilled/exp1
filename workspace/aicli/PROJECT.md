@@ -278,4 +278,4 @@ sidebar tabs:
 - Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
 - Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
 - AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow
-- pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility
+- Frontend API standardization: refactoring entities.js to use api.entities.listValues() method signature, fixing XSS vulnerabilities with _esc() escaping in onclick handlers, and adding /memory route to Vite proxy configuration

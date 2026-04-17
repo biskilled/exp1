@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 19:23 UTC by aicli /memory_
+_Generated: 2026-04-17 19:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI with PostgreSQL/pgvector storage. It synthesizes project knowledge through 4-layer memory architecture (ephemeral → raw → AI-digested → work items), async DAG workflow execution with visual approval, and multi-LLM provider support, currently consolidating schemas, standardizing timestamps, and optimizing tag relations queries while refining AI tag suggestion UX.
+aicli is a shared AI memory platform that combines a Python/FastAPI backend with an Electron desktop UI to capture, synthesize, and organize project development history. It uses PostgreSQL with pgvector for semantic search, async DAG workflows for agent coordination, and multi-layer memory architecture (raw capture → LLM digests → structured facts) to create an intelligent project context system. The system is currently stabilizing schema unification, refining AI tag suggestions in the UI, and optimizing database query patterns for tag relations.
 
 ## Project Facts
 
@@ -275,7 +275,7 @@ Reviewer: ```json
 - Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features
 - Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns
 - AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow
-- pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility
+- Frontend API standardization: refactoring entities.js to use api.entities.listValues() method signature, fixing XSS vulnerabilities with _esc() escaping in onclick handlers, and adding /memory route to Vite proxy configuration
 
 ## Active Features / Bugs / Tasks
 
@@ -299,8 +299,8 @@ Reviewer: ```json
 ### Feature
 
 - **auth** `[open]`
-- **billing** `[open]`
 - **shared-memory** `[open]`
+- **billing** `[open]`
 - **UI** `[open]`
 - **graph-workflow** `[open]`
 - **embeddings** `[open]`
@@ -327,163 +327,118 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/item_digest.md b/backend/prompts/memory/item_digest.md
-deleted file mode 100644
-index b759452..0000000
---- a/backend/prompts/memory/item_digest.md
-+++ /dev/null
-@@ -1,4 +0,0 @@
--Summarise this document (requirement, decision, or note).
--Return JSON only: {"summary": "1-2 sentence digest", "action_items": "- bullet list or empty string", "importance": 5}
--importance scale (0-10): 1-2=reference/notes, 3-4=minor, 5-6=decision, 7-8=key requirement, 9-10=critical constraint
--No preamble, no markdown fences.
+diff --git a/ui/vite.config.mjs b/ui/vite.config.mjs
+index 33f8e48..45805b6 100644
+--- a/ui/vite.config.mjs
++++ b/ui/vite.config.mjs
+@@ -7,7 +7,7 @@ const PROXY_ROUTES = [
+   "/files", "/projects", "/config", "/health", "/git", "/auth", "/usage",
+   "/work-items", "/entities", "/search", "/billing", "/admin", "/logs",
+   "/agent-roles", "/system-roles", "/documents", "/user", "/agents",
+-  "/graph", "/graph-workflows",
++  "/graph", "/graph-workflows", "/memory",
+ ];
+ 
+ export default defineConfig({
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/feature_snapshot_v2.md b/backend/prompts/memory/feature_snapshot_v2.md
-deleted file mode 100644
-index d486715..0000000
---- a/backend/prompts/memory/feature_snapshot_v2.md
-+++ /dev/null
-@@ -1,37 +0,0 @@
--You are a senior technical project analyst. Given a feature tag with its requirements,
--deliveries, linked work items, and recent AI event digests, produce a structured feature
--snapshot broken down into use cases.
--
--## Rules
--
--1. Generate **one use case per delivery entry** from tag.deliveries.
--   If no deliveries are set, infer use cases from the work item content (max 5).
--2. Score fields: 0 = not started, 5 = partially done, 10 = fully done.
--3. Label requirement source as "user" if it came from the tag's requirements/acceptance_criteria
--   fields; "ai" if inferred from work items or events.
--4. Keep use_case_summary concise: 2-4 sentences covering purpose and current state.
--5. If a User-confirmed baseline section is provided, preserve its confirmed action items
--   and scores unless AI evidence clearly contradicts them.
--6. Return ONLY valid JSON — no preamble, no markdown fences.
--
--## Output schema
--
--{
--  "summary": "2-4 sentence global feature summary",
--  "use_cases": [
--    {
--      "use_case_num": 1,
--      "use_case_summary": "what this use case does and its current state",
--      "use_case_type": "feature|bug|task",
--      "use_case_delivery_category": "code|document|architecture_design|presentation",
--      "use_case_delivery_type": "python|markdown|visio|...",
--      "related_work_item_ids": ["uuid1", "uuid2"],
--      "requirements": [
--        {"text": "requirement text", "source": "user|ai", "score": 8}
--      ],
--      "action_items": [
--        {"action_item": "what to do", "acceptance": "how to verify", "score": 5}
--      ]
--    }
--  ]
--}
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index 9dd71b2..c2b5c61 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -215,7 +215,7 @@ async function _loadTags() {
+   if (!pane || !_catId) return;
+   pane.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:2rem;text-align:center">Loading…</div>`;
+   try {
+-    const data = await api.entities.values(_project, { category_id: _catId });
++    const data = await api.entities.listValues(_project, _catId);
+     _tags = data.values || [];
+     _renderTags();
+   } catch (e) {
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/feature_snapshot.md b/backend/prompts/memory/feature_snapshot.md
-deleted file mode 100644
-index 3773d2b..0000000
---- a/backend/prompts/memory/feature_snapshot.md
-+++ /dev/null
-@@ -1,36 +0,0 @@
--Given memory events for a feature (from prompt batches, commits, requirements/decisions/meetings,
--messages, sessions, and agent actions), plus current project facts and work item status,
--produce a comprehensive 4-layer snapshot.
--
--Input sections you may receive:
--  ## Prompt Batches — summaries of developer prompts
--  ## Commits — git commit digests
--  ## Requirements / Decisions / Meetings — items and meeting notes
--  ## Messages — Slack/Teams thread summaries
--  ## Sessions — session-level summaries
--  ## Agent Actions — workflow agent outputs
--  ## Current Project Facts — durable facts (stack, conventions, constraints)
--  Work Item Status: lifecycle_status of associated work item
--
--Return valid JSON with these keys:
--  requirements (str): what the feature must do — synthesised from all evidence
--  action_items (str): remaining work items and next steps
--  work_item_status (str): current lifecycle status (pass through from input)
--  design (object): {
--    high_level: "architectural overview",
--    low_level: "implementation details",
--    patterns_used: ["pattern1", "pattern2"]
--  }
--  code_summary (object): {
--    files: ["path/to/file.py"],
--    key_classes: ["ClassName"],
--    key_methods: ["method_name"],
--    dependencies_added: ["package"],
--    dependencies_removed: ["package"]
--  }
--  project_facts (object): key facts from context relevant to this feature {key: value}
--  relations (array): relationships detected between this and other features/modules.
--    Each item: {"from": "tag-slug", "relation": "part_of|depends_on|blocks|relates_to|replaces|extracted_from", "to": "tag-slug", "note": "brief reason"}
--    Use empty array if no clear relationships detected.
--
--Base your answer only on the provided evidence. Return ONLY valid JSON, no preamble.
+diff --git a/ui/frontend/views/entities.js b/ui/frontend/views/entities.js
+index c2b5c61..46132a7 100644
+--- a/ui/frontend/views/entities.js
++++ b/ui/frontend/views/entities.js
+@@ -172,7 +172,7 @@ async function _loadCats() {
+       ? cats.map(c => `
+           <button class="pl-cat-btn ${c.id === _catId ? 'active' : ''}"
+                   data-catid="${c.id}"
+-                  onclick="window._plSelectCat(${c.id}, ${JSON.stringify(c.name)}, ${JSON.stringify(c.color || '#4a90e2')})">
++                  onclick="window._plSelectCat(${c.id}, ${_esc(JSON.stringify(c.name))}, ${_esc(JSON.stringify(c.color || '#4a90e2'))})">
+             <span style="color:${_esc(c.color||'#888')}">${_esc(c.icon||'⬡')}</span>
+             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(c.name)}</span>
+             <span class="pl-cat-count">${c.value_count ?? 0}</span>
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/conflict_detection.md b/backend/prompts/memory/conflict_detection.md
-deleted file mode 100644
-index ed84b4a..0000000
---- a/backend/prompts/memory/conflict_detection.md
-+++ /dev/null
-@@ -1,17 +0,0 @@
--You are a project memory conflict resolver.
--Given an old fact value and a new fact value for the same key, decide the correct resolution.
--
--Resolution types:
--  supersede  — new value completely replaces the old (old is stale/wrong)
--  merge      — both values are partially correct; provide a merged_value combining them
--  flag       — values are contradictory and require human review
--
--Return JSON only:
--{
--  "conflict": true|false,
--  "conflicting_fact_key": "fact key name",
--  "resolution": "supersede|merge|flag",
--  "merged_value": "combined value (only for merge resolution, else null)",
--  "reasoning": "one sentence explaining the decision"
--}
--No preamble, no markdown fences.
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 94e9684..56f3f51 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-17 18:41 UTC
++> Generated by aicli 2026-04-17 18:59 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/commits/commit_symbol.md b/backend/prompts/memory/commits/commit_symbol.md
-deleted file mode 100644
-index dba6c3c..0000000
---- a/backend/prompts/memory/commits/commit_symbol.md
-+++ /dev/null
-@@ -1 +0,0 @@
--You are a code analyst. Given a changed symbol (class/method/function) and its diff, write a 1-sentence summary of what changed and why. Be concise.
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 06b64f2..4bfde5e 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-17 18:41 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-17 18:59 UTC
+ 
+ # aicli — Shared AI Memory Platform
+ 
 
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/prompts/memory/commits/commit_digest.md b/backend/prompts/memory/commits/commit_digest.md
-deleted file mode 100644
-index 17a48e8..0000000
---- a/backend/prompts/memory/commits/commit_digest.md
-+++ /dev/null
-@@ -1,4 +0,0 @@
--Given a git commit message and context, produce a concise digest.
--Return JSON only: {"summary": "1-2 sentence digest of what changed and why", "action_items": "", "importance": 5}
--importance scale (0-10): 1-2=trivial/chore, 3-4=minor fix, 5-6=feature work, 7-8=significant change, 9-10=critical/architectural
--No preamble, no markdown fences.
+diff --git a/backend/prompts/session_end_synthesis.yaml b/backend/prompts/session_end_synthesis.yaml
+new file mode 100644
+index 0000000..b1e54ae
+--- /dev/null
++++ b/backend/prompts/session_end_synthesis.yaml
+@@ -0,0 +1,13 @@
++name: Session End Synthesis
++description: Produces a structured summary of a development session capturing decisions, open threads, and next steps
++model: haiku
++max_tokens: 600
++system: |
++  Analyse this development session conversation and produce a structured summary.
++  Return ONLY valid JSON — no preamble, no markdown fences:
++  {
++    "summary": "3-6 bullet points of what was decided/built/fixed (use • prefix per bullet)",
++    "open_threads": "unresolved questions or partially-done items as bullet list, or empty string if none",
++    "next_steps": "suggested follow-up actions as bullet list, or empty string if none"
++  }
++  Focus on concrete decisions and code changes. Skip small talk and tool noise.
 
 
 ## AI Synthesis
 
-**2026-04-17** `architecture` — AI context consolidation completed: legacy _system/ directory removed; primary agent context now consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md. **2026-04-17** `schema` — Database unified around mem_ai_* tables with mem_tags_relations consolidation; planner_tags inline snapshot fields replacing separate mem_ai_features table for direct updates. **2026-04-17** `migration` — Column standardization in progress: committed_at → created_at across mem_mrr_commits, route_work_items.py, route_tags.py for consistent timestamp naming. **2026-04-17** `database` — Fire-and-forget async initialization pattern implemented: db.init() runs in executor thread allowing immediate server startup; routes check db.is_available() and fall back to file storage. **2026-04-17** `query-optimization` — Tag relations optimization: updating routes to join through unified mem_tags_relations, reducing N+1 patterns in snapshots/search/projects endpoints. **2026-04-17** `ux` — AI tag suggestion refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population during work item panel refresh. **2026-04-17** `testing` — pytest configuration standardized: pythonPath updated to relative paths (.) in pyproject.toml for multi-environment compatibility. **2026-04-15** `rules` — AI rules file (Version 3.0.0) with memory synthesis mechanisms and tag color defaults (#4a90e2); tag label format: category:name or name-only fallback. **2026-04-15** `memory` — Claude Haiku dual-layer synthesis generating 5 output files with LLM response summarization and auto-tag suggestions; timestamp tracking with deduplication. **2026-04-15** `features` — Active 24 work items tracked: auth, billing, shared-memory, UI, graph-workflow, embeddings, tagging, dropbox, MCP, entity-routing, and 13 additional feature/doc/task tags across dev/discovery/prod phases.
+**[2026-04-17]** `config` — Consolidated AI context files from legacy _system/ directory to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; established unified rules file versioning (3.0.0+).
+
+**[2026-04-17]** `schema` — Unified database schema using mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features as canonical tables; implemented m001-m051 migration framework with db_schema.sql as source of truth.
+
+**[2026-04-17]** `features` — Implemented AI tag suggestion system with approve/remove button handlers in work item panel; refined UX with tooltip improvements ('Does not exist yet') and category inference logic for chip markup.
+
+**[2026-04-17]** `frontend` — Fixed XSS vulnerabilities in entities.js by adding _esc() escaping to onclick handlers; standardized API calls to api.entities.listValues() method signature; added /memory route to Vite proxy configuration.
+
+**[2026-04-17]** `optimization` — Tagged ai_event_filtering_logic to exclude per-commit and diff_file noise; established event_count aggregation using event_type IN ('prompt_batch', 'session_summary') filter for cleaner memory summaries.
+
+**[2026-04-15]** `memory` — Established ai_tag_color_default (#4a90e2) as fallback for tags missing category-specific colors; refined ai_tag_label_format to display 'category:name' when both present, falling back to name-only format.

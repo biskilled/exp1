@@ -406,7 +406,7 @@ api.workItems = {
     _base() + `/work-items/${enc(id)}/dismerge?project=${enc(project)}`,
     { method: 'POST', headers: _headers() }
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  facts:        (project)     => _get(`/work-items/facts?project=${enc(project)}`),
+  facts:        (project)     => _get(`/tags/${enc(project)}/facts`),
   memoryItems:  (project, scope) => {
     const q = new URLSearchParams({ project: project || '' });
     if (scope) q.set('scope', scope);

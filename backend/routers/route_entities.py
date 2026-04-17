@@ -670,7 +670,8 @@ async def patch_value(val_id: str, body: ValuePatch):
     if body.name             is not None: tag_updates["name"] = body.name
     if body.status           is not None: tag_updates["status"] = body.status
     if body.lifecycle_status is not None: tag_updates["status"] = body.lifecycle_status
-    if body.parent_id        is not None: tag_updates["parent_id"] = body.parent_id or None
+    # parent_id can be explicitly set to null (clear parent) — check model_fields_set
+    if "parent_id" in body.model_fields_set: tag_updates["parent_id"] = body.parent_id or None
     if body.description      is not None: tag_updates["description"] = body.description
     if body.due_date         is not None: tag_updates["due_date"] = body.due_date or None
     if body.requirements     is not None: tag_updates["requirements"] = body.requirements

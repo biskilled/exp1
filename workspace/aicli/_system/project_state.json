@@ -97,7 +97,7 @@
     "Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features",
     "Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns",
     "AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow",
-    "pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility"
+    "Frontend API standardization: refactoring entities.js to use api.entities.listValues() method signature, fixing XSS vulnerabilities with _esc() escaping in onclick handlers, and adding /memory route to Vite proxy configuration"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-17T19:24:27Z",
+  "last_memory_run": "2026-04-17T19:46:05Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -154,7 +154,7 @@
       "Schema unification: consolidating mem_tags_relations table with related_layer, related_type, related_id columns; planner_tags inline snapshot fields replacing separate mem_ai_features",
       "Tag relations query optimization: updating route_snapshots.py, route_search.py, and route_projects.py to join through unified mem_tags_relations; reducing N+1 query patterns",
       "AI tag suggestion UX refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population in work item panel refresh workflow",
-      "pytest configuration standardization: updating pythonPath and pyproject.toml to use relative paths (.) instead of 'backend' for multi-environment compatibility"
+      "Frontend API standardization: refactoring entities.js to use api.entities.listValues() method signature, fixing XSS vulnerabilities with _esc() escaping in onclick handlers, and adding /memory route to Vite proxy configuration"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -162,13 +162,17 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "database_migrations": "m001-m051 framework with db_schema.sql as source of truth",
-      "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
-      "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop"
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
+      "mcp": "Stdio MCP server with 12+ tools",
+      "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop",
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform combining Python CLI + FastAPI backend + Electron desktop UI with PostgreSQL/pgvector storage. It synthesizes project knowledge through 4-layer memory architecture (ephemeral \u2192 raw \u2192 AI-digested \u2192 work items), async DAG workflow execution with visual approval, and multi-LLM provider support, currently consolidating schemas, standardizing timestamps, and optimizing tag relations queries while refining AI tag suggestion UX.",
-    "memory_digest": "**2026-04-17** `architecture` \u2014 AI context consolidation completed: legacy _system/ directory removed; primary agent context now consolidated to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md. **2026-04-17** `schema` \u2014 Database unified around mem_ai_* tables with mem_tags_relations consolidation; planner_tags inline snapshot fields replacing separate mem_ai_features table for direct updates. **2026-04-17** `migration` \u2014 Column standardization in progress: committed_at \u2192 created_at across mem_mrr_commits, route_work_items.py, route_tags.py for consistent timestamp naming. **2026-04-17** `database` \u2014 Fire-and-forget async initialization pattern implemented: db.init() runs in executor thread allowing immediate server startup; routes check db.is_available() and fall back to file storage. **2026-04-17** `query-optimization` \u2014 Tag relations optimization: updating routes to join through unified mem_tags_relations, reducing N+1 patterns in snapshots/search/projects endpoints. **2026-04-17** `ux` \u2014 AI tag suggestion refinement: investigating missing suggested_new tags in ui_tags query; verifying ai_suggestion column population during work item panel refresh. **2026-04-17** `testing` \u2014 pytest configuration standardized: pythonPath updated to relative paths (.) in pyproject.toml for multi-environment compatibility. **2026-04-15** `rules` \u2014 AI rules file (Version 3.0.0) with memory synthesis mechanisms and tag color defaults (#4a90e2); tag label format: category:name or name-only fallback. **2026-04-15** `memory` \u2014 Claude Haiku dual-layer synthesis generating 5 output files with LLM response summarization and auto-tag suggestions; timestamp tracking with deduplication. **2026-04-15** `features` \u2014 Active 24 work items tracked: auth, billing, shared-memory, UI, graph-workflow, embeddings, tagging, dropbox, MCP, entity-routing, and 13 additional feature/doc/task tags across dev/discovery/prod phases."
+    "project_summary": "aicli is a shared AI memory platform that combines a Python/FastAPI backend with an Electron desktop UI to capture, synthesize, and organize project development history. It uses PostgreSQL with pgvector for semantic search, async DAG workflows for agent coordination, and multi-layer memory architecture (raw capture \u2192 LLM digests \u2192 structured facts) to create an intelligent project context system. The system is currently stabilizing schema unification, refining AI tag suggestions in the UI, and optimizing database query patterns for tag relations.",
+    "memory_digest": "**[2026-04-17]** `config` \u2014 Consolidated AI context files from legacy _system/ directory to .ai/rules.md, .cursor/rules/aicli.mdrules, and .github/copilot-instructions.md; established unified rules file versioning (3.0.0+).\n\n**[2026-04-17]** `schema` \u2014 Unified database schema using mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features as canonical tables; implemented m001-m051 migration framework with db_schema.sql as source of truth.\n\n**[2026-04-17]** `features` \u2014 Implemented AI tag suggestion system with approve/remove button handlers in work item panel; refined UX with tooltip improvements ('Does not exist yet') and category inference logic for chip markup.\n\n**[2026-04-17]** `frontend` \u2014 Fixed XSS vulnerabilities in entities.js by adding _esc() escaping to onclick handlers; standardized API calls to api.entities.listValues() method signature; added /memory route to Vite proxy configuration.\n\n**[2026-04-17]** `optimization` \u2014 Tagged ai_event_filtering_logic to exclude per-commit and diff_file noise; established event_count aggregation using event_type IN ('prompt_batch', 'session_summary') filter for cleaner memory summaries.\n\n**[2026-04-15]** `memory` \u2014 Established ai_tag_color_default (#4a90e2) as fallback for tags missing category-specific colors; refined ai_tag_label_format to display 'category:name' when both present, falling back to name-only format."
   }
 }
