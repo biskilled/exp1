@@ -105,7 +105,7 @@ def _log_usage(model: str, input_tokens: int, output_tokens: int) -> None:
                     """INSERT INTO mng_usage_logs
                        (user_id, provider, model, input_tokens, output_tokens,
                         cost_usd, charged_usd, source)
-                       VALUES (%s, 'claude', %s, %s, %s, %s, 0, 'backlog')""",
+                       VALUES (%s, 'claude', %s, %s, %s, %s, 0, 'memory')""",
                     (ADMIN_USER_ID, model, input_tokens, output_tokens, cost),
                 )
     except Exception as _e:

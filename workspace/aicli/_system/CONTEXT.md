@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-17 20:50 UTC — do not edit manually.
+> Auto-generated 2026-04-17 21:01 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 613
-- **Last active**: 2026-04-17T20:50:12Z
+- **Sessions**: 614
+- **Last active**: 2026-04-17T21:00:50Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -40,7 +40,7 @@
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
 - **database**: PostgreSQL 15+ with pgvector extensions + m001-m051 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
-- **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m050 migration framework
+- **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
 - **db_consolidation**: mem_ai_events (unified event table with id, project_id, session_id, session_desc, event_summary)
 - **db_tables_unified**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Chat UI session display: fixed stale session ID loading on startup by clearing module-level _sessionId and reading last_session_id synchronously from runtime state; session headers now show CLI/UI/Workflow badge, phase chip, session ID (last 5 chars)
-- Session history persistence: confirmed hook-log endpoint working after m050 migration; 531 total prompts now loading correctly (389 DB + ~142 merged from JSONL); sorting shows newest (April) first
+- Chat UI session display: fixed stale session ID loading on startup by clearing module-level _sessionId and reading last_session_id synchronously from runtime state; session headers now show CLI/UI/Workflow badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
+- Session history persistence: confirmed hook-log endpoint working after m050 migration; 531 total prompts now loading correctly (389 DB + ~142 merged from JSONL); newest sessions (April) load first without stale session flashing
 - Database schema reorganization: m052 migration completed — all 18 tables reordered to: id → client_id → project_id → user_id → [columns] → created_at → updated_at → embedding; committed_at removed from mem_mrr_commits
-- User ID type conversion: m051-m052 migrated mng_users.id from UUID to SERIAL INT; updated_at added to all mirror tables; user_id INT added to mem_mrr_* tables after project_id
-- Event table cleanup: dropped importance column (m037); stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags
-- Feature snapshot layer: mem_ai_feature_snapshot table created to merge user requirements with work items; planner_tags streamlined by removing summary/design/embedding/extra columns
+- User ID type conversion: m051-m052 migrated mng_users.id from UUID to SERIAL INT; updated_at added to all mirror tables and core event tables; user_id INT added to all tables after project_id
+- Event table cleanup: dropped importance column (m037); stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; prompts table column order standardized
+- Feature snapshot layer: mem_ai_feature_snapshot table created to merge user requirements with work items; planner_tags streamlined by removing summary/design/embedding/extra columns; deliverables JSONB added for tracking code/documents/designs
 
 ## Key Decisions
 
@@ -79,11 +79,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
 - Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
-- Planner tags unified with work items: inline snapshot fields (summary, action_items, design) updated directly; mem_ai_feature_snapshot table merges requirements + actual work items
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with inline snapshot fields
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Column standardization: INT primary keys (client_id, project_id, user_id) in order; created_at/updated_at/embedding always at end of all tables
 - Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
-- Column standardization: INT primary keys (client_id, project_id, user_id); created_at/updated_at at end of all tables; committed_at removed in favor of git timestamps
 
 ---
 

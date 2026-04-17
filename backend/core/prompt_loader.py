@@ -172,10 +172,30 @@ async def _call_model(model: str, system: str, user: str, max_tokens: int) -> st
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        _log_usage(model, getattr(resp.usage, "input_tokens", 0), getattr(resp.usage, "output_tokens", 0))
         return (resp.content[0].text if resp.content else "").strip()
     except Exception as e:
         log.debug(f"_call_model({model}): {e}")
         return ""
+
+
+def _log_usage(model: str, input_tokens: int, output_tokens: int) -> None:
+    """Write a memory-source usage record to mng_usage_logs (best-effort)."""
+    try:
+        from core.database import db
+        from core.auth import ADMIN_USER_ID
+        from agents.providers.pr_pricing import calculate_cost
+        cost = calculate_cost("claude", model, input_tokens, output_tokens, markup_pct=0)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_usage_logs
+                       (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd, source)
+                       VALUES (%s, 'claude', %s, %s, %s, %s, 0, 'memory')""",
+                    (ADMIN_USER_ID, model, input_tokens, output_tokens, cost),
+                )
+    except Exception as _e:
+        log.debug(f"prompt_loader._log_usage: {_e}")
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────

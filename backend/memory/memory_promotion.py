@@ -81,18 +81,34 @@ async def _call_llm(system_prompt: str, user_message: str, max_tokens: int = 100
             return ""
         import anthropic
         from core.config import settings
+        model = settings.claude_haiku_model if hasattr(settings, "claude_haiku_model") else "claude-haiku-4-5-20251001"
         client = anthropic.AsyncAnthropic(api_key=api_key)
         resp = await client.messages.create(
-            model=settings.claude_haiku_model if hasattr(settings, "claude_haiku_model")
-                  else "claude-haiku-4-5-20251001",
-            max_tokens=max_tokens,
-            system=system_prompt,
+            model=model, max_tokens=max_tokens, system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
         )
+        _log_usage(model, getattr(resp.usage, "input_tokens", 0), getattr(resp.usage, "output_tokens", 0))
         return resp.content[0].text if resp.content else ""
     except Exception as e:
         log.warning(f"_call_llm error: {e}")
         return ""
+
+
+def _log_usage(model: str, input_tokens: int, output_tokens: int) -> None:
+    try:
+        from core.auth import ADMIN_USER_ID
+        from agents.providers.pr_pricing import calculate_cost
+        cost = calculate_cost("claude", model, input_tokens, output_tokens, markup_pct=0)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mng_usage_logs
+                       (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd, source)
+                       VALUES (%s, 'claude', %s, %s, %s, %s, 0, 'memory')""",
+                    (ADMIN_USER_ID, model, input_tokens, output_tokens, cost),
+                )
+    except Exception as _e:
+        log.debug(f"memory_promotion._log_usage: {_e}")
 
 
 # ── MemoryPromotion ───────────────────────────────────────────────────────────

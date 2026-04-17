@@ -718,31 +718,26 @@ async def llm_costs(project: str):
         return {"last_24h": {"total_calls": 0, "total_cost_usd": 0, "by_model": []},
                 "all_time":  {"total_calls": 0, "total_cost_usd": 0, "by_model": []}}
     try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT
-                        provider, model,
-                        COUNT(*) AS calls,
-                        SUM(cost_usd) AS cost_usd,
-                        SUM(input_tokens) AS input_tokens,
-                        SUM(output_tokens) AS output_tokens,
-                        (created_at > NOW() - INTERVAL '24 hours') AS is_24h
-                    FROM mng_usage_logs
-                    WHERE source = 'memory'
-                    GROUP BY provider, model, (created_at > NOW() - INTERVAL '24 hours')
-                    ORDER BY cost_usd DESC
-                """)
-                rows = cur.fetchall()
+        _SQL = """
+            SELECT provider, model,
+                   COUNT(*) AS calls,
+                   SUM(cost_usd) AS cost_usd,
+                   SUM(input_tokens) AS input_tokens,
+                   SUM(output_tokens) AS output_tokens
+            FROM mng_usage_logs
+            WHERE source IN ('memory', 'backlog') {where_extra}
+            GROUP BY provider, model
+            ORDER BY SUM(cost_usd) DESC
+        """
 
-        def _build(is_24h_flag: bool) -> dict:
+        def _build(rows) -> dict:
             models = [
                 {
                     "provider": r[0], "model": r[1],
                     "calls": r[2], "cost_usd": float(r[3] or 0),
                     "input_tokens": r[4] or 0, "output_tokens": r[5] or 0,
                 }
-                for r in rows if r[6] == is_24h_flag
+                for r in rows
             ]
             return {
                 "total_calls":    sum(m["calls"] for m in models),
@@ -750,7 +745,14 @@ async def llm_costs(project: str):
                 "by_model":       models,
             }
 
-        return {"last_24h": _build(True), "all_time": _build(False), "project": project}
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL.format(where_extra="AND created_at > NOW() - INTERVAL '24 hours'"))
+                rows_24h = cur.fetchall()
+                cur.execute(_SQL.format(where_extra=""))
+                rows_all = cur.fetchall()
+
+        return {"last_24h": _build(rows_24h), "all_time": _build(rows_all), "project": project}
     except Exception as e:
         log.warning(f"llm_costs error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
