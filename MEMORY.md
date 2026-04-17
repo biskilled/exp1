@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 21:11 UTC by aicli /memory_
+_Generated: 2026-04-17 21:46 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -78,55 +78,21 @@ _Generated: 2026-04-17 21:11 UTC by aicli /memory_
 
 ## Active Features / Bugs / Tasks
 
-### Ai_suggestion
-
-- **test123** `[open]`
-
 ### Bug
 
-- **hooks** `[open]`
-
-### Doc_type
-
-- **Test** `[open]`
-- **retrospective** `[open]`
-- **customer-meeting** `[open]`
-- **architecture-decision** `[open]`
-- **high-level-design** `[open]`
-- **low-level-design** `[open]`
+- **ui-refinement** `[open]` — UI component fixes, work items display, drag-drop, tagging interface
+- **performance-optimization** `[open]` — Database query optimization and app loading performance
 
 ### Feature
 
-- **dropbox** `[open]`
-- **test-picker-feature** `[open]`
-- **mcp** `[open]`
-- **tagging** `[open]`
-- **billing** `[open]`
-- **auth** `[open]`
-- **entity-routing** `[open]`
-- **shared-memory** `[open]`
-- **UI** `[open]`
-- **graph-workflow** `[open]`
-- **embeddings** `[open]`
-
-### Phase
-
-- **discovery** `[open]`
-- **prod** `[open]`
-- **development** `[open]`
+- **workflow-pipeline** `[open]` — Pipeline configuration, workflow automation and project templates
+- **memory-architecture** `[open]` — Database schema refactor, memory layers, tagging system and mirroring tables
+- **session-management** `[open]` — Session tracking, hooks integration, and prompt/response storage
 
 ### Task
 
-- **memory** `[open]`
-- **implement-projects-tab** `[open]`
-
-### Use_case
-
-- **discovery** `[open]` — discovery: Memory system architecture, project management planning and UI organization
-- **ui-ux** `[open]` — ui-ux: UI layout, table formatting, visibility improvements, spacing and alignment
-- **feature-development** `[open]` — feature-development: New features: workflows, pipelines, dashboard, prompt management, tag merging
-- **schema-refactor** `[open]` — schema-refactor: Database schema design, table migrations, column reorganization, memory layer struc
-- **bug-fixes** `[open]` — bug-fixes: Backend/database errors, UI loading issues, data persistence bugs
+- **code-cleanup** `[open]` — Code refactoring, unused code removal, file organization
+- **discovery** `[open]` — standalone commits summary (63 commits)
 
 ## Recent Work (last 10 exchanges)
 
