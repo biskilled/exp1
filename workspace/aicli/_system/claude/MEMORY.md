@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-17 13:29 UTC by aicli /memory_
+_Generated: 2026-04-17 17:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -323,912 +323,171 @@ Reviewer: ```json
 
 ### `commit` — 2026-04-17
 
-Commit: chore: update system files and memory after claude session
-Hash: f341693a
-Code files (4):
-  - .ai/rules.md
-  - .cursor/rules/aicli.mdrules
-  - .github/copilot-instructions.md
-  - ui/frontend/views/entities.js
-Generated/internal files: MEMORY.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/MEMORY.md
-Symbols changed: active
+diff --git a/backend/workspace/aicli/_system/history.jsonl b/backend/workspace/aicli/_system/history.jsonl
+deleted file mode 100644
+index 04e79a4..0000000
+--- a/backend/workspace/aicli/_system/history.jsonl
++++ /dev/null
+@@ -1 +0,0 @@
+-{"ts": "2026-03-23T01:07:44Z", "source": "claude_cli", "session_id": "test123", "provider": "claude", "user_input": "test prompt", "output": "", "user": null, "feature": null, "tags": []}
+
 
 ### `commit` — 2026-04-17
 
-diff --git a/workspace/aicli/documents/backlog.md b/workspace/aicli/documents/backlog.md
-new file mode 100644
-index 0000000..0c0d884
---- /dev/null
-+++ b/workspace/aicli/documents/backlog.md
-@@ -0,0 +1,4904 @@
-+# Backlog
-+
-+> Approve entries with `x`, reject with `-`, tag with TAG comment.
-+> Run `POST /memory/{project}/work-items` to process approved entries.
-+
-+### C200001 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200002 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200003 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200004 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200005 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200006 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200007 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200008 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200009 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200010 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200011 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200012 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200013 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200014 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200015 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200016 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200017 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200018 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200019 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200020 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200021 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200022 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200023 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200024 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200025 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200026 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200027 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200028 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200029 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200030 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200031 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200032 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200033 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200034 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200035 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+---
-+
-+### C200036 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200037 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200038 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+---
-+
-+### C200039 2026/04/17 — commits entry
-+
-+<!-- APPROVE: [ ] -->
-+<!-- TAG: -->
-+<!-- AI_MATCH: none: -->
-+<!-- AI_CLASSIFY: task -->
-+
-+
-+-
+Commit: docs: update AI assistant rules and memory after session 11163d9b
+Hash: 31002ada
+Code files (1):
+  - backend/workspace/aicli/_system/history.jsonl
+Generated/internal files: workspace/aicli/_system/CLAUDE.md, workspace/aicli/_system/CONTEXT.md, workspace/aicli/_system/aicli/context.md, workspace/aicli/_system/aicli/copilot.md, workspace/aicli/_system/claude/CLAUDE.md
 
 ### `commit` — 2026-04-17
 
-diff --git a/workspace/_templates/backlog_config.yaml b/workspace/_templates/backlog_config.yaml
-index 87ae1d8..27ea8cf 100644
---- a/workspace/_templates/backlog_config.yaml
-+++ b/workspace/_templates/backlog_config.yaml
-@@ -1,36 +1,173 @@
- # backlog_config.yaml — Backlog pipeline configuration
- #
--# Controls how mem_mrr_* rows are digested into documents/backlog.md.
--# Runtime location: {code_dir}/.ai/backlog_config.yaml
-+# ============================================================================
-+# FULL PIPELINE FLOW
-+# ============================================================================
-+#
-+# PHASE 1 — Auto digest: mem_mrr_* raw rows → documents/backlog.md
-+# ─────────────────────────────────────────────────────────────────
-+#   Trigger: called after every new row insert (route_git.py / route_chat.py).
-+#   When pending rows for a source type reach the 'cnt' threshold, a Haiku
-+#   batch call is made and entries are appended to backlog.md.
-+#   Can also be triggered manually:  POST /memory/{project}/sync-backlog
-+#                                    POST /memory/{project}/sync-backlog?source=commits
-+#
-+#   For each batch of 'cnt' rows the system:
-+#     1. Allocates ref IDs from pr_seq_counters  (P100001, C200001 …)
-+#     2. Calls Claude Haiku with the prompt below ('desc' field)
-+#     3. Appends N entries to documents/backlog.md
-+#     4. Stamps backlog_ref = 'P100001' on each source row in the DB
-+#        (this marks the row as processed — prevents double-processing)
-+#
-+#   Output entry format in backlog.md:
-+#     ### P100042 2026/04/16 — {one-line summary}
-+#     <!-- APPROVE: [ ] -->     ← user sets 'x' to approve, '-' to reject
-+#     <!-- TAG: -->             ← user can override the target use-case slug
-+#     <!-- AI_MATCH: existing:auth-refactor -->  ← AI-suggested use case
-+#     <!-- AI_CLASSIFY: feature -->              ← bug | feature | task
-+#     **Requirements:** …
-+#     **Deliveries:** …
-+#     **Action items:** …
-+#     ---
-+#
-+# PHASE 2 — Manual approval: backlog.md → use_cases/*.md + planner_tags DB
-+# ─────────────────────────────────────────────────────────────────────────
-+#   Trigger: user sets APPROVE: [x] on entries, then calls:
-+#            POST /memory/{project}/work-items/sync   (synchronous)
-+#            POST /memory/{project}/work-items        (background)
-+#
-+#   For each approved entry the system:
-+#     1. Determines target slug:
-+#          TAG comment (user override)  →  AI_MATCH slug  →  "general"
-+#     2. Creates or updates documents/use_cases/{slug}.md
-+#          classify=bug   → appended to "### Open Bugs" section
-+#          classify=other → appended to "### Open Features" section
-+#     3. Upserts planner_tags row (DB identity for the use case):
-+#          seq_num allocated: UC10001+ / F20001+ / B30001+ per project
-+#          file_ref set to: "documents/use_cases/{slug}.md"
-+#     4. Inserts mem_backlog_links row (stable DB linkage, survives file edits):
-+#          ref_id=P100042, tag_id=UUID, use_case_slug="auth", classify, summary
-+#     5. Moves approved/rejected refs to the "## Processed YYYY-MM-DD" archive
-+#        in backlog.md (pending entries stay at top)
-+#
-+#   DB linkage chain (the .md files are human-readable views; DB is source of truth):
-+#     mem_mrr_prompts.backlog_ref = 'P100042'   ← raw row → backlog ref
-+#     mem_backlog_links.ref_id    = 'P100042'   ← backlog ref → use case
-+#     mem_backlog_links.tag_id    = UUID         ← use case → planner_tags
-+#
-+#   To query all raw source events for a use case:
-+#     SELECT c.* FROM mem_mrr_commits c
-+#       JOIN mem_backlog_links l ON l.ref_id = c.backlog_ref
-+#      WHERE l.tag_id = '{use_case_tag_uuid}'
-+#
-+#   The "## Internal Usage" table at the bottom of each use_cases/*.md file
-+#   is auto-generated from mem_backlog_links and will be regenerated if
-+#   deleted or corrupted.  Do NOT manually edit this section.
-+#
-+# Runtime config location: {code_dir}/.ai/backlog_config.yaml
- # (auto-copied from this template on first run if missing)
-+# ============================================================================
+diff --git a/backend/routers/route_history.py b/backend/routers/route_history.py
+index bf759b6..569f0c2 100644
+--- a/backend/routers/route_history.py
++++ b/backend/routers/route_history.py
+@@ -228,7 +228,6 @@ async def chat_history(
+                     cur.execute(
+                         f"""SELECT COUNT(*) FROM mem_mrr_prompts
+                             WHERE client_id=1 AND project=%s
+-                              AND event_type='prompt'
+                               AND prompt IS NOT NULL AND prompt != ''
+                               {noise_filter}{provider_filter}""",
+                         (p,) + noise_args + provider_arg,
+@@ -240,7 +239,6 @@ async def chat_history(
+                                    response, phase, tags, metadata, created_at
+                             FROM mem_mrr_prompts
+                             WHERE client_id=1 AND project=%s
+-                              AND event_type='prompt'
+                               AND prompt IS NOT NULL AND prompt != ''
+                               {noise_filter}{provider_filter}
+                             ORDER BY created_at DESC
+@@ -272,7 +270,8 @@ async def chat_history(
+                 "has_more": (offset + len(entries)) < total,
+             }
+         except Exception as e:
+-            log.warning("chat_history DB read failed, falling back to JSONL: %s", e)
++            import logging
++            logging.getLogger(__name__).warning("chat_history DB read failed, falling back to JSONL: %s", e)
  
- file_name: backlog.md
- rotation: false   # true = daily rotation → backlog_2026-04-16.md
- 
-+# ── Phase 1: Raw row digest prompts ──────────────────────────────────────────
-+# Each source type has its own Haiku prompt.
-+# 'desc' is inserted into the system prompt that instructs Haiku how to
-+# interpret the raw rows.  The full system prompt also includes the current
-+# list of active use cases for AI_MATCH suggestions.
-+# 'cnt' = number of pending rows that triggers one Haiku batch call.
-+
- mirroring_event_summary:
-   commits:
-     cnt: 5
-     prompt:
--      desc: "Summarize each commit into deliveries (classes/methods changed, lines +/-).
--             Classify as bug/feature/task. Suggest matching use case slug."
-+      desc: >
-+        You are digesting git commits for a software project.
-+        For each commit summarize: what classes/methods/files changed, lines +/-.
-+        Identify the purpose: bug fix, new feature, refactor, chore, test, docs.
-+        Classify as bug/feature/task.
-+        Suggest the most relevant existing use case slug (ai_match), or mark
-+        as 'new' if this represents a brand-new capability, or 'none' if
-+        it is purely internal chore work.
-       llm: claude-haiku-4-5-20251001
-       temperature: 0.3
-+
-   prompts:
-     cnt: 5
-     prompt:
--      desc: "Extract requirements, deliveries (type: code|docs|design), and open action items
--             with acceptance criteria. Classify as bug/feature/task. Suggest use case."
-+      desc: >
-+        You are digesting AI development session prompts (user ↔ assistant exchanges).
-+        Extract: key requirements discussed, deliveries produced (code/docs/design),
-+        open action items with acceptance criteria.
-+        Classify as bug/feature/task based on the dominant intent.
-+        Suggest the most relevant existing use case slug (ai_match), o
+     # Fallback: JSONL (when DB unavailable)
+     entries = _load_unified_history(project, provider)
+
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/routers/route_backlog.py b/backend/routers/route_backlog.py
-index 3cbf8de..56f56e6 100644
---- a/backend/routers/route_backlog.py
-+++ b/backend/routers/route_backlog.py
-@@ -240,6 +240,145 @@ async def patch_backlog_entry(
-     return {"status": "updated", "ref_id": ref_id, "project": project}
- 
- 
-+@router.get("/{project}/use-case-events")
-+async def get_use_case_events(
-+    project: str,
-+    tag_id: Optional[str] = Query(None, description="planner_tags UUID"),
-+    slug: Optional[str]   = Query(None, description="use_case_slug (alternative to tag_id)"),
-+):
-+    """Return all backlog refs linked to a use case, with their source row details.
-+
-+    Queries mem_backlog_links then joins back to mem_mrr_* tables so the UI
-+    can show a full audit trail of which raw prompts/commits contributed to
-+    a use case — even if the .md file is edited or deleted.
-+
-+    At least one of tag_id or slug must be supplied.
-+    """
-+    if not tag_id and not slug:
-+        raise HTTPException(status_code=400, detail="Provide tag_id or slug")
-+
-+    from memory.memory_backlog import MemoryBacklog
-+    from core.database import db
-+
-+    if not db.is_available():
-+        raise HTTPException(status_code=503, detail="Database not available")
-+
-+    bl = MemoryBacklog(project)
-+    project_id = bl._get_project_id()
-+    if not project_id:
-+        raise HTTPException(status_code=404, detail="Project not found")
-+
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                # Resolve slug from tag_id if needed
-+                if tag_id and not slug:
-+                    cur.execute(
-+                        "SELECT use_case_slug FROM mem_backlog_links "
-+                        "WHERE project_id=%s AND tag_id=%s::uuid LIMIT 1",
-+                        (project_id, tag_id),
-+                    )
-+                    row = cur.fetchone()
-+                    slug = row[0] if row else None
-+
-+                if not slug:
-+                    return {"project": project, "slug": slug, "events": []}
-+
-+                # Fetch all links for this slug
-+                cur.execute(
-+                    """SELECT ref_id, classify, summary, approved_at, tag_id::text
-+                       FROM mem_backlog_links
-+                       WHERE project_id=%s AND use_case_slug=%s
-+                       ORDER BY approved_at""",
-+                    (project_id, slug),
-+                )
-+                links = cur.fetchall()
-+
-+                events = []
-+                for ref_id, classify, summary, approved_at, t_id in links:
-+                    # Determine source type from prefix letter
-+                    prefix = ref_id[0] if ref_id else ""
-+                    src_map = {"P": "prompts", "C": "commits", "M": "messages", "I": "items"}
-+                    src_type = src_map.get(prefix)
-+
-+                    source_row: dict = {}
-+                    if src_type == "prompts":
-+                        cur.execute(
-+                            "SELECT id::text, left(prompt,200), created_at FROM mem_mrr_prompts "
-+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
-+                            (project_id, ref_id),
-+                        )
-+                        source_row = [
-+                            {"id": r[0], "prompt_preview": r[1], "created_at": str(r[2])}
-+                            for r in cur.fetchall()
-+                        ]
-+                    elif src_type == "commits":
-+                        cur.execute(
-+                            "SELECT commit_hash_short, commit_msg, created_at FROM mem_mrr_commits "
-+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
-+                            (project_id, ref_id),
-+                        )
-+                        source_row = [
-+                            {"hash": r[0], "msg": r[1], "created_at": str(r[2])}
-+                            for r in cur.fetchall()
-+                        ]
-+                    elif src_type == "items":
-+                        cur.execute(
-+                            "SELECT id::text, title, item_type, created_at FROM mem_mrr_items "
-+                            "WHERE project_id=%s AND backlog_ref=%s LIMIT 5",
-+                            (project_id, ref_id),
-+                        )
-+                        source_row = [
-+                            {"id": r[0], "title": r[1], "type": r[2], "created_at": str(r[3])}
-+                            for r in cur.fetchall()
-+                        ]
-+
-+                    events.append({
-+                        "ref_id":      ref_id,
-+                        "source_type": src_type,
-+                        "classify":    classify,
-+                        "summary":     summary,
-+                        "approved_at": str(approved_at) if approved_at else None,
-+                        "tag_id":      t_id,
-+                        "source_rows": source_row,
-+                    })
-+
-+                return {
-+                    "project":  project,
-+                    "slug":     slug,
-+                    "tag_id":   tag_id,
-+                    "total":    len(events),
-+                    "events":   events,
-+                }
-+    except Exception as e:
-+        raise HTTPException(status_code=500, detail=str(e))
-+
-+
-+@router.post("/{project}/regenerate-use-case")
-+async def regenerate_use_case(
-+    project: str,
-+    slug: str = Query(..., description="use_case slug to regenerate Internal Usage for"),
-+):
-+    """Rebuild the ## Internal Usage section of a use case file from mem_backlog_links.
-+
-+    Use this if the section was accidentally deleted or edited by a user.
-+    """
-+    from memory.memory_backlog import MemoryBacklog, _regenerate_internal_usage
-+
-+    bl = MemoryBacklog(project)
-+    project_id = bl._get_project_id()
-+    if not project_id:
-+        raise HTTPException(status_code=404, detail="Project not found")
-+
-+    uc_dir
+diff --git a/backend/routers/route_entities.py b/backend/routers/route_entities.py
+index 1a5b3ae..d1e8a47 100644
+--- a/backend/routers/route_entities.py
++++ b/backend/routers/route_entities.py
+@@ -1042,7 +1042,7 @@ async def get_events_source_tags(project: str | None = Query(None)):
+                    FROM mem_mrr_tags st
+                    JOIN planner_tags t ON t.id = st.tag_id AND t.client_id=1 AND t.project=%s
+                    JOIN mng_tags_categories tc ON tc.id = t.category_id
+-                   JOIN mem_mrr_commits c ON c.id = st.commit_id AND c.client_id=1 AND c.project=%s
++                   JOIN mem_mrr_commits c ON c.commit_hash = st.commit_id AND c.client_id=1 AND c.project=%s
+                    WHERE st.commit_id IS NOT NULL
+                    ORDER BY 1, 3""",
+                 (p, p, p, p),
+
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/memory/memory_backlog.py b/backend/memory/memory_backlog.py
-index 7c80d05..31dc62f 100644
---- a/backend/memory/memory_backlog.py
-+++ b/backend/memory/memory_backlog.py
-@@ -859,6 +859,102 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
-     log.info(f"use_case: merged {ref_id} → {slug}")
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 3170981..58177c6 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,5 +1,5 @@
+ # aicli — GitHub Copilot Instructions
+-> Generated by aicli 2026-04-01 08:25 UTC
++> Generated by aicli 2026-04-01 08:27 UTC
  
+ # aicli — Shared AI Memory Platform
  
-+# ── mem_backlog_links helpers ─────────────────────────────────────────────────
-+
-+def _insert_backlog_link(
-+    project_id: int,
-+    ref_id: str,
-+    tag_id: Optional[str],
-+    use_case_slug: str,
-+    classify: str,
-+    summary: str,
-+) -> None:
-+    """Insert or update a mem_backlog_links row for an approved backlog entry.
-+
-+    This is the stable DB record that survives .md file edits/deletion.
-+    UNIQUE(project_id, ref_id) — one backlog entry can only belong to one use case.
-+    """
-+    if not db.is_available():
-+        return
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """INSERT INTO mem_backlog_links
-+                       (project_id, ref_id, tag_id, use_case_slug, classify, summary)
-+                       VALUES (%s, %s, %s::uuid, %s, %s, %s)
-+                       ON CONFLICT (project_id, ref_id) DO UPDATE SET
-+                           tag_id        = COALESCE(EXCLUDED.tag_id, mem_backlog_links.tag_id),
-+                           use_case_slug = EXCLUDED.use_case_slug,
-+                           classify      = EXCLUDED.classify,
-+                           summary       = EXCLUDED.summary,
-+                           approved_at   = NOW()""",
-+                    (project_id, ref_id, tag_id, use_case_slug, classify, summary or ""),
-+                )
-+            conn.commit()
-+    except Exception as e:
-+        log.warning(f"_insert_backlog_link({ref_id}→{use_case_slug}) error: {e}")
-+
-+
-+def _regenerate_internal_usage(uc_dir: Path, slug: str, project_id: int) -> None:
-+    """Rebuild the ## Internal Usage table in a use case file from mem_backlog_links.
-+
-+    Called when the section is missing or when run_work_items() finishes.
-+    Safe to call multiple times — always rebuilds from DB truth.
-+    """
-+    path = _slug_path(uc_dir, slug)
-+    if not path.exists():
-+        return
-+    if not db.is_available():
-+        return
-+
-+    try:
-+        with db.conn() as conn:
-+            with conn.cursor() as cur:
-+                cur.execute(
-+                    """SELECT ref_id, classify, summary, approved_at
-+                       FROM mem_backlog_links
-+                       WHERE project_id=%s AND use_case_slug=%s
-+                       ORDER BY approved_at""",
-+                    (project_id, slug),
-+                )
-+                rows = cur.fetchall()
-+    except Exception as e:
-+        log.debug(f"_regenerate_internal_usage query error: {e}")
-+        return
-+
-+    if not rows:
-+        return
-+
-+    # Build the Internal Usage table rows
-+    type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}
-+    table_lines = [
-+        "## Internal Usage",
-+        "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->",
-+        "| ID | Type | Date | Summary |",
-+        "|----|------|------|---------|",
-+    ]
-+    for ref_id, classify, summary, approved_at in rows:
-+        src = ref_id[0] if ref_id else "?"
-+        t = type_label.get(src, "?")
-+        dt = approved_at.strftime("%Y-%m-%d") if approved_at else ""
-+        table_lines.append(f"| {ref_id} | {t} | {dt} | {(summary or '')[:60]} |")
-+
-+    new_section = "\n".join(table_lines) + "\n"
-+
-+    text = path.read_text(errors="ignore")
-+
-+    if "## Internal Usage" in text:
-+        # Replace everything from "## Internal Usage" to end-of-file
-+        idx = text.index("## Internal Usage")
-+        text = text[:idx].rstrip() + "\n\n" + new_section
-+    else:
-+        text = text.rstrip() + "\n\n" + new_section
-+
-+    path.write_text(text)
-+    log.info(f"_regenerate_internal_usage: rebuilt {len(rows)} rows → {slug}.md")
-+
-+
- # ── Planner-tag helpers ───────────────────────────────────────────────────────
+@@ -23,9 +23,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - memory_synthesis: Claude Haiku dual-layer with 5 output files
+ - chunking: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+ - mcp: Stdio MCP server with 12+ tools
+-- deployment: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev
++- deployment: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+ - database_schema: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+-- config_management: config.py with externalized settings; YAML for pipelines; pyproject.toml for IDE
++- config_management: config.py + YAML pipelines + pyproject.toml
+ - db_tables: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - llm_provider_adapters: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - pipeline_engine: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+@@ -42,11 +42,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - unified_tables: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+ - deployment_cloud: Railway (Dockerfile + railway.toml)
+ - deployment_desktop: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
++- deployment_local: bash start_backend.sh + ui/npm run dev
  
- # Map classify value → (mng_tags_categories.name, pr_seq_counters.category, display prefix)
-@@ -1017,6 +1113,7 @@ async def run_work_items(project: str) -> dict:
-                 log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
+ ## Architectural Decisions
  
-             # Step 3b: upsert planner_tag with seq_num + file_ref
-+            tag_uuid: Optional[str] = None
-             if project_id:
-                 uc_path = _slug_path(uc_dir, slug)
-                 # file_ref relative to code_dir (or absolute fallback)
-@@ -1035,11 +1132,11 @@ async def run_work_items(project: str) -> dict:
-                     description=entry.get("summary", ""),
-                 )
-                 if tag_result:
--                    tag_id, seq_num = tag_result
-+                    tag_uuid, seq_num = tag_result
-                     display_id = _tag_display_id(classify, seq_num)
-                     tags_created.append({
-                         "slug":       slug,
--                        "tag_id":     tag_id,
-+                        "tag_id":     tag_uuid,
-                         "seq_num":    seq_num,
-                         "display_id": display_id,
-                         "classify":   classify,
-@@ -1050,6 +1147,16 @@ async def run_work_items(project: str) -> dict:
-                         f"linked to {entry['ref_id']}"
-                     )
- 
-+                # Step 3c: insert stable DB linkage record
-+                _insert_backlog_link(
-+                    project_id=project_id,
-+                    ref_id=entry["ref_id"],
-+                    tag_id=tag_uuid,
-+                    use_case_slug=slug,
-+                    classify=classify,
-+                    summary=entry.get("summary", ""),
-+                )
-+
-             approved_ids.append(entry["ref_id"])
- 
-         elif ap == "-":
-@@ -1061,6 +1168,15 @@ async def run_work_items(pr
+ - Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state
+-- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) plus per-project schemas
++- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+ - Electron desktop UI: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vanilla JS frontend (no framework/bundler); Vite dev server
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
+ - All LLM providers as independent adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); Claude Haiku for dual-layer memory synthesis; server holds API keys
+@@ -57,6 +58,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+ - Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements; smart chunking by per-class/function (Python/JS/TS), per-section (MD), per-file (diff)
+ - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
+-- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed at line 1120
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local dev via bash start_backend.sh + ui/npm run dev
+ - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing_storage in data/provider_storage/
+\ No newline at end of file
+
 
 ### `commit` — 2026-04-17
 
-diff --git a/backend/core/db_schema.sql b/backend/core/db_schema.sql
-index 26d7f0b..358bb2f 100644
---- a/backend/core/db_schema.sql
-+++ b/backend/core/db_schema.sql
-@@ -322,21 +322,20 @@ CREATE INDEX IF NOT EXISTS idx_planner_tags_cat    ON planner_tags(category_id);
- -- ============================================================================
+diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index ace46c6..f3daf43 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 08:25 UTC
++> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-01 08:27 UTC
  
- -- mem_mrr_prompts: every prompt/response pair from all providers and UIs
---- tags JSONB carries inline metadata: {source, phase, feature, bug, work-item, session_id}
---- event_id: set after prompt batch digest in mem_ai_events (back-propagated by process_prompt_batch)
---- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
-+-- tags JSONB carries inline metadata: {source, phase, feature, bug, session_id}
-+-- backlog_ref: set when this row is digested into backlog.md (NULL = pending)
-+-- user_id: INT FK to mng_users (m051); hook-log rows stamped with ADMIN_USER_ID (m056)
- CREATE TABLE IF NOT EXISTS mem_mrr_prompts (
-     id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-     client_id  INT         NOT NULL DEFAULT 1 REFERENCES mng_clients(id),
-     project_id INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-     user_id    INT         NULL REFERENCES mng_users(id) ON DELETE SET NULL,
--    event_id   UUID,                            -- FK to mem_ai_events.id (set after digest)
-     session_id TEXT,
-     source_id  TEXT,                            -- external ID for deduplication
-     prompt     TEXT        NOT NULL DEFAULT '',
-     response   TEXT        NOT NULL DEFAULT '',
-     tags        JSONB       NOT NULL DEFAULT '{}',
--    backlog_ref TEXT,                                -- ref ID in backlog.md: 'P100042' (m054)
-+    backlog_ref TEXT,                           -- ref ID in backlog.md: 'P100042' (m054)
-     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
- );
-@@ -345,14 +344,14 @@ CREATE INDEX        IF NOT EXISTS idx_mmrr_p_session ON mem_mrr_prompts(session_
- CREATE UNIQUE INDEX IF NOT EXISTS idx_mmrr_p_source  ON mem_mrr_prompts(project_id, source_id) WHERE source_id IS NOT NULL;
- CREATE INDEX        IF NOT EXISTS idx_mmrr_p_created ON mem_mrr_prompts(created_at DESC);
- CREATE INDEX        IF NOT EXISTS idx_mmrr_p_tags    ON mem_mrr_prompts USING gin(tags);
--CREATE INDEX        IF NOT EXISTS idx_mmrr_p_event   ON mem_mrr_prompts(event_id) WHERE event_id IS NOT NULL;
+ # aicli — Shared AI Memory Platform
  
- -- mem_mrr_commits: git commits with AI-generated metadata
- -- commit_hash is the natural PK (git SHA).
- -- tags = user intent: {phase, feature, bug} — sourced from mng_session_tags at push time.
---- event_id IS NULL means process_commit_batch() has not processed this commit yet.
-+-- backlog_ref: set when this commit is digested into backlog.md (NULL = pending)
-+-- prompt_id: linked to the prompt active in the same session (if any)
- -- Detailed per-symbol code data lives in mem_mrr_commits_code (one row per symbol).
---- user_id: INT FK to mng_users (m051); nullable for hook-originated rows
-+-- user_id: INT FK to mng_users (m051)
- CREATE TABLE IF NOT EXISTS mem_mrr_commits (
-     commit_hash       VARCHAR(64)  PRIMARY KEY,
-     commit_hash_short VARCHAR(8)   GENERATED ALWAYS AS (LEFT(commit_hash, 8)) STORED,
-@@ -364,22 +363,18 @@ CREATE TABLE IF NOT EXISTS mem_mrr_commits (
-     diff_summary      TEXT         NOT NULL DEFAULT '',  -- git --stat output
-     tags              JSONB        NOT NULL DEFAULT '{}',
-     prompt_id         UUID         REFERENCES mem_mrr_prompts(id) ON DELETE SET NULL,
--    event_id          UUID,                              -- FK to mem_ai_events.id (set after batch digest)
-     session_id        VARCHAR(255),
-     author            TEXT         NOT NULL DEFAULT '',
-     author_email      TEXT         NOT NULL DEFAULT '',
-     llm               TEXT,                              -- model name used for digest
-     backlog_ref       TEXT,                              -- ref ID in backlog.md: 'C200001' (m054)
-     created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
--    committed_at      TIMESTAMPTZ,
-     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
- );
- CREATE INDEX IF NOT EXISTS idx_mmrr_c_pid            ON mem_mrr_commits(project_id);
--CREATE INDEX IF NOT EXISTS idx_mmrr_c_comm           ON mem_mrr_commits(committed_at DESC);
- CREATE INDEX IF NOT EXISTS idx_mmrr_c_session        ON mem_mrr_commits(session_id) WHERE session_id IS NOT NULL;
- CREATE INDEX IF NOT EXISTS idx_mmrr_c_prompt         ON mem_mrr_commits(prompt_id) WHERE prompt_id IS NOT NULL;
- CREATE INDEX IF NOT EXISTS idx_mmrr_c_tags           ON mem_mrr_commits USING gin(tags);
--CREATE INDEX IF NOT EXISTS idx_mmrr_c_event          ON mem_mrr_commits(event_id) WHERE event_id IS NOT NULL;
- CREATE INDEX IF NOT EXISTS idx_mmrrc_project_session ON mem_mrr_commits(project_id, session_id) WHERE session_id IS NOT NULL;
+@@ -23,9 +23,9 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **memory_synthesis**: Claude Haiku dual-layer with 5 output files
+ - **chunking**: Smart chunking: summary + per-class/function (Python/JS/TS) + per-section (MD) + per-file (diff)
+ - **mcp**: Stdio MCP server with 12+ tools
+-- **deployment**: Railway (Dockerfile + railway.toml); local: bash start_backend.sh + ui/npm run dev
++- **deployment**: Railway (Dockerfile + railway.toml); Electron-builder; local: bash start_backend.sh + ui/npm run dev
+ - **database_schema**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles; unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+-- **config_management**: config.py with externalized settings; YAML for pipelines; pyproject.toml for IDE
++- **config_management**: config.py + YAML pipelines + pyproject.toml
+ - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
+ - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
+ - **pipeline_engine**: Async DAG executor (asyncio.gather for parallel nodes) + YAML config; per-node retry/continue logic; centralized under workflows/ with pipeline_ prefix
+@@ -42,11 +42,12 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - **unified_tables**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features
+ - **deployment_cloud**: Railway (Dockerfile + railway.toml)
+ - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
++- **deployment_local**: bash start_backend.sh + ui/npm run dev
  
- -- mem_mrr_commits_code: per-symbol code statistics for each commit
-@@ -463,6 +458,34 @@ CREATE TABLE IF NOT EXISTS mem_mrr_messages (
- CREATE INDEX IF NOT EXISTS idx_mmrr_messages_pid ON mem_mrr_messages(project_id);
- CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(tags);
+ ## Key Decisions
  
-+-- mem_backlog_links: stable DB mapping from backlog ref_id → planner_tag (use case)
-+-- Written when an entry is approved in run_work_items().
-+-- Survives .md file edits/deletion — the ## Internal Usage section in
-+-- use_cases/*.md is rebuilt from this table on demand.
-+--
-+-- DB linkage chain:
-+--   mem_mrr_*.backlog_ref  = 'P100042'     raw row  → backlog entry
-+--   mem_backlog_links.ref_id = 'P100042'   backlog entry → use case
-+--   mem_backlog_links.tag_id = UUID         use case → planner_tags
-+--
-+-- To find all source events for a use case:
-+--   SELECT p.* FROM mem_mrr_prompts p
-+--     JOIN mem_backlog_links l ON l.ref_id = p.backlog_ref
-+--    WHERE l.tag_id = '{use_case_tag_uuid}'
-+CREATE TABLE IF NOT EXISTS mem_backlog_links (
-+    id          
+ - Engine/workspace separation: aicli/ contains backend logic; workspace/ holds per-project content; _system/ stores project state
+-- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features) plus per-project schemas
++- Dual storage model: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables (events, tags_relations, project_facts, work_items, features)
+ - Electron desktop UI: xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre; Vanilla JS frontend (no framework/bundler); Vite dev server
+ - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical data model: Clients contain Users; login_as_first_level_hierarchy pattern
+ - All LLM providers as independent adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); Claude Haiku for dual-layer memory synthesis; server holds API keys
+@@ -57,6 +58,6 @@ _Last updated: 2026-03-14 | Version 2.2.0_
+ - MCP server (stdio) with 12+ tools; configured via env vars (BACKEND_URL, ACTIVE_PROJECT); embedding and data retrieval for work item management
+ - Manual relations managed via CLI/admin UI: depends_on, relates_to, blocks, implements; smart chunking by per-class/function (Python/JS/TS), per-section (MD), per-file (diff)
+ - Backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2; routers/, core/, data/ (dl_ prefix), agents/tools/ (tool_ prefix), agents/mcp/ for MCP server
+-- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed at line 1120
+-- Deployment: Railway (Dockerfile + railway.toml) for cloud; local dev via bash start_backend.sh + ui/npm run dev; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
++- CLI: Python 3.12 + prompt_toolkit + rich; command routing via verb-noun pattern; memory endpoint template variable scoping fixed
++- Deployment: Railway (Dockerfile + railway.toml) for cloud; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb); local dev via bash start_backend.sh + ui/npm run dev
+ - Config management: config.py with externalized settings; YAML for pipeline definitions; pyproject.toml for IDE support; billing_storage in data/provider_storage/
+

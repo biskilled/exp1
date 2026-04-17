@@ -17,41 +17,48 @@
 # └─────────────────────────────────────────────────────────────────────────┘
 #          ↓
 # ┌─────────────────────────────────────────────────────────────────────────┐
-# │  STEP 2 — MIRROR EVENT SUMMARY  (automatic, threshold-based)           │
+# │  STEP 2 — MIRROR EVENT SUMMARY  (automatic, threshold-based, 2 calls)  │
 # │                                                                         │
 # │  After every new row is saved, the system counts how many rows for      │
 # │  that source still have  backlog_ref = NULL.                            │
-# │  When the count reaches the  cnt  threshold (set below per source),     │
-# │  Claude Haiku is called with a batch of  cnt  rows + the prompt below.  │
+# │  When the count reaches the  cnt  threshold, two LLM calls are made:   │
 # │                                                                         │
-# │  PROMPT ENTRIES (P-series: P100001, P100002 …)                         │
-# │    Input:  batch of prompts/responses + any commits linked to those     │
-# │            prompts (via prompt_id FK) + code symbols from those commits │
-# │            (class names, method names, lines +/-)                       │
-# │    Haiku extracts: requirements discussed, deliveries produced          │
-# │                    (code / docs / design), open action items.           │
-# │    Side-effect: linked commits are also stamped with the same ref       │
-# │                 (P100001) so they skip the commit pipeline.             │
+# │  CALL 2a — GROUPING  (grouping_prompt below)                           │
+# │    Input:  all cnt pending rows + list of all active planner_tags       │
+# │            (use cases, features, bugs, tasks — slugs + descriptions)    │
+# │    Output: JSON array of groups, each group =                           │
+# │      { "event_indices": [0,1,2], "slug": "auth-refactor",              │
+# │        "slug_type": "existing|new", "classify": "bug|feature|task",    │
+# │        "topic": "one-line description of this group" }                  │
+# │    Purpose: cluster related events together before summarizing.         │
+# │    Example: 5 prompts → group1=[0,1,2] (auth bug), group2=[3,4] (billing) │
 # │                                                                         │
-# │  COMMIT ENTRIES (C-series: C200001, C200002 …)                         │
-# │    Only commits with NO linked prompt (CI/CD, direct pushes, merges).   │
-# │    Input:  commit message + code symbols from mem_mrr_commits_code      │
-# │            (file path, class, method, rows added/removed).              │
-# │    Commits that only touched system files (CLAUDE.md, .cursorrules …)  │
-# │    are silently skipped (stamped SKIP, never shown in backlog).         │
-# │    These entries are AUTO-APPROVED — the work is already done.          │
+# │  CALL 2b — SUMMARIZATION  (summary_prompt below, one call per group)   │
+# │    Input:  events in this group only + linked commits + commit_code     │
+# │    Output for PROMPT groups (P-series: P100001 …):                     │
+# │      requirements (user requests), completed (what was done, with       │
+# │      file/class/method refs from linked commit_code), action_items      │
+# │      (open tasks with acceptance criteria).                             │
+# │    Output for COMMIT groups (C-series: C200001 …):                     │
+# │      Only standalone commits (prompt_id IS NULL). Uses commit_code      │
+# │      (file/class/method/lines) to infer deliveries + open action items. │
+# │      Commits that only touched system files are silently skipped        │
+# │      (backlog_ref = 'SKIP'). These entries are AUTO-APPROVED.           │
+# │    Output for ITEM / MESSAGE groups (I / M series):                    │
+# │      Decisions made, requirements, open action items.                   │
 # │                                                                         │
-# │  ITEM / MESSAGE ENTRIES (I / M series)                                  │
-# │    Plain batch digest — no commit context.                              │
+# │  For every group one backlog entry is created with a unique ref ID.     │
+# │  All events in that group are stamped:  backlog_ref = 'P100001'         │
+# │  Linked commits also receive the same stamp (skipping commit pipeline). │
 # │                                                                         │
-# │  For every batch Haiku returns a JSON array. Each entry gets:           │
-# │    - A unique ref ID allocated from  pr_seq_counters                    │
-# │    - summary, requirements, deliveries, action_items                    │
-# │    - AI_MATCH  → use case slug the entry belongs to (REQUIRED)          │
-# │    - AI_CLASSIFY → bug | feature | task  (REQUIRED)                     │
-# │                                                                         │
-# │  The entry is appended to  documents/backlog.md  and                   │
-# │  the source rows are stamped:  backlog_ref = 'P100001'                  │
+# │  Entry header format (written to backlog.md):                          │
+# │    PROMPTS YY/MM/DD-HH:MM [APPROVE] [slug] [classify] (user) — topic  │
+# │      Requirements: ...                                                  │
+# │      Completed:    ...                                                  │
+# │      Action items: ...                                                  │
+# │      Events:                                                            │
+# │        - [+] P100001 26/04/17 14:22 — prompt preview                   │
+# │        - [+] P100002 26/04/17 14:25 — prompt preview                   │
 # │                                                                         │
 # │  Can also be triggered manually:                                        │
 # │    POST /memory/{project}/sync-backlog                                  │
@@ -61,53 +68,71 @@
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  STEP 3 — USER REVIEW  (manual, in the Backlog UI tab)                 │
 # │                                                                         │
-# │  Each entry in backlog.md has two inline comment fields the user edits: │
+# │  Each entry header has inline approval fields the user edits:           │
 # │                                                                         │
-# │    <!-- APPROVE: [ ] -->   set 'x' to approve, '-' to reject           │
-# │    <!-- TAG: -->           override the target use-case slug            │
+# │    [ ] → [ x ] to approve, [ - ] to reject                             │
+# │    [slug] → can be overridden by editing the slug in the header         │
 # │                                                                         │
-# │  AI suggestions are shown as read-only hints:                           │
-# │    <!-- AI_MATCH: existing:auth-refactor -->                            │
-# │    <!-- AI_CLASSIFY: feature -->                                        │
+# │  Before writing to the use case file, the system checks whether any     │
+# │  new slug is too similar to an existing one (spelling mistakes or       │
+# │  near-duplicates) and suggests a correction.                            │
 # │                                                                         │
-# │  Commit entries arrive pre-approved (APPROVE: [x]) — no action needed. │
-# │  Prompt entries wait for the user to set APPROVE: [x] or [−].          │
+# │  Commit entries arrive pre-approved ([ x ]) — no action needed.        │
+# │  Prompt/item/message entries wait for the user.                         │
 # └─────────────────────────────────────────────────────────────────────────┘
 #          ↓  user clicks "Process approved" (or POST /work-items/sync)
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  STEP 4 — MERGE INTO USE CASES  (triggered by user)                    │
 # │                                                                         │
-# │  For every APPROVE: [x] entry:                                          │
+# │  For every approved entry:                                              │
 # │                                                                         │
-# │  4a. Determine target slug (in order of priority):                      │
-# │        TAG comment (user override)                                      │
-# │        → AI_MATCH slug                                                  │
-# │        → "general" fallback                                             │
+# │  4a. Similarity check on the slug:                                      │
+# │        difflib ratio ≥ 0.85 → treat as spelling duplicate of existing  │
+# │        ratio 0.65-0.85 → optional vector similarity check              │
+# │        Below threshold → create new slug                                │
 # │                                                                         │
-# │  4b. Create or update  documents/use_cases/{slug}.md                   │
-# │        classify=bug   → appended under  ### Open Bugs                  │
-# │        classify=other → appended under  ### Open Features              │
-# │        File is created from stub template if it does not exist yet.     │
-# │                                                                         │
-# │  4c. Upsert a  planner_tags  row (the stable DB identity):              │
+# │  4b. Upsert  planner_tags  row (stable DB identity):                   │
+# │        existing slug → use existing tag_id (no insert)                  │
+# │        new slug     → INSERT planner_tags; flag creator='backlog_ai'   │
 # │        category mapped from classify (see work_items section below)     │
-# │        seq_num allocated once: UC10001+ / F20001+ / B30001+             │
 # │        file_ref set to: "documents/use_cases/{slug}.md"                │
-# │        This is what the Planner tab shows.                              │
 # │                                                                         │
-# │  4d. Insert a  mem_backlog_links  row (permanent DB record):            │
-# │        ref_id  → use_case_slug + tag_id                                 │
-# │        Survives .md file edits or deletion.                             │
-# │        The  ## Internal Usage  table in each .md file is rebuilt        │
-# │        from this table — do NOT edit that section manually.             │
+# │  4c. Create or update  documents/use_cases/{slug}.md                   │
+# │        File is created from use_case_template.md if it does not exist. │
+# │        classify=bug  → appended under  ### Open Bugs                   │
+# │        classify=task/feature → appended under  ### Open Action Items   │
+# │        Events section (## Events) receives a copy of the full entry.   │
 # │                                                                         │
-# │  4e. Approved/rejected refs are moved to the archive section at the     │
-# │      bottom of backlog.md. Pending entries stay at the top.             │
+# │  4d. Insert  mem_backlog_links  rows (one per event in the group):      │
+# │        ref_id → use_case_slug + tag_id + event_refs (IDs in group)     │
+# │        Permanent DB record — survives .md file edits or deletion.       │
+# │        The  ## Events  section is rebuilt from this table on demand.    │
 # │                                                                         │
-# │  Query all source events that contributed to a use case:                │
+# │  4e. Approved/rejected entries are archived in backlog.md.              │
+# │      Pending entries stay at the top.                                   │
+# │                                                                         │
+# │  Query all source events for a use case:                                │
 # │    GET /memory/{project}/use-case-events?slug=auth-refactor             │
-# │  Rebuild Internal Usage section if accidentally deleted:                │
+# │  Rebuild Events section if accidentally deleted:                        │
 # │    POST /memory/{project}/regenerate-use-case?slug=auth-refactor        │
+# └─────────────────────────────────────────────────────────────────────────┘
+#          ↓  use case files accumulate approved entries over time
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 5 — USE CASE REFRESH / LLM SUMMARY  (on-demand, per use case)   │
+# │                                                                         │
+# │  Two modes are available per use case:                                  │
+# │                                                                         │
+# │  refresh (no LLM call):                                                 │
+# │    - Re-count total_events from mem_backlog_links                       │
+# │    - Re-scan linked commits to update code stack + commit count          │
+# │    - Re-copy raw event summaries into the ## Events section             │
+# │    POST /memory/{project}/use-case/{slug}/refresh                       │
+# │                                                                         │
+# │  llm-summary (LLM call, uses llm_summary_prompt below):                │
+# │    - Reads all events in ## Events section                              │
+# │    - LLM rewrites: Summary, Requirements, Delivery, Completed, Open     │
+# │    - Open items / bugs get an AI score 0-5 updated                      │
+# │    POST /memory/{project}/use-case/{slug}/llm-summary                   │
 # └─────────────────────────────────────────────────────────────────────────┘
 #
 # Runtime config location: {code_dir}/.ai/backlog_config.yaml
@@ -118,76 +143,149 @@ file_name: backlog.md
 rotation: false   # true = daily rotation → backlog_2026-04-16.md
 
 # ── Step 2 digest prompts ─────────────────────────────────────────────────────
-# 'cnt'  = how many pending rows trigger one Haiku batch call.
-# 'desc' = instruction injected into the Haiku system prompt for that source.
-# Both AI tags are always required in the output:
-#   ai_match  (use case slug) + classify (bug | feature | task)
+# Each source type has two prompts:
+#   grouping_prompt  — clusters N pending rows into topic groups (one LLM call)
+#   summary_prompt   — summarizes each individual group (one call per group)
+#
+# Both prompts require these two fields in their output JSON:
+#   slug      (use case slug — existing or new)
+#   classify  (bug | feature | task)
 
 mirroring_event_summary:
 
   prompts:
     cnt: 5
-    prompt:
+    grouping_prompt:
       desc: >
-        You are digesting AI development session prompts (user ↔ assistant exchanges).
-        Each batch includes the prompt, the assistant response, and any linked git
-        commits with their code symbols (file path, class, method, lines +/-).
-        Extract: key requirements discussed, deliveries produced (code/docs/design
-        — reference specific file/class/method names from linked commits where
-        present), and open action items with clear acceptance criteria.
-        If no LINKED COMMIT sections appear, the session produced no code changes.
-        Classify as bug/feature/task based on dominant intent.
-        Suggest the most relevant existing use case slug, or mark as 'new' if this
-        session introduced a new capability area.
+        You are grouping AI development session prompts (user ↔ assistant exchanges)
+        into topic clusters. Each cluster should share a single use case and intent
+        (bug fix, feature, or task).
+        You receive: a numbered list of prompts/responses and a list of all existing
+        active use case slugs with their descriptions.
+        Return a JSON array of groups:
+          [{"event_indices": [0,1,2], "slug": "auth-refactor",
+            "slug_type": "existing|new", "classify": "bug|feature|task",
+            "topic": "one-line group description"}]
+        Rules:
+          - Each event index must appear in exactly one group.
+          - Prefer existing slugs over creating new ones.
+          - Only create a new slug if no existing one is within 65% similarity.
+          - A new slug must be lowercase-hyphenated (e.g. "stripe-billing").
+          - classify is the dominant intent across all events in the group.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        You are summarizing a group of AI development session prompts (user ↔ assistant).
+        The group includes the prompt text, assistant response, and any linked git commits
+        with their code symbols (file path, class, method, lines added/removed).
+        Extract and return JSON:
+          {
+            "requirements":  ["user request 1", "user request 2"],
+            "completed":     ["task done, referencing specific file/class/method names"],
+            "action_items":  [{"desc": "...", "acceptance": "user accepts when ..."}]
+          }
+        If no LINKED COMMIT sections appear, the session produced no code changes —
+        completed list should reflect only what the assistant described in its response.
+        Keep each list item to one clear sentence. Be specific; avoid vague language.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
   commits:
     cnt: 5
-    prompt:
+    grouping_prompt:
       desc: >
-        You are digesting standalone git commits (no user session — CI/CD, merges,
-        direct pushes). Use the CODE CHANGES (file path, class name, method name,
-        lines added/removed) to infer what was changed and what action items remain.
-        Deliveries are already done (the commit is the delivery).
-        Classify as bug/feature/task. Suggest the most relevant use case slug.
-        These entries are auto-approved — no user review required.
+        You are grouping standalone git commits (no user session — CI/CD, merges,
+        direct pushes) into topic clusters by use case.
+        You receive: a numbered list of commits (message + code symbols: file path,
+        class, method, lines added/removed) and a list of existing active use case slugs.
+        Return a JSON array of groups:
+          [{"event_indices": [0,1], "slug": "auth-refactor",
+            "slug_type": "existing|new", "classify": "bug|feature|task",
+            "topic": "one-line group description"}]
+        Commits that only modified system files (CLAUDE.md, .cursorrules, MEMORY.md,
+        package-lock.json, etc.) should be placed in a group with slug "SKIP".
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        You are summarizing a group of standalone git commits. The work is already done
+        (the commit is the delivery). Use CODE CHANGES (file path, class name, method
+        name, lines added/removed) to describe what changed and what may still be needed.
+        Return JSON:
+          {
+            "completed":    ["delivery description referencing file/class/method"],
+            "action_items": [{"desc": "...", "acceptance": "..."}]
+          }
+        These entries are auto-approved — the user does not need to review them.
+        Keep each item to one clear sentence.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
   items:
     cnt: 1
-    prompt:
+    grouping_prompt:
       desc: >
-        You are digesting a document or meeting item.
-        Summarize: what problem it addresses, decisions made, open action items
-        with acceptance criteria. Classify as bug/feature/task.
-        Suggest the most relevant existing use case slug.
+        You are grouping document or meeting items into topic clusters by use case.
+        You receive: a numbered list of items (title + content) and existing use case slugs.
+        Return a JSON array of groups (same schema as prompts grouping).
+        Each item is typically its own group unless two items clearly address the same topic.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        You are summarizing a document or meeting item.
+        Extract and return JSON:
+          {
+            "requirements":  ["problem being addressed or decision made"],
+            "completed":     ["decisions already finalised"],
+            "action_items":  [{"desc": "...", "acceptance": "..."}]
+          }
+        Summarize what problem it addresses, decisions made, and open action items.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
   messages:
     cnt: 20
-    prompt:
+    grouping_prompt:
       desc: >
-        You are digesting Slack or chat messages.
-        Extract: decisions made, open action items, requirements mentioned.
-        Ignore off-topic conversation. Classify as bug/feature/task.
-        Suggest the most relevant existing use case slug.
+        You are grouping Slack or chat messages into topic clusters by use case.
+        You receive: a numbered list of messages and existing use case slugs.
+        Ignore off-topic small talk — assign those to slug "SKIP".
+        Return a JSON array of groups (same schema as prompts grouping).
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        You are summarizing a cluster of Slack or chat messages about a single topic.
+        Return JSON:
+          {
+            "requirements":  ["decision or requirement mentioned"],
+            "completed":     ["anything already resolved in the conversation"],
+            "action_items":  [{"desc": "...", "acceptance": "..."}]
+          }
+        Extract only substantive decisions and action items. Ignore off-topic chat.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
+
 # ── Step 4 merge configuration ────────────────────────────────────────────────
 # Controls how approved entries map to planner_tags categories and seq ranges.
-# No LLM call in this step — data comes entirely from the Step 2 digest.
+# No additional LLM call in this step — data comes from the Step 2 digest.
 
 work_items:
 
   # Slug resolution order for an approved entry (first non-empty wins):
-  #   1. <!-- TAG: {user_override} -->
-  #   2. <!-- AI_MATCH: existing:{slug} --> or <!-- AI_MATCH: new:{slug} -->
-  #   3. "general"
+  #   1. user edits the [slug] directly in the backlog entry header
+  #   2. slug from the grouping_prompt result
+  #   3. "general" fallback
   slug_fallback: general
+
+  # Similarity thresholds for duplicate slug detection (difflib.SequenceMatcher):
+  #   ratio >= spelling_threshold  → treat as spelling duplicate, use existing slug
+  #   ratio >= suggest_threshold   → warn user and suggest the existing slug
+  spelling_threshold: 0.85
+  suggest_threshold:  0.65
 
   # classify value → planner_tags category + seq counter key + display prefix
   #   use_case → UC10001, UC10002 …   (seq range 10000+)
@@ -201,9 +299,67 @@ work_items:
     task:     feature    # F  20000+
 
   # use_cases/*.md section routing:
-  #   classify = bug   → ### Open Bugs
-  #   classify = other → ### Open Features
+  #   classify = bug          → ### Open Bugs
+  #   classify = feature/task → ### Open Action Items
   #
-  # The "## Internal Usage" table at the bottom of each file is system-managed.
-  # It is rebuilt automatically from mem_backlog_links after every run.
-  # Do NOT edit it manually — changes will be overwritten.
+  # The "## Events" section at the bottom of each file is system-managed.
+  # It is rebuilt automatically from mem_backlog_links on refresh.
+  # Do NOT edit it manually — changes will be overwritten on next refresh.
+
+
+# ── Step 5 use case prompts ───────────────────────────────────────────────────
+# These prompts are used when the user triggers a per-use-case update.
+# Two modes:
+#   refresh      — no LLM call; re-counts counters and re-copies raw event data
+#   llm_summary  — full LLM rewrite of the use case summary, completed items, open items
+
+use_cases:
+
+  # refresh mode: counters + raw data copy only (no LLM)
+  refresh:
+    update_counters: true   # recalculate total_events from mem_backlog_links
+    update_delivery: true   # re-scan linked commits for code stack + commit count
+    update_events:   true   # rebuild ## Events section from mem_backlog_links
+
+  # llm_summary mode: full AI rewrite using all events in the ## Events section
+  llm_summary_prompt:
+    desc: >
+      You are updating a use case document from its raw event log.
+      You receive the full ## Events section (all backlog entries that were approved
+      into this use case) plus the current Summary and open items.
+
+      Rewrite and return JSON:
+        {
+          "summary":     "2-4 sentence overview of what this use case covers and its current state",
+          "requirements": ["key requirement 1", "key requirement 2"],
+          "delivery": {
+            "code_stack":    ["Python/FastAPI", "Vanilla JS"],
+            "commits_count": <number>,
+            "storage_paths": ["backend/memory/", "ui/frontend/views/"],
+            "documents":     [{"name": "...", "type": "...", "path": "...", "summary": "..."}]
+          },
+          "completed_action_items": [
+            {"date": "YY/MM/DD HH:MM", "summary": "...", "event_count": <n>}
+          ],
+          "completed_bugs": [
+            {"date": "YY/MM/DD HH:MM", "summary": "...", "event_count": <n>}
+          ],
+          "open_action_items": [
+            {"summary": "...", "acceptance": "...", "ai_score": <0-5>, "event_count": <n>}
+          ],
+          "open_bugs": [
+            {"summary": "...", "acceptance": "...", "ai_score": <0-5>, "event_count": <n>}
+          ]
+        }
+
+      AI score guide (open items):
+        0 = not started (no events show progress)
+        1 = discussed only
+        2 = design decided, no code yet
+        3 = partially implemented
+        4 = implemented, not tested
+        5 = done (but not yet moved to completed — still has open tasks)
+
+      Be concise. One sentence per item. Reference file/class/method names where available.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.3
