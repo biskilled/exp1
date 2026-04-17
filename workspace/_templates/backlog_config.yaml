@@ -1,68 +1,114 @@
 # backlog_config.yaml — Backlog pipeline configuration
 #
 # ============================================================================
-# FULL PIPELINE FLOW
+# HOW THE PIPELINE WORKS  (read this top-to-bottom)
 # ============================================================================
 #
-# PHASE 1 — Auto digest: mem_mrr_* raw rows → documents/backlog.md
-# ─────────────────────────────────────────────────────────────────
-#   Trigger: called after every new row insert (route_git.py / route_chat.py).
-#   When pending rows for a source type reach the 'cnt' threshold, a Haiku
-#   batch call is made and entries are appended to backlog.md.
-#   Can also be triggered manually:  POST /memory/{project}/sync-backlog
-#                                    POST /memory/{project}/sync-backlog?source=commits
-#
-#   For each batch of 'cnt' rows the system:
-#     1. Allocates ref IDs from pr_seq_counters  (P100001, C200001 …)
-#     2. Calls Claude Haiku with the prompt below ('desc' field)
-#     3. Appends N entries to documents/backlog.md
-#     4. Stamps backlog_ref = 'P100001' on each source row in the DB
-#        (this marks the row as processed — prevents double-processing)
-#
-#   Output entry format in backlog.md:
-#     ### P100042 2026/04/16 — {one-line summary}
-#     <!-- APPROVE: [ ] -->     ← user sets 'x' to approve, '-' to reject
-#     <!-- TAG: -->             ← user can override the target use-case slug
-#     <!-- AI_MATCH: existing:auth-refactor -->  ← AI-suggested use case
-#     <!-- AI_CLASSIFY: feature -->              ← bug | feature | task
-#     **Requirements:** …
-#     **Deliveries:** …
-#     **Action items:** …
-#     ---
-#
-# PHASE 2 — Manual approval: backlog.md → use_cases/*.md + planner_tags DB
-# ─────────────────────────────────────────────────────────────────────────
-#   Trigger: user sets APPROVE: [x] on entries, then calls:
-#            POST /memory/{project}/work-items/sync   (synchronous)
-#            POST /memory/{project}/work-items        (background)
-#
-#   For each approved entry the system:
-#     1. Determines target slug:
-#          TAG comment (user override)  →  AI_MATCH slug  →  "general"
-#     2. Creates or updates documents/use_cases/{slug}.md
-#          classify=bug   → appended to "### Open Bugs" section
-#          classify=other → appended to "### Open Features" section
-#     3. Upserts planner_tags row (DB identity for the use case):
-#          seq_num allocated: UC10001+ / F20001+ / B30001+ per project
-#          file_ref set to: "documents/use_cases/{slug}.md"
-#     4. Inserts mem_backlog_links row (stable DB linkage, survives file edits):
-#          ref_id=P100042, tag_id=UUID, use_case_slug="auth", classify, summary
-#     5. Moves approved/rejected refs to the "## Processed YYYY-MM-DD" archive
-#        in backlog.md (pending entries stay at top)
-#
-#   DB linkage chain (the .md files are human-readable views; DB is source of truth):
-#     mem_mrr_prompts.backlog_ref = 'P100042'   ← raw row → backlog ref
-#     mem_backlog_links.ref_id    = 'P100042'   ← backlog ref → use case
-#     mem_backlog_links.tag_id    = UUID         ← use case → planner_tags
-#
-#   To query all raw source events for a use case:
-#     SELECT c.* FROM mem_mrr_commits c
-#       JOIN mem_backlog_links l ON l.ref_id = c.backlog_ref
-#      WHERE l.tag_id = '{use_case_tag_uuid}'
-#
-#   The "## Internal Usage" table at the bottom of each use_cases/*.md file
-#   is auto-generated from mem_backlog_links and will be regenerated if
-#   deleted or corrupted.  Do NOT manually edit this section.
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 1 — RAW CAPTURE  (automatic, no config needed)                   │
+# │                                                                         │
+# │  Every time an event happens it is saved to a mirror table:             │
+# │    mem_mrr_prompts   ← every Claude Code / CLI prompt + response        │
+# │    mem_mrr_commits   ← every git commit pushed via the backend          │
+# │    mem_mrr_items     ← documents or meeting notes added via API         │
+# │    mem_mrr_messages  ← Slack / chat messages imported via API           │
+# │                                                                         │
+# │  Each row starts with  backlog_ref = NULL  (not yet digested).          │
+# └─────────────────────────────────────────────────────────────────────────┘
+#          ↓
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 2 — MIRROR EVENT SUMMARY  (automatic, threshold-based)           │
+# │                                                                         │
+# │  After every new row is saved, the system counts how many rows for      │
+# │  that source still have  backlog_ref = NULL.                            │
+# │  When the count reaches the  cnt  threshold (set below per source),     │
+# │  Claude Haiku is called with a batch of  cnt  rows + the prompt below.  │
+# │                                                                         │
+# │  PROMPT ENTRIES (P-series: P100001, P100002 …)                         │
+# │    Input:  batch of prompts/responses + any commits linked to those     │
+# │            prompts (via prompt_id FK) + code symbols from those commits │
+# │            (class names, method names, lines +/-)                       │
+# │    Haiku extracts: requirements discussed, deliveries produced          │
+# │                    (code / docs / design), open action items.           │
+# │    Side-effect: linked commits are also stamped with the same ref       │
+# │                 (P100001) so they skip the commit pipeline.             │
+# │                                                                         │
+# │  COMMIT ENTRIES (C-series: C200001, C200002 …)                         │
+# │    Only commits with NO linked prompt (CI/CD, direct pushes, merges).   │
+# │    Input:  commit message + code symbols from mem_mrr_commits_code      │
+# │            (file path, class, method, rows added/removed).              │
+# │    Commits that only touched system files (CLAUDE.md, .cursorrules …)  │
+# │    are silently skipped (stamped SKIP, never shown in backlog).         │
+# │    These entries are AUTO-APPROVED — the work is already done.          │
+# │                                                                         │
+# │  ITEM / MESSAGE ENTRIES (I / M series)                                  │
+# │    Plain batch digest — no commit context.                              │
+# │                                                                         │
+# │  For every batch Haiku returns a JSON array. Each entry gets:           │
+# │    - A unique ref ID allocated from  pr_seq_counters                    │
+# │    - summary, requirements, deliveries, action_items                    │
+# │    - AI_MATCH  → use case slug the entry belongs to (REQUIRED)          │
+# │    - AI_CLASSIFY → bug | feature | task  (REQUIRED)                     │
+# │                                                                         │
+# │  The entry is appended to  documents/backlog.md  and                   │
+# │  the source rows are stamped:  backlog_ref = 'P100001'                  │
+# │                                                                         │
+# │  Can also be triggered manually:                                        │
+# │    POST /memory/{project}/sync-backlog                                  │
+# │    POST /memory/{project}/sync-backlog?source=commits                   │
+# └─────────────────────────────────────────────────────────────────────────┘
+#          ↓  documents/backlog.md  (human-editable inbox)
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 3 — USER REVIEW  (manual, in the Backlog UI tab)                 │
+# │                                                                         │
+# │  Each entry in backlog.md has two inline comment fields the user edits: │
+# │                                                                         │
+# │    <!-- APPROVE: [ ] -->   set 'x' to approve, '-' to reject           │
+# │    <!-- TAG: -->           override the target use-case slug            │
+# │                                                                         │
+# │  AI suggestions are shown as read-only hints:                           │
+# │    <!-- AI_MATCH: existing:auth-refactor -->                            │
+# │    <!-- AI_CLASSIFY: feature -->                                        │
+# │                                                                         │
+# │  Commit entries arrive pre-approved (APPROVE: [x]) — no action needed. │
+# │  Prompt entries wait for the user to set APPROVE: [x] or [−].          │
+# └─────────────────────────────────────────────────────────────────────────┘
+#          ↓  user clicks "Process approved" (or POST /work-items/sync)
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  STEP 4 — MERGE INTO USE CASES  (triggered by user)                    │
+# │                                                                         │
+# │  For every APPROVE: [x] entry:                                          │
+# │                                                                         │
+# │  4a. Determine target slug (in order of priority):                      │
+# │        TAG comment (user override)                                      │
+# │        → AI_MATCH slug                                                  │
+# │        → "general" fallback                                             │
+# │                                                                         │
+# │  4b. Create or update  documents/use_cases/{slug}.md                   │
+# │        classify=bug   → appended under  ### Open Bugs                  │
+# │        classify=other → appended under  ### Open Features              │
+# │        File is created from stub template if it does not exist yet.     │
+# │                                                                         │
+# │  4c. Upsert a  planner_tags  row (the stable DB identity):              │
+# │        category mapped from classify (see work_items section below)     │
+# │        seq_num allocated once: UC10001+ / F20001+ / B30001+             │
+# │        file_ref set to: "documents/use_cases/{slug}.md"                │
+# │        This is what the Planner tab shows.                              │
+# │                                                                         │
+# │  4d. Insert a  mem_backlog_links  row (permanent DB record):            │
+# │        ref_id  → use_case_slug + tag_id                                 │
+# │        Survives .md file edits or deletion.                             │
+# │        The  ## Internal Usage  table in each .md file is rebuilt        │
+# │        from this table — do NOT edit that section manually.             │
+# │                                                                         │
+# │  4e. Approved/rejected refs are moved to the archive section at the     │
+# │      bottom of backlog.md. Pending entries stay at the top.             │
+# │                                                                         │
+# │  Query all source events that contributed to a use case:                │
+# │    GET /memory/{project}/use-case-events?slug=auth-refactor             │
+# │  Rebuild Internal Usage section if accidentally deleted:                │
+# │    POST /memory/{project}/regenerate-use-case?slug=auth-refactor        │
+# └─────────────────────────────────────────────────────────────────────────┘
 #
 # Runtime config location: {code_dir}/.ai/backlog_config.yaml
 # (auto-copied from this template on first run if missing)
@@ -71,38 +117,41 @@
 file_name: backlog.md
 rotation: false   # true = daily rotation → backlog_2026-04-16.md
 
-# ── Phase 1: Raw row digest prompts ──────────────────────────────────────────
-# Each source type has its own Haiku prompt.
-# 'desc' is inserted into the system prompt that instructs Haiku how to
-# interpret the raw rows.  The full system prompt also includes the current
-# list of active use cases for AI_MATCH suggestions.
-# 'cnt' = number of pending rows that triggers one Haiku batch call.
+# ── Step 2 digest prompts ─────────────────────────────────────────────────────
+# 'cnt'  = how many pending rows trigger one Haiku batch call.
+# 'desc' = instruction injected into the Haiku system prompt for that source.
+# Both AI tags are always required in the output:
+#   ai_match  (use case slug) + classify (bug | feature | task)
 
 mirroring_event_summary:
-  commits:
-    cnt: 5
-    prompt:
-      desc: >
-        You are digesting git commits for a software project.
-        For each commit summarize: what classes/methods/files changed, lines +/-.
-        Identify the purpose: bug fix, new feature, refactor, chore, test, docs.
-        Classify as bug/feature/task.
-        Suggest the most relevant existing use case slug (ai_match), or mark
-        as 'new' if this represents a brand-new capability, or 'none' if
-        it is purely internal chore work.
-      llm: claude-haiku-4-5-20251001
-      temperature: 0.3
 
   prompts:
     cnt: 5
     prompt:
       desc: >
         You are digesting AI development session prompts (user ↔ assistant exchanges).
-        Extract: key requirements discussed, deliveries produced (code/docs/design),
-        open action items with acceptance criteria.
-        Classify as bug/feature/task based on the dominant intent.
-        Suggest the most relevant existing use case slug (ai_match), or 'new' if
-        this session introduced a new capability area.
+        Each batch includes the prompt, the assistant response, and any linked git
+        commits with their code symbols (file path, class, method, lines +/-).
+        Extract: key requirements discussed, deliveries produced (code/docs/design
+        — reference specific file/class/method names from linked commits where
+        present), and open action items with clear acceptance criteria.
+        If no LINKED COMMIT sections appear, the session produced no code changes.
+        Classify as bug/feature/task based on dominant intent.
+        Suggest the most relevant existing use case slug, or mark as 'new' if this
+        session introduced a new capability area.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+
+  commits:
+    cnt: 5
+    prompt:
+      desc: >
+        You are digesting standalone git commits (no user session — CI/CD, merges,
+        direct pushes). Use the CODE CHANGES (file path, class name, method name,
+        lines added/removed) to infer what was changed and what action items remain.
+        Deliveries are already done (the commit is the delivery).
+        Classify as bug/feature/task. Suggest the most relevant use case slug.
+        These entries are auto-approved — no user review required.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
@@ -111,10 +160,9 @@ mirroring_event_summary:
     prompt:
       desc: >
         You are digesting a document or meeting item.
-        Summarize: what problem it addresses, what decisions were made,
-        what action items remain open (with acceptance criteria).
-        Classify as bug/feature/task.
-        Suggest the most relevant existing use case slug (ai_match).
+        Summarize: what problem it addresses, decisions made, open action items
+        with acceptance criteria. Classify as bug/feature/task.
+        Suggest the most relevant existing use case slug.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
@@ -123,51 +171,39 @@ mirroring_event_summary:
     prompt:
       desc: >
         You are digesting Slack or chat messages.
-        Extract: decisions made, open action items, any requirements mentioned.
-        Ignore off-topic conversation.
-        Classify as bug/feature/task.
-        Suggest the most relevant existing use case slug (ai_match).
+        Extract: decisions made, open action items, requirements mentioned.
+        Ignore off-topic conversation. Classify as bug/feature/task.
+        Suggest the most relevant existing use case slug.
       llm: claude-haiku-4-5-20251001
       temperature: 0.3
 
-# ── Phase 2: Work-items merge configuration ───────────────────────────────────
-# These settings control how approved backlog entries are merged into
-# documents/use_cases/{slug}.md files and planner_tags.
-# No LLM call is made in Phase 2 — the data comes from Phase 1.
+# ── Step 4 merge configuration ────────────────────────────────────────────────
+# Controls how approved entries map to planner_tags categories and seq ranges.
+# No LLM call in this step — data comes entirely from the Step 2 digest.
 
 work_items:
-  # Slug resolution order for an approved entry:
-  #   1. <!-- TAG: {override} --> comment in the entry (user sets this)
+
+  # Slug resolution order for an approved entry (first non-empty wins):
+  #   1. <!-- TAG: {user_override} -->
   #   2. <!-- AI_MATCH: existing:{slug} --> or <!-- AI_MATCH: new:{slug} -->
-  #   3. Falls back to "general"
+  #   3. "general"
   slug_fallback: general
 
-  # How the classify field maps to planner_tag category + seq range:
-  #   use_case → category "use_case",  seq range 10000+ → display UC10001
-  #   feature  → category "feature",   seq range 20000+ → display F20001
-  #   bug      → category "bug",       seq range 30000+ → display B30001
-  #   task     → category "feature",   seq range 20000+ → display F20001
+  # classify value → planner_tags category + seq counter key + display prefix
+  #   use_case → UC10001, UC10002 …   (seq range 10000+)
+  #   feature  → F20001,  F20002 …   (seq range 20000+)
+  #   bug      → B30001,  B30002 …   (seq range 30000+)
+  #   task     → F20001,  F20002 …   (shares feature range)
   classify_to_category:
     use_case: use_case   # UC 10000+
     feature:  feature    # F  20000+
     bug:      bug        # B  30000+
-    task:     feature    # F  20000+ (tasks share feature range)
+    task:     feature    # F  20000+
 
-  # Use case file sections:
-  #   classify=bug   → entry appended under "### Open Bugs"
-  #   classify=other → entry appended under "### Open Features"
+  # use_cases/*.md section routing:
+  #   classify = bug   → ### Open Bugs
+  #   classify = other → ### Open Features
   #
-  # The "## Internal Usage" table at the bottom of each use case file is
-  # system-managed and rebuilt from mem_backlog_links.  Do not edit it manually.
-  # Format: | ref_id | type | date | summary |
-  #
-  # When ai_match.type = "new" (or the slug file doesn't exist yet),
-  # a new use_cases/{slug}.md is created from the stub template:
-  #
-  #   # {slug}
-  #   ## Overview
-  #   ## Requirements
-  #   ### Closed
-  #   ### Open Features
-  #   ### Open Bugs
-  #   ## Internal Usage   ← rebuilt from DB on demand
+  # The "## Internal Usage" table at the bottom of each file is system-managed.
+  # It is rebuilt automatically from mem_backlog_links after every run.
+  # Do NOT edit it manually — changes will be overwritten.
