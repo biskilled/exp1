@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-17 22:03 UTC — do not edit manually.
+> Auto-generated 2026-04-17 22:29 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 620
-- **Last active**: 2026-04-17T22:03:10Z
+- **Sessions**: 621
+- **Last active**: 2026-04-17T22:12:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
+- **database**: PostgreSQL 15+ with pgvector + m001-m052 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Chat UI session display: fixed stale session ID loading on startup by clearing module-level _sessionId and reading last_session_id synchronously from runtime state; session headers now show CLI/UI/Workflow badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
-- Session history persistence: confirmed hook-log endpoint working after m050 migration; 531 total prompts now loading correctly (389 DB + ~142 merged from JSONL); newest sessions (April) load first without stale session flashing
-- Database schema reorganization: m052 migration completed — all 18 tables reordered to: id → client_id → project_id → user_id → [columns] → created_at → updated_at → embedding; committed_at removed from mem_mrr_commits
-- User ID type conversion: m051-m052 migrated mng_users.id from UUID to SERIAL INT; updated_at added to all mirror tables and core event tables; user_id INT added to all tables after project_id
-- Event table cleanup: dropped importance column (m037); stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; prompts table column order standardized
-- Feature snapshot layer: mem_ai_feature_snapshot table created to merge user requirements with work items; planner_tags streamlined by removing summary/design/embedding/extra columns; deliverables JSONB added for tracking code/documents/designs
+- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading by clearing module-level variables and reading last_session_id synchronously from runtime state
+- Database schema consolidation m051-m052: migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form (id → client_id → project_id → user_id → [...] → created_at → updated_at → embedding); removed committed_at from mem_mrr_commits
+- Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
+- Work items linking verification: confirmed all recent work items (#20436-#20443) are commit-sourced with no associated CLI sessions; fixed join logic for commit-sourced items via mem_ai_events.source_id
+- Feature snapshot layer: created mem_ai_feature_snapshot table to merge user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding columns
+- Chat UI session display: added session ID badges, full session ID banners with copy functionality, and tag management per prompt; verified hook-log endpoint working correctly after m050 with 531 total prompts loading properly
 
 ## Key Decisions
 
@@ -78,11 +78,11 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; unified mem_tags_relations table for flexible tag-to-entity relationships
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with inline snapshot fields
+- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; all tables now use INT PKs (client_id → project_id → user_id)
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with inline snapshot fields and deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys (client_id, project_id, user_id) in order; created_at/updated_at/embedding always at end of all tables
+- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at/embedding always at table end
 - Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
 
 ---
