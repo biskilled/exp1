@@ -107,6 +107,75 @@ async def run_work_items_sync(project: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{project}/backlog-stats")
+async def get_backlog_stats(project: str):
+    """Return counters for the Backlog tab header.
+
+    Returns per-source-type counts of:
+      - pending:   rows with backlog_ref IS NULL (not yet digested)
+      - processed: rows with backlog_ref IS NOT NULL (already in backlog.md)
+      - batches:   processed / cnt (how many Haiku batch calls were made)
+
+    Also returns the current cnt threshold per source from backlog_config.yaml.
+    """
+    from memory.memory_backlog import MemoryBacklog, _TABLE
+    from core.database import db
+
+    bl = MemoryBacklog(project)
+
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    project_id = db.get_or_create_project_id(project)
+    cfg = bl._config().get("mirroring_event_summary", {})
+
+    stats: dict = {}
+    sources = ["prompts", "commits", "messages", "items"]
+    pk = {"commits": "commit_hash"}
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for src in sources:
+                    tbl = _TABLE[src]
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NULL",
+                        (project_id,),
+                    )
+                    pending = cur.fetchone()[0] or 0
+
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM {tbl} WHERE project_id=%s AND backlog_ref IS NOT NULL",
+                        (project_id,),
+                    )
+                    processed = cur.fetchone()[0] or 0
+
+                    cnt = int(cfg.get(src, {}).get("cnt", 5))
+                    batches = processed // cnt if cnt > 0 else 0
+
+                    stats[src] = {
+                        "pending":   pending,
+                        "processed": processed,
+                        "batches":   batches,
+                        "cnt":       cnt,
+                    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Totals
+    total_pending   = sum(s["pending"]   for s in stats.values())
+    total_processed = sum(s["processed"] for s in stats.values())
+    total_batches   = sum(s["batches"]   for s in stats.values())
+
+    return {
+        "project":         project,
+        "by_source":       stats,
+        "total_pending":   total_pending,
+        "total_processed": total_processed,
+        "total_batches":   total_batches,
+    }
+
+
 @router.get("/{project}/backlog")
 async def get_backlog(project: str):
     """Return all parsed backlog entries as JSON for the UI."""

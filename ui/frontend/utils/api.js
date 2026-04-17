@@ -64,6 +64,18 @@ async function _put(path, body = {}) {
   }
 }
 
+async function _patch(path, body = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const r = await fetch(_base() + path, { method: 'PATCH', headers: _headers(), body: JSON.stringify(body), signal: ctrl.signal });
+    if (!r.ok) { const e = await r.json().catch(() => ({ detail: r.statusText })); throw new Error(_errMsg(e, r.statusText)); }
+    return r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function _del(path) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -491,6 +503,14 @@ api.documents = {
 };
 
 // ── Pipeline API ──────────────────────────────────────────────────────────────
+
+api.backlog = {
+  stats:       (project)           => _get(`/memory/${enc(project)}/backlog-stats`),
+  entries:     (project)           => _get(`/memory/${enc(project)}/backlog`),
+  syncBacklog: (project, source)   => _post(`/memory/${enc(project)}/sync-backlog${source ? `?source=${enc(source)}` : ''}`, {}),
+  runWorkItems:(project)           => _post(`/memory/${enc(project)}/work-items/sync`, {}),
+  patch:       (project, refId, body) => _patch(`/memory/${enc(project)}/backlog/${enc(refId)}`, body),
+};
 
 api.pipeline = {
   status:          (project)                        => _get(`/memory/${enc(project)}/pipeline-status`),
