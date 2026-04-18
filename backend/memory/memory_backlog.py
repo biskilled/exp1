@@ -151,6 +151,26 @@ def _get_code_dir(project: str) -> Optional[Path]:
 # Header format:  SOURCE YY/MM/DD-HH:MM REF_ID [APPROVE] [slug] [classify] (user) — summary
 # APPROVE values: [ ] = pending | [+] or [x] = approved | [-] = rejected
 
+# New GROUP header: YY/MM/DD-HH:MM [APPROVE] (source) — slug
+_GROUP_HEADER_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d{2}(?:-\d{2}:\d{2})?)\s+"
+    r"\[([+ x\-]*)\]\s+"
+    r"\(([^)]*)\)\s+"
+    r"—\s+(.+)$"
+)
+
+# New ITEM header: SOURCE REF_ID [APPROVE] [CLASSIFY] [STATUS] [AI_SCORE] — summary
+_ITEM_HEADER_RE = re.compile(
+    r"^\s*(PROMPTS|COMMITS|ITEMS|MESSAGES)\s+"
+    r"([PCMI]\d+)\s+"
+    r"\[([+ x\-]*)\]\s+"
+    r"\[([^\]]*)\]\s+"   # classify: feature|bug|task
+    r"\[([^\]]*)\]\s+"   # status: in-progress|completed
+    r"\[(\d)\]\s+"       # ai_score: 0-5
+    r"—\s+(.+)$"
+)
+
+# Keep old regex for backward-compat parsing of old-format entries
 _ENTRY_HEADER_RE = re.compile(
     r"^(PROMPTS|COMMITS|ITEMS|MESSAGES)\s+"
     r"(\d{2}/\d{2}/\d{2}(?:-\d{2}:\d{2})?)\s+"
@@ -835,37 +855,191 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
     # ── Backlog parsing ────────────────────────────────────────────────────────
 
     def parse_backlog(self) -> list[dict]:
-        """Split backlog.md on `---` separator and parse each entry."""
+        """Parse backlog.md and return list of groups, each with nested items.
+
+        Supports both new GROUP format and old flat entry format (backward compat).
+        Returns list of group dicts:
+          {date, approve, source, slug, slug_type, user_tags, ai_existing_tags,
+           ai_new_tags, items: [{ref_id, src_label, approve, classify, status,
+           ai_score, summary, requirements, deliveries, raw}]}
+        """
         path = self._backlog_path()
         if not path.exists():
             return []
         text = path.read_text(errors="ignore")
 
-        # Only parse the pending section (before any archive)
+        # Only parse the pending section (before archive)
         archive_idx = text.find("\n## Processed ")
         pending_text = text[:archive_idx] if archive_idx != -1 else text
 
-        entries: list[dict] = []
+        groups: list[dict] = []
+
         for chunk in re.split(r"\n---\n", pending_text):
             chunk = chunk.strip()
             if not chunk:
                 continue
-            # Support GROUP format: multiple entries per --- section
+
             lines = chunk.splitlines()
+
+            # ── Try new GROUP format ──────────────────────────────────────
+            group_m = None
+            for ln in lines[:3]:  # header should be in first 3 lines
+                group_m = _GROUP_HEADER_RE.match(ln.strip())
+                if group_m:
+                    break
+
+            if group_m:
+                dt        = group_m.group(1)
+                ap_raw    = group_m.group(2).strip()
+                source    = group_m.group(3).strip()
+                slug      = group_m.group(4).strip()
+
+                approve = "x" if ap_raw in ("+", "x") else ("-" if ap_raw == "-" else " ")
+
+                # Parse metadata lines
+                slug_type   = "existing"
+                user_tags: list[str] = []
+                ai_existing: list[dict] = []
+                ai_new:      list[dict] = []
+
+                for ln in lines:
+                    ls = ln.strip()
+                    if ls.startswith("<!-- G_TYPE:"):
+                        slug_type = ls.split(":", 1)[1].strip(" -->").strip()
+                    elif ls.startswith("User tags:"):
+                        raw_tags = ls[len("User tags:"):].strip()
+                        user_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+                    elif ls.startswith("AI existing:"):
+                        raw = ls[len("AI existing:"):].strip()
+                        for chip in re.findall(r"\[([^\]]+)\]", raw):
+                            parts = chip.split(":", 1)
+                            if len(parts) == 2:
+                                ai_existing.append({"category": parts[0], "name": parts[1]})
+                    elif ls.startswith("AI new:"):
+                        raw = ls[len("AI new:"):].strip()
+                        for chip in re.findall(r"\[([^\]]+)\]", raw):
+                            parts = chip.split(":", 1)
+                            if len(parts) == 2:
+                                ai_new.append({"category": parts[0], "name": parts[1]})
+
+                # Parse items
+                items: list[dict] = []
+                current_item: Optional[dict] = None
+
+                for ln in lines:
+                    item_m = _ITEM_HEADER_RE.match(ln)
+                    if item_m:
+                        if current_item:
+                            items.append(current_item)
+                        src_label  = item_m.group(1)
+                        ref_id     = item_m.group(2)
+                        iap_raw    = item_m.group(3).strip()
+                        classify   = item_m.group(4).strip()
+                        status     = item_m.group(5).strip()
+                        ai_score   = int(item_m.group(6))
+                        summary    = item_m.group(7).strip()
+
+                        i_approve = "x" if iap_raw in ("+", "x") else ("-" if iap_raw == "-" else " ")
+                        current_item = {
+                            "ref_id":    ref_id,
+                            "src_label": src_label,
+                            "approve":   i_approve,
+                            "classify":  classify,
+                            "status":    status,
+                            "ai_score":  ai_score,
+                            "summary":   summary,
+                            "requirements": "",
+                            "deliveries":   "",
+                            "group_slug":   slug,
+                            "raw":          ln,
+                        }
+                    elif current_item:
+                        ls = ln.strip()
+                        if ls.startswith("Requirements:"):
+                            current_item["requirements"] = ls[len("Requirements:"):].strip()
+                        elif ls.startswith("Deliveries:"):
+                            current_item["deliveries"] = ls[len("Deliveries:"):].strip()
+                        elif ls and not ls.startswith("<!--") and not ls.startswith("Total:") \
+                             and not ls.startswith("User tags") and not ls.startswith("AI "):
+                            current_item["raw"] += "\n" + ln
+
+                if current_item:
+                    items.append(current_item)
+
+                groups.append({
+                    "date":             dt,
+                    "approve":          approve,
+                    "source":           source,
+                    "slug":             slug,
+                    "slug_type":        slug_type,
+                    "user_tags":        user_tags,
+                    "ai_existing_tags": ai_existing,
+                    "ai_new_tags":      ai_new,
+                    "items":            items,
+                })
+                continue
+
+            # ── Fallback: old flat format (may have multiple entry headers) ──
             entry_starts = [
                 i for i, ln in enumerate(lines)
                 if _ENTRY_HEADER_RE.match(ln.strip())
             ]
             if not entry_starts:
+                # Also try _ITEM_HEADER_RE at top level (bare items without group header)
+                item_group: list[dict] = []
+                for ln in lines:
+                    item_m = _ITEM_HEADER_RE.match(ln)
+                    if item_m:
+                        item_group.append({
+                            "ref_id":    item_m.group(2),
+                            "src_label": item_m.group(1),
+                            "approve":   "x" if item_m.group(3).strip() in ("+","x") else (" " if item_m.group(3).strip() == "" else "-"),
+                            "classify":  item_m.group(4).strip(),
+                            "status":    item_m.group(5).strip(),
+                            "ai_score":  int(item_m.group(6)),
+                            "summary":   item_m.group(7).strip(),
+                            "requirements": "", "deliveries": "",
+                            "group_slug": "discovery", "raw": ln,
+                        })
+                if item_group:
+                    groups.append({
+                        "date": "", "approve": " ", "source": "auto",
+                        "slug": "discovery", "slug_type": "existing",
+                        "user_tags": [], "ai_existing_tags": [], "ai_new_tags": [],
+                        "items": item_group,
+                    })
                 continue
+
+            # Old format: wrap each entry as a synthetic group
             for j, start_i in enumerate(entry_starts):
                 end_i = entry_starts[j + 1] if j + 1 < len(entry_starts) else len(lines)
                 entry_chunk = "\n".join(lines[start_i:end_i]).strip()
-                if entry_chunk:
-                    entry = self._parse_entry(entry_chunk)
-                    if entry:
-                        entries.append(entry)
-        return entries
+                if not entry_chunk:
+                    continue
+                entry = self._parse_entry(entry_chunk)
+                if entry:
+                    groups.append({
+                        "date": entry.get("date", ""),
+                        "approve": entry.get("approve", " "),
+                        "source": "auto",
+                        "slug": entry.get("slug", "discovery"),
+                        "slug_type": "existing",
+                        "user_tags": [], "ai_existing_tags": [], "ai_new_tags": [],
+                        "items": [{
+                            "ref_id":    entry["ref_id"],
+                            "src_label": entry.get("source", "PROMPTS"),
+                            "approve":   entry.get("approve", " "),
+                            "classify":  entry.get("classify", "task"),
+                            "status":    "in-progress",
+                            "ai_score":  0,
+                            "summary":   entry.get("summary", ""),
+                            "requirements": "", "deliveries": "",
+                            "group_slug": entry.get("slug", "discovery"),
+                            "raw": entry.get("raw", ""),
+                        }],
+                    })
+
+        return groups
 
     def _parse_entry(self, chunk: str) -> Optional[dict]:
         lines = chunk.splitlines()
@@ -909,52 +1083,68 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
     def rewrite(
         self,
-        keep: list[dict],
+        groups: list[dict],
         processed: list[str],
-        rejected: list[str],
+        rejected_items: list[dict],
     ) -> None:
-        """Rewrite backlog.md: keep pending entries at top, archive the rest."""
+        """Rewrite backlog.md after run_work_items.
+
+        - Approved items (processed) are removed entirely (moved to use case files).
+        - Rejected items move to the >>>>>>> REJECTED <<<<<< section at the bottom.
+        - Groups that still have pending items stay at the top, re-rendered.
+        """
         path = self._backlog_path()
-        text = path.read_text(errors="ignore") if path.exists() else ""
-
-        # Build set of handled ref_ids
-        handled = set(processed) | set(rejected)
-
-        # Keep entries not yet handled
-        keep_chunks = [e["raw"] for e in keep if e["ref_id"] not in handled]
-
-        # Existing archive section
-        archive_idx = text.find("\n## Processed ")
-        existing_archive = text[archive_idx:] if archive_idx != -1 else ""
-
         today = date.today().strftime("%Y-%m-%d")
-        new_archive_header = f"\n## Processed {today}\n"
 
-        # Archive lines
-        archive_refs = (
-            [f"- {r} (approved)" for r in processed]
-            + [f"- {r} (rejected)" for r in rejected]
-        )
-        archive_block = (
-            (existing_archive + "\n" + "\n".join(archive_refs))
-            if existing_archive
-            else (new_archive_header + "\n".join(archive_refs))
-        )
+        handled = set(processed) | {e.get("ref_id", "") for e in rejected_items}
+
+        # Re-render groups keeping only pending items
+        pending_blocks: list[str] = []
+        for grp in groups:
+            pending_items = [
+                it for it in grp.get("items", [])
+                if it.get("ref_id", "") not in handled
+            ]
+            if pending_items:
+                pending_group = {**grp, "items": pending_items}
+                pending_blocks.append(_fmt_group_block(pending_group))
 
         header = (
             "# Backlog\n\n"
-            "> Approve entries with `x`, reject with `-`, tag with TAG comment.\n"
-            "> Run `POST /memory/{project}/work-items` to process approved entries.\n\n"
+            "> Review each use case group. Approve `[+]` items, reject `[-]`.\n"
+            "> Run `POST /memory/{project}/work-items/sync` to merge approved items into use cases.\n\n"
         )
-        new_text = header + "\n---\n\n".join(keep_chunks)
-        if keep_chunks:
-            new_text += "\n"
-        new_text += archive_block + "\n"
+
+        new_text = header
+        if pending_blocks:
+            new_text += "\n---\n\n".join(pending_blocks) + "\n"
+
+        # ── Rejected section ─────────────────────────────────────────────────
+        # Preserve any existing rejected entries from the file
+        existing_text = path.read_text(errors="ignore") if path.exists() else ""
+        rejected_marker = "\n>>>>>>> REJECTED <<<<<<"
+        existing_rejected_body = ""
+        rej_idx = existing_text.find(rejected_marker)
+        if rej_idx != -1:
+            # Strip the marker line itself and get the body
+            existing_rejected_body = existing_text[rej_idx + len(rejected_marker):].lstrip("\n")
+
+        new_rejected_blocks: list[str] = []
+        for item in rejected_items:
+            block = _fmt_item_entry(item, item.get("src_label", "PROMPTS")).strip()
+            new_rejected_blocks.append(block + f"\n  <!-- Rejected: {today} -->")
+
+        if new_rejected_blocks or existing_rejected_body.strip():
+            new_text += "\n>>>>>>> REJECTED <<<<<<\n\n"
+            if existing_rejected_body.strip():
+                new_text += existing_rejected_body.rstrip() + "\n\n"
+            if new_rejected_blocks:
+                new_text += "\n\n".join(new_rejected_blocks) + "\n"
 
         path.write_text(new_text)
         log.info(
-            f"backlog: rewrite — {len(keep_chunks)} pending, "
-            f"{len(processed)} processed, {len(rejected)} rejected"
+            f"backlog: rewrite — {len(pending_blocks)} pending groups, "
+            f"{len(processed)} processed, {len(rejected_items)} rejected"
         )
 
 
@@ -1154,11 +1344,14 @@ class _FullDigest:
                         "ref_id":       ref_id,
                         "date":         row["created_at"],
                         "src_label":    "PROMPTS",
+                        "approve":      " ",
                         "summary":      sv.get("summary", (row.get("prompt") or "")[:80].replace("\n", " ")),
                         "classify":     sv.get("classify", classify),
+                        "status":       sv.get("status", "in-progress"),
+                        "ai_score":     int(sv.get("ai_score", 0)),
                         "user":         row.get("source", "user"),
                         "requirements": sv.get("requirements", []),
-                        "completed":    sv.get("completed", []),
+                        "deliveries":   sv.get("deliveries", sv.get("completed", [])),
                         "action_items": sv.get("action_items", []),
                     })
                     prompt_stamp[row["id"]] = ref_id
@@ -1174,19 +1367,39 @@ class _FullDigest:
                         "ref_id":    ref_id,
                         "date":      row.get("created_at"),
                         "src_label": "COMMITS",
+                        "approve":   "+",
                         "summary":   sv.get("summary", (row.get("commit_msg") or "")[:80]),
                         "classify":  sv.get("classify", classify),
+                        "status":    sv.get("status", "completed"),
+                        "ai_score":  int(sv.get("ai_score", 5)),
                         "user":      "auto",
-                        "completed": sv.get("completed", []),
+                        "deliveries": sv.get("completed", sv.get("deliveries", [])),
                     })
                     commit_stamp[row["id"]] = ref_id
 
             if entries:
+                # Collect user tags from all prompts in this group
+                user_tags_set: set[str] = set()
+                for row in grp_prompt_rows:
+                    tags_json = row.get("tags_json") or {}
+                    for k, v in tags_json.items() if isinstance(tags_json, dict) else []:
+                        if k not in ("source",) and v:
+                            user_tags_set.add(f"{k}:{v}")
+                # Use earliest date in group
+                dates = [r["created_at"] for r in grp_prompt_rows + grp_commit_rows if r.get("created_at")]
+                earliest = min(dates) if dates else date.today()
+
                 group_sections.append({
-                    "slug":      slug,
-                    "slug_type": slug_type,
-                    "topic":     topic,
-                    "entries":   entries,
+                    "slug":             slug,
+                    "slug_type":        slug_type,
+                    "topic":            topic,
+                    "date":             _fmt_date(earliest),
+                    "source":           (grp_prompt_rows[0].get("source", "auto") if grp_prompt_rows else "auto"),
+                    "approve":          " ",
+                    "user_tags":        sorted(user_tags_set),
+                    "ai_existing_tags": group.get("ai_existing_tags", []),
+                    "ai_new_tags":      group.get("ai_new_tags", []),
+                    "items":            entries,
                 })
                 total_entries += len(entries)
 
@@ -1336,13 +1549,16 @@ Return a JSON ARRAY with one element per event (same order as input):
     "event_index": 0,
     "summary": "one-line description max 100 chars",
     "classify": "bug|feature|task",
+    "status": "completed|in-progress",
+    "ai_score": 3,
     "requirements": ["user request"],
-    "completed": ["what was done referencing file/class/method"],
+    "deliveries": ["what was done referencing file/class/method"],
     "action_items": [{{"desc": "...", "acceptance": "..."}}]
   }}
 ]
-One sentence per item. Be specific with file/class/method names.
-If no linked commits appear, completed reflects assistant-described work only."""
+status: "completed" if fully implemented, "in-progress" if partially done or only discussed.
+ai_score: 0=not started, 1=discussed, 2=design ready, 3=partial, 4=implemented, 5=tested/done.
+One sentence per item. Be specific with file/class/method names."""
 
         user_p = f"Events ({len(rows)}):\n\n" + "\n\n".join(parts)
         raw = await _call_haiku(system_p, user_p, model, max_tokens=6000)
@@ -1394,9 +1610,12 @@ Return a JSON ARRAY with one element per commit (same order as input):
     "event_index": 0,
     "summary": "one-line description max 100 chars",
     "classify": "bug|feature|task",
-    "completed": ["what was changed referencing file/class/method"]
+    "status": "completed",
+    "ai_score": 5,
+    "deliveries": ["what was changed referencing file/class/method"]
   }}
 ]
+Commits are always completed (status=completed, ai_score=5).
 One sentence per item. Be specific with file/class/method names."""
 
         user_p = f"Commits ({len(commits)}):\n\n" + "\n\n".join(parts)
@@ -1424,33 +1643,14 @@ One sentence per item. Be specific with file/class/method names."""
     # ── File I/O ────────────────────────────────────────────────────────────
 
     def _write_group_sections(self, groups: list[dict]) -> None:
-        """Write GROUP sections to backlog.md. Preserves archive section."""
+        """Write GROUP sections to backlog.md using the new group format."""
         path = self.bl._backlog_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        section_blocks: list[str] = []
-        for group in groups:
-            slug      = group["slug"]
-            slug_type = group.get("slug_type", "existing")
-            topic     = group.get("topic", slug)
-            entries   = group.get("entries", [])
-
-            lines: list[str] = [
-                f"## GROUP: {slug} — {topic} ({slug_type})",
-                f"<!-- GROUP_SLUG: {slug} -->",
-                f"<!-- GROUP_TYPE: {slug_type} -->",
-                "",
-            ]
-            for e in entries:
-                src_label = e.get("src_label", "PROMPTS")
-                lines.append(_fmt_event_entry(e, src_label, slug))
-                lines.append("")
-
-            section_blocks.append("\n".join(lines).rstrip())
-
+        section_blocks = [_fmt_group_block(g) for g in groups]
         content = "\n---\n\n".join(section_blocks)
 
-        # Preserve archive section
+        # Preserve archive
         archive_block = ""
         if path.exists():
             existing = path.read_text(errors="ignore")
@@ -1460,12 +1660,14 @@ One sentence per item. Be specific with file/class/method names."""
 
         header = (
             "# Backlog\n\n"
-            "> Approve entries with `[+]`, reject with `[-]`.\n"
-            "> Run `POST /memory/{project}/work-items` to merge into use cases.\n\n"
+            "> Review each use case group. Approve `[+]` items, reject `[-]`.\n"
+            "> Run `POST /memory/{project}/work-items` to merge approved items into use cases.\n\n"
         )
         path.write_text(header + content + "\n" + archive_block)
-        log.info(f"full_digest: wrote {sum(len(g['entries']) for g in groups)} entries "
-                 f"across {len(groups)} groups → {path}")
+        log.info(
+            f"full_digest: wrote {sum(len(g.get('items',[])) for g in groups)} items "
+            f"across {len(groups)} groups → {path}"
+        )
 
     # ── DB marking ──────────────────────────────────────────────────────────
 
@@ -1513,6 +1715,107 @@ One sentence per item. Be specific with file/class/method names."""
             log.warning(f"full_digest: _mark_processed_v2 error: {e}")
 
 
+def _fmt_item_entry(e: dict, src_label: str) -> str:
+    """Format a single event item in the new GROUP format.
+
+    Format: SOURCE REF_ID [APPROVE] [CLASSIFY] [STATUS] [AI_SCORE] — summary
+    """
+    ref_id   = e.get("ref_id", "?")
+    approve  = e.get("approve", " ")
+    classify = e.get("classify", "task")
+    status   = e.get("status", "in-progress")
+    ai_score = e.get("ai_score", 0)
+    summary  = (e.get("summary") or "")[:100]
+
+    lines = [
+        f"  {src_label} {ref_id} [{approve}] [{classify}] [{status}] [{ai_score}] — {summary}",
+    ]
+
+    reqs = e.get("requirements", [])
+    if reqs:
+        lines.append(f"    Requirements: {'; '.join(str(r) for r in reqs[:5])}")
+
+    deliveries = e.get("deliveries", []) or e.get("completed", [])
+    if deliveries:
+        lines.append(f"    Deliveries: {'; '.join(str(d) for d in deliveries[:5])}")
+
+    return "\n".join(lines)
+
+
+def _fmt_group_block(group: dict) -> str:
+    """Format a full GROUP section for backlog.md."""
+    slug      = group.get("slug", "general")
+    slug_type = group.get("slug_type", "existing")
+    date_str  = group.get("date", "")
+    source    = group.get("source", "auto")
+    approve   = group.get("approve", " ")
+    items     = group.get("items", [])
+
+    # Count by source type
+    cnt = {"PROMPTS": 0, "COMMITS": 0, "MESSAGES": 0, "ITEMS": 0}
+    for it in items:
+        cnt[it.get("src_label", "PROMPTS")] += 1
+
+    total_line = " · ".join(
+        f"{v} {k.lower()}" for k, v in cnt.items() if v > 0
+    ) or "0 events"
+
+    user_tags     = group.get("user_tags", [])
+    ai_existing   = group.get("ai_existing_tags", [])
+    ai_new        = group.get("ai_new_tags", [])
+
+    lines = [
+        f"{date_str} [{approve}] ({source}) — {slug}",
+        f"<!-- G_SLUG: {slug} -->",
+        f"<!-- G_TYPE: {slug_type} -->",
+        f"Total: {total_line}",
+    ]
+
+    if user_tags:
+        lines.append(f"User tags: {', '.join(str(t) for t in user_tags)}")
+    else:
+        lines.append("User tags:")
+
+    if ai_existing:
+        chips = " ".join(
+            f"[{t.get('category','?')}:{t.get('name','?')}]"
+            for t in ai_existing
+        )
+        lines.append(f"AI existing: {chips}")
+    else:
+        lines.append("AI existing:")
+
+    if ai_new:
+        chips = " ".join(
+            f"[{t.get('category','?')}:{t.get('name','?')}]"
+            for t in ai_new
+        )
+        lines.append(f"AI new: {chips}")
+    else:
+        lines.append("AI new:")
+
+    lines.append("")
+
+    # Group items by source type, then by classify
+    type_order    = ["PROMPTS", "COMMITS", "MESSAGES", "ITEMS"]
+    classify_order = ["feature", "bug", "task"]
+
+    for src_type in type_order:
+        type_items = [it for it in items if it.get("src_label") == src_type]
+        if not type_items:
+            continue
+        # Sort by classify order
+        type_items.sort(
+            key=lambda x: classify_order.index(x.get("classify", "task"))
+            if x.get("classify", "task") in classify_order else 99
+        )
+        for it in type_items:
+            lines.append(_fmt_item_entry(it, src_type))
+            lines.append("")
+
+    return "\n".join(lines).rstrip()
+
+
 async def process_full_digest(project: str) -> dict:
     """Module-level convenience: run the full-digest pipeline for a project."""
     bl = MemoryBacklog(project)
@@ -1529,6 +1832,11 @@ _USE_CASE_STUB = """\
 <!-- CREATED: {created_at} -->
 <!-- UPDATED: {created_at} -->
 <!-- EVENTS: 0 -->
+<!-- PROMPTS: 0 -->
+<!-- COMMITS: 0 -->
+<!-- MESSAGES: 0 -->
+<!-- ITEMS: 0 -->
+<!-- NOTE: counters updated automatically on each work-items/sync run -->
 
 ## Summary
 
@@ -1581,12 +1889,13 @@ _USE_CASE_STUB = """\
 ## Events
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SYSTEM-MANAGED — rebuilt from mem_backlog_links on every refresh run. -->
-<!-- Do NOT edit manually. To rebuild: POST /memory/{{p}}/regenerate-use-case?slug={slug} -->
+<!-- SYSTEM-MANAGED — items appended here on each work-items/sync run.     -->
+<!-- Rebuild from DB: POST /memory/{{p}}/regenerate-use-case?slug={slug}   -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-| ID | Source | Date | Summary |
-|----|--------|------|---------|
+<!-- EVENTS_START -->
+
+<!-- EVENTS_END -->
 """
 
 
@@ -1595,59 +1904,133 @@ def _slug_path(uc_dir: Path, slug: str) -> Path:
 
 
 def _create_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
-    """Create a new use case file from stub template, then merge entry."""
+    """Create a new use case file from template, then merge entry."""
     uc_dir.mkdir(parents=True, exist_ok=True)
     path = _slug_path(uc_dir, slug)
     if not path.exists():
-        today = date.today().strftime("%Y/%m/%d")
-        stub = _USE_CASE_STUB.format(
-            slug=slug,
-            summary=entry.get("summary", ""),
-            requirement=entry.get("summary", ""),
-            created_at=today,
+        today_iso  = date.today().isoformat()
+        today_disp = date.today().strftime("%Y/%m/%d")
+        # Try loading the use_case_template.md from the workspace templates directory
+        tpl_path = (
+            Path(__file__).parent.parent.parent
+            / "workspace" / "_templates" / "use_cases" / "use_case_template.md"
         )
+        if tpl_path.exists():
+            stub = (
+                tpl_path.read_text()
+                .replace("{use-case-name}", slug)
+                .replace("{YYYY-MM-DD}", today_iso)
+                .replace("- {requirement 1}", f"- {entry.get('summary', slug)}")
+                .replace("- {requirement 2}", "")
+                .replace("{One-paragraph description of what this use case covers and its current state.\nUpdated by LLM summary. Edit freely — will be overwritten on llm-summary run.}", entry.get("summary", ""))
+            )
+        else:
+            stub = _USE_CASE_STUB.format(
+                slug=slug,
+                summary=entry.get("summary", ""),
+                requirement=entry.get("summary", ""),
+                created_at=today_disp,
+            )
         path.write_text(stub)
         log.info(f"use_case: created {path}")
     _merge_into_use_case(uc_dir, slug, entry)
 
 
+def _fmt_event_block(entry: dict) -> str:
+    """Format a backlog item as a full event block for the ## Events section."""
+    ref_id    = entry.get("ref_id", "?")
+    src_label = entry.get("src_label", "PROMPTS")
+    classify  = entry.get("classify", "task")
+    status    = entry.get("status", "in-progress")
+    ai_score  = entry.get("ai_score", 0)
+    dt        = _fmt_date(entry.get("date"))
+    summary   = entry.get("summary", "")
+
+    lines = [
+        f"### {ref_id} · {dt} · {src_label} · {classify} · {status} · AI:{ai_score}",
+        "",
+        summary,
+        "",
+    ]
+
+    reqs = entry.get("requirements", [])
+    if isinstance(reqs, str):
+        reqs = [r.strip() for r in reqs.split(";") if r.strip()]
+    if reqs:
+        lines.append(f"**Requirements:** {'; '.join(str(r) for r in reqs[:5])}")
+
+    deliveries = entry.get("deliveries", []) or entry.get("completed", [])
+    if isinstance(deliveries, str):
+        deliveries = [d.strip() for d in deliveries.split(";") if d.strip()]
+    if deliveries:
+        if isinstance(deliveries[0], dict):
+            d_strs = [d.get("desc", str(d)) for d in deliveries[:5]]
+        else:
+            d_strs = [str(d) for d in deliveries[:5]]
+        lines.append(f"**Deliveries:** {'; '.join(d_strs)}")
+
+    action_items = entry.get("action_items", [])
+    if isinstance(action_items, str):
+        action_items = [action_items]
+    if action_items:
+        lines.append("**Action items:**")
+        for ai in action_items[:5]:
+            if isinstance(ai, dict):
+                desc = ai.get("desc", "")
+                acc  = ai.get("acceptance", "")
+                lines.append(f"- {desc}" + (f" (acceptance: {acc})" if acc else ""))
+            else:
+                lines.append(f"- {ai}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
-    """Append entry into the appropriate section of an existing use case file."""
+    """Append entry into the use case file.
+
+    1. Adds item to ## Open Items or ## Open Bugs (with AI score + acceptance).
+    2. Appends full event block inside <!-- EVENTS_START --> … <!-- EVENTS_END --> markers.
+    3. Increments all relevant counters in the file header metadata.
+    4. Updates <!-- UPDATED: … --> date.
+    """
     path = _slug_path(uc_dir, slug)
     if not path.exists():
         _create_use_case(uc_dir, slug, entry)
         return
 
     text = path.read_text(errors="ignore")
-    ref_id  = entry.get("ref_id", "")
-    summary = entry.get("summary", "")
+    ref_id   = entry.get("ref_id", "")
+    summary  = entry.get("summary", "")
     classify = entry.get("classify", "task")
-    dt      = entry.get("date", date.today().strftime("%Y/%m/%d"))
+    dt       = entry.get("date", date.today().strftime("%Y/%m/%d"))
+    src_label = entry.get("src_label", "PROMPTS")
+    prefix   = ref_id[0] if ref_id else "P"
 
     # Deduplication guard
     if ref_id and ref_id in text:
         log.debug(f"use_case: {ref_id} already in {slug}, skipping")
         return
 
-    # Determine section: bugs → Open Bugs, everything else → Open Items
+    # ── 1. Add to Open Items / Open Bugs ─────────────────────────────────────
     section_tag = "## Open Bugs" if classify == "bug" else "## Open Items"
 
     action_items = entry.get("action_items", [])
     acceptance = ""
     if action_items:
-        first = action_items[0]
-        acceptance = first.get("acceptance", "") if isinstance(first, dict) else ""
+        first = action_items[0] if isinstance(action_items, list) else action_items
+        if isinstance(first, dict):
+            acceptance = first.get("acceptance", "")
 
+    ai_score = entry.get("ai_score", 0)
     new_item = (
-        f"- [ ] {summary}\n"
+        f"- [ ] AI:{ai_score}  {summary}\n"
         + (f"  Acceptance: {acceptance}\n" if acceptance else "")
         + (f"  Linked: {ref_id}\n" if ref_id else "")
     )
 
-    # Insert after the section heading (before next ## heading)
     if section_tag in text:
         idx = text.index(section_tag) + len(section_tag)
-        # Skip past any comment line immediately after the heading
         rest = text[idx:]
         comment_m = re.match(r"\n<!--[^>]*-->", rest)
         skip = len(comment_m.group()) if comment_m else 0
@@ -1655,31 +2038,61 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
     else:
         text = text.rstrip() + f"\n\n{section_tag}\n{new_item}"
 
-    # Append to Events table
-    src_type = ref_id[0] if ref_id else "?"
-    type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}.get(src_type, "?")
-    row = f"| {ref_id} | {type_label} | {dt} | {summary[:60]} |"
-    if "## Events" in text:
-        lines = text.splitlines()
-        insert_at = None
-        for i, line in enumerate(lines):
-            if line.startswith("| ID") or line.startswith("| id"):
-                insert_at = i + 2  # after header + separator
-                break
-        if insert_at is not None:
-            lines.insert(insert_at, row)
-            text = "\n".join(lines) + "\n"
+    # ── 2. Append full event block inside EVENTS_START … EVENTS_END ──────────
+    event_block = _fmt_event_block(entry)
+    divider = "---\n\n"
+
+    if "<!-- EVENTS_START -->" in text and "<!-- EVENTS_END -->" in text:
+        idx = text.index("<!-- EVENTS_END -->")
+        text = text[:idx] + event_block + divider + text[idx:]
+    elif "## Events" in text:
+        events_idx = text.index("## Events")
+        # Convert legacy table-based Events section to block format
+        end_m = re.search(r"\n##\s", text[events_idx + 9:])
+        if end_m:
+            section_end = events_idx + 9 + end_m.start()
         else:
-            text = text.rstrip() + f"\n{row}\n"
+            section_end = len(text)
+        new_events_section = (
+            "## Events\n\n"
+            "<!-- ═══════════════════════════════════════════════════════════════════════ -->\n"
+            "<!-- SYSTEM-MANAGED — items appended here on each work-items/sync run.     -->\n"
+            "<!-- ═══════════════════════════════════════════════════════════════════════ -->\n\n"
+            "<!-- EVENTS_START -->\n\n"
+            + event_block + divider +
+            "<!-- EVENTS_END -->\n"
+        )
+        text = text[:events_idx] + new_events_section + text[section_end:]
     else:
         text = (
             text.rstrip()
-            + "\n\n## Events\n"
-            "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->\n"
-            "| ID | Source | Date | Summary |\n"
-            "|----|--------|------|---------|\n"
-            + row + "\n"
+            + "\n\n## Events\n\n"
+            "<!-- EVENTS_START -->\n\n"
+            + event_block + divider +
+            "<!-- EVENTS_END -->\n"
         )
+
+    # ── 3. Increment counters ─────────────────────────────────────────────────
+    type_counter = {"P": "PROMPTS", "C": "COMMITS", "M": "MESSAGES", "I": "ITEMS"}.get(prefix, "PROMPTS")
+
+    def _inc(t: str, key: str) -> str:
+        pat = re.compile(rf"<!-- {key}: (\d+) -->")
+        m = pat.search(t)
+        if m:
+            return pat.sub(f"<!-- {key}: {int(m.group(1)) + 1} -->", t, count=1)
+        # Key not found — add after <!-- EVENTS: … -->
+        ep = re.compile(r"<!-- EVENTS: \d+ -->")
+        em = ep.search(t)
+        if em:
+            return t[:em.end()] + f"\n<!-- {key}: 1 -->" + t[em.end():]
+        return t
+
+    text = _inc(text, "EVENTS")
+    text = _inc(text, type_counter)
+
+    # ── 4. Update UPDATED date ────────────────────────────────────────────────
+    today_iso = date.today().isoformat()
+    text = re.sub(r"<!-- UPDATED: [^>]+ -->", f"<!-- UPDATED: {today_iso} -->", text)
 
     path.write_text(text)
     log.info(f"use_case: merged {ref_id} → {slug}")
@@ -1752,21 +2165,32 @@ def _regenerate_internal_usage(uc_dir: Path, slug: str, project_id: int) -> None
     if not rows:
         return
 
-    # Build the Events table rows
-    type_label = {"P": "prompt", "C": "commit", "M": "message", "I": "item"}
-    table_lines = [
-        "## Events",
-        "<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->",
-        "| ID | Source | Date | Summary |",
-        "|----|--------|------|---------|",
-    ]
+    # Build the Events section with full blocks (each row is a compact block)
+    type_label = {"P": "PROMPTS", "C": "COMMITS", "M": "MESSAGES", "I": "ITEMS"}
+    event_blocks: list[str] = []
     for ref_id, classify, summary, approved_at in rows:
         src = ref_id[0] if ref_id else "?"
-        t = type_label.get(src, "?")
-        dt = approved_at.strftime("%Y-%m-%d") if approved_at else ""
-        table_lines.append(f"| {ref_id} | {t} | {dt} | {(summary or '')[:60]} |")
+        src_label = type_label.get(src, "PROMPTS")
+        dt = approved_at.strftime("%y/%m/%d-%H:%M") if approved_at else ""
+        # Minimal block (DB only stores summary; full content lives in the file)
+        block = (
+            f"### {ref_id} · {dt} · {src_label} · {classify}\n\n"
+            f"{(summary or '')}\n"
+        )
+        event_blocks.append(block)
 
-    new_section = "\n".join(table_lines) + "\n"
+    events_body = "\n---\n\n".join(event_blocks) if event_blocks else ""
+
+    new_section = (
+        "## Events\n\n"
+        "<!-- ═══════════════════════════════════════════════════════════════════════ -->\n"
+        "<!-- SYSTEM-MANAGED — items appended here on each work-items/sync run.     -->\n"
+        "<!-- Rebuild from DB: POST /memory/{p}/regenerate-use-case?slug={slug}     -->\n"
+        "<!-- ═══════════════════════════════════════════════════════════════════════ -->\n\n"
+        "<!-- EVENTS_START -->\n\n"
+        + events_body + ("\n\n" if events_body else "") +
+        "<!-- EVENTS_END -->\n"
+    )
 
     text = path.read_text(errors="ignore")
 
@@ -1902,92 +2326,100 @@ async def run_work_items(project: str) -> dict:
     total_flushed = sum(flushed.values())
 
     # Step 2: parse
-    entries = bl.parse_backlog()
+    groups = bl.parse_backlog()
+    # Flatten all items across all groups
+    approved: list[dict] = []
+    rejected: list[dict] = []
+    pending:  list[dict] = []
+    for grp in groups:
+        for item in grp.get("items", []):
+            ap = item.get("approve", " ")
+            if ap == "x":
+                approved.append(item)
+            elif ap == "-":
+                rejected.append(item)
+            else:
+                pending.append(item)
 
     approved_ids: list[str] = []
     rejected_ids: list[str] = []
-    pending: list[dict] = []
     use_cases_updated: set[str] = set()
     tags_created: list[dict] = []
 
     uc_dir = bl._use_cases_dir()
 
-    for entry in entries:
-        ap = entry.get("approve", " ")
-        if ap == "x":
-            # Step 3a: create/merge use-case file
-            classify = entry.get("classify", "use_case")
-            if classify not in _CLASSIFY_TO_TAG:
-                classify = "use_case"
+    for entry in approved:
+        # Step 3a: create/merge use-case file
+        classify = entry.get("classify", "use_case")
+        if classify not in _CLASSIFY_TO_TAG:
+            classify = "use_case"
 
-            # Slug comes directly from entry (set in header by user or LLM)
-            slug = entry.get("slug", "").strip() or "general"
-            slug = re.sub(r"[^a-z0-9\-]", "-", slug.lower()).strip("-") or "general"
+        # Slug comes from group_slug (new format) or slug field (old format)
+        slug = (entry.get("group_slug") or entry.get("slug", "")).strip() or "general"
+        slug = re.sub(r"[^a-z0-9\-]", "-", slug.lower()).strip("-") or "general"
 
-            try:
-                if not _slug_path(uc_dir, slug).exists():
-                    _create_use_case(uc_dir, slug, entry)
-                else:
-                    _merge_into_use_case(uc_dir, slug, entry)
-                use_cases_updated.add(slug)
-            except Exception as e:
-                log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
+        try:
+            if not _slug_path(uc_dir, slug).exists():
+                _create_use_case(uc_dir, slug, entry)
+            else:
+                _merge_into_use_case(uc_dir, slug, entry)
+            use_cases_updated.add(slug)
+        except Exception as e:
+            log.warning(f"run_work_items: file merge error for {entry['ref_id']}: {e}")
 
-            # Step 3b: upsert planner_tag with seq_num + file_ref
-            tag_uuid: Optional[str] = None
-            if project_id:
-                uc_path = _slug_path(uc_dir, slug)
-                # file_ref relative to code_dir (or absolute fallback)
-                code_dir = _get_code_dir(project)
-                if code_dir and uc_path.is_relative_to(code_dir):
-                    file_ref = str(uc_path.relative_to(code_dir))
-                else:
-                    file_ref = f"documents/use_cases/{slug}.md"
+        # Step 3b: upsert planner_tag with seq_num + file_ref
+        tag_uuid: Optional[str] = None
+        if project_id:
+            uc_path = _slug_path(uc_dir, slug)
+            # file_ref relative to code_dir (or absolute fallback)
+            code_dir = _get_code_dir(project)
+            if code_dir and uc_path.is_relative_to(code_dir):
+                file_ref = str(uc_path.relative_to(code_dir))
+            else:
+                file_ref = f"documents/use_cases/{slug}.md"
 
-                tag_result = _upsert_planner_tag(
-                    project=project,
-                    project_id=project_id,
-                    name=slug,
-                    classify=classify,
-                    file_ref=file_ref,
-                    description=entry.get("summary", ""),
-                )
-                if tag_result:
-                    tag_uuid, seq_num = tag_result
-                    display_id = _tag_display_id(classify, seq_num)
-                    tags_created.append({
-                        "slug":       slug,
-                        "tag_id":     tag_uuid,
-                        "seq_num":    seq_num,
-                        "display_id": display_id,
-                        "classify":   classify,
-                        "ref_id":     entry["ref_id"],
-                    })
-                    log.info(
-                        f"backlog: planner_tag {display_id} ({slug}) "
-                        f"linked to {entry['ref_id']}"
-                    )
-
-                # Step 3c: insert stable DB linkage record
-                _insert_backlog_link(
-                    project_id=project_id,
-                    ref_id=entry["ref_id"],
-                    tag_id=tag_uuid,
-                    use_case_slug=slug,
-                    classify=classify,
-                    summary=entry.get("summary", ""),
+            tag_result = _upsert_planner_tag(
+                project=project,
+                project_id=project_id,
+                name=slug,
+                classify=classify,
+                file_ref=file_ref,
+                description=entry.get("summary", ""),
+            )
+            if tag_result:
+                tag_uuid, seq_num = tag_result
+                display_id = _tag_display_id(classify, seq_num)
+                tags_created.append({
+                    "slug":       slug,
+                    "tag_id":     tag_uuid,
+                    "seq_num":    seq_num,
+                    "display_id": display_id,
+                    "classify":   classify,
+                    "ref_id":     entry["ref_id"],
+                })
+                log.info(
+                    f"backlog: planner_tag {display_id} ({slug}) "
+                    f"linked to {entry['ref_id']}"
                 )
 
-            approved_ids.append(entry["ref_id"])
+            # Step 3c: insert stable DB linkage record
+            _insert_backlog_link(
+                project_id=project_id,
+                ref_id=entry["ref_id"],
+                tag_id=tag_uuid,
+                use_case_slug=slug,
+                classify=classify,
+                summary=entry.get("summary", ""),
+            )
 
-        elif ap == "-":
-            rejected_ids.append(entry["ref_id"])
-        else:
-            pending.append(entry)
+        approved_ids.append(entry["ref_id"])
 
-    # Step 5: rewrite backlog
-    if approved_ids or rejected_ids:
-        bl.rewrite(keep=pending, processed=approved_ids, rejected=rejected_ids)
+    for entry in rejected:
+        rejected_ids.append(entry["ref_id"])
+
+    # Step 5: rewrite backlog (approved removed; rejected moved to REJECTED section)
+    if approved_ids or rejected:
+        bl.rewrite(groups=groups, processed=approved_ids, rejected_items=rejected)
 
     # Step 6: regenerate ## Internal Usage in all touched use case files
     # (rebuilds from mem_backlog_links — survives manual edits/deletion)

@@ -31,6 +31,9 @@ that does not yet belong to a named use case.
 | C200056 | commit | 2026-04-17 | standalone commits summary (58 commits) |
 
 ## Open Items
+- [ ] AI:1  Consolidate 4-tab planner UI into single tag-based management system
+  Linked: P100373
+
 - [ ] Project management UI/UX improvements and memory updates
   Linked: P100013
 
@@ -38,8 +41,17 @@ that does not yet belong to a named use case.
   Linked: C200059
 
 ## Events
-<!-- system-managed: rebuilt from mem_backlog_links — do not edit -->
-| ID | Source | Date | Summary |
-|----|--------|------|---------|
-| C200059 | commit | 2026-04-17 | standalone commits summary (63 commits) |
-| P100013 | prompt | 2026-04-17 | Project management UI/UX improvements and memory updates |
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SYSTEM-MANAGED — items appended here on each work-items/sync run.     -->
+<!-- Rebuild from DB: POST /memory/{p}/regenerate-use-case?slug={slug}     -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+
+<!-- EVENTS_START -->
+
+### P100373 · 26/04/18-00:11 · PROMPTS · feature
+
+Consolidate 4-tab planner UI into single tag-based management system
+
+
+<!-- EVENTS_END -->

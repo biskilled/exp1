@@ -5,7 +5,11 @@
 <!-- CREATED: {YYYY-MM-DD} -->
 <!-- UPDATED: {YYYY-MM-DD} -->
 <!-- EVENTS: 0 -->
-<!-- EVENTS_NOTE: system counter — do not edit; updated automatically on refresh -->
+<!-- PROMPTS: 0 -->
+<!-- COMMITS: 0 -->
+<!-- MESSAGES: 0 -->
+<!-- ITEMS: 0 -->
+<!-- NOTE: counters updated automatically on each work-items/sync run -->
 
 ## Summary
 
@@ -56,7 +60,7 @@ Updated by LLM summary. Edit freely — will be overwritten on llm-summary run.}
 ## Open Items
 <!-- AI-appended from approved backlog entries -->
 
-<!-- Format:  [ ] AI:N  summary (acceptance criteria) | events: N -->
+<!-- Format:  [ ] AI:N  summary -->
 <!-- AI score: 0=not started  1=discussed  2=design ready  3=partial  4=implemented  5=needs test -->
 
 - [ ] AI:0  {action item description}
@@ -66,7 +70,7 @@ Updated by LLM summary. Edit freely — will be overwritten on llm-summary run.}
 ## Open Bugs
 <!-- AI-appended from approved backlog entries -->
 
-<!-- Format:  [ ] AI:N  summary (acceptance criteria) | events: N -->
+<!-- Format:  [ ] AI:N  summary -->
 
 - [ ] AI:0  {bug description}
   Acceptance: {what "fixed" looks like}
@@ -77,9 +81,10 @@ Updated by LLM summary. Edit freely — will be overwritten on llm-summary run.}
 ## Events
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- SYSTEM-MANAGED — rebuilt from mem_backlog_links on every refresh run. -->
-<!-- Do NOT edit manually. To rebuild: POST /memory/{p}/regenerate-use-case?slug={slug} -->
+<!-- SYSTEM-MANAGED — items appended here on each work-items/sync run.     -->
+<!-- Rebuild from DB: POST /memory/{p}/regenerate-use-case?slug={slug}     -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 
-| ID | Source | Date | Summary |
-|----|--------|------|---------|
+<!-- EVENTS_START -->
+
+<!-- EVENTS_END -->
