@@ -1031,6 +1031,22 @@ function _renderGroups(groups) {
       });
     });
 
+    // Delivery remove buttons (non-synthesized item rows)
+    grpEl.querySelectorAll('.bl-delivery-item-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const refId = btn.dataset.refId;
+        const tr    = btn.closest('tr');
+        api.backlog.deleteEntry(_project, refId)
+          .then(() => {
+            tr?.remove();
+            const card = document.getElementById(`bl-card-${refId}`);
+            if (card) card.remove();
+          })
+          .catch(err => toast(`Could not remove ${refId}: ${err.message}`, 'error'));
+      });
+    });
+
     // Tag chips — remove user tag
     const tagsRow = grpEl.querySelector('.bl-tags-row');
     if (tagsRow) {
@@ -1139,11 +1155,16 @@ function _groupHtml(grp, idx = 0) {
   const userTags   = grp.user_tags        || [];
   const aiExisting = grp.ai_existing_tags || [];
   const aiNew      = grp.ai_new_tags      || [];
+  // Planner tags from DB associated with this use-case slug (shown when a UC file exists)
+  const plannerTagsForSlug = _fileSlugs.has(slug)
+    ? _plannerTags.filter(t => t.name === slug && t.category_name)
+    : [];
   const tagChips = `
     <div class="bl-tags-row" data-tags-slug="${_esc(slug)}">
       ${userTags.map((t,i) => `<span class="bl-chip bl-chip-user">🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">×</button></span>`).join('')}
       ${aiExisting.map(t => `<span class="bl-chip bl-chip-existing">● ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
       ${aiNew.map((t,i) => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}<button class="bl-chip-remove" data-ai-new-idx="${i}" title="Dismiss suggestion">×</button></span>`).join('')}
+      ${plannerTagsForSlug.map(t => `<span class="bl-chip" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd" title="Planner tag">📌 ${_esc(t.category_name)}:${_esc(t.name)}</span>`).join('')}
       <button class="bl-tag-add-btn" title="Add tag">+ tag</button>
     </div>`;
 
@@ -1248,6 +1269,7 @@ function _deliveriesTable(deliveries, items, slug) {
       ai_score:    it.ai_score ?? 0,
       event_count: 1,
       desc:        it.summary  || '',
+      ref_id:      it.src_label !== 'COMMITS' ? (it.ref_id || '') : '',
     }));
     const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
     const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
@@ -1266,7 +1288,9 @@ function _deliveriesTable(deliveries, items, slug) {
       : '';
     const removeBtn = isSynthesised
       ? `<button class="bl-delivery-remove" data-delivery-idx="${i}" data-delivery-slug="${_esc(slug)}" title="Remove this theme">✕</button>`
-      : '';
+      : (r.ref_id
+        ? `<button class="bl-delivery-item-remove" data-ref-id="${_esc(r.ref_id)}" title="Remove from backlog">✕</button>`
+        : '');
     return `
       <tr>
         <td class="bl-delivery-icon ${iconCls}">${icon}</td>
