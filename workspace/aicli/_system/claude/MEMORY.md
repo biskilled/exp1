@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-18 22:40 UTC by aicli /memory_
+_Generated: 2026-04-18 22:52 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -78,8 +78,19 @@ _Generated: 2026-04-18 22:40 UTC by aicli /memory_
 
 ## Active Features / Bugs / Tasks
 
+### Bug
+
+- **ui-rendering-bugs** `[open]` — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
+
+### Feature
+
+- **ui-rendering-bugs** `[open]` — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
+- **general-commits** `[open]` — Add memory embedding and event extraction to memory promotion flow
+
 ### Task
 
+- **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
+- **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
 - **discovery** `[open]` — Greeting and project context refresh
 
 ## Recent Work (last 10 exchanges)
