@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form (id → client_id → project_id → user_id → [...] → created_at → updated_at → embedding); dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
+- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form; dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
 - Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
-- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading by clearing module-level variables and reading last_session_id synchronously from runtime state
-- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top (newest first)
-- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding/extra/seq_num columns
-- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; pipeline can run from planner/docs/chat; Cytoscape.js visualization with 2-pane approval panel for workflow approval
+- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading
+- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top
+- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs
+- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; Cytoscape.js visualization with 2-pane approval panel for workflow approval; pipelines runnable from planner/docs/chat

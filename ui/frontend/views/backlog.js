@@ -107,7 +107,7 @@ export async function renderBacklog(container, projectName) {
       .bl-commits-only .bl-reject-all-btn { display:none }
 
       /* ── Tag chips ── */
-      .bl-tags-row { display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.55rem }
+      .bl-tags-row { display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.55rem;align-items:center }
       .bl-chip {
         font-size:0.67rem;padding:2px 7px;border-radius:10px;font-weight:600;
         display:inline-flex;align-items:center;gap:3px;
@@ -116,6 +116,22 @@ export async function renderBacklog(container, projectName) {
       .bl-chip-existing { background:#dbeafe;color:#1d4ed8 }
       .bl-chip-new      { background:#fef9c3;color:#854d0e }
       .bl-chip-type-new { background:#fce7f3;color:#9d174d;font-size:0.61rem;padding:1px 5px }
+      .bl-chip-remove {
+        background:none;border:none;cursor:pointer;padding:0;margin-left:2px;
+        color:inherit;opacity:.55;font-size:0.75rem;line-height:1;
+      }
+      .bl-chip-remove:hover { opacity:1 }
+      .bl-tag-add-btn {
+        font-size:0.67rem;padding:2px 7px;border-radius:10px;font-weight:600;
+        background:none;border:1px dashed #9ca3af;color:var(--muted);cursor:pointer;
+      }
+      .bl-tag-add-btn:hover { border-color:var(--accent);color:var(--accent) }
+      .bl-tag-input-wrap { display:flex;align-items:center;gap:4px }
+      .bl-tag-input {
+        font-size:0.67rem;padding:2px 6px;border-radius:8px;
+        border:1px solid var(--accent);outline:none;background:var(--surface);
+        color:var(--text);width:130px;
+      }
 
       /* ── Group summary ── */
       .bl-group-summary {
@@ -168,6 +184,11 @@ export async function renderBacklog(container, projectName) {
       }
       .bl-delivery-status-done { color:#16a34a }
       .bl-delivery-status-prog { color:#c2410c }
+      .bl-delivery-remove {
+        background:none;border:none;cursor:pointer;padding:0 2px;
+        color:var(--muted);font-size:0.75rem;opacity:.5;
+      }
+      .bl-delivery-remove:hover { opacity:1;color:#dc2626 }
 
       /* ── Items divider ── */
       .bl-items-divider {
@@ -453,6 +474,39 @@ async function _onSummaryEdit(slug, newText, summaryEl) {
   }
 }
 
+async function _onDeliveryRemove(slug, index, rowEl) {
+  try {
+    await api.backlog.patchGroup(_project, slug, { remove_delivery_index: index });
+    if (rowEl) rowEl.remove();
+  } catch (e) {
+    toast(`Could not remove delivery: ${e.message}`, 'error');
+  }
+}
+
+async function _onTagsUpdate(slug, newTags, tagsRowEl) {
+  try {
+    await api.backlog.patchGroup(_project, slug, { user_tags: newTags });
+    // Rebuild the user-tag chips in-place without full reload
+    tagsRowEl.querySelectorAll('.bl-chip-user').forEach(c => c.remove());
+    const addBtn = tagsRowEl.querySelector('.bl-tag-add-btn');
+    newTags.forEach((t, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'bl-chip bl-chip-user';
+      chip.innerHTML = `🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">×</button>`;
+      chip.querySelector('.bl-chip-remove').addEventListener('click', e => {
+        e.stopPropagation();
+        const updated = [...newTags];
+        updated.splice(i, 1);
+        _onTagsUpdate(slug, updated, tagsRowEl);
+      });
+      tagsRowEl.insertBefore(chip, addBtn);
+    });
+    toast('Tags updated', 'success');
+  } catch (e) {
+    toast(`Tag update failed: ${e.message}`, 'error');
+  }
+}
+
 // ── Renderers ─────────────────────────────────────────────────────────────────
 
 function _renderCounters(data) {
@@ -577,6 +631,62 @@ function _renderGroups(groups) {
       });
     }
 
+    // Delivery remove buttons (synthesized themes)
+    grpEl.querySelectorAll('.bl-delivery-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx  = parseInt(btn.dataset.deliveryIdx, 10);
+        const dSlug = btn.dataset.deliverySlug || grp.slug;
+        _onDeliveryRemove(dSlug, idx, btn.closest('tr'));
+      });
+    });
+
+    // Tag chips — remove user tag
+    const tagsRow = grpEl.querySelector('.bl-tags-row');
+    if (tagsRow) {
+      tagsRow.querySelectorAll('.bl-chip-remove').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.tagIdx, 10);
+          const currentTags = [...(grp.user_tags || [])];
+          currentTags.splice(idx, 1);
+          _onTagsUpdate(grp.slug, currentTags, tagsRow);
+        });
+      });
+
+      // + tag button
+      const addBtn = tagsRow.querySelector('.bl-tag-add-btn');
+      if (addBtn) {
+        addBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          addBtn.style.display = 'none';
+          const wrap = document.createElement('span');
+          wrap.className = 'bl-tag-input-wrap';
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.className = 'bl-tag-input';
+          inp.placeholder = 'phase:dev or feature:auth';
+          wrap.appendChild(inp);
+          tagsRow.insertBefore(wrap, addBtn);
+          inp.focus();
+          const confirm = async () => {
+            const val = inp.value.trim();
+            wrap.remove();
+            addBtn.style.display = '';
+            if (val) {
+              const newTags = [...(grp.user_tags || []), val];
+              await _onTagsUpdate(grp.slug, newTags, tagsRow);
+            }
+          };
+          inp.addEventListener('blur', confirm);
+          inp.addEventListener('keydown', e2 => {
+            if (e2.key === 'Enter') { e2.preventDefault(); inp.blur(); }
+            if (e2.key === 'Escape') { wrap.remove(); addBtn.style.display = ''; }
+          });
+        });
+      }
+    }
+
     // Per-item controls
     (grp.items || []).forEach(item => {
       const card = document.getElementById(`bl-card-${item.ref_id}`);
@@ -628,12 +738,13 @@ function _groupHtml(grp, idx = 0) {
   const aiExisting = grp.ai_existing_tags || [];
   const aiNew      = grp.ai_new_tags      || [];
   const hasAnyTags = userTags.length || aiExisting.length || aiNew.length;
-  const tagChips   = hasAnyTags ? `
-    <div class="bl-tags-row">
-      ${userTags.map(t => `<span class="bl-chip bl-chip-user">🏷 ${_esc(t)}</span>`).join('')}
+  const tagChips = `
+    <div class="bl-tags-row" data-tags-slug="${_esc(slug)}">
+      ${userTags.map((t,i) => `<span class="bl-chip bl-chip-user">🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">×</button></span>`).join('')}
       ${aiExisting.map(t => `<span class="bl-chip bl-chip-existing">● ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
       ${aiNew.map(t => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
-    </div>` : '';
+      <button class="bl-tag-add-btn" title="Add tag">+ tag</button>
+    </div>`;
 
   // Summary paragraph — with inline edit button
   const summaryHtml = grp.summary ? `
@@ -654,7 +765,7 @@ function _groupHtml(grp, idx = 0) {
 
   // Deliveries table (items sorted: completed first, in-progress last, max 7)
   const deliveries = grp.deliveries || [];
-  const deliveriesHtml = _deliveriesTable(deliveries, items);
+  const deliveriesHtml = _deliveriesTable(deliveries, items, slug);
 
   // Items section grouped by source type
   const bySource = { PROMPTS: [], COMMITS: [], MESSAGES: [], ITEMS: [] };
@@ -710,12 +821,11 @@ function _groupHtml(grp, idx = 0) {
  *
  * Max 7 rows shown.
  */
-function _deliveriesTable(deliveries, items) {
+function _deliveriesTable(deliveries, items, slug) {
   let rows = [];
   let isSynthesised = false;
 
   if (deliveries && deliveries.length) {
-    // Synthesised: already sorted completed-first by backend
     rows = deliveries.map(d => ({
       classify:    d.classify    || 'task',
       status:      d.status      || 'in-progress',
@@ -725,7 +835,6 @@ function _deliveriesTable(deliveries, items) {
     }));
     isSynthesised = true;
   } else if (items && items.length) {
-    // Fallback: one row per item
     rows = items.map(it => ({
       classify:    it.classify || 'task',
       status:      it.status   || 'in-progress',
@@ -740,7 +849,7 @@ function _deliveriesTable(deliveries, items) {
 
   if (!rows.length) return '';
 
-  const tableRows = rows.slice(0, 7).map(r => {
+  const tableRows = rows.slice(0, 7).map((r, i) => {
     const isDone   = r.status === 'completed';
     const icon     = isDone ? '✓' : '⏳';
     const iconCls  = isDone ? 'bl-delivery-status-done' : 'bl-delivery-status-prog';
@@ -748,12 +857,16 @@ function _deliveriesTable(deliveries, items) {
     const cntBadge = (isSynthesised && r.event_count > 1)
       ? `<span class="bl-delivery-score" style="margin-left:3px" title="${r.event_count} events">${r.event_count}×</span>`
       : '';
+    const removeBtn = isSynthesised
+      ? `<button class="bl-delivery-remove" data-delivery-idx="${i}" data-delivery-slug="${_esc(slug)}" title="Remove this theme">✕</button>`
+      : '';
     return `
       <tr>
         <td class="bl-delivery-icon ${iconCls}">${icon}</td>
         <td><span class="${typeCls}">${_esc(r.classify)}</span></td>
         <td><span class="bl-delivery-score">AI:${r.ai_score}</span>${cntBadge}</td>
         <td class="bl-delivery-desc" title="${_esc(r.desc)}">${_esc(r.desc)}</td>
+        <td>${removeBtn}</td>
       </tr>`;
   }).join('');
 

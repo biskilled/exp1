@@ -51,7 +51,7 @@
 - **prompt_management**: core.prompt_loader module with centralized prompt caching
 - **schema_management**: db_schema.sql + db_migrations.py (m001-m037)
 - **database_tables**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features; Mirror: mem_mrr_commits_code (19 columns); Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}; Shared: users, usage_logs, transactions, session_tags, entity_categories, planner_tags, mng_tags_categories
-- **embeddings**: text-embedding-3-small (1536-dim vectors)
+- **embeddings**: OpenAI text-embedding-3-small (1536-dim)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form (id → client_id → project_id → user_id → [...] → created_at → updated_at → embedding); dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
+- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form; dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
 - Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
-- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading by clearing module-level variables and reading last_session_id synchronously from runtime state
-- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top (newest first)
-- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding/extra/seq_num columns
-- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; pipeline can run from planner/docs/chat; Cytoscape.js visualization with 2-pane approval panel for workflow approval
+- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading
+- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top
+- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs
+- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; Cytoscape.js visualization with 2-pane approval panel for workflow approval; pipelines runnable from planner/docs/chat
 
 ## Key Decisions
 
@@ -78,11 +78,11 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; all tables use INT PKs (client_id → project_id → user_id)
+- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id)
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end
+- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end; embedding as final column
 - Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
 
 ---

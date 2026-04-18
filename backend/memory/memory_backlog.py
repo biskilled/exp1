@@ -527,7 +527,8 @@ class MemoryBacklog:
         """Fetch pending prompts and enrich each with linked commits + code symbols."""
         cur.execute(
             """SELECT id::text, prompt, response, created_at,
-                      COALESCE(tags->>'source', 'user') as source
+                      COALESCE(tags->>'source', 'user') as source,
+                      tags as tags_json
                FROM mem_mrr_prompts
                WHERE project_id=%s AND backlog_ref IS NULL
                ORDER BY created_at LIMIT 500""",
@@ -537,6 +538,8 @@ class MemoryBacklog:
         result: list[dict] = []
         for r in rows:
             prompt_id, prompt, response, created_at, source = r[0], r[1], r[2], r[3], r[4]
+            tags_raw  = r[5]
+            tags_json = tags_raw if isinstance(tags_raw, dict) else {}
             # Fetch commits linked to this prompt
             cur.execute(
                 """SELECT commit_hash, commit_msg, diff_summary
@@ -569,7 +572,8 @@ class MemoryBacklog:
                     })
             result.append({
                 "id": prompt_id, "prompt": prompt, "response": response,
-                "created_at": created_at, "source": source, "commits": commit_contexts,
+                "created_at": created_at, "source": source,
+                "tags_json": tags_json, "commits": commit_contexts,
             })
         return result
 
@@ -954,7 +958,9 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                         slug_type = ls[len("Type:"):].strip()
                     elif ls.startswith("User tags:"):
                         raw_tags = ls[len("User tags:"):].strip()
-                        user_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+                        # Support both "; " and "," separators
+                        sep = ";" if ";" in raw_tags else ","
+                        user_tags = [t.strip() for t in raw_tags.split(sep) if t.strip()]
                     elif ls.startswith("AI existing:"):
                         raw = ls[len("AI existing:"):].strip()
                         for chip in re.findall(r"\[([^\]]+)\]", raw):
@@ -1678,7 +1684,10 @@ Return JSON array only. No markdown. No extra text.
         """Format one prompt row into a text block for the summarization prompt."""
         p    = (r.get("prompt")   or "")[:600].replace("\n", " ").strip()
         resp = (r.get("response") or "")[:500].replace("\n", " ").strip()
-        block = f"[{i + global_offset}]\nPROMPT: {p}\nRESPONSE: {resp}"
+        tags_json = r.get("tags_json") or {}
+        tag_parts = [f"{k}:{v}" for k, v in tags_json.items() if k not in ("source",) and v]
+        tags_line = f"\nTAGS: {' | '.join(tag_parts)}" if tag_parts else ""
+        block = f"[{i + global_offset}]\nPROMPT: {p}{tags_line}\nRESPONSE: {resp}"
         for ctx in r.get("commits", []):
             block += f"\nCOMMIT {ctx['hash'][:8]}: {ctx['msg'][:120]}"
             for sym in ctx.get("symbols", [])[:10]:
@@ -1990,7 +1999,7 @@ def _fmt_group_block(group: dict) -> str:
     ]
 
     if user_tags:
-        lines.append(f"> User tags: {', '.join(str(t) for t in user_tags)}")
+        lines.append(f"> User tags: {'; '.join(str(t) for t in user_tags)}")
     else:
         lines.append("> User tags:")
 

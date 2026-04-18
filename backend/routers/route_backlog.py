@@ -40,8 +40,10 @@ class GroupActionRequest(BaseModel):
 
 
 class GroupMetaPatchRequest(BaseModel):
-    new_slug: Optional[str] = None   # rename the group
-    summary:  Optional[str] = None   # update > Summary: line
+    new_slug:              Optional[str]       = None   # rename the group
+    summary:               Optional[str]       = None   # update > Summary: line
+    user_tags:             Optional[list[str]] = None   # replace > User tags: line
+    remove_delivery_index: Optional[int]       = None   # remove one synthesized delivery by index
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -365,7 +367,6 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
                     flags=_re.MULTILINE,
                 )
             else:
-                # Insert after the header line
                 chunk = _re.sub(
                     r"(^## \*\*.+\*\*.*$)",
                     rf"\1\n> Summary: {body.summary}",
@@ -373,6 +374,42 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
                     flags=_re.MULTILINE,
                     count=1,
                 )
+
+        if body.user_tags is not None:
+            tags_val = "; ".join(body.user_tags)
+            if _re.search(r"^> User tags:", chunk, _re.MULTILINE):
+                chunk = _re.sub(
+                    r"^> User tags:.*$",
+                    f"> User tags: {tags_val}",
+                    chunk,
+                    flags=_re.MULTILINE,
+                )
+            else:
+                chunk = _re.sub(
+                    r"(^> Type:.*$)",
+                    rf"\1\n> User tags: {tags_val}",
+                    chunk,
+                    flags=_re.MULTILINE,
+                    count=1,
+                )
+
+        if body.remove_delivery_index is not None:
+            m = _re.search(r"^> Deliveries:\s*(.+)$", chunk, _re.MULTILINE)
+            if m:
+                parts = [p.strip() for p in m.group(1).split(";") if p.strip()]
+                idx = body.remove_delivery_index
+                if 0 <= idx < len(parts):
+                    parts.pop(idx)
+                new_val = "; ".join(parts)
+                if new_val:
+                    chunk = _re.sub(
+                        r"^> Deliveries:.*$",
+                        f"> Deliveries: {new_val}",
+                        chunk,
+                        flags=_re.MULTILINE,
+                    )
+                else:
+                    chunk = _re.sub(r"^> Deliveries:.*\n?", "", chunk, flags=_re.MULTILINE)
 
         if body.new_slug is not None:
             new_slug = body.new_slug.strip().lower()
