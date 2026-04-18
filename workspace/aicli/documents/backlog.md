@@ -1304,3 +1304,415 @@ COMMITS 26/04/18-00:00 C200563 [x] [general] [task] (auto) — Clean up stale ag
   Completed:
   - Removed stale agent context and generated system files (code)
 
+---
+
+COMMITS 26/04/18-00:00 C200579 [x] [general] [task] (auto) — Remove stale agent context and generated system docs after claude backend session
+
+  Requirements:
+  - Clean up obsolete agent context files
+  - Remove generated system documentation
+
+  Completed:
+  - Migration file m050_prompts_source_id_index added to db_migrations.py (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200580 [x] [general] [task] (auto) — Remove legacy _system/ agent context files after claude CLI session
+
+  Requirements:
+  - Remove legacy agent context files from _system/ directory
+
+  Completed:
+  - Legacy _system/ agent context files removed (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200581 [x] [general] [task] (auto) — Remove legacy _system/ agent context files after claude CLI session
+
+  Requirements:
+  - Remove legacy agent context files from _system/ directory
+
+  Completed:
+  - Legacy _system/ agent context files removed (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200582 [x] [general] [task] (auto) — Remove legacy _system/ agent context and documentation files
+
+  Requirements:
+  - Remove legacy agent context files
+  - Remove associated documentation files
+
+  Completed:
+  - Legacy _system/ agent context and documentation files removed (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200583 [x] [general] [task] (auto) — Remove legacy _system/ agent context files after claude CLI session
+
+  Requirements:
+  - Remove legacy agent context files from _system/ directory
+
+  Completed:
+  - Legacy _system/ agent context files removed (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200584 [x] [general] [task] (auto) — Remove legacy _system/ agent context files
+
+  Requirements:
+  - Clean up obsolete system context files from Claude CLI sessions
+
+  Completed:
+  - Deleted legacy _system/ directory and context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200585 [x] [general] [task] (auto) — Remove legacy _system/ agent context files
+
+  Requirements:
+  - Clean up obsolete system context files from Claude CLI sessions
+
+  Completed:
+  - Deleted legacy _system/ directory and context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200586 [x] [general] [task] (auto) — Remove legacy _system/ agent context files
+
+  Requirements:
+  - Clean up obsolete system context files from Claude CLI sessions
+
+  Completed:
+  - Deleted legacy _system/ directory and context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200587 [x] [general] [task] (auto) — Remove legacy _system/ agent context and documentation files
+
+  Requirements:
+  - Clean up obsolete system context and documentation files from Claude CLI sessions
+
+  Completed:
+  - Deleted legacy _system/ directory and associated documentation (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200588 [x] [general] [task] (auto) — Remove legacy _system/ agent context files
+
+  Requirements:
+  - Clean up obsolete system context files from Claude CLI sessions
+
+  Completed:
+  - Deleted legacy _system/ directory and context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200589 [x] [general] [task] (auto) — Bulk file updates across 63 files
+
+  Completed:
+  - Updated 63 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200590 [x] [general] [task] (auto) — Bulk file updates across 73 files
+
+  Completed:
+  - Updated 73 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200591 [x] [general] [task] (auto) — Bulk file updates across 63 files
+
+  Completed:
+  - Updated 63 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200592 [x] [general] [task] (auto) — Bulk file updates across 66 files
+
+  Completed:
+  - Updated 66 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200593 [x] [general] [task] (auto) — Bulk file updates across 69 files
+
+  Completed:
+  - Updated 69 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200594 [x] [general] [task] (auto) — Bulk file updates across 62 files
+
+  Completed:
+  - Updated 62 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200595 [x] [general] [task] (auto) — Bulk file updates across 65 files
+
+  Completed:
+  - Updated 65 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200596 [x] [general] [task] (auto) — Bulk file updates across 62 files
+
+  Completed:
+  - Updated 62 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200597 [x] [general] [task] (auto) — Bulk file updates across 58 files
+
+  Completed:
+  - Updated 58 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200598 [x] [general] [task] (auto) — Bulk file updates across 65 files
+
+  Completed:
+  - Updated 65 files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200599 [x] [general] [task] (auto) — Remove legacy _system/ agent context files after claude cli session
+
+  Requirements:
+  - Clean up obsolete agent context files
+
+  Completed:
+  - Deleted legacy _system/ agent context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200600 [x] [general] [task] (auto) — Remove legacy _system/ context files after claude cli session 54a
+
+  Requirements:
+  - Clean up obsolete context files from session 54a
+
+  Completed:
+  - Deleted legacy _system/ context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200601 [x] [general] [task] (auto) — Clean up legacy _system/ context files after claude cli session 5
+
+  Requirements:
+  - Remove obsolete context files from session 5
+
+  Completed:
+  - Deleted legacy _system/ context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200602 [x] [general] [task] (auto) — Remove legacy _system/ root files and migrate to structured subdir
+
+  Requirements:
+  - Migrate legacy root context files to structured subdirectories
+
+  Completed:
+  - Deleted legacy _system/ root files and reorganized into subdirectories (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200603 [x] [general] [task] (auto) — Remove legacy _system/ context files after claude cli session 54a
+
+  Requirements:
+  - Clean up obsolete context files from session 54a
+
+  Completed:
+  - Deleted legacy _system/ context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200604 [x] [general] [task] (auto) — Remove legacy _system/ context files after claude cli session
+
+  Requirements:
+  - Clean up obsolete system context artifacts
+
+  Completed:
+  - Deleted legacy _system/ directory and contents (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200605 [x] [general] [task] (auto) — Clean up stale agent context and generated system files
+
+  Requirements:
+  - Remove obsolete auto-generated artifacts
+
+  Completed:
+  - Deleted stale agent context and system files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200606 [x] [general] [task] (auto) — Remove auto-generated system context files after claude cli session
+
+  Requirements:
+  - Clean up session artifacts
+
+  Completed:
+  - Deleted auto-generated system context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200607 [x] [general] [task] (auto) — Clean up stale agent context and deprecated system files
+
+  Requirements:
+  - Remove deprecated system artifacts
+
+  Completed:
+  - Deleted stale agent context and deprecated system files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200608 [x] [general] [task] (auto) — Clean up legacy _system root files after claude cli session
+
+  Requirements:
+  - Remove legacy system context root files
+
+  Completed:
+  - Deleted legacy _system root files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200609 [x] [general] [task] (auto) — Remove legacy flat _system context files from Claude session 54a
+
+  Requirements:
+  - Clean up obsolete system context files
+
+  Completed:
+  - Deleted legacy flat _system context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200610 [x] [general] [task] (auto) — Clean up legacy _system flat files after Claude CLI session 54a71
+
+  Requirements:
+  - Remove obsolete flat system files
+
+  Completed:
+  - Cleaned up legacy _system flat files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200611 [x] [general] [task] (auto) — Clean up legacy _system root files after Claude CLI session 54a71
+
+  Requirements:
+  - Remove stale root-level system files
+
+  Completed:
+  - Deleted legacy _system root files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200612 [x] [general] [task] (auto) — Remove stale agent context and flat system docs
+
+  Requirements:
+  - Clean up obsolete agent context and system documentation
+
+  Completed:
+  - Removed stale agent context and flat system documentation files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200613 [x] [general] [task] (auto) — Remove stale agent context and generated system docs
+
+  Requirements:
+  - Clean up obsolete generated system documentation
+
+  Completed:
+  - Deleted stale agent context and generated system documentation (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200614 [x] [general] [task] (auto) — Remove legacy flat _system context files after session 54a71132
+
+  Requirements:
+  - Clean up obsolete context files from previous session
+
+  Completed:
+  - Deleted legacy flat _system context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200615 [x] [general] [task] (auto) — Remove stale agent context and auto-generated system docs
+
+  Requirements:
+  - Clean up stale documentation and context files
+
+  Completed:
+  - Deleted stale agent context and auto-generated system documentation (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200616 [x] [general] [task] (auto) — Clean up legacy flat _system files after session 54a71132
+
+  Requirements:
+  - Remove obsolete flat _system files
+
+  Completed:
+  - Deleted legacy flat _system files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200617 [x] [general] [task] (auto) — Clean up stale backlog, agent-context, and system documentation
+
+  Requirements:
+  - Remove stale documentation and backlog files
+
+  Completed:
+  - Deleted stale backlog, agent-context, and system documentation files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200618 [x] [general] [task] (auto) — Session cleanup after claude cli session 54a71132
+
+  Requirements:
+  - Clean up generated files from CLI session
+
+  Completed:
+  - Removed auto-generated files from session 54a71132 (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200619 [x] [general] [task] (auto) — Remove stale auto-generated system context files
+
+  Requirements:
+  - Clean up obsolete Claude CLI generated files
+
+  Completed:
+  - Deleted stale auto-generated system context files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200620 [x] [general] [task] (auto) — Consolidate agent context files after Claude CLI session
+
+  Requirements:
+  - Organize and consolidate agent context files
+
+  Completed:
+  - Consolidated agent context files from Claude CLI session 54a71132 (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200621 [x] [general] [task] (auto) — Remove stale generated context files
+
+  Requirements:
+  - Clean up obsolete generated context files
+
+  Completed:
+  - Deleted stale generated context files from Claude CLI session 54a (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200622 [x] [general] [task] (auto) — Remove stale agent context and flat system docs
+
+  Requirements:
+  - Clean up obsolete agent context and documentation files
+
+  Completed:
+  - Deleted stale agent context and flat system documentation files (code)
+

@@ -573,10 +573,10 @@ class MemoryBacklog:
                  "class": s[3], "method": s[4], "+": s[5], "-": s[6]}
                 for s in cur.fetchall()
             ]
-            # Skip commits that only touched system/generated files
-            if not symbols and _is_system_stat(c_stat or ""):
-                log.debug(f"backlog: skipping system-only commit {c_hash[:8]}")
-                # Stamp with a sentinel so it's not re-evaluated every time
+            # Skip commits with no code symbols (system/infra commits with no
+            # tracked source changes — nothing useful to show in the backlog)
+            if not symbols:
+                log.debug(f"backlog: skipping no-symbol commit {c_hash[:8]}")
                 cur.execute(
                     "UPDATE mem_mrr_commits SET backlog_ref='SKIP' "
                     "WHERE commit_hash=%s",
@@ -903,8 +903,8 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                 ai_existing: list[dict] = []
                 ai_new:      list[dict] = []
                 group_summary: str = ""
-                group_completed: list[str] = []
-                group_action_items: list[dict] = []
+                group_completed: list[str] = []    # requirement strings
+                group_action_items: list[dict] = [] # delivery dicts
 
                 for ln in lines:
                     ls = ln.strip()
@@ -933,6 +933,25 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                                 ai_new.append({"category": parts[0], "name": parts[1]})
                     elif ls.startswith("Summary:"):
                         group_summary = ls[len("Summary:"):].strip()
+                    elif ls.startswith("Requirements:"):
+                        raw = ls[len("Requirements:"):].strip()
+                        group_completed = [c.strip() for c in raw.split(";") if c.strip()]
+                    elif ls.startswith("Deliveries:"):
+                        raw = ls[len("Deliveries:"):].strip()
+                        # Format: [classify|status|ai_score] summary; ...
+                        for part in raw.split("; "):
+                            part = part.strip()
+                            m2 = re.match(r"\[([^\]]+)\|([^\]]+)\|(\d+)\]\s*(.*)", part)
+                            if m2:
+                                group_action_items.append({
+                                    "classify": m2.group(1),
+                                    "status":   m2.group(2),
+                                    "ai_score": int(m2.group(3)),
+                                    "desc":     m2.group(4).strip(),
+                                })
+                            elif part:
+                                group_action_items.append({"classify": "task", "status": "in-progress", "ai_score": 0, "desc": part})
+                    # Backward compat: old "Completed:" and "Action items:" lines
                     elif ls.startswith("Completed:"):
                         raw = ls[len("Completed:"):].strip()
                         group_completed = [c.strip() for c in raw.split(";") if c.strip()]
@@ -942,9 +961,9 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                             part = part.strip()
                             m2 = re.match(r"\[([^\]]+)\]\s+(.+)", part)
                             if m2:
-                                group_action_items.append({"classify": m2.group(1), "desc": m2.group(2)})
+                                group_action_items.append({"classify": m2.group(1), "status": "in-progress", "ai_score": 0, "desc": m2.group(2)})
                             elif part:
-                                group_action_items.append({"classify": "task", "desc": part})
+                                group_action_items.append({"classify": "task", "status": "in-progress", "ai_score": 0, "desc": part})
 
                 # Parse items
                 items: list[dict] = []
@@ -1001,8 +1020,8 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                     "ai_existing_tags": ai_existing,
                     "ai_new_tags":      ai_new,
                     "summary":          group_summary,
-                    "completed":        group_completed,
-                    "action_items":     group_action_items,
+                    "requirements":     group_completed,   # list of requirement strings
+                    "deliveries":       group_action_items, # list of {classify,status,ai_score,desc}
                     "items":            items,
                 })
                 continue
@@ -1338,10 +1357,10 @@ class _FullDigest:
         p_refs = bl._allocate_refs(project_id, "P", len(prompt_rows))
         c_refs = bl._allocate_refs(project_id, "C", len(standalone_commits))
 
-        # 3. Group all events into use case buckets
-        groups = await self._group_all_events(prompt_rows, standalone_commits, uc_context)
+        # 3. Group prompts into use case buckets (commits handled separately)
+        groups = await self._group_all_events(prompt_rows, uc_context)
 
-        # 4. For each group, batch-summarize prompts + commits → per-event entries
+        # 4. For each group, batch-summarize prompts → per-event entries
         group_sections: list[dict] = []
         total_entries = 0
         # Maps: source_id → ref_id (for DB stamping)
@@ -1349,87 +1368,70 @@ class _FullDigest:
         commit_stamp: dict[str, str] = {}
 
         for group in groups:
-            slug       = group.get("slug", "general")
-            slug_type  = group.get("slug_type", "existing")
-            classify   = group.get("classify", "task")
-            topic      = group.get("topic", slug)
-            p_indices  = [i for i in group.get("prompt_indices", []) if i < len(prompt_rows)]
-            c_indices  = [i for i in group.get("commit_indices", []) if i < len(standalone_commits)]
+            slug      = group.get("slug", "general")
+            slug_type = group.get("slug_type", "existing")
+            classify  = group.get("classify", "task")
+            topic     = group.get("topic", slug)
+            p_indices = [i for i in group.get("prompt_indices", []) if i < len(prompt_rows)]
 
-            grp_prompt_rows   = [prompt_rows[i]        for i in p_indices]
-            grp_commit_rows   = [standalone_commits[i] for i in c_indices]
+            grp_prompt_rows = [prompt_rows[i] for i in p_indices]
+            if not grp_prompt_rows:
+                continue
 
             entries: list[dict] = []
-
-            # Summarize prompts (batch → one LLM call per group)
-            if grp_prompt_rows:
-                summaries = await self._summarize_prompts_batch(grp_prompt_rows, slug, classify)
-                for j, row in enumerate(grp_prompt_rows):
-                    global_i = p_indices[j]
-                    ref_id   = p_refs[global_i] if global_i < len(p_refs) else f"P?{global_i}"
-                    sv       = summaries[j] if j < len(summaries) else {}
-                    entries.append({
-                        "ref_id":       ref_id,
-                        "date":         row["created_at"],
-                        "src_label":    "PROMPTS",
-                        "approve":      " ",
-                        "summary":      sv.get("summary", (row.get("prompt") or "")[:80].replace("\n", " ")),
-                        "classify":     sv.get("classify", classify),
-                        "status":       sv.get("status", "in-progress"),
-                        "ai_score":     int(sv.get("ai_score", 0)),
-                        "user":         row.get("source", "user"),
-                        "requirements": sv.get("requirements", []),
-                        "deliveries":   sv.get("deliveries", sv.get("completed", [])),
-                        "action_items": sv.get("action_items", []),
-                    })
-                    prompt_stamp[row["id"]] = ref_id
-
-            # Summarize standalone commits in this group (batch)
-            if grp_commit_rows:
-                c_summaries = await self._summarize_commits_batch(grp_commit_rows, slug, classify)
-                for j, row in enumerate(grp_commit_rows):
-                    global_i = c_indices[j]
-                    ref_id   = c_refs[global_i] if global_i < len(c_refs) else f"C?{global_i}"
-                    sv       = c_summaries[j] if j < len(c_summaries) else {}
-                    entries.append({
-                        "ref_id":    ref_id,
-                        "date":      row.get("created_at"),
-                        "src_label": "COMMITS",
-                        "approve":   "+",
-                        "summary":   sv.get("summary", (row.get("commit_msg") or "")[:80]),
-                        "classify":  sv.get("classify", classify),
-                        "status":    sv.get("status", "completed"),
-                        "ai_score":  int(sv.get("ai_score", 5)),
-                        "user":      "auto",
-                        "deliveries": sv.get("completed", sv.get("deliveries", [])),
-                    })
-                    commit_stamp[row["id"]] = ref_id
-
-            if entries:
-                # Collect user tags from all prompts in this group
-                user_tags_set: set[str] = set()
-                for row in grp_prompt_rows:
-                    tags_json = row.get("tags_json") or {}
-                    for k, v in tags_json.items() if isinstance(tags_json, dict) else []:
-                        if k not in ("source",) and v:
-                            user_tags_set.add(f"{k}:{v}")
-                # Use earliest date in group
-                dates = [r["created_at"] for r in grp_prompt_rows + grp_commit_rows if r.get("created_at")]
-                earliest = min(dates) if dates else date.today()
-
-                group_sections.append({
-                    "slug":             slug,
-                    "slug_type":        slug_type,
-                    "topic":            topic,
-                    "date":             _fmt_date(earliest),
-                    "source":           (grp_prompt_rows[0].get("source", "auto") if grp_prompt_rows else "auto"),
-                    "approve":          " ",
-                    "user_tags":        sorted(user_tags_set),
-                    "ai_existing_tags": group.get("ai_existing_tags", []),
-                    "ai_new_tags":      group.get("ai_new_tags", []),
-                    "items":            entries,
+            summaries = await self._summarize_prompts_batch(grp_prompt_rows, slug, classify)
+            for j, row in enumerate(grp_prompt_rows):
+                global_i = p_indices[j]
+                ref_id   = p_refs[global_i] if global_i < len(p_refs) else f"P?{global_i}"
+                sv       = summaries[j] if j < len(summaries) else {}
+                entries.append({
+                    "ref_id":       ref_id,
+                    "date":         row["created_at"],
+                    "src_label":    "PROMPTS",
+                    "approve":      " ",
+                    "summary":      sv.get("summary", (row.get("prompt") or "")[:80].replace("\n", " ")),
+                    "classify":     sv.get("classify", classify),
+                    "status":       sv.get("status", "in-progress"),
+                    "ai_score":     int(sv.get("ai_score", 0)),
+                    "user":         row.get("source", "user"),
+                    "requirements": sv.get("requirements", []),
+                    "deliveries":   sv.get("deliveries", sv.get("completed", [])),
+                    "action_items": sv.get("action_items", []),
                 })
-                total_entries += len(entries)
+                prompt_stamp[row["id"]] = ref_id
+
+            # Collect user tags from all prompts in this group
+            user_tags_set: set[str] = set()
+            for row in grp_prompt_rows:
+                tags_json = row.get("tags_json") or {}
+                for k, v in (tags_json.items() if isinstance(tags_json, dict) else []):
+                    if k not in ("source",) and v:
+                        user_tags_set.add(f"{k}:{v}")
+            dates = [r["created_at"] for r in grp_prompt_rows if r.get("created_at")]
+            earliest = min(dates) if dates else date.today()
+
+            group_sections.append({
+                "slug":             slug,
+                "slug_type":        slug_type,
+                "topic":            topic,
+                "date":             _fmt_date(earliest),
+                "source":           grp_prompt_rows[0].get("source", "auto"),
+                "approve":          " ",
+                "user_tags":        sorted(user_tags_set),
+                "ai_existing_tags": group.get("ai_existing_tags", []),
+                "ai_new_tags":      group.get("ai_new_tags", []),
+                "items":            entries,
+            })
+            total_entries += len(entries)
+
+        # 5. All standalone commits → one "general-commits" group
+        if standalone_commits:
+            commits_section = await self._build_commits_group(
+                standalone_commits, c_refs, commit_stamp
+            )
+            if commits_section:
+                group_sections.append(commits_section)
+                total_entries += len(commits_section.get("items", []))
 
         # 5. Write backlog.md with GROUP sections
         self._write_group_sections(group_sections)
@@ -1450,10 +1452,15 @@ class _FullDigest:
     async def _group_all_events(
         self,
         prompt_rows: list[dict],
-        standalone_commits: list[dict],
         uc_context: str,
     ) -> list[dict]:
-        """Group all prompts + standalone commits into max_groups use case buckets."""
+        """Group prompts into max_groups use case buckets.
+
+        Standalone commits are handled separately in _build_commits_group().
+        """
+        if not prompt_rows:
+            return []
+
         model = self.grouping_cfg.get("llm", settings.haiku_model)
         desc  = self.grouping_cfg.get("desc", "")
 
@@ -1465,11 +1472,6 @@ class _FullDigest:
             suffix = f" [{c_ct} commits]" if c_ct else ""
             items.append(f"[P{i}] {dt} {p}{suffix}")
 
-        for i, c in enumerate(standalone_commits):
-            msg = (c.get("commit_msg") or "")[:120].replace("\n", " ")
-            dt  = str(c.get("created_at", ""))[:10]
-            items.append(f"[C{i}] {dt} COMMIT: {msg}")
-
         system_p = f"""{desc}
 
 Active use cases:
@@ -1477,27 +1479,25 @@ Active use cases:
 
 Rules:
 - Group into AT MOST {self.max_groups} groups.
-- Each event key (P0, P1, C0, C1, ...) must appear in exactly one group.
+- Each event key (P0, P1, ...) must appear in exactly one group.
 - Prefer existing slugs. Create new slug only if truly new topic.
 - New slugs must be lowercase-hyphenated (e.g. "stripe-billing").
 - slug_type: "existing" or "new"
 - classify: "bug" | "feature" | "task" — dominant intent of the group
 - Merge minor topics (1-3 events) into the closest related group.
-- Commits touching only system files (CLAUDE.md, MEMORY.md, package-lock.json): slug "SKIP"
 
 Return JSON array only. No markdown. No extra text.
 [{{"slug":"discovery","slug_type":"existing","classify":"task",
    "topic":"Discovery and architecture work",
-   "prompt_indices":[0,1,2],"commit_indices":[3,7]}}]"""
+   "prompt_indices":[0,1,2]}}]"""
 
-        user_p = f"Total events: {len(items)}\n\n" + "\n".join(items)
+        user_p = f"Total prompts: {len(items)}\n\n" + "\n".join(items)
         raw = await _call_haiku(system_p, user_p, model, max_tokens=4000)
 
         fallback = [{
             "slug": "discovery", "slug_type": "existing", "classify": "task",
             "topic": "all development work",
             "prompt_indices": list(range(len(prompt_rows))),
-            "commit_indices": list(range(len(standalone_commits))),
         }]
 
         if not raw:
@@ -1509,39 +1509,112 @@ Return JSON array only. No markdown. No extra text.
             if not isinstance(groups, list):
                 raise ValueError("not a list")
 
-            # Separate SKIP groups
-            skip_commit_idx: set[int] = set()
-            non_skip: list[dict] = []
-            for g in groups:
-                if g.get("slug", "").upper() == "SKIP":
-                    skip_commit_idx.update(g.get("commit_indices", []))
-                else:
-                    non_skip.append(g)
+            groups = [g for g in groups if g.get("slug", "").upper() != "SKIP"]
+            groups = groups[:self.max_groups]
 
-            groups = non_skip[:self.max_groups]
-
-            # Ensure all indices covered
             covered_p = {i for g in groups for i in g.get("prompt_indices", [])}
-            covered_c = {i for g in groups for i in g.get("commit_indices", [])}
             leftover_p = [i for i in range(len(prompt_rows)) if i not in covered_p]
-            leftover_c = [i for i in range(len(standalone_commits))
-                          if i not in covered_c and i not in skip_commit_idx]
-
-            if leftover_p or leftover_c:
+            if leftover_p:
                 if groups:
                     groups[-1].setdefault("prompt_indices", []).extend(leftover_p)
-                    groups[-1].setdefault("commit_indices", []).extend(leftover_c)
                 else:
                     groups = [{
                         "slug": "discovery", "slug_type": "existing", "classify": "task",
-                        "topic": "general work",
-                        "prompt_indices": leftover_p, "commit_indices": leftover_c,
+                        "topic": "general work", "prompt_indices": leftover_p,
                     }]
             return groups
 
         except Exception as e:
             log.warning(f"full_digest: _group_all_events parse error: {e}\nraw={raw[:200]}")
             return fallback
+
+    async def _build_commits_group(
+        self,
+        standalone_commits: list[dict],
+        c_refs: list[str],
+        commit_stamp: dict[str, str],
+    ) -> Optional[dict]:
+        """Build the 'general-commits' group from all standalone commits.
+
+        Generates an aggregated summary from symbol data (files/classes/methods).
+        Each commit becomes one item — pre-approved, no user interaction needed.
+        """
+        if not standalone_commits:
+            return None
+
+        # Summarize commits via LLM (one batch call for all commits)
+        classify = "task"
+        c_summaries = await self._summarize_commits_batch(standalone_commits, "general-commits", classify)
+
+        entries: list[dict] = []
+        for j, row in enumerate(standalone_commits):
+            ref_id = c_refs[j] if j < len(c_refs) else f"C?{j}"
+            sv     = c_summaries[j] if j < len(c_summaries) else {}
+
+            # Build deliveries from code symbols for this commit
+            sym_deliveries: list[str] = []
+            seen_sym: set[str] = set()
+            for s in row.get("symbols", [])[:10]:
+                cls = f"{s['class']}." if s.get("class") else ""
+                mth = s.get("method") or ""
+                nm  = f"{cls}{mth}" if (cls or mth) else s.get("file", "")
+                label = f"{s.get('file','?')}: {nm} (+{s.get('+',0)}/-{s.get('-',0)})"
+                if label not in seen_sym:
+                    seen_sym.add(label)
+                    sym_deliveries.append(label)
+
+            entries.append({
+                "ref_id":     ref_id,
+                "date":       row.get("created_at"),
+                "src_label":  "COMMITS",
+                "approve":    "+",   # commits are always auto-approved
+                "summary":    sv.get("summary", (row.get("commit_msg") or "")[:80]),
+                "classify":   sv.get("classify", classify),
+                "status":     "completed",
+                "ai_score":   int(sv.get("ai_score", 5)),
+                "user":       "auto",
+                "deliveries": sym_deliveries,
+                "requirements": "",
+            })
+            commit_stamp[row["id"]] = ref_id
+
+        # Build group-level topic summary: aggregate unique files/classes
+        all_files: list[str] = []
+        all_classes: set[str] = set()
+        seen_files: set[str] = set()
+        for row in standalone_commits:
+            for s in row.get("symbols", []):
+                f = s.get("file", "")
+                if f and f not in seen_files:
+                    seen_files.add(f)
+                    all_files.append(f)
+                if s.get("class"):
+                    all_classes.add(s["class"])
+
+        n = len(standalone_commits)
+        file_sample = ", ".join(all_files[:6]) + ("…" if len(all_files) > 6 else "")
+        class_sample = (", ".join(sorted(all_classes)[:4]) + ("…" if len(all_classes) > 4 else "")) if all_classes else ""
+        topic = (
+            f"{n} commit{'s' if n != 1 else ''} updating: {file_sample}"
+            + (f" | classes: {class_sample}" if class_sample else "")
+        )
+
+        earliest = min(
+            (r["created_at"] for r in standalone_commits if r.get("created_at")),
+            default=date.today(),
+        )
+        return {
+            "slug":             "general-commits",
+            "slug_type":        "existing",
+            "topic":            topic,
+            "date":             _fmt_date(earliest),
+            "source":           "auto",
+            "approve":          "+",
+            "user_tags":        [],
+            "ai_existing_tags": [],
+            "ai_new_tags":      [],
+            "items":            entries,
+        }
 
     async def _summarize_prompts_batch(
         self, rows: list[dict], slug: str, classify: str
@@ -1821,35 +1894,49 @@ def _fmt_group_block(group: dict) -> str:
     else:
         lines.append("> AI new:")
 
-    # Aggregate deliveries across all items
-    all_deliveries: list[str] = []
+    # Aggregate requirements text from all items
+    seen_reqs: set[str] = set()
+    all_reqs: list[str] = []
     for it in items:
-        devs = it.get("deliveries", [])
-        if isinstance(devs, str):
-            all_deliveries += [d.strip() for d in devs.split(";") if d.strip()]
-        elif isinstance(devs, list):
-            for d in devs:
-                all_deliveries.append(d.get("desc", str(d)) if isinstance(d, dict) else str(d))
+        reqs = it.get("requirements", "")
+        if isinstance(reqs, str):
+            for r in reqs.split(";"):
+                r = r.strip()
+                if r and r not in seen_reqs:
+                    seen_reqs.add(r)
+                    all_reqs.append(r)
+        elif isinstance(reqs, list):
+            for r in reqs:
+                r = str(r).strip()
+                if r and r not in seen_reqs:
+                    seen_reqs.add(r)
+                    all_reqs.append(r)
 
-    # Aggregate action_items across all items
-    all_actions: list[dict] = []
+    # Build deliveries-as-items: each item is a delivery with classify|status|ai_score
+    delivery_items: list[dict] = []
     for it in items:
-        for ai in (it.get("action_items") or []):
-            if isinstance(ai, dict):
-                all_actions.append({"classify": ai.get("classify", it.get("classify", "task")), "desc": ai.get("desc", "")})
-            elif isinstance(ai, str) and ai:
-                all_actions.append({"classify": it.get("classify", "task"), "desc": ai})
+        delivery_items.append({
+            "classify": it.get("classify", "task"),
+            "status":   it.get("status", "in-progress"),
+            "ai_score": it.get("ai_score", 0),
+            "summary":  it.get("summary", ""),
+        })
+    # Sort: completed first (by ai_score desc), then in-progress (by ai_score desc)
+    completed_dels  = sorted([d for d in delivery_items if d["status"] == "completed"],
+                              key=lambda x: -x["ai_score"])
+    inprogress_dels = sorted([d for d in delivery_items if d["status"] != "completed"],
+                              key=lambda x: -x["ai_score"])
+    sorted_deliveries = (completed_dels + inprogress_dels)[:7]
 
     topic = group.get("topic", "")
     if topic:
         lines.append(f"> Summary: {topic}")
-    seen_devs: set[str] = set()
-    top5_devs = [d for d in all_deliveries if d not in seen_devs and not seen_devs.add(d)][:5]  # type: ignore
-    if top5_devs:
-        lines.append(f"> Completed: {'; '.join(top5_devs)}")
-    if all_actions[:5]:
-        parts = [f"[{a['classify']}] {a['desc']}" for a in all_actions[:5]]
-        lines.append(f"> Action items: {'; '.join(parts)}")
+    if all_reqs[:5]:
+        lines.append(f"> Requirements: {'; '.join(all_reqs[:5])}")
+    if sorted_deliveries:
+        parts = [f"[{d['classify']}|{d['status']}|{d['ai_score']}] {d['summary']}"
+                 for d in sorted_deliveries]
+        lines.append(f"> Deliveries: {'; '.join(parts)}")
 
     lines.append("")
 

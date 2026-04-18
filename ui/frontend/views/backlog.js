@@ -1,16 +1,13 @@
 /**
  * backlog.js — Backlog tab view.
  *
- * Renders GROUP sections (one per use-case cluster) each containing
- * source-event items (PROMPTS / COMMITS / MESSAGES / ITEMS).
+ * GROUP sections (one per use-case cluster) show:
+ *   - Header: slug, counts, date, [Approve all] [Reject all]
+ *   - Body: summary text, requirements paragraph, deliveries table (sorted
+ *     completed-first, up to 7), then expandable item rows
  *
- * Actions:
- *   ↻ Sync          — POST /sync-backlog?mode=full
- *   ✓ Approve all   — POST /backlog/approve-group {slug, approve:"x"}
- *   ✗ Reject all    — POST /backlog/approve-group {slug, approve:"-"}
- *   classify select — PATCH /backlog/{ref_id} {classify}
- *   status select   — PATCH /backlog/{ref_id} {status}
- *   ✕ remove        — DELETE /backlog/{ref_id}
+ * Commit items are informational-only — already committed, nothing to approve.
+ * Prompt items have classify/status dropdowns and a remove button.
  */
 
 import { api }  from '../utils/api.js';
@@ -69,94 +66,122 @@ export async function renderBacklog(container, projectName) {
         overflow:hidden;
       }
       .bl-group-header {
-        display:flex;align-items:flex-start;gap:0.6rem;flex-wrap:wrap;
-        padding:0.7rem 1rem;
+        display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;
+        padding:0.65rem 1rem;
         background:var(--surface2);
         border-bottom:1px solid var(--border);
         cursor:pointer;user-select:none;
       }
       .bl-group-header:hover { background:var(--surface3); }
       .bl-group-slug {
-        font-size:0.95rem;font-weight:800;color:var(--text);
+        font-size:0.92rem;font-weight:800;color:var(--text);
         letter-spacing:-.01em;
       }
       .bl-group-meta {
-        font-size:0.7rem;color:var(--muted);display:flex;
-        align-items:center;gap:0.5rem;flex-wrap:wrap;flex:1;
+        font-size:0.69rem;color:var(--muted);
+        display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;
       }
       .bl-group-counts {
-        font-size:0.68rem;color:var(--muted);
+        font-size:0.67rem;color:var(--muted);
         background:var(--surface3);padding:1px 7px;border-radius:8px;
       }
-      .bl-group-arrow { font-size:0.7rem;color:var(--muted);margin-left:auto;align-self:center }
+      .bl-group-arrow { font-size:0.7rem;color:var(--muted);margin-left:0 }
       .bl-group-body { padding:0.75rem 1rem }
       .bl-group-body.collapsed { display:none }
 
-      /* ── Group summary/completed/actions sections ── */
-      .bl-group-summary {
-        font-size:0.82rem;color:var(--text2);line-height:1.55;
-        margin-bottom:0.75rem;padding:0.5rem 0.75rem;
-        background:var(--surface3);border-radius:calc(var(--radius) - 2px);
-        border-left:3px solid var(--accent);
-      }
-      .bl-group-section { margin-bottom:0.75rem }
-      .bl-group-section-title {
-        font-size:0.68rem;font-weight:800;color:var(--muted);
-        text-transform:uppercase;letter-spacing:.07em;
-        margin-bottom:0.3rem;display:flex;align-items:center;gap:0.4rem;
-      }
-      .bl-completed-list, .bl-actions-list {
-        list-style:none;margin:0;padding:0;
-        display:flex;flex-direction:column;gap:0.2rem;
-      }
-      .bl-completed-list li, .bl-actions-list li {
-        font-size:0.78rem;color:var(--text);
-        padding:0.15rem 0;display:flex;align-items:flex-start;gap:0.4rem;
-      }
-      .bl-completed-list li::before { content:"•";color:#16a34a;flex-shrink:0 }
-      .bl-actions-list li::before   { content:"•";color:var(--accent);flex-shrink:0 }
-      .bl-action-badge {
-        font-size:0.62rem;padding:1px 5px;border-radius:6px;font-weight:700;
-        flex-shrink:0;
-      }
-      .bl-action-badge-feature { background:#dcfce7;color:#16a34a }
-      .bl-action-badge-bug     { background:#fee2e2;color:#dc2626 }
-      .bl-action-badge-task    { background:#dbeafe;color:#1d4ed8 }
-
-      /* ── Group footer ── */
-      .bl-group-footer {
-        display:flex;justify-content:flex-end;gap:0.5rem;
-        padding:0.65rem 1rem;
-        border-top:1px solid var(--border);
-        background:var(--surface2);
-      }
+      /* ── Approve/Reject in header ── */
       .bl-approve-all-btn, .bl-reject-all-btn {
-        border:none;border-radius:4px;padding:4px 14px;cursor:pointer;
-        font-size:0.78rem;font-weight:700;transition:opacity .15s;
+        border:none;border-radius:4px;padding:3px 11px;cursor:pointer;
+        font-size:0.74rem;font-weight:700;transition:opacity .15s;flex-shrink:0;
       }
       .bl-approve-all-btn { background:#16a34a;color:#fff }
       .bl-reject-all-btn  { background:#dc2626;color:#fff }
       .bl-approve-all-btn:hover { opacity:.85 }
       .bl-reject-all-btn:hover  { opacity:.85 }
-      .bl-approve-all-btn:disabled, .bl-reject-all-btn:disabled { opacity:.4;cursor:not-allowed }
+      .bl-approve-all-btn:disabled, .bl-reject-all-btn:disabled {
+        opacity:.35;cursor:not-allowed;
+      }
+      /* hide approve/reject for commit-only groups */
+      .bl-commits-only .bl-approve-all-btn,
+      .bl-commits-only .bl-reject-all-btn { display:none }
 
       /* ── Tag chips ── */
-      .bl-tags-row { display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.6rem }
+      .bl-tags-row { display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.55rem }
       .bl-chip {
-        font-size:0.68rem;padding:2px 8px;border-radius:10px;font-weight:600;
+        font-size:0.67rem;padding:2px 7px;border-radius:10px;font-weight:600;
         display:inline-flex;align-items:center;gap:3px;
       }
       .bl-chip-user     { background:#f3f4f6;color:#374151;border:1px solid #d1d5db }
       .bl-chip-existing { background:#dbeafe;color:#1d4ed8 }
       .bl-chip-new      { background:#fef9c3;color:#854d0e }
-      .bl-chip-type-new { background:#fce7f3;color:#9d174d;font-size:0.62rem;padding:1px 5px }
+      .bl-chip-type-new { background:#fce7f3;color:#9d174d;font-size:0.61rem;padding:1px 5px }
 
-      /* ── Source type section ── */
-      .bl-src-section { margin-bottom:0.5rem }
+      /* ── Group summary ── */
+      .bl-group-summary {
+        font-size:0.81rem;color:var(--text2);line-height:1.55;
+        margin-bottom:0.6rem;padding:0.45rem 0.7rem;
+        background:var(--surface3);border-radius:calc(var(--radius) - 2px);
+        border-left:3px solid var(--accent);
+      }
+
+      /* ── Requirements block ── */
+      .bl-group-reqs {
+        font-size:0.78rem;color:var(--text2);line-height:1.5;
+        margin-bottom:0.65rem;
+      }
+      .bl-group-reqs-label {
+        font-size:0.65rem;font-weight:800;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.07em;margin-bottom:0.2rem;
+      }
+
+      /* ── Deliveries table ── */
+      .bl-deliveries-section { margin-bottom:0.75rem }
+      .bl-deliveries-label {
+        font-size:0.65rem;font-weight:800;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.07em;margin-bottom:0.3rem;
+      }
+      .bl-deliveries-table {
+        width:100%;border-collapse:collapse;font-size:0.76rem;
+      }
+      .bl-deliveries-table td {
+        padding:3px 6px;vertical-align:middle;
+        border-bottom:1px solid var(--border);
+      }
+      .bl-deliveries-table tr:last-child td { border-bottom:none }
+      .bl-delivery-icon { font-size:0.8rem;width:20px;text-align:center }
+      .bl-delivery-type {
+        font-size:0.62rem;padding:1px 5px;border-radius:6px;font-weight:700;
+        white-space:nowrap;
+      }
+      .bl-delivery-type-feature { background:#dcfce7;color:#16a34a }
+      .bl-delivery-type-bug     { background:#fee2e2;color:#dc2626 }
+      .bl-delivery-type-task    { background:#dbeafe;color:#1d4ed8 }
+      .bl-delivery-type-use_case{ background:#cffafe;color:#0e7490 }
+      .bl-delivery-score {
+        font-size:0.62rem;color:var(--muted);background:var(--surface3);
+        padding:1px 5px;border-radius:6px;white-space:nowrap;
+      }
+      .bl-delivery-desc {
+        color:var(--text);flex:1;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;
+      }
+      .bl-delivery-status-done { color:#16a34a }
+      .bl-delivery-status-prog { color:#c2410c }
+
+      /* ── Items divider ── */
+      .bl-items-divider {
+        font-size:0.65rem;font-weight:800;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.06em;
+        margin:0.5rem 0 0.35rem;
+        border-top:1px solid var(--border);padding-top:0.45rem;
+        display:flex;align-items:center;gap:0.4rem;
+      }
+
+      /* ── Source type label ── */
+      .bl-src-section { margin-bottom:0.4rem }
       .bl-src-label {
-        font-size:0.63rem;font-weight:800;color:var(--muted);
-        text-transform:uppercase;letter-spacing:.08em;
-        margin-bottom:0.3rem;
+        font-size:0.62rem;font-weight:800;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.08em;margin-bottom:0.25rem;
       }
 
       /* ── Item card ── */
@@ -164,68 +189,58 @@ export async function renderBacklog(container, projectName) {
         border:1px solid var(--border);
         border-radius:calc(var(--radius) - 2px);
         background:var(--surface);
-        margin-bottom:0.4rem;
+        margin-bottom:0.35rem;
         overflow:hidden;
       }
       .bl-entry-header {
-        display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;
-        padding:0.45rem 0.75rem;
+        display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;
+        padding:0.4rem 0.7rem;
         background:var(--surface2);
         cursor:pointer;user-select:none;
       }
       .bl-entry-header:hover { background:var(--surface3); }
-      .bl-ref  { font-family:var(--font);font-size:0.7rem;font-weight:700;color:var(--accent);min-width:68px }
-      .bl-summary { flex:1;font-size:0.8rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0 }
-      .bl-classify-badge {
-        font-size:0.63rem;padding:1px 6px;border-radius:8px;font-weight:700;
-        text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;
+      .bl-ref { font-family:var(--font);font-size:0.68rem;font-weight:700;color:var(--accent);min-width:65px }
+      .bl-summary {
+        flex:1;font-size:0.79rem;color:var(--text);
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
       }
-      .bl-classify-feature { background:#dcfce7;color:#16a34a }
-      .bl-classify-bug     { background:#fee2e2;color:#dc2626 }
-      .bl-classify-task    { background:#dbeafe;color:#1d4ed8 }
-      .bl-classify-use_case{ background:#cffafe;color:#0e7490 }
-      .bl-status-badge {
-        font-size:0.63rem;padding:1px 6px;border-radius:8px;font-weight:600;
-        flex-shrink:0;
-      }
-      .bl-status-completed   { background:#f0fdf4;color:#16a34a;border:1px solid #86efac }
-      .bl-status-in-progress { background:#fff7ed;color:#c2410c;border:1px solid #fdba74 }
       .bl-ai-score {
-        font-size:0.63rem;color:var(--muted);background:var(--surface3);
-        padding:1px 6px;border-radius:8px;flex-shrink:0;
+        font-size:0.62rem;color:var(--muted);background:var(--surface3);
+        padding:1px 5px;border-radius:7px;flex-shrink:0;
       }
 
-      /* ── Item inline controls ── */
+      /* ── Item controls (prompts only) ── */
       .bl-item-select {
-        font-size:0.7rem;border:1px solid var(--border);border-radius:4px;
-        background:var(--surface);color:var(--text);padding:1px 4px;
+        font-size:0.69rem;border:1px solid var(--border);border-radius:4px;
+        background:var(--surface);color:var(--text);padding:1px 3px;
         cursor:pointer;flex-shrink:0;
       }
       .bl-item-select:focus { outline:none;border-color:var(--accent) }
       .bl-remove-btn {
-        border:none;border-radius:4px;padding:1px 7px;cursor:pointer;
-        font-size:0.78rem;font-weight:700;background:transparent;color:var(--muted);
+        border:none;border-radius:4px;padding:1px 6px;cursor:pointer;
+        font-size:0.75rem;font-weight:700;background:transparent;color:var(--muted);
         transition:color .15s,background .15s;flex-shrink:0;
       }
       .bl-remove-btn:hover { background:#fee2e2;color:#dc2626 }
 
+      /* ── Commit item badge ── */
+      .bl-commit-badge {
+        font-size:0.62rem;padding:1px 6px;border-radius:7px;font-weight:700;
+        background:#f0fdf4;color:#16a34a;border:1px solid #86efac;flex-shrink:0;
+      }
+
       /* ── Item body ── */
       .bl-body {
-        padding:0.5rem 0.75rem;
-        font-size:0.77rem;
-        color:var(--text2);
-        line-height:1.55;
-        display:none;
-        border-top:1px solid var(--border);
+        padding:0.45rem 0.7rem;
+        font-size:0.76rem;color:var(--text2);line-height:1.5;
+        display:none;border-top:1px solid var(--border);
       }
       .bl-body.open { display:block }
-      .bl-body-row { margin-bottom:0.35rem }
       .bl-body-label {
-        font-size:0.64rem;font-weight:700;color:var(--muted);
-        text-transform:uppercase;letter-spacing:.06em;
-        margin-bottom:0.15rem;
+        font-size:0.63rem;font-weight:700;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.12rem;
       }
-      .bl-body-text { color:var(--text);font-size:0.78rem;line-height:1.5 }
+      .bl-body-text { color:var(--text);font-size:0.77rem;line-height:1.5;margin-bottom:0.3rem }
 
       /* ── Counters ── */
       .bl-counter-card {
@@ -282,13 +297,11 @@ async function _loadEntries() {
   }
 }
 
-/** Wrap old flat entry list into a single synthetic group for backward compat. */
 function _flatToGroups(entries) {
   if (!entries.length) return [];
   return [{ slug: 'backlog', slug_type: 'existing', date: '', source: 'auto',
             approve: ' ', user_tags: [], ai_existing_tags: [], ai_new_tags: [],
-            summary: '', completed: [], action_items: [],
-            items: entries }];
+            summary: '', requirements: [], deliveries: [], items: entries }];
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -379,18 +392,9 @@ function _renderCounters(data) {
       <div class="bl-counter-card">
         <div class="bl-counter-label">${icons[src]} ${labels[src]}</div>
         <div class="bl-counter-row">
-          <div class="bl-stat">
-            <div class="bl-stat-n ${pending > 0 ? 'warn' : 'ok'}">${pending}</div>
-            <div class="bl-stat-lbl">open</div>
-          </div>
-          <div class="bl-stat">
-            <div class="bl-stat-n">${processed}</div>
-            <div class="bl-stat-lbl">done</div>
-          </div>
-          <div class="bl-stat">
-            <div class="bl-stat-n">${batches}</div>
-            <div class="bl-stat-lbl">×${cnt}</div>
-          </div>
+          <div class="bl-stat"><div class="bl-stat-n ${pending > 0 ? 'warn' : 'ok'}">${pending}</div><div class="bl-stat-lbl">open</div></div>
+          <div class="bl-stat"><div class="bl-stat-n">${processed}</div><div class="bl-stat-lbl">done</div></div>
+          <div class="bl-stat"><div class="bl-stat-n">${batches}</div><div class="bl-stat-lbl">×${cnt}</div></div>
         </div>
       </div>`;
   }).join('');
@@ -414,12 +418,11 @@ function _renderGroups(groups) {
 
   el.innerHTML = groups.map((grp, gi) => _groupHtml(grp, gi)).join('');
 
-  // Bind group toggle + item events
   groups.forEach((grp, gi) => {
-    const grpId = `bl-grp-${gi}`;
-    const grpEl = document.getElementById(grpId);
+    const grpEl = document.getElementById(`bl-grp-${gi}`);
     if (!grpEl) return;
 
+    // Group collapse toggle
     const hdr   = grpEl.querySelector('.bl-group-header');
     const body  = grpEl.querySelector('.bl-group-body');
     const arrow = grpEl.querySelector('.bl-group-arrow');
@@ -431,7 +434,7 @@ function _renderGroups(groups) {
       });
     }
 
-    // Group-level approve/reject buttons
+    // Group-level approve/reject (skip for commits-only groups)
     const apAllBtn = grpEl.querySelector('.bl-approve-all-btn');
     const rjAllBtn = grpEl.querySelector('.bl-reject-all-btn');
     if (apAllBtn) apAllBtn.addEventListener('click', () => _onGroupApprove(grp.slug));
@@ -451,16 +454,20 @@ function _renderGroups(groups) {
         });
       }
 
+      // Commit items are informational only — no controls
+      if (item.src_label === 'COMMITS') return;
+
       const clsSel = card.querySelector('.bl-classify-select');
       const stSel  = card.querySelector('.bl-status-select');
       const rmBtn  = card.querySelector('.bl-remove-btn');
-
       if (clsSel) clsSel.addEventListener('change', () => _onClassifyChange(item.ref_id, clsSel.value));
       if (stSel)  stSel.addEventListener('change',  () => _onStatusChange(item.ref_id, stSel.value));
       if (rmBtn)  rmBtn.addEventListener('click',   () => _onRemove(item.ref_id, card));
     });
   });
 }
+
+// ── Group HTML ────────────────────────────────────────────────────────────────
 
 function _groupHtml(grp, idx = 0) {
   const grpId    = `bl-grp-${idx}`;
@@ -469,10 +476,14 @@ function _groupHtml(grp, idx = 0) {
   const date     = grp.date      || '';
   const items    = grp.items     || [];
 
-  // Counts
+  // Detect commits-only group (no approve/reject needed)
+  const isCommitsGroup = items.length > 0 && items.every(it => it.src_label === 'COMMITS');
+
+  // Counts by source
   const cnts = { PROMPTS: 0, COMMITS: 0, MESSAGES: 0, ITEMS: 0 };
   for (const it of items) cnts[it.src_label || 'PROMPTS'] = (cnts[it.src_label || 'PROMPTS'] || 0) + 1;
-  const countParts = Object.entries(cnts).filter(([,v]) => v > 0).map(([k,v]) => `${v} ${k.toLowerCase()}`);
+  const countParts = Object.entries(cnts).filter(([,v]) => v > 0)
+    .map(([k,v]) => `${v} ${k.toLowerCase()}`);
   const countStr = countParts.join(' · ') || '0 events';
 
   // Tags
@@ -480,8 +491,7 @@ function _groupHtml(grp, idx = 0) {
   const aiExisting = grp.ai_existing_tags || [];
   const aiNew      = grp.ai_new_tags      || [];
   const hasAnyTags = userTags.length || aiExisting.length || aiNew.length;
-
-  const tagChips = hasAnyTags ? `
+  const tagChips   = hasAnyTags ? `
     <div class="bl-tags-row">
       ${userTags.map(t => `<span class="bl-chip bl-chip-user">🏷 ${_esc(t)}</span>`).join('')}
       ${aiExisting.map(t => `<span class="bl-chip bl-chip-existing">● ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
@@ -492,35 +502,23 @@ function _groupHtml(grp, idx = 0) {
   const summaryHtml = grp.summary ? `
     <div class="bl-group-summary">${_esc(grp.summary)}</div>` : '';
 
-  // Completed section
-  const completed = grp.completed || [];
-  const completedHtml = completed.length ? `
-    <div class="bl-group-section">
-      <div class="bl-group-section-title">✓ Completed</div>
-      <ul class="bl-completed-list">
-        ${completed.map(d => `<li>${_esc(d)}</li>`).join('')}
-      </ul>
+  // Requirements block
+  const reqs = grp.requirements || [];
+  const reqsHtml = reqs.length ? `
+    <div class="bl-group-reqs">
+      <div class="bl-group-reqs-label">Requirements</div>
+      ${reqs.map(r => `<div style="padding:1px 0">• ${_esc(r)}</div>`).join('')}
     </div>` : '';
 
-  // Action items section
-  const actionItems = grp.action_items || [];
-  const actionsHtml = actionItems.length ? `
-    <div class="bl-group-section">
-      <div class="bl-group-section-title">⚡ Action items</div>
-      <ul class="bl-actions-list">
-        ${actionItems.map(a => {
-          const cls = a.classify || 'task';
-          const badgeCls = `bl-action-badge bl-action-badge-${cls}`;
-          return `<li><span class="${badgeCls}">${_esc(cls)}</span>${_esc(a.desc || '')}</li>`;
-        }).join('')}
-      </ul>
-    </div>` : '';
+  // Deliveries table (items sorted: completed first, in-progress last, max 7)
+  const deliveries = grp.deliveries || [];
+  const deliveriesHtml = _deliveriesTable(deliveries, items);
 
-  // Group items by source type
+  // Items section grouped by source type
   const bySource = { PROMPTS: [], COMMITS: [], MESSAGES: [], ITEMS: [] };
   for (const it of items) bySource[it.src_label || 'PROMPTS'].push(it);
 
-  const itemsHtml = Object.entries(bySource)
+  const itemsBodyHtml = Object.entries(bySource)
     .filter(([,arr]) => arr.length > 0)
     .map(([src, arr]) => `
       <div class="bl-src-section">
@@ -530,73 +528,128 @@ function _groupHtml(grp, idx = 0) {
     .join('');
 
   const itemsDivider = items.length ? `
-    <div style="font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;
-                letter-spacing:.06em;margin:0.6rem 0 0.4rem;border-top:1px solid var(--border);
-                padding-top:0.5rem">
-      Items (${items.length})
-    </div>` : '';
+    <div class="bl-items-divider">Items (${items.length})</div>` : '';
 
   return `
-    <div class="bl-group" id="${grpId}">
+    <div class="bl-group${isCommitsGroup ? ' bl-commits-only' : ''}" id="${grpId}">
       <div class="bl-group-header">
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-            <span class="bl-group-slug">${_esc(slug)}</span>
-            ${slugType === 'new' ? '<span class="bl-chip bl-chip-type-new">NEW</span>' : ''}
-            <span class="bl-group-counts">${countStr}</span>
-            <span class="bl-group-meta">${date}</span>
-          </div>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <span class="bl-group-slug">${_esc(slug)}</span>
+          ${slugType === 'new' ? '<span class="bl-chip bl-chip-type-new">NEW</span>' : ''}
+          <span class="bl-group-counts">${countStr}</span>
+          <span class="bl-group-meta">${date}</span>
         </div>
+        ${!isCommitsGroup ? `
+          <button class="bl-approve-all-btn" title="Approve all → merge into use case">✓ Approve</button>
+          <button class="bl-reject-all-btn"  title="Reject all">✗ Reject</button>` : ''}
         <span class="bl-group-arrow">▼</span>
       </div>
       <div class="bl-group-body">
         ${tagChips}
         ${summaryHtml}
-        ${completedHtml}
-        ${actionsHtml}
+        ${reqsHtml}
+        ${deliveriesHtml}
         ${itemsDivider}
-        ${itemsHtml || '<div style="color:var(--muted);font-size:0.78rem;padding:0.5rem 0">No items</div>'}
-      </div>
-      <div class="bl-group-footer">
-        <button class="bl-approve-all-btn" title="Approve all items in this group → merge into use case file">✓ Approve all</button>
-        <button class="bl-reject-all-btn"  title="Reject all items in this group">✗ Reject all</button>
+        ${itemsBodyHtml || '<div style="color:var(--muted);font-size:0.77rem;padding:0.4rem 0">No items</div>'}
       </div>
     </div>`;
 }
 
+/**
+ * Build the deliveries table from group.deliveries (pre-computed in backend)
+ * OR fall back to computing from items directly (backward compat).
+ *
+ * Deliveries are sorted: completed first (ai_score desc), in-progress last.
+ * Max 7 rows shown.
+ */
+function _deliveriesTable(deliveries, items) {
+  let rows = [];
+
+  if (deliveries && deliveries.length) {
+    // Backend-computed deliveries: {classify, status, ai_score, desc}
+    rows = deliveries.map(d => ({
+      classify: d.classify || 'task',
+      status:   d.status   || 'in-progress',
+      ai_score: d.ai_score ?? 0,
+      desc:     d.desc     || '',
+    }));
+  } else if (items && items.length) {
+    // Fallback: derive from items themselves
+    rows = items.map(it => ({
+      classify: it.classify || 'task',
+      status:   it.status   || 'in-progress',
+      ai_score: it.ai_score ?? 0,
+      desc:     it.summary  || '',
+    }));
+    // Sort: completed first by ai_score desc
+    const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
+    const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
+    rows = [...done, ...prog];
+  }
+
+  if (!rows.length) return '';
+
+  const tableRows = rows.slice(0, 7).map(r => {
+    const isDone   = r.status === 'completed';
+    const icon     = isDone ? '✓' : '⏳';
+    const iconCls  = isDone ? 'bl-delivery-status-done' : 'bl-delivery-status-prog';
+    const typeCls  = `bl-delivery-type bl-delivery-type-${r.classify}`;
+    return `
+      <tr>
+        <td class="bl-delivery-icon ${iconCls}">${icon}</td>
+        <td><span class="${typeCls}">${_esc(r.classify)}</span></td>
+        <td><span class="bl-delivery-score">AI:${r.ai_score}</span></td>
+        <td class="bl-delivery-desc" title="${_esc(r.desc)}">${_esc(r.desc)}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="bl-deliveries-section">
+      <div class="bl-deliveries-label">Deliveries (${Math.min(rows.length, 7)}${rows.length > 7 ? ' of ' + rows.length : ''})</div>
+      <table class="bl-deliveries-table">${tableRows}</table>
+    </div>`;
+}
+
+// ── Item HTML ─────────────────────────────────────────────────────────────────
+
 function _itemHtml(item) {
+  const isCommit = item.src_label === 'COMMITS';
   const classify = item.classify || 'task';
   const status   = item.status   || 'in-progress';
   const aiScore  = item.ai_score ?? '';
   const refId    = item.ref_id   || '';
   const summary  = item.summary  || '';
 
-  const classifyCls = {
-    feature:  'bl-classify-feature',
-    bug:      'bl-classify-bug',
-    task:     'bl-classify-task',
-    use_case: 'bl-classify-use_case',
-  }[classify] || 'bl-classify-task';
-
-  const statusCls = status === 'completed' ? 'bl-status-completed' : 'bl-status-in-progress';
-
   // Body content
   const reqs = item.requirements || '';
-  const devs = item.deliveries   || '';
+  const devs = Array.isArray(item.deliveries)
+    ? item.deliveries.join('; ')
+    : (item.deliveries || '');
   const hasBody = reqs || devs;
 
   const bodyHtml = hasBody ? `
     <div class="bl-body">
-      ${reqs ? `<div class="bl-body-row">
-        <div class="bl-body-label">Requirements</div>
-        <div class="bl-body-text">${_esc(reqs)}</div>
-      </div>` : ''}
-      ${devs ? `<div class="bl-body-row">
-        <div class="bl-body-label">Deliveries</div>
-        <div class="bl-body-text">${_esc(devs)}</div>
-      </div>` : ''}
+      ${reqs ? `<div class="bl-body-label">Requirements</div>
+        <div class="bl-body-text">${_esc(reqs)}</div>` : ''}
+      ${devs ? `<div class="bl-body-label">Changes</div>
+        <div class="bl-body-text">${_esc(devs)}</div>` : ''}
     </div>` : '';
 
+  if (isCommit) {
+    // Commit item: informational only — no dropdowns, no remove
+    return `
+      <div class="bl-entry" id="bl-card-${refId}">
+        <div class="bl-entry-header">
+          <span class="bl-ref">${_esc(refId)}</span>
+          <span class="bl-commit-badge">committed</span>
+          ${aiScore !== '' ? `<span class="bl-ai-score">AI:${aiScore}</span>` : ''}
+          <span class="bl-summary" title="${_esc(summary)}">${_esc(summary)}</span>
+        </div>
+        ${bodyHtml}
+      </div>`;
+  }
+
+  // Prompt / message / item: full controls
   return `
     <div class="bl-entry" id="bl-card-${refId}">
       <div class="bl-entry-header">
