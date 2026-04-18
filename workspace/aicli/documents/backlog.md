@@ -134,7 +134,6 @@
 > Total: 47 prompts
 > User tags:
 > AI existing:
-> AI new: [task:db-schema-refactor]
 > Requirements: Merge pr_embeddings and pr_memory_events into mem_ai_events table; Include fields: id (uuid), project_id, session_id, session_desc, chunk, content, created_at; Implement smart embedding with chunking mechanism; Support code understanding for commits; Implement mng_ai_tags_relations table for tagging relationships
 
   PROMPTS P102215 [ ] [feature] [in-progress] [3] — Merged pr_embeddings and pr_memory_events into single mem_ai_events table.

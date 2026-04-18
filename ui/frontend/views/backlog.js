@@ -16,8 +16,11 @@ import { state } from '../stores/state.js';
 
 let _project      = '';
 let _polling      = null;
-let _allSlugs     = [];   // cached slug list for slug chooser
-let _plannerTags  = [];   // cached planner tags [{category_name, name}] for tag picker
+let _allSlugs     = [];          // all known slugs
+let _fileSlugs    = new Set();   // slugs that have a use_cases/*.md file
+let _groupSlugs   = new Set();   // slugs only in backlog groups (NEW)
+let _plannerTags  = [];          // planner tags for tag picker
+let _undoStack    = [];          // [{label, fn}] — undo stack (last 10 ops)
 
 export function destroyBacklog() {
   if (_polling) { clearInterval(_polling); _polling = null; }
@@ -37,6 +40,10 @@ export async function renderBacklog(container, projectName) {
         <button id="bl-sync-btn" class="btn btn-ghost btn-sm"
                 title="Run full digest — all pending rows grouped into use-case clusters">
           ↻ Sync
+        </button>
+        <button id="bl-export-btn" class="btn btn-ghost btn-sm"
+                title="Export commit analysis report to workspace/logs/">
+          📊 Export
         </button>
         <span style="flex:1"></span>
         <span id="bl-status" style="font-size:0.72rem;color:var(--muted)"></span>
@@ -279,6 +286,21 @@ export async function renderBacklog(container, projectName) {
       .bl-stat-n.ok     { color:#16a34a }
       .bl-empty { text-align:center;padding:3rem;color:var(--muted);font-size:0.82rem }
 
+      /* ── Undo toast ── */
+      .bl-undo-toast {
+        position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);
+        background:#1f2937;color:#f9fafb;
+        padding:0.5rem 1rem;border-radius:8px;
+        display:flex;align-items:center;gap:0.75rem;
+        font-size:0.8rem;z-index:10000;
+        box-shadow:0 4px 12px rgba(0,0,0,.25);
+      }
+      .bl-undo-btn {
+        background:var(--accent);color:#fff;border:none;border-radius:4px;
+        padding:2px 10px;cursor:pointer;font-size:0.75rem;font-weight:700;
+      }
+      .bl-undo-btn:hover { opacity:.85 }
+
       /* ── Requirements bullets ── */
       .bl-req-row {
         display:flex;align-items:baseline;gap:5px;padding:2px 0;
@@ -287,9 +309,8 @@ export async function renderBacklog(container, projectName) {
       .bl-req-text   { flex:1;font-size:0.78rem;color:var(--text) }
       .bl-req-remove {
         border:none;background:transparent;color:var(--muted);
-        font-size:0.68rem;cursor:pointer;padding:0 2px;opacity:0;flex-shrink:0;
+        font-size:0.68rem;cursor:pointer;padding:0 2px;opacity:.4;flex-shrink:0;
       }
-      .bl-req-row:hover .bl-req-remove { opacity:1 }
       .bl-req-remove:hover { color:#dc2626;opacity:1 }
 
       /* ── Code stats bar ── */
@@ -357,6 +378,15 @@ export async function renderBacklog(container, projectName) {
   `;
 
   document.getElementById('bl-sync-btn').onclick = _onSync;
+  document.getElementById('bl-export-btn').onclick = async () => {
+    const btn = document.getElementById('bl-export-btn');
+    btn.disabled = true; btn.textContent = '⏳ Exporting…';
+    try {
+      const r = await api.backlog.exportCommitAnalysis(_project);
+      toast(`Report saved: ${r.file} (${r.linked_commits} linked, ${r.standalone_commits} standalone commits)`, 'success');
+    } catch (e) { toast(`Export failed: ${e.message}`, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '📊 Export'; }
+  };
 
   await _loadAll();
   _polling = setInterval(_loadStats, 30_000);
@@ -373,6 +403,8 @@ async function _loadSlugs() {
   try {
     const data = await api.backlog.listSlugs(_project);
     _allSlugs = data.slugs || [];
+    _fileSlugs = new Set(data.file_slugs || []);
+    _groupSlugs = new Set(data.group_slugs || []);
   } catch { /* non-critical */ }
 }
 
@@ -519,55 +551,86 @@ async function _onSummaryEdit(slug, newText, summaryEl) {
   }
 }
 
-async function _onDeliveryRemove(slug, index, rowEl) {
+function _pushUndo(label, undoFn) {
+  _undoStack.unshift({ label, fn: undoFn });
+  if (_undoStack.length > 15) _undoStack.pop();
+  _showUndoToast(label);
+}
+
+function _showUndoToast(label) {
+  const existing = document.getElementById('bl-undo-toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.id = 'bl-undo-toast';
+  t.className = 'bl-undo-toast';
+  t.innerHTML = `<span>${_esc(label)}</span><button class="bl-undo-btn">Undo</button>`;
+  document.body.appendChild(t);
+  t.querySelector('.bl-undo-btn').addEventListener('click', () => {
+    t.remove();
+    const op = _undoStack.shift();
+    if (op) op.fn();
+  });
+  setTimeout(() => { if (t.parentNode) t.remove(); }, 6000);
+}
+
+async function _onDeliveryRemove(slug, index, desc, rowEl) {
   try {
     await api.backlog.patchGroup(_project, slug, { remove_delivery_index: index });
     if (rowEl) rowEl.remove();
-  } catch (e) {
-    toast(`Could not remove delivery: ${e.message}`, 'error');
-  }
+    _pushUndo(`Removed delivery: ${desc.slice(0,40)}`, async () => {
+      await api.backlog.patchGroup(_project, slug, { restore_delivery: desc });
+      await _loadEntries();
+    });
+  } catch (e) { toast(`Could not remove delivery: ${e.message}`, 'error'); }
 }
 
-async function _onAiNewTagRemove(slug, index, chipEl) {
+async function _onAiNewTagRemove(slug, index, tagLabel, chipEl) {
   try {
     await api.backlog.patchGroup(_project, slug, { remove_ai_new_tag_index: index });
     if (chipEl) chipEl.remove();
-  } catch (e) {
-    toast(`Could not remove tag suggestion: ${e.message}`, 'error');
-  }
+    _pushUndo(`Dismissed tag: ${tagLabel}`, async () => {
+      await api.backlog.patchGroup(_project, slug, { restore_ai_new_tag: tagLabel });
+      await _loadEntries();
+    });
+  } catch (e) { toast(`Could not remove tag suggestion: ${e.message}`, 'error'); }
 }
 
-async function _onRequirementRemove(slug, index, rowEl) {
+async function _onRequirementRemove(slug, index, text, rowEl) {
   try {
     await api.backlog.patchGroup(_project, slug, { remove_requirement_index: index });
     if (rowEl) rowEl.remove();
-  } catch (e) {
-    toast(`Could not remove requirement: ${e.message}`, 'error');
-  }
+    _pushUndo(`Removed requirement`, async () => {
+      await api.backlog.patchGroup(_project, slug, { add_requirement: text });
+      await _loadEntries();
+    });
+  } catch (e) { toast(`Could not remove requirement: ${e.message}`, 'error'); }
 }
 
-async function _onTagsUpdate(slug, newTags, tagsRowEl) {
+async function _onTagsUpdate(slug, newTags, tagsRowEl, previousTags) {
+  const prev = previousTags || [];
   try {
     await api.backlog.patchGroup(_project, slug, { user_tags: newTags });
-    // Rebuild the user-tag chips in-place without full reload
+    // Rebuild user-tag chips in-place
     tagsRowEl.querySelectorAll('.bl-chip-user').forEach(c => c.remove());
     const addBtn = tagsRowEl.querySelector('.bl-tag-add-btn');
     newTags.forEach((t, i) => {
       const chip = document.createElement('span');
       chip.className = 'bl-chip bl-chip-user';
-      chip.innerHTML = `🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">×</button>`;
+      chip.innerHTML = `🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">&times;</button>`;
       chip.querySelector('.bl-chip-remove').addEventListener('click', e => {
         e.stopPropagation();
-        const updated = [...newTags];
-        updated.splice(i, 1);
-        _onTagsUpdate(slug, updated, tagsRowEl);
+        const updated = [...newTags]; updated.splice(i, 1);
+        _onTagsUpdate(slug, updated, tagsRowEl, newTags);
       });
       tagsRowEl.insertBefore(chip, addBtn);
     });
+    if (prev.join(',') !== newTags.join(',')) {
+      _pushUndo('Tag change', async () => {
+        await _onTagsUpdate(slug, prev, tagsRowEl, newTags);
+      });
+    }
     toast('Tags updated', 'success');
-  } catch (e) {
-    toast(`Tag update failed: ${e.message}`, 'error');
-  }
+  } catch (e) { toast(`Tag update failed: ${e.message}`, 'error'); }
 }
 
 // ── Overlay helpers ────────────────────────────────────────────────────────────
@@ -587,23 +650,35 @@ function _showSlugPicker(currentSlug, anchorEl, onConfirm) {
   inp.type = 'text';
   inp.value = currentSlug;
   inp.className = 'bl-overlay-input';
-  inp.placeholder = 'Type or choose a use case…';
+  inp.placeholder = 'Type a name or choose below…';
 
   const list = document.createElement('div');
   list.className = 'bl-overlay-list';
 
   const renderList = (filter = '') => {
     const f = filter.toLowerCase();
-    const slugs = _allSlugs.filter(s => !f || s.includes(f));
-    list.innerHTML = slugs.length
-      ? slugs.map(s => `<div class="bl-overlay-item${s === currentSlug ? ' active' : ''}" data-val="${_esc(s)}">${_esc(s)}</div>`).join('')
-      : `<div style="padding:6px 10px;color:var(--muted);font-size:0.76rem">No existing use cases</div>`;
+    const existing = _allSlugs.filter(s => _fileSlugs.has(s) && (!f || s.includes(f)));
+    const newOnes  = _allSlugs.filter(s => !_fileSlugs.has(s) && (!f || s.includes(f)));
+    let html = '';
+    if (existing.length) {
+      html += `<div class="bl-overlay-cat">Existing use cases</div>`;
+      html += existing.map(s =>
+        `<div class="bl-overlay-item${s === currentSlug ? ' active' : ''}" data-val="${_esc(s)}">${_esc(s)}</div>`
+      ).join('');
+    }
+    if (newOnes.length) {
+      html += `<div class="bl-overlay-cat" style="color:#854d0e">New (pending)</div>`;
+      html += newOnes.map(s =>
+        `<div class="bl-overlay-item bl-overlay-item-new${s === currentSlug ? ' active' : ''}" data-val="${_esc(s)}"><span style="color:#854d0e;font-size:0.6rem;font-weight:700;margin-right:4px">NEW:</span>${_esc(s)}</div>`
+      ).join('');
+    }
+    if (!html) html = `<div style="padding:6px 10px;color:var(--muted);font-size:0.76rem">No use cases yet — type a name above</div>`;
+    list.innerHTML = html;
     list.querySelectorAll('.bl-overlay-item').forEach(it => {
       it.addEventListener('mousedown', e => {
         e.preventDefault();
-        const val = it.dataset.val;
         _closeOverlay();
-        onConfirm(val);
+        onConfirm(it.dataset.val);
       });
     });
   };
@@ -611,12 +686,7 @@ function _showSlugPicker(currentSlug, anchorEl, onConfirm) {
 
   inp.addEventListener('input', () => renderList(inp.value));
   inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = inp.value.trim();
-      _closeOverlay();
-      if (val) onConfirm(val);
-    }
+    if (e.key === 'Enter') { e.preventDefault(); const v = inp.value.trim(); _closeOverlay(); if (v) onConfirm(v); }
     if (e.key === 'Escape') _closeOverlay();
   });
   inp.addEventListener('blur', () => setTimeout(_closeOverlay, 150));
@@ -627,7 +697,7 @@ function _showSlugPicker(currentSlug, anchorEl, onConfirm) {
 
   const rect = anchorEl.getBoundingClientRect();
   overlay.style.top  = `${rect.bottom + window.scrollY + 4}px`;
-  overlay.style.left = `${rect.left  + window.scrollX}px`;
+  overlay.style.left = `${rect.left + window.scrollX}px`;
   inp.focus(); inp.select();
 }
 
@@ -716,10 +786,22 @@ async function _loadGroupCodeStats(slug, idx) {
       s.rows_removed   ? `<span class="bl-stat-chip bl-stat-removed">-${s.rows_removed} lines</span>` : '',
     ].filter(Boolean).join('');
     const topFiles = s.top_files && s.top_files.length
-      ? `<details class="bl-stats-files"><summary>Top files</summary>${s.top_files.map(f =>
-          `<div class="bl-stats-file-row"><span class="bl-stats-file-path">${_esc(f.path.split('/').pop())}</span><span class="bl-stat-chip bl-stat-added" style="font-size:0.6rem">+${f.added}</span><span class="bl-stat-chip bl-stat-removed" style="font-size:0.6rem">-${f.removed}</span></div>`
-        ).join('')}</details>` : '';
+      ? `<details class="bl-stats-files"><summary style="font-size:0.67rem;color:var(--muted);cursor:pointer">Top files ▾</summary>${
+          s.top_files.map(f => `<div class="bl-stats-file-row">
+            <span class="bl-stats-file-path">${_esc(f.path.split('/').slice(-2).join('/'))}</span>
+            <span class="bl-stat-chip bl-stat-added" style="font-size:0.6rem">+${f.added}</span>
+            <span class="bl-stat-chip bl-stat-removed" style="font-size:0.6rem">-${f.removed}</span>
+          </div>`).join('')}</details>` : '';
     el.innerHTML = `<div class="bl-stats-row">${chips}${topFiles}</div>`;
+
+    // Also update the header count badge to show commit count
+    const grpEl = document.getElementById(`bl-grp-${idx}`);
+    if (grpEl && s.linked_commits > 0) {
+      const countsBadge = grpEl.querySelector('.bl-group-counts');
+      if (countsBadge && !countsBadge.textContent.includes('commit')) {
+        countsBadge.textContent += ` · 🔗${s.linked_commits}`;
+      }
+    }
   } catch { el.innerHTML = ''; }
 }
 
@@ -833,11 +915,12 @@ function _renderGroups(groups) {
 
     // Delivery remove buttons (synthesized themes)
     grpEl.querySelectorAll('.bl-delivery-remove').forEach(btn => {
+      const idx   = parseInt(btn.dataset.deliveryIdx, 10);
+      const dSlug = btn.dataset.deliverySlug || grp.slug;
+      const desc  = btn.closest('tr')?.querySelector('.bl-delivery-desc')?.textContent || '';
       btn.addEventListener('click', e => {
         e.stopPropagation();
-        const idx  = parseInt(btn.dataset.deliveryIdx, 10);
-        const dSlug = btn.dataset.deliverySlug || grp.slug;
-        _onDeliveryRemove(dSlug, idx, btn.closest('tr'));
+        _onDeliveryRemove(dSlug, idx, desc, btn.closest('tr'));
       });
     });
 
@@ -848,10 +931,10 @@ function _renderGroups(groups) {
       tagsRow.querySelectorAll('[data-tag-idx]').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
-          const idx = parseInt(btn.dataset.tagIdx, 10);
+          const idx     = parseInt(btn.dataset.tagIdx, 10);
           const updated = [...(grp.user_tags || [])];
           updated.splice(idx, 1);
-          _onTagsUpdate(grp.slug, updated, tagsRow);
+          _onTagsUpdate(grp.slug, updated, tagsRow, grp.user_tags || []);
         });
       });
 
@@ -859,8 +942,9 @@ function _renderGroups(groups) {
       tagsRow.querySelectorAll('[data-ai-new-idx]').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
-          const idx = parseInt(btn.dataset.aiNewIdx, 10);
-          _onAiNewTagRemove(grp.slug, idx, btn.closest('span'));
+          const idx      = parseInt(btn.dataset.aiNewIdx, 10);
+          const tagLabel = btn.closest('span')?.textContent?.replace('×','').trim() || '';
+          _onAiNewTagRemove(grp.slug, idx, tagLabel, btn.closest('span'));
         });
       });
 
@@ -872,7 +956,7 @@ function _renderGroups(groups) {
           _showTagPicker(addBtn, async val => {
             if (val) {
               const newTags = [...(grp.user_tags || []), val];
-              await _onTagsUpdate(grp.slug, newTags, tagsRow);
+              await _onTagsUpdate(grp.slug, newTags, tagsRow, grp.user_tags || []);
             }
           });
         });
@@ -883,8 +967,9 @@ function _renderGroups(groups) {
     grpEl.querySelectorAll('.bl-req-remove').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
-        const idx = parseInt(btn.dataset.reqIdx, 10);
-        _onRequirementRemove(grp.slug, idx, btn.closest('.bl-req-row'));
+        const idx  = parseInt(btn.dataset.reqIdx, 10);
+        const text = btn.closest('.bl-req-row')?.querySelector('.bl-req-text')?.textContent || '';
+        _onRequirementRemove(grp.slug, idx, text, btn.closest('.bl-req-row'));
       });
     });
 

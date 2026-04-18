@@ -46,6 +46,9 @@ class GroupMetaPatchRequest(BaseModel):
     remove_delivery_index:    Optional[int]       = None   # remove one synthesized delivery by index
     remove_ai_new_tag_index:  Optional[int]       = None   # dismiss one AI-suggested new tag
     remove_requirement_index: Optional[int]       = None   # remove one requirement bullet
+    add_requirement:          Optional[str]       = None   # append a requirement (undo support)
+    restore_delivery:         Optional[str]       = None   # append a delivery (undo support)
+    restore_ai_new_tag:       Optional[str]       = None   # append an AI new tag (undo support)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -444,6 +447,42 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
             new_slug = _re.sub(r"[^a-z0-9\-]", "-", new_slug).strip("-") or "general"
             chunk = chunk.replace(f"## **{slug}**", f"## **{new_slug}**", 1)
 
+        if body.add_requirement is not None and body.add_requirement.strip():
+            req_val = body.add_requirement.strip()
+            m = _re.search(r"^> Requirements:\s*(.+)$", chunk, _re.MULTILINE)
+            if m:
+                chunk = _re.sub(r"^> Requirements:.*$",
+                                f"> Requirements: {m.group(1).rstrip()}; {req_val}",
+                                chunk, flags=_re.MULTILINE)
+            else:
+                chunk = _re.sub(r"(^## \*\*.+\*\*.*$)",
+                                r"\1" + "\n> Requirements: " + req_val,
+                                chunk, flags=_re.MULTILINE, count=1)
+
+        if body.restore_delivery is not None and body.restore_delivery.strip():
+            d_val = body.restore_delivery.strip()
+            m = _re.search(r"^> Deliveries:\s*(.+)$", chunk, _re.MULTILINE)
+            if m:
+                chunk = _re.sub(r"^> Deliveries:.*$",
+                                f"> Deliveries: {m.group(1).rstrip()}; {d_val}",
+                                chunk, flags=_re.MULTILINE)
+            else:
+                chunk = _re.sub(r"(^> Summary:.*$)",
+                                r"\1" + "\n> Deliveries: " + d_val,
+                                chunk, flags=_re.MULTILINE, count=1)
+
+        if body.restore_ai_new_tag is not None and body.restore_ai_new_tag.strip():
+            tag_val = body.restore_ai_new_tag.strip()
+            m = _re.search(r"^> AI new:\s*(.*)$", chunk, _re.MULTILINE)
+            if m:
+                existing = m.group(1).strip()
+                new_line = f"> AI new: {existing + ', ' if existing else ''}{tag_val}"
+                chunk = _re.sub(r"^> AI new:.*$", new_line, chunk, flags=_re.MULTILINE)
+            else:
+                chunk = _re.sub(r"(^> AI existing:.*$)",
+                                r"\1" + "\n> AI new: " + tag_val,
+                                chunk, flags=_re.MULTILINE, count=1)
+
         updated = True
         new_chunks.append(chunk)
 
@@ -457,18 +496,19 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
 
 @router.get("/{project}/use-case-slugs")
 async def get_use_case_slugs(project: str):
-    """Return all known use-case slugs: from use_cases/ directory and current backlog groups."""
+    """Return all known use-case slugs, separated into file-based vs backlog-only groups."""
     from memory.memory_backlog import MemoryBacklog
     bl = MemoryBacklog(project)
     uc_dir = bl._use_cases_dir()
     file_slugs: list[str] = []
     if uc_dir.exists():
-        file_slugs = [f.stem for f in uc_dir.glob("*.md")
-                      if f.stem not in ("use_case_template",)]
+        file_slugs = sorted(f.stem for f in uc_dir.glob("*.md")
+                            if f.stem not in ("use_case_template",))
     groups = bl.parse_backlog()
-    group_slugs = [g["slug"] for g in groups if g.get("slug")]
-    all_slugs = sorted(set(file_slugs + group_slugs))
-    return {"project": project, "slugs": all_slugs}
+    group_slugs = sorted({g["slug"] for g in groups if g.get("slug")} - set(file_slugs))
+    all_slugs = sorted(set(file_slugs) | set(group_slugs))
+    return {"project": project, "slugs": all_slugs,
+            "file_slugs": file_slugs, "group_slugs": group_slugs}
 
 
 @router.get("/{project}/backlog/code-stats/{slug}")
@@ -553,6 +593,169 @@ async def get_group_code_stats(project: str, slug: str):
         "rows_added":     int(rows_added or 0),
         "rows_removed":   int(rows_removed or 0),
         "top_files":      top_files,
+    }
+
+
+@router.post("/{project}/export-commit-analysis")
+async def export_commit_analysis(project: str):
+    """Generate a commit analysis report in workspace/{project}/logs/.
+
+    Queries:
+      1. All commits linked to prompts (via prompt_id) with commit_code symbols
+      2. All standalone commits (no prompt_id) with commit_code symbols
+
+    Writes to workspace/{project}/logs/commit_analysis.md
+    Returns summary stats.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    from core.database import db
+    from datetime import datetime
+
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    bl = MemoryBacklog(project)
+    project_id = db.get_or_create_project_id(project)
+
+    # Ensure logs dir exists
+    ws = Path(settings.workspace_dir) / project / "logs"
+    ws.mkdir(parents=True, exist_ok=True)
+    out_path = ws / "commit_analysis.md"
+
+    lines: list[str] = [
+        f"# Commit Analysis — {project}",
+        f"_Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC_",
+        "",
+    ]
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # ── Summary ─────────────────────────────────────────────────
+                cur.execute(
+                    """SELECT
+                         COUNT(*) FILTER (WHERE prompt_id IS NOT NULL)     AS linked,
+                         COUNT(*) FILTER (WHERE prompt_id IS NULL)         AS standalone,
+                         COUNT(*) FILTER (WHERE backlog_ref IS NULL AND prompt_id IS NULL) AS pending
+                       FROM mem_mrr_commits WHERE project_id=%s""",
+                    (project_id,),
+                )
+                tot = cur.fetchone() or (0, 0, 0)
+                lines += [
+                    "## Summary",
+                    f"| | Count |",
+                    f"|---|---|",
+                    f"| Linked commits (via prompt_id) | {tot[0]} |",
+                    f"| Standalone commits | {tot[1]} |",
+                    f"| Pending (not yet processed) | {tot[2]} |",
+                    "",
+                ]
+
+                cur.execute(
+                    """SELECT
+                         COUNT(DISTINCT cc.file_path),
+                         COALESCE(SUM(cc.rows_added),0),
+                         COALESCE(SUM(cc.rows_removed),0)
+                       FROM mem_mrr_commits_code cc WHERE cc.project_id=%s""",
+                    (project_id,),
+                )
+                code_tot = cur.fetchone() or (0, 0, 0)
+                lines += [
+                    f"| Unique files touched | {code_tot[0]} |",
+                    f"| Total rows added | {code_tot[1]} |",
+                    f"| Total rows removed | {code_tot[2]} |",
+                    "",
+                ]
+
+                # ── Per use-case breakdown (linked commits via backlog_ref) ─
+                cur.execute(
+                    """SELECT
+                         p.backlog_ref,
+                         COUNT(DISTINCT c.commit_hash)  AS commits,
+                         COUNT(DISTINCT cc.file_path)   AS files,
+                         COALESCE(SUM(cc.rows_added),0) AS added,
+                         COALESCE(SUM(cc.rows_removed),0) AS removed
+                       FROM mem_mrr_prompts p
+                       JOIN mem_mrr_commits c ON c.prompt_id = p.id AND c.project_id=%s
+                       LEFT JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash AND cc.project_id=%s
+                       WHERE p.project_id=%s AND p.backlog_ref IS NOT NULL
+                       GROUP BY p.backlog_ref
+                       ORDER BY commits DESC LIMIT 50""",
+                    (project_id, project_id, project_id),
+                )
+                prows = cur.fetchall()
+                if prows:
+                    lines += [
+                        "## Linked Commits by Prompt Ref",
+                        "| Prompt | Commits | Files | +Lines | -Lines |",
+                        "|--------|---------|-------|--------|--------|",
+                    ]
+                    for r in prows:
+                        lines.append(f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} |")
+                    lines.append("")
+
+                # ── Top files (linked commits) ──────────────────────────────
+                cur.execute(
+                    """SELECT cc.file_path,
+                              COUNT(DISTINCT c.commit_hash),
+                              COALESCE(SUM(cc.rows_added),0),
+                              COALESCE(SUM(cc.rows_removed),0)
+                       FROM mem_mrr_commits c
+                       JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash AND cc.project_id=%s
+                       WHERE c.project_id=%s AND c.prompt_id IS NOT NULL
+                       GROUP BY cc.file_path
+                       ORDER BY 2 DESC, 3 DESC LIMIT 30""",
+                    (project_id, project_id),
+                )
+                frows = cur.fetchall()
+                if frows:
+                    lines += [
+                        "## Top Files Changed (Linked Commits)",
+                        "| File | Commits | +Lines | -Lines |",
+                        "|------|---------|--------|--------|",
+                    ]
+                    for r in frows:
+                        lines.append(f"| `{r[0]}` | {r[1]} | {r[2]} | {r[3]} |")
+                    lines.append("")
+
+                # ── Standalone commits ──────────────────────────────────────
+                cur.execute(
+                    """SELECT c.commit_hash_short, c.commit_msg,
+                              COUNT(cc.file_path),
+                              COALESCE(SUM(cc.rows_added),0),
+                              COALESCE(SUM(cc.rows_removed),0)
+                       FROM mem_mrr_commits c
+                       LEFT JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash AND cc.project_id=%s
+                       WHERE c.project_id=%s AND c.prompt_id IS NULL
+                       GROUP BY c.commit_hash_short, c.commit_msg, c.created_at
+                       ORDER BY c.created_at DESC LIMIT 100""",
+                    (project_id, project_id),
+                )
+                srows = cur.fetchall()
+                if srows:
+                    lines += [
+                        "## Standalone Commits (no prompt link)",
+                        "| Hash | Message | Files | +Lines | -Lines |",
+                        "|------|---------|-------|--------|--------|",
+                    ]
+                    for r in srows:
+                        msg = (r[1] or "")[:60].replace("|", "\\|")
+                        lines.append(f"| `{r[0]}` | {msg} | {r[2]} | {r[3]} | {r[4]} |")
+                    lines.append("")
+
+    except Exception as e:
+        log.warning(f"export_commit_analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    out_path.write_text("\n".join(lines))
+    return {
+        "project":   project,
+        "file":      str(out_path),
+        "linked_commits":     int(tot[0]),
+        "standalone_commits": int(tot[1]),
+        "files_touched":      int(code_tot[0]),
+        "rows_added":         int(code_tot[1]),
+        "rows_removed":       int(code_tot[2]),
     }
 
 

@@ -1054,9 +1054,16 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                     elif current_item:
                         ls = ln.strip()
                         if ls.startswith("Requirements:"):
-                            current_item["requirements"] = ls[len("Requirements:"):].strip()
+                            val = ls[len("Requirements:"):].strip()
+                            # Skip char-corrupted values like "H; i; s; t; o"
+                            parts = val.split("; ")
+                            if not (len(parts) >= 2 and all(len(p) <= 2 for p in parts)):
+                                current_item["requirements"] = val
                         elif ls.startswith("Deliveries:"):
-                            current_item["deliveries"] = ls[len("Deliveries:"):].strip()
+                            val = ls[len("Deliveries:"):].strip()
+                            parts = val.split("; ")
+                            if not (len(parts) >= 2 and all(len(p) <= 2 for p in parts)):
+                                current_item["deliveries"] = val
                         elif ls and not ls.startswith("<!--") and not ls.startswith("> ") \
                              and not ls.startswith("Total:") \
                              and not ls.startswith("User tags") and not ls.startswith("AI "):
@@ -1339,13 +1346,19 @@ def _fmt_event_entry(e: dict, src_label: str, slug: str) -> str:
         "",
     ]
 
-    reqs = e.get("requirements", [])
+    reqs = e.get("requirements", "")
     if reqs:
-        lines.append(f"  Requirements: {'; '.join(str(r) for r in reqs[:5])}")
+        if isinstance(reqs, list):
+            lines.append(f"  Requirements: {'; '.join(str(r) for r in reqs[:5])}")
+        else:
+            lines.append(f"  Requirements: {str(reqs)[:300]}")
 
     completed = e.get("completed", [])
     if completed:
-        lines.append(f"  Completed: {'; '.join(str(c) for c in completed[:5])}")
+        if isinstance(completed, list):
+            lines.append(f"  Completed: {'; '.join(str(c) for c in completed[:5])}")
+        else:
+            lines.append(f"  Completed: {str(completed)[:300]}")
 
     ais = e.get("action_items", [])
     if ais:
@@ -1959,13 +1972,21 @@ def _fmt_item_entry(e: dict, src_label: str) -> str:
         f"  {src_label} {ref_id} [{approve}] [{classify}] [{status}] [{ai_score}] — {summary}",
     ]
 
-    reqs = e.get("requirements", [])
+    reqs = e.get("requirements", "")
     if reqs:
-        lines.append(f"    Requirements: {'; '.join(str(r) for r in reqs[:5])}")
+        if isinstance(reqs, list):
+            req_str = "; ".join(str(r) for r in reqs[:5])
+        else:
+            req_str = str(reqs)[:300]
+        lines.append(f"    Requirements: {req_str}")
 
-    deliveries = e.get("deliveries", []) or e.get("completed", [])
+    deliveries = e.get("deliveries", "") or e.get("completed", "")
     if deliveries:
-        lines.append(f"    Deliveries: {'; '.join(str(d) for d in deliveries[:5])}")
+        if isinstance(deliveries, list):
+            del_str = "; ".join(str(d) for d in deliveries[:5])
+        else:
+            del_str = str(deliveries)[:300]
+        lines.append(f"    Deliveries: {del_str}")
 
     return "\n".join(lines)
 
