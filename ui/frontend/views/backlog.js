@@ -14,9 +14,10 @@ import { api }  from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { state } from '../stores/state.js';
 
-let _project  = '';
-let _polling  = null;
-let _allSlugs = [];  // cached slug list for combobox datalist
+let _project      = '';
+let _polling      = null;
+let _allSlugs     = [];   // cached slug list for slug chooser
+let _plannerTags  = [];   // cached planner tags [{category_name, name}] for tag picker
 
 export function destroyBacklog() {
   if (_polling) { clearInterval(_polling); _polling = null; }
@@ -278,6 +279,57 @@ export async function renderBacklog(container, projectName) {
       .bl-stat-n.ok     { color:#16a34a }
       .bl-empty { text-align:center;padding:3rem;color:var(--muted);font-size:0.82rem }
 
+      /* ── Requirements bullets ── */
+      .bl-req-row {
+        display:flex;align-items:baseline;gap:5px;padding:2px 0;
+      }
+      .bl-req-bullet { color:var(--muted);flex-shrink:0 }
+      .bl-req-text   { flex:1;font-size:0.78rem;color:var(--text) }
+      .bl-req-remove {
+        border:none;background:transparent;color:var(--muted);
+        font-size:0.68rem;cursor:pointer;padding:0 2px;opacity:0;flex-shrink:0;
+      }
+      .bl-req-row:hover .bl-req-remove { opacity:1 }
+      .bl-req-remove:hover { color:#dc2626;opacity:1 }
+
+      /* ── Code stats bar ── */
+      .bl-code-stats-bar { margin-bottom:0.4rem }
+      .bl-stats-row { display:flex;flex-wrap:wrap;align-items:center;gap:0.3rem }
+      .bl-stat-chip {
+        font-size:0.64rem;padding:1px 6px;border-radius:8px;
+        background:var(--surface3);color:var(--muted);border:1px solid var(--border);
+      }
+      .bl-stat-added   { background:#f0fdf4;color:#16a34a;border-color:#86efac }
+      .bl-stat-removed { background:#fef2f2;color:#dc2626;border-color:#fca5a5 }
+      .bl-stats-files  { font-size:0.68rem;color:var(--muted) }
+      .bl-stats-files summary { cursor:pointer;user-select:none }
+      .bl-stats-file-row { display:flex;align-items:center;gap:4px;padding:1px 4px }
+      .bl-stats-file-path { flex:1;font-family:monospace;font-size:0.68rem;color:var(--text2) }
+
+      /* ── Overlay dropdown ── */
+      .bl-overlay {
+        position:fixed;z-index:9999;
+        background:var(--surface);border:1px solid var(--border);
+        border-radius:var(--radius);box-shadow:0 4px 16px rgba(0,0,0,.18);
+        min-width:200px;max-width:320px;overflow:hidden;
+      }
+      .bl-overlay-input {
+        display:block;width:100%;box-sizing:border-box;
+        font-size:0.8rem;padding:0.45rem 0.65rem;
+        border:none;border-bottom:1px solid var(--border);
+        background:var(--surface);color:var(--text);outline:none;
+      }
+      .bl-overlay-list { max-height:220px;overflow-y:auto }
+      .bl-overlay-item {
+        padding:5px 12px;font-size:0.78rem;cursor:pointer;color:var(--text);
+      }
+      .bl-overlay-item:hover, .bl-overlay-item.active { background:var(--surface2) }
+      .bl-overlay-cat {
+        padding:4px 10px 2px;font-size:0.62rem;font-weight:700;
+        color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+        border-top:1px solid var(--border);
+      }
+
       /* ── Slug combobox ── */
       .bl-slug-wrap { display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer }
       .bl-slug-edit-btn {
@@ -285,10 +337,6 @@ export async function renderBacklog(container, projectName) {
         cursor:pointer;padding:0 2px;opacity:0;transition:opacity .15s;line-height:1;
       }
       .bl-group-header:hover .bl-slug-edit-btn { opacity:1 }
-      .bl-slug-input {
-        font-size:0.9rem;font-weight:800;border:1px solid var(--accent);border-radius:4px;
-        padding:1px 5px;background:var(--surface);color:var(--text);width:180px;
-      }
 
       /* ── Summary inline edit ── */
       .bl-summary-wrap { position:relative }
@@ -317,7 +365,7 @@ export async function renderBacklog(container, projectName) {
 // ── Loaders ───────────────────────────────────────────────────────────────────
 
 async function _loadAll() {
-  await Promise.all([_loadStats(), _loadEntries(), _loadSlugs()]);
+  await Promise.all([_loadStats(), _loadEntries(), _loadSlugs(), _loadPlannerTags()]);
 }
 
 async function _loadSlugs() {
@@ -325,18 +373,15 @@ async function _loadSlugs() {
   try {
     const data = await api.backlog.listSlugs(_project);
     _allSlugs = data.slugs || [];
-    _updateSlugsDatalist();
   } catch { /* non-critical */ }
 }
 
-function _updateSlugsDatalist() {
-  let dl = document.getElementById('bl-all-slugs');
-  if (!dl) {
-    dl = document.createElement('datalist');
-    dl.id = 'bl-all-slugs';
-    document.body.appendChild(dl);
-  }
-  dl.innerHTML = _allSlugs.map(s => `<option value="${_esc(s)}">`).join('');
+async function _loadPlannerTags() {
+  if (!_project) return;
+  try {
+    const data = await api.backlog.listPlannerTags(_project);
+    _plannerTags = Array.isArray(data) ? data : (data.tags || []);
+  } catch { /* non-critical */ }
 }
 
 async function _loadStats() {
@@ -483,6 +528,24 @@ async function _onDeliveryRemove(slug, index, rowEl) {
   }
 }
 
+async function _onAiNewTagRemove(slug, index, chipEl) {
+  try {
+    await api.backlog.patchGroup(_project, slug, { remove_ai_new_tag_index: index });
+    if (chipEl) chipEl.remove();
+  } catch (e) {
+    toast(`Could not remove tag suggestion: ${e.message}`, 'error');
+  }
+}
+
+async function _onRequirementRemove(slug, index, rowEl) {
+  try {
+    await api.backlog.patchGroup(_project, slug, { remove_requirement_index: index });
+    if (rowEl) rowEl.remove();
+  } catch (e) {
+    toast(`Could not remove requirement: ${e.message}`, 'error');
+  }
+}
+
 async function _onTagsUpdate(slug, newTags, tagsRowEl) {
   try {
     await api.backlog.patchGroup(_project, slug, { user_tags: newTags });
@@ -505,6 +568,159 @@ async function _onTagsUpdate(slug, newTags, tagsRowEl) {
   } catch (e) {
     toast(`Tag update failed: ${e.message}`, 'error');
   }
+}
+
+// ── Overlay helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Show a slug-picker overlay anchored to `anchorEl`.
+ * Displays all known slugs in a scrollable list + a free-text input at top.
+ * Calls onConfirm(slug) when the user picks or types a value.
+ */
+function _showSlugPicker(currentSlug, anchorEl, onConfirm) {
+  _closeOverlay();
+  const overlay = document.createElement('div');
+  overlay.id = 'bl-overlay';
+  overlay.className = 'bl-overlay';
+
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = currentSlug;
+  inp.className = 'bl-overlay-input';
+  inp.placeholder = 'Type or choose a use case…';
+
+  const list = document.createElement('div');
+  list.className = 'bl-overlay-list';
+
+  const renderList = (filter = '') => {
+    const f = filter.toLowerCase();
+    const slugs = _allSlugs.filter(s => !f || s.includes(f));
+    list.innerHTML = slugs.length
+      ? slugs.map(s => `<div class="bl-overlay-item${s === currentSlug ? ' active' : ''}" data-val="${_esc(s)}">${_esc(s)}</div>`).join('')
+      : `<div style="padding:6px 10px;color:var(--muted);font-size:0.76rem">No existing use cases</div>`;
+    list.querySelectorAll('.bl-overlay-item').forEach(it => {
+      it.addEventListener('mousedown', e => {
+        e.preventDefault();
+        const val = it.dataset.val;
+        _closeOverlay();
+        onConfirm(val);
+      });
+    });
+  };
+  renderList();
+
+  inp.addEventListener('input', () => renderList(inp.value));
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = inp.value.trim();
+      _closeOverlay();
+      if (val) onConfirm(val);
+    }
+    if (e.key === 'Escape') _closeOverlay();
+  });
+  inp.addEventListener('blur', () => setTimeout(_closeOverlay, 150));
+
+  overlay.appendChild(inp);
+  overlay.appendChild(list);
+  document.body.appendChild(overlay);
+
+  const rect = anchorEl.getBoundingClientRect();
+  overlay.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+  overlay.style.left = `${rect.left  + window.scrollX}px`;
+  inp.focus(); inp.select();
+}
+
+/**
+ * Show a tag-picker overlay anchored to `anchorEl`.
+ * Shows planner tags grouped by category + free-text fallback.
+ * Calls onConfirm(tagStr) with "category:name" format.
+ */
+function _showTagPicker(anchorEl, onConfirm) {
+  _closeOverlay();
+  const overlay = document.createElement('div');
+  overlay.id = 'bl-overlay';
+  overlay.className = 'bl-overlay';
+
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'bl-overlay-input';
+  inp.placeholder = 'Search or type phase:dev, feature:auth…';
+
+  const list = document.createElement('div');
+  list.className = 'bl-overlay-list';
+
+  const renderTagList = (filter = '') => {
+    const f = filter.toLowerCase();
+    // Group planner tags by category
+    const byCategory = {};
+    for (const t of _plannerTags) {
+      const cat = t.category_name || 'tag';
+      const label = `${cat}:${t.name}`;
+      if (!f || label.includes(f)) {
+        (byCategory[cat] = byCategory[cat] || []).push(t);
+      }
+    }
+    const sections = Object.entries(byCategory).map(([cat, tags]) => `
+      <div class="bl-overlay-cat">${_esc(cat)}</div>
+      ${tags.map(t => `<div class="bl-overlay-item" data-val="${_esc(cat)}:${_esc(t.name)}">${_esc(t.name)}</div>`).join('')}
+    `).join('');
+    list.innerHTML = sections || `<div style="padding:6px 10px;color:var(--muted);font-size:0.76rem">No tags found — press Enter to create</div>`;
+    list.querySelectorAll('.bl-overlay-item').forEach(it => {
+      it.addEventListener('mousedown', e => {
+        e.preventDefault();
+        _closeOverlay();
+        onConfirm(it.dataset.val);
+      });
+    });
+  };
+  renderTagList();
+
+  inp.addEventListener('input', () => renderTagList(inp.value));
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = inp.value.trim();
+      _closeOverlay();
+      if (val) onConfirm(val);
+    }
+    if (e.key === 'Escape') _closeOverlay();
+  });
+  inp.addEventListener('blur', () => setTimeout(_closeOverlay, 150));
+
+  overlay.appendChild(inp);
+  overlay.appendChild(list);
+  document.body.appendChild(overlay);
+
+  const rect = anchorEl.getBoundingClientRect();
+  overlay.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+  overlay.style.left = `${rect.left  + window.scrollX}px`;
+  inp.focus();
+}
+
+function _closeOverlay() {
+  const el = document.getElementById('bl-overlay');
+  if (el) el.remove();
+}
+
+async function _loadGroupCodeStats(slug, idx) {
+  const el = document.getElementById(`bl-stats-${idx}`);
+  if (!el) return;
+  try {
+    const s = await api.backlog.codeStats(_project, slug);
+    if (!s.linked_commits && !s.files_changed) { el.innerHTML = ''; return; }
+    const chips = [
+      s.linked_commits ? `<span class="bl-stat-chip">🔗 ${s.linked_commits} commit${s.linked_commits !== 1 ? 's' : ''}</span>` : '',
+      s.files_changed  ? `<span class="bl-stat-chip">📄 ${s.files_changed} file${s.files_changed !== 1 ? 's' : ''}</span>` : '',
+      s.rows_added     ? `<span class="bl-stat-chip bl-stat-added">+${s.rows_added} lines</span>` : '',
+      s.rows_removed   ? `<span class="bl-stat-chip bl-stat-removed">-${s.rows_removed} lines</span>` : '',
+    ].filter(Boolean).join('');
+    const topFiles = s.top_files && s.top_files.length
+      ? `<details class="bl-stats-files"><summary>Top files</summary>${s.top_files.map(f =>
+          `<div class="bl-stats-file-row"><span class="bl-stats-file-path">${_esc(f.path.split('/').pop())}</span><span class="bl-stat-chip bl-stat-added" style="font-size:0.6rem">+${f.added}</span><span class="bl-stat-chip bl-stat-removed" style="font-size:0.6rem">-${f.removed}</span></div>`
+        ).join('')}</details>` : '';
+    el.innerHTML = `<div class="bl-stats-row">${chips}${topFiles}</div>`;
+  } catch { el.innerHTML = ''; }
 }
 
 // ── Renderers ─────────────────────────────────────────────────────────────────
@@ -573,31 +789,15 @@ function _renderGroups(groups) {
     if (apAllBtn) apAllBtn.addEventListener('click', () => _onGroupApprove(grp.slug));
     if (rjAllBtn) rjAllBtn.addEventListener('click', () => _onGroupReject(grp.slug));
 
-    // Slug rename — edit button inside .bl-slug-wrap
+    // Slug rename — edit button inside .bl-slug-wrap → shows overlay dropdown
     const slugWrap = grpEl.querySelector('.bl-slug-wrap');
     const slugEditBtn = grpEl.querySelector('.bl-slug-edit-btn');
     if (slugWrap && slugEditBtn) {
       slugEditBtn.addEventListener('click', e => {
         e.stopPropagation();
         const currentSlug = slugWrap.dataset.slug || grp.slug;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = currentSlug;
-        input.className = 'bl-slug-input';
-        input.setAttribute('list', 'bl-all-slugs');
-        slugWrap.style.display = 'none';
-        slugWrap.parentNode.insertBefore(input, slugWrap.nextSibling);
-        input.focus(); input.select();
-        const confirm = async () => {
-          const newSlug = input.value.trim();
-          input.remove();
-          slugWrap.style.display = '';
+        _showSlugPicker(currentSlug, slugWrap, async newSlug => {
           await _onSlugChange(currentSlug, newSlug, slugWrap);
-        };
-        input.addEventListener('blur', confirm);
-        input.addEventListener('keydown', e2 => {
-          if (e2.key === 'Enter') { e2.preventDefault(); input.blur(); }
-          if (e2.key === 'Escape') { input.remove(); slugWrap.style.display = ''; }
         });
       });
     }
@@ -644,48 +844,52 @@ function _renderGroups(groups) {
     // Tag chips — remove user tag
     const tagsRow = grpEl.querySelector('.bl-tags-row');
     if (tagsRow) {
-      tagsRow.querySelectorAll('.bl-chip-remove').forEach(btn => {
+      // User tag remove
+      tagsRow.querySelectorAll('[data-tag-idx]').forEach(btn => {
         btn.addEventListener('click', e => {
           e.stopPropagation();
           const idx = parseInt(btn.dataset.tagIdx, 10);
-          const currentTags = [...(grp.user_tags || [])];
-          currentTags.splice(idx, 1);
-          _onTagsUpdate(grp.slug, currentTags, tagsRow);
+          const updated = [...(grp.user_tags || [])];
+          updated.splice(idx, 1);
+          _onTagsUpdate(grp.slug, updated, tagsRow);
         });
       });
 
-      // + tag button
+      // AI-new tag (yellow) remove
+      tagsRow.querySelectorAll('[data-ai-new-idx]').forEach(btn => {
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.aiNewIdx, 10);
+          _onAiNewTagRemove(grp.slug, idx, btn.closest('span'));
+        });
+      });
+
+      // + tag button → tag picker overlay
       const addBtn = tagsRow.querySelector('.bl-tag-add-btn');
       if (addBtn) {
         addBtn.addEventListener('click', e => {
           e.stopPropagation();
-          addBtn.style.display = 'none';
-          const wrap = document.createElement('span');
-          wrap.className = 'bl-tag-input-wrap';
-          const inp = document.createElement('input');
-          inp.type = 'text';
-          inp.className = 'bl-tag-input';
-          inp.placeholder = 'phase:dev or feature:auth';
-          wrap.appendChild(inp);
-          tagsRow.insertBefore(wrap, addBtn);
-          inp.focus();
-          const confirm = async () => {
-            const val = inp.value.trim();
-            wrap.remove();
-            addBtn.style.display = '';
+          _showTagPicker(addBtn, async val => {
             if (val) {
               const newTags = [...(grp.user_tags || []), val];
               await _onTagsUpdate(grp.slug, newTags, tagsRow);
             }
-          };
-          inp.addEventListener('blur', confirm);
-          inp.addEventListener('keydown', e2 => {
-            if (e2.key === 'Enter') { e2.preventDefault(); inp.blur(); }
-            if (e2.key === 'Escape') { wrap.remove(); addBtn.style.display = ''; }
           });
         });
       }
     }
+
+    // Requirements remove buttons
+    grpEl.querySelectorAll('.bl-req-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.reqIdx, 10);
+        _onRequirementRemove(grp.slug, idx, btn.closest('.bl-req-row'));
+      });
+    });
+
+    // Load code stats for this group (non-blocking)
+    _loadGroupCodeStats(grp.slug, gi);
 
     // Per-item controls
     (grp.items || []).forEach(item => {
@@ -737,12 +941,11 @@ function _groupHtml(grp, idx = 0) {
   const userTags   = grp.user_tags        || [];
   const aiExisting = grp.ai_existing_tags || [];
   const aiNew      = grp.ai_new_tags      || [];
-  const hasAnyTags = userTags.length || aiExisting.length || aiNew.length;
   const tagChips = `
     <div class="bl-tags-row" data-tags-slug="${_esc(slug)}">
       ${userTags.map((t,i) => `<span class="bl-chip bl-chip-user">🏷 ${_esc(t)}<button class="bl-chip-remove" data-tag-idx="${i}" title="Remove tag">×</button></span>`).join('')}
       ${aiExisting.map(t => `<span class="bl-chip bl-chip-existing">● ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
-      ${aiNew.map(t => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
+      ${aiNew.map((t,i) => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}<button class="bl-chip-remove" data-ai-new-idx="${i}" title="Dismiss suggestion">×</button></span>`).join('')}
       <button class="bl-tag-add-btn" title="Add tag">+ tag</button>
     </div>`;
 
@@ -755,12 +958,16 @@ function _groupHtml(grp, idx = 0) {
       <button class="bl-summary-edit-btn" title="Edit summary">✎</button>
     </div>` : '';
 
-  // Requirements block
+  // Requirements block — each bullet has a remove button
   const reqs = grp.requirements || [];
   const reqsHtml = reqs.length ? `
     <div class="bl-group-reqs">
       <div class="bl-group-reqs-label">Requirements</div>
-      ${reqs.map(r => `<div style="padding:1px 0">• ${_esc(r)}</div>`).join('')}
+      ${reqs.map((r, i) => `<div class="bl-req-row">
+        <span class="bl-req-bullet">•</span>
+        <span class="bl-req-text">${_esc(r)}</span>
+        <button class="bl-req-remove" data-req-idx="${i}" title="Remove">✕</button>
+      </div>`).join('')}
     </div>` : '';
 
   // Deliveries table (items sorted: completed first, in-progress last, max 7)
@@ -789,7 +996,7 @@ function _groupHtml(grp, idx = 0) {
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
           <span class="bl-slug-wrap" data-slug="${_esc(slug)}">
             <span class="bl-group-slug bl-slug-text">${_esc(slug)}</span>
-            <button class="bl-slug-edit-btn" title="Rename group">✎</button>
+            <button class="bl-slug-edit-btn" title="Change use case">✎</button>
           </span>
           ${slugType === 'new' ? '<span class="bl-chip bl-chip-type-new">NEW</span>' : ''}
           <span class="bl-group-counts">${countStr}</span>
@@ -802,6 +1009,7 @@ function _groupHtml(grp, idx = 0) {
       </div>
       <div class="bl-group-body">
         ${tagChips}
+        <div class="bl-code-stats-bar" id="bl-stats-${idx}"></div>
         ${summaryHtml}
         ${reqsHtml}
         ${deliveriesHtml}

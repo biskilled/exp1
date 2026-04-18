@@ -40,10 +40,12 @@ class GroupActionRequest(BaseModel):
 
 
 class GroupMetaPatchRequest(BaseModel):
-    new_slug:              Optional[str]       = None   # rename the group
-    summary:               Optional[str]       = None   # update > Summary: line
-    user_tags:             Optional[list[str]] = None   # replace > User tags: line
-    remove_delivery_index: Optional[int]       = None   # remove one synthesized delivery by index
+    new_slug:                 Optional[str]       = None   # rename the group
+    summary:                  Optional[str]       = None   # update > Summary: line
+    user_tags:                Optional[list[str]] = None   # replace > User tags: line
+    remove_delivery_index:    Optional[int]       = None   # remove one synthesized delivery by index
+    remove_ai_new_tag_index:  Optional[int]       = None   # dismiss one AI-suggested new tag
+    remove_requirement_index: Optional[int]       = None   # remove one requirement bullet
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -411,6 +413,32 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
                 else:
                     chunk = _re.sub(r"^> Deliveries:.*\n?", "", chunk, flags=_re.MULTILINE)
 
+        if body.remove_ai_new_tag_index is not None:
+            m = _re.search(r"^> AI new:\s*(.+)$", chunk, _re.MULTILINE)
+            if m:
+                parts = [p.strip() for p in m.group(1).split(",") if p.strip()]
+                idx = body.remove_ai_new_tag_index
+                if 0 <= idx < len(parts):
+                    parts.pop(idx)
+                new_val = ", ".join(parts)
+                if new_val:
+                    chunk = _re.sub(r"^> AI new:.*$", f"> AI new: {new_val}", chunk, flags=_re.MULTILINE)
+                else:
+                    chunk = _re.sub(r"^> AI new:.*\n?", "", chunk, flags=_re.MULTILINE)
+
+        if body.remove_requirement_index is not None:
+            m = _re.search(r"^> Requirements:\s*(.+)$", chunk, _re.MULTILINE)
+            if m:
+                parts = [p.strip() for p in m.group(1).split(";") if p.strip()]
+                idx = body.remove_requirement_index
+                if 0 <= idx < len(parts):
+                    parts.pop(idx)
+                new_val = "; ".join(parts)
+                if new_val:
+                    chunk = _re.sub(r"^> Requirements:.*$", f"> Requirements: {new_val}", chunk, flags=_re.MULTILINE)
+                else:
+                    chunk = _re.sub(r"^> Requirements:.*\n?", "", chunk, flags=_re.MULTILINE)
+
         if body.new_slug is not None:
             new_slug = body.new_slug.strip().lower()
             new_slug = _re.sub(r"[^a-z0-9\-]", "-", new_slug).strip("-") or "general"
@@ -441,6 +469,91 @@ async def get_use_case_slugs(project: str):
     group_slugs = [g["slug"] for g in groups if g.get("slug")]
     all_slugs = sorted(set(file_slugs + group_slugs))
     return {"project": project, "slugs": all_slugs}
+
+
+@router.get("/{project}/backlog/code-stats/{slug}")
+async def get_group_code_stats(project: str, slug: str):
+    """Return commit code statistics for all prompts in a backlog group.
+
+    Joins mem_mrr_prompts → mem_mrr_commits → mem_mrr_commits_code by backlog_ref.
+    Returns: linked_commits, files_changed, rows_added, rows_removed, top_files.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    from core.database import db
+
+    _empty = {"slug": slug, "linked_commits": 0, "files_changed": 0,
+              "rows_added": 0, "rows_removed": 0, "top_files": []}
+
+    if not db.is_available():
+        return _empty
+
+    bl = MemoryBacklog(project)
+    groups = bl.parse_backlog()
+    group = next((g for g in groups if g.get("slug") == slug), None)
+    if not group:
+        return _empty
+
+    prompt_refs = [
+        item["ref_id"] for item in group.get("items", [])
+        if item.get("src_label") == "PROMPTS" and item.get("ref_id")
+    ]
+    if not prompt_refs:
+        return _empty
+
+    project_id = db.get_or_create_project_id(project)
+    placeholders = ",".join(["%s"] * len(prompt_refs))
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""SELECT COUNT(DISTINCT c.commit_hash),
+                               COUNT(DISTINCT cc.file_path),
+                               COALESCE(SUM(cc.rows_added), 0),
+                               COALESCE(SUM(cc.rows_removed), 0)
+                        FROM mem_mrr_prompts p
+                        JOIN mem_mrr_commits c
+                             ON c.prompt_id = p.id AND c.project_id = %s
+                        LEFT JOIN mem_mrr_commits_code cc
+                             ON cc.commit_hash = c.commit_hash AND cc.project_id = %s
+                        WHERE p.project_id = %s AND p.backlog_ref IN ({placeholders})""",
+                    (project_id, project_id, project_id, *prompt_refs),
+                )
+                row = cur.fetchone() or (0, 0, 0, 0)
+                commit_count, files_changed, rows_added, rows_removed = row
+
+                cur.execute(
+                    f"""SELECT cc.file_path,
+                               COUNT(*) AS chg,
+                               COALESCE(SUM(cc.rows_added), 0),
+                               COALESCE(SUM(cc.rows_removed), 0)
+                        FROM mem_mrr_prompts p
+                        JOIN mem_mrr_commits c
+                             ON c.prompt_id = p.id AND c.project_id = %s
+                        JOIN mem_mrr_commits_code cc
+                             ON cc.commit_hash = c.commit_hash AND cc.project_id = %s
+                        WHERE p.project_id = %s AND p.backlog_ref IN ({placeholders})
+                        GROUP BY cc.file_path
+                        ORDER BY chg DESC, 3 DESC LIMIT 5""",
+                    (project_id, project_id, project_id, *prompt_refs),
+                )
+                top_files = [
+                    {"path": r[0], "changes": int(r[1]),
+                     "added": int(r[2]), "removed": int(r[3])}
+                    for r in cur.fetchall()
+                ]
+    except Exception as e:
+        log.warning(f"get_group_code_stats({slug}): {e}")
+        return _empty
+
+    return {
+        "slug":           slug,
+        "linked_commits": int(commit_count or 0),
+        "files_changed":  int(files_changed or 0),
+        "rows_added":     int(rows_added or 0),
+        "rows_removed":   int(rows_removed or 0),
+        "top_files":      top_files,
+    }
 
 
 @router.delete("/{project}/backlog/{ref_id}")

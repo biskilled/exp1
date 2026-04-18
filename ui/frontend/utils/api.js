@@ -514,6 +514,8 @@ api.backlog = {
   deleteEntry:       (project, refId)         => _del(`/memory/${enc(project)}/backlog/${enc(refId)}`),
   listSlugs:         (project)               => _get(`/memory/${enc(project)}/use-case-slugs`),
   getUseCaseSection: (project, ref)           => _get(`/memory/${enc(project)}/use-case-section?ref=${enc(ref)}`),
+  codeStats:         (project, slug)          => _get(`/memory/${enc(project)}/backlog/code-stats/${enc(slug)}`),
+  listPlannerTags:   (project)               => _get(`/tags?project=${enc(project)}`),
 };
 
 api.pipeline = {

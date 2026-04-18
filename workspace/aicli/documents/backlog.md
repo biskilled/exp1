@@ -8,8 +8,7 @@
 > Total: 30 prompts
 > User tags: phase:bugfix; feature:ui
 > AI existing:
-> AI new: [bug:ui-rendering]
-> Requirements: Action options too small and hard to see; Archive feature prevents reactivation of items; Request to add 3-dot menu for task details (remark, due date, created, archived status); Request to add tags to new chats for association; History should display full prompt and LLM response, not truncated text
+> Requirements: Archive feature prevents reactivation of items; Request to add 3-dot menu for task details (remark, due date, created, archived status); Request to add tags to new chats for association; History should display full prompt and LLM response, not truncated text
 
 
   PROMPTS P102267 [ ] [feature] [in-progress] [1] — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
