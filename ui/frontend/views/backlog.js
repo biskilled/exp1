@@ -286,20 +286,54 @@ export async function renderBacklog(container, projectName) {
       .bl-stat-n.ok     { color:#16a34a }
       .bl-empty { text-align:center;padding:3rem;color:var(--muted);font-size:0.82rem }
 
-      /* ── Undo toast ── */
-      .bl-undo-toast {
-        position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);
-        background:#1f2937;color:#f9fafb;
-        padding:0.5rem 1rem;border-radius:8px;
-        display:flex;align-items:center;gap:0.75rem;
-        font-size:0.8rem;z-index:10000;
-        box-shadow:0 4px 12px rgba(0,0,0,.25);
+      /* ── Undo panel ── */
+      .bl-undo-panel {
+        position:fixed;bottom:1rem;right:1rem;width:300px;
+        background:#1e293b;border:1px solid #334155;border-radius:8px;
+        z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.4);
       }
-      .bl-undo-btn {
-        background:var(--accent);color:#fff;border:none;border-radius:4px;
-        padding:2px 10px;cursor:pointer;font-size:0.75rem;font-weight:700;
+      .bl-undo-panel-hdr {
+        display:flex;justify-content:space-between;align-items:center;
+        padding:0.4rem 0.75rem;font-size:0.72rem;color:#94a3b8;
+        border-bottom:1px solid #334155;
       }
-      .bl-undo-btn:hover { opacity:.85 }
+      .bl-undo-row {
+        display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.75rem;
+        border-bottom:1px solid #283040;font-size:0.78rem;color:#cbd5e1;
+      }
+      .bl-undo-row:last-child { border-bottom:none }
+      .bl-undo-row-btn {
+        background:#334155;border:none;color:#f8fafc;border-radius:4px;
+        padding:1px 6px;cursor:pointer;font-size:0.78rem;flex-shrink:0;
+      }
+      .bl-undo-row-btn:hover { background:#475569 }
+      .bl-undo-clear-btn { background:none;border:none;color:#64748b;cursor:pointer;font-size:1rem }
+
+      /* ── Use case open items section ── */
+      .bl-uc-section { margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid #2d3748 }
+      .bl-uc-section-title {
+        font-size:0.7rem;color:#64748b;text-transform:uppercase;
+        letter-spacing:.07em;margin-bottom:0.4rem;
+      }
+      .bl-uc-badges { display:flex;gap:0.5rem;margin-bottom:0.4rem;flex-wrap:wrap }
+      .bl-uc-badge {
+        font-size:0.72rem;padding:2px 8px;border-radius:10px;
+        background:#1e3347;color:#60a5fa;
+      }
+      .bl-uc-badge.empty { background:#1e293b;color:#475569 }
+      .bl-uc-item-row {
+        display:flex;align-items:flex-start;gap:0.4rem;
+        padding:0.2rem 0;font-size:0.77rem;color:#cbd5e1;
+      }
+      .bl-uc-item-score { color:#f59e0b;font-size:0.68rem;flex-shrink:0;min-width:2.8rem }
+      .bl-uc-item-body { flex:1;min-width:0 }
+      .bl-uc-item-desc { line-height:1.35 }
+      .bl-uc-item-ref { font-size:0.67rem;color:#475569 }
+      .bl-uc-item-remove {
+        background:none;border:none;color:#475569;cursor:pointer;
+        padding:0 3px;flex-shrink:0;line-height:1;
+      }
+      .bl-uc-item-remove:hover { color:#ef4444 }
 
       /* ── Requirements bullets ── */
       .bl-req-row {
@@ -553,24 +587,44 @@ async function _onSummaryEdit(slug, newText, summaryEl) {
 
 function _pushUndo(label, undoFn) {
   _undoStack.unshift({ label, fn: undoFn });
-  if (_undoStack.length > 15) _undoStack.pop();
-  _showUndoToast(label);
+  if (_undoStack.length > 5) _undoStack.pop();
+  _renderUndoPanel();
 }
 
-function _showUndoToast(label) {
-  const existing = document.getElementById('bl-undo-toast');
-  if (existing) existing.remove();
-  const t = document.createElement('div');
-  t.id = 'bl-undo-toast';
-  t.className = 'bl-undo-toast';
-  t.innerHTML = `<span>${_esc(label)}</span><button class="bl-undo-btn">Undo</button>`;
-  document.body.appendChild(t);
-  t.querySelector('.bl-undo-btn').addEventListener('click', () => {
-    t.remove();
-    const op = _undoStack.shift();
-    if (op) op.fn();
+function _renderUndoPanel() {
+  let panel = document.getElementById('bl-undo-panel');
+  if (!_undoStack.length) {
+    if (panel) panel.remove();
+    return;
+  }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'bl-undo-panel';
+    panel.className = 'bl-undo-panel';
+    document.body.appendChild(panel);
+  }
+  panel.innerHTML = `
+    <div class="bl-undo-panel-hdr">
+      <span>Undo history</span>
+      <button class="bl-undo-clear-btn" title="Clear all">×</button>
+    </div>
+    ${_undoStack.map((op, i) => `
+      <div class="bl-undo-row">
+        <button class="bl-undo-row-btn" data-idx="${i}">↩</button>
+        <span>${_esc(op.label)}</span>
+      </div>`).join('')}`;
+  panel.querySelector('.bl-undo-clear-btn').addEventListener('click', () => {
+    _undoStack.length = 0;
+    panel.remove();
   });
-  setTimeout(() => { if (t.parentNode) t.remove(); }, 6000);
+  panel.querySelectorAll('.bl-undo-row-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = parseInt(btn.dataset.idx, 10);
+      const op = _undoStack.splice(i, 1)[0];
+      if (op) op.fn();
+      _renderUndoPanel();
+    });
+  });
 }
 
 async function _onDeliveryRemove(slug, index, desc, rowEl) {
@@ -805,6 +859,59 @@ async function _loadGroupCodeStats(slug, idx) {
   } catch { el.innerHTML = ''; }
 }
 
+// ── Use case item loaders ──────────────────────────────────────────────────────
+
+async function _loadUseCaseItems(slug, containerEl) {
+  if (!containerEl) return;
+  try {
+    const data = await api.backlog.listUseCaseItems(_project, slug);
+    const openItems = data.open_items || [];
+    const openBugs  = data.open_bugs  || [];
+    if (!openItems.length && !openBugs.length) { containerEl.innerHTML = ''; return; }
+
+    const itemRow = (item, section) => `
+      <div class="bl-uc-item-row" data-ref="${_esc(item.ref_id)}" data-section="${_esc(section)}">
+        <span class="bl-uc-item-score">AI:${item.ai_score ?? '?'}</span>
+        <div class="bl-uc-item-body">
+          <div class="bl-uc-item-desc">${_esc(item.desc)}</div>
+          ${item.ref_id ? `<div class="bl-uc-item-ref">${_esc(item.ref_id)}</div>` : ''}
+        </div>
+        <button class="bl-uc-item-remove" title="Remove from use case">✕</button>
+      </div>`;
+
+    containerEl.innerHTML = `
+      <div class="bl-uc-section">
+        <div class="bl-uc-section-title">── Use case open items ──────────────────────────</div>
+        <div class="bl-uc-badges">
+          <span class="bl-uc-badge${!openItems.length ? ' empty' : ''}">● Open Items (${openItems.length})</span>
+          <span class="bl-uc-badge${!openBugs.length ? ' empty' : ''}">● Open Bugs (${openBugs.length})</span>
+        </div>
+        ${openItems.map(it => itemRow(it, 'Open Items')).join('')}
+        ${openBugs.map(it => itemRow(it, 'Open Bugs')).join('')}
+      </div>`;
+
+    containerEl.querySelectorAll('.bl-uc-item-remove').forEach(btn => {
+      const row     = btn.closest('.bl-uc-item-row');
+      const refId   = row.dataset.ref;
+      const section = row.dataset.section;
+      btn.addEventListener('click', () => _onUseCaseItemRemove(slug, refId, section, row, containerEl));
+    });
+  } catch { containerEl.innerHTML = ''; }
+}
+
+async function _onUseCaseItemRemove(slug, refId, section, rowEl, containerEl) {
+  try {
+    const resp = await api.backlog.deleteUseCaseItem(_project, { slug, ref_id: refId });
+    rowEl.remove();
+    const restoredSection = resp.section || section;
+    const deletedText     = resp.deleted_text;
+    _pushUndo(`Removed from ${slug}: ${refId}`, async () => {
+      await api.backlog.restoreUseCaseItem(_project, { slug, section: restoredSection, text: deletedText });
+      await _loadUseCaseItems(slug, containerEl);
+    });
+  } catch (e) { toast(`Could not remove item: ${e.message}`, 'error'); }
+}
+
 // ── Renderers ─────────────────────────────────────────────────────────────────
 
 function _renderCounters(data) {
@@ -976,6 +1083,12 @@ function _renderGroups(groups) {
     // Load code stats for this group (non-blocking)
     _loadGroupCodeStats(grp.slug, gi);
 
+    // Load use case open items for groups that have a file (non-blocking)
+    if (_fileSlugs.has(grp.slug)) {
+      const ucEl = document.getElementById(`bl-uc-${grp.slug}`);
+      if (ucEl) _loadUseCaseItems(grp.slug, ucEl);
+    }
+
     // Per-item controls
     (grp.items || []).forEach(item => {
       const card = document.getElementById(`bl-card-${item.ref_id}`);
@@ -1100,6 +1213,7 @@ function _groupHtml(grp, idx = 0) {
         ${deliveriesHtml}
         ${itemsDivider}
         ${itemsBodyHtml || '<div style="color:var(--muted);font-size:0.77rem;padding:0.4rem 0">No items</div>'}
+        <div id="bl-uc-${_esc(slug)}"></div>
       </div>
     </div>`;
 }

@@ -700,50 +700,15 @@ class MemoryBacklog:
         return "\n".join(lines) if lines else "No existing use cases."
 
     def _build_system_prompt(self, p_desc: str, uc_context: str, source_type: str = "prompts") -> str:
-        if source_type == "commits":
-            extra = (
-                "These are standalone commits (no user session) — CI/CD, merges, direct pushes.\n"
-                "Use the CODE CHANGES (file/class/method names) to infer action items.\n"
-                "Deliveries are already done (the commit is the delivery).\n"
-                "Set APPROVE to 'x' automatically — commit entries do not require user review.\n"
-            )
-        else:
-            extra = (
-                "LINKED COMMIT sections show code changes made during this session.\n"
-                "Include those as 'code' deliveries and reference method/class names where relevant.\n"
-                "If LINKED COMMIT sections are absent, the session produced no code changes.\n"
-            )
-
-        return f"""{p_desc}
-
-{extra}
-Active use cases for matching:
-{uc_context}
-
-MANDATORY TAGGING RULES (both tags required on every entry):
-1. ai_match (use case tag): MUST be set to an existing slug, a new slug, or 'none' only if
-   the entry is purely internal/chore with no user value.
-   - type: "existing" if it matches one of the active use cases above
-   - type: "new" if it represents a new capability not yet in the list
-   - type: "none" only for pure chore/system work (rare)
-2. classify (work type tag): MUST be exactly one of: bug | feature | task
-   - bug: fixes broken behaviour
-   - feature: adds new user-facing capability
-   - task: infrastructure, refactor, docs, chore
-
-Return a JSON array. Each element must have these exact keys:
-{{
-  "ref_id": "<placeholder, will be filled>",
-  "date": "YYYY/MM/DD",
-  "summary": "one-line description (max 120 chars)",
-  "requirements": ["requirement 1", "..."],
-  "deliveries": [{{"type": "code|docs|design", "desc": "what was produced/changed"}}],
-  "action_items": [{{"desc": "what still needs to be done", "acceptance": "done when..."}}],
-  "classify": "bug|feature|task",
-  "ai_match": {{"type": "existing|new|none", "slug": "slug-name-or-empty"}}
-}}
-
-Return ONLY the JSON array. No markdown fences. No extra text."""
+        sp      = self._cfg.get("system_prompt", {})
+        extra   = sp.get("commits_context", "") if source_type == "commits" else sp.get("prompts_context", "")
+        tagging = sp.get("tagging_rules", "")
+        schema  = sp.get("json_schema", "")
+        return (
+            f"{p_desc}\n\n{extra}\n"
+            f"Active use cases for matching:\n{uc_context}\n\n"
+            f"{tagging}\n{schema}"
+        ).strip()
 
     def _build_user_prompt(
         self, source_type: str, formatted: str, ref_ids: list[str]

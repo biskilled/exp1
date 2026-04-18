@@ -51,6 +51,17 @@ class GroupMetaPatchRequest(BaseModel):
     restore_ai_new_tag:       Optional[str]       = None   # append an AI new tag (undo support)
 
 
+class UseCaseItemDeleteRequest(BaseModel):
+    slug:   str
+    ref_id: str
+
+
+class UseCaseItemRestoreRequest(BaseModel):
+    slug:    str
+    section: str   # "Open Items" | "Open Bugs"
+    text:    str   # block text to re-insert
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/{project}/sync-backlog")
@@ -1106,6 +1117,193 @@ async def regenerate_use_case(
 
     _regenerate_internal_usage(uc_dir, slug, project_id)
     return {"status": "regenerated", "slug": slug, "project": project}
+
+
+@router.get("/{project}/use-case-items/{slug}")
+async def list_use_case_items(project: str, slug: str):
+    """Return Open Items and Open Bugs from use_cases/{slug}.md as structured JSON.
+
+    Each item: {ai_score, desc, ref_id, acceptance}.
+    Results are sorted by ai_score descending within each section.
+    """
+    from memory.memory_backlog import MemoryBacklog
+
+    bl = MemoryBacklog(project)
+    uc_dir = bl._use_cases_dir()
+    path = uc_dir / f"{slug}.md"
+    if not path.exists():
+        return {"slug": slug, "open_items": [], "open_bugs": []}
+
+    content = path.read_text(errors="ignore")
+
+    def _parse_section(section: str) -> list[dict]:
+        sec_re = re.compile(rf"^## {re.escape(section)}\s*$", re.MULTILINE)
+        m = sec_re.search(content)
+        if not m:
+            return []
+        start = m.end()
+        m_next = re.search(r"^\n## ", content[start:], re.MULTILINE)
+        end = start + m_next.start() if m_next else len(content)
+        sec_text = content[start:end]
+
+        items: list[dict] = []
+        item_re = re.compile(r"^\- \[.?\] AI:(\d+)\s+(.+)$", re.MULTILINE)
+        for im in item_re.finditer(sec_text):
+            ai_score = int(im.group(1))
+            desc = im.group(2).strip()
+            ref_id = ""
+            acceptance = ""
+            rest = sec_text[im.end():]
+            for sl in rest.split("\n"):
+                if not sl:
+                    break
+                if sl.startswith("  "):
+                    s = sl.strip()
+                    if s.startswith("Linked:"):
+                        ref_id = s[7:].strip()
+                    elif s.startswith("Acceptance:"):
+                        acceptance = s[11:].strip()
+                else:
+                    break
+            items.append({"ai_score": ai_score, "desc": desc, "ref_id": ref_id, "acceptance": acceptance})
+        return sorted(items, key=lambda x: -x["ai_score"])
+
+    return {
+        "slug":       slug,
+        "open_items": _parse_section("Open Items"),
+        "open_bugs":  _parse_section("Open Bugs"),
+    }
+
+
+@router.delete("/{project}/use-case-item")
+async def delete_use_case_item(project: str, body: UseCaseItemDeleteRequest):
+    """Remove a single item from ## Open Items or ## Open Bugs in use_cases/{slug}.md.
+
+    Returns {status, ref_id, slug, section, deleted_text} — deleted_text enables undo via POST.
+    """
+    from memory.memory_backlog import MemoryBacklog
+
+    bl = MemoryBacklog(project)
+    uc_dir = bl._use_cases_dir()
+    path = uc_dir / f"{body.slug}.md"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"use_cases/{body.slug}.md not found")
+
+    content = path.read_text(errors="ignore")
+
+    found_section = ""
+    new_content = content
+    deleted_text = ""
+
+    for section in ("Open Items", "Open Bugs"):
+        sec_re = re.compile(rf"^## {re.escape(section)}\s*$", re.MULTILINE)
+        m_sec = sec_re.search(content)
+        if not m_sec:
+            continue
+        start = m_sec.end()
+        m_next = re.search(r"^\n## ", content[start:], re.MULTILINE)
+        end = start + m_next.start() if m_next else len(content)
+        sec_text = content[start:end]
+
+        # Find item block containing Linked: {ref_id}
+        lines = sec_text.split("\n")
+        block_start = None
+        block_end = None
+        i = 0
+        while i < len(lines):
+            if re.match(r"^\- \[.?\] AI:\d+", lines[i]):
+                j = i + 1
+                while j < len(lines) and not re.match(r"^\- \[.?\] AI:\d+", lines[j]):
+                    j += 1
+                block = "\n".join(lines[i:j])
+                if f"Linked: {body.ref_id}" in block:
+                    block_start, block_end = i, j
+                    deleted_text = block
+                    break
+                i = j
+            else:
+                i += 1
+
+        if block_start is None:
+            continue
+
+        found_section = section
+        # Strip trailing blank lines from deleted block but keep one trailing newline
+        stripped_deleted = deleted_text.rstrip("\n")
+        deleted_text = stripped_deleted + "\n"
+
+        # Rebuild section without the block — also strip the extra blank line after removal
+        new_lines = lines[:block_start] + lines[block_end:]
+        # Remove double blank lines that may result from deletion
+        cleaned: list[str] = []
+        prev_blank = False
+        for ln in new_lines:
+            is_blank = not ln.strip()
+            if is_blank and prev_blank:
+                continue
+            cleaned.append(ln)
+            prev_blank = is_blank
+        new_sec_text = "\n".join(cleaned)
+        new_content = content[:start] + new_sec_text + content[end:]
+        break
+
+    if not found_section:
+        raise HTTPException(
+            status_code=404,
+            detail=f"ref_id '{body.ref_id}' not found in Open Items or Open Bugs of {body.slug}.md",
+        )
+
+    path.write_text(new_content)
+    return {
+        "status":       "deleted",
+        "ref_id":       body.ref_id,
+        "slug":         body.slug,
+        "section":      found_section,
+        "deleted_text": deleted_text,
+    }
+
+
+@router.post("/{project}/use-case-item")
+async def restore_use_case_item(project: str, body: UseCaseItemRestoreRequest):
+    """Re-insert a previously deleted item block into a use case section (undo support).
+
+    Inserts at the top of the named section (after comment lines), before existing items.
+    """
+    from memory.memory_backlog import MemoryBacklog
+
+    bl = MemoryBacklog(project)
+    uc_dir = bl._use_cases_dir()
+    path = uc_dir / f"{body.slug}.md"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"use_cases/{body.slug}.md not found")
+
+    content = path.read_text(errors="ignore")
+
+    sec_re = re.compile(rf"^## {re.escape(body.section)}\s*$", re.MULTILINE)
+    m_sec = sec_re.search(content)
+    if not m_sec:
+        raise HTTPException(status_code=404, detail=f"Section '## {body.section}' not found in {body.slug}.md")
+
+    # Insert after comment/blank lines at section start
+    insert_pos = m_sec.end()
+    rest = content[insert_pos:]
+    lines = rest.split("\n")
+    skip = 0
+    for ln in lines:
+        if not ln.strip() or ln.strip().startswith("<!--"):
+            skip += 1
+        else:
+            break
+    skip_len = sum(len(l) + 1 for l in lines[:skip])
+    insert_pos += skip_len
+
+    text = body.text
+    if not text.endswith("\n"):
+        text += "\n"
+
+    new_content = content[:insert_pos] + "\n" + text + content[insert_pos:]
+    path.write_text(new_content)
+    return {"status": "restored", "slug": body.slug, "section": body.section}
 
 
 @router.get("/{project}/use-case-section")

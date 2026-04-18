@@ -6,7 +6,7 @@
 ## **ui-rendering-bugs** · 26/03/10-00:11 [ ] (claude)
 > Type: new
 > Total: 30 prompts
-> User tags: phase:bugfix; feature:ui
+> User tags: phase:bugfix
 > AI existing:
 > Requirements: Archive feature prevents reactivation of items; Request to add 3-dot menu for task details (remark, due date, created, archived status); Request to add tags to new chats for association; History should display full prompt and LLM response, not truncated text
 

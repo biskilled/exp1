@@ -251,3 +251,40 @@ work_items:
     feature:  feature
     bug:      bug
     task:     feature
+
+
+# ── System prompt fragments (used by _build_system_prompt in memory_backlog.py) ──────────
+system_prompt:
+  prompts_context: |
+    LINKED COMMIT sections show code changes made during this session.
+    Include those as 'code' deliveries and reference method/class names where relevant.
+    If LINKED COMMIT sections are absent, the session produced no code changes.
+  commits_context: |
+    These are standalone commits (no user session) — CI/CD, merges, direct pushes.
+    Use the CODE CHANGES (file/class/method names) to infer action items.
+    Deliveries are already done (the commit is the delivery).
+    Set APPROVE to 'x' automatically — commit entries do not require user review.
+  tagging_rules: |
+    MANDATORY TAGGING RULES (both tags required on every entry):
+    1. ai_match (use case tag): MUST be set to an existing slug, a new slug, or 'none' only if
+       the entry is purely internal/chore with no user value.
+       - type: "existing" if it matches one of the active use cases above
+       - type: "new" if it represents a new capability not yet in the list
+       - type: "none" only for pure chore/system work (rare)
+    2. classify (work type tag): MUST be exactly one of: bug | feature | task
+       - bug: fixes broken behaviour
+       - feature: adds new user-facing capability
+       - task: infrastructure, refactor, docs, chore
+  json_schema: |
+    Return a JSON array. Each element must have these exact keys:
+    {
+      "ref_id": "<placeholder, will be filled>",
+      "date": "YYYY/MM/DD",
+      "summary": "one-line description (max 120 chars)",
+      "requirements": ["requirement 1", "..."],
+      "deliveries": [{"type": "code|docs|design", "desc": "what was produced/changed"}],
+      "action_items": [{"desc": "what still needs to be done", "acceptance": "done when..."}],
+      "classify": "bug|feature|task",
+      "ai_match": {"type": "existing|new|none", "slug": "slug-name-or-empty"}
+    }
+    Return ONLY the JSON array. No markdown fences. No extra text.

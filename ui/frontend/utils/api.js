@@ -517,6 +517,12 @@ api.backlog = {
   codeStats:              (project, slug) => _get(`/memory/${enc(project)}/backlog/code-stats/${enc(slug)}`),
   listPlannerTags:        (project)       => _get(`/tags?project=${enc(project)}`),
   exportCommitAnalysis:   (project)       => _post(`/memory/${enc(project)}/export-commit-analysis`, {}),
+  listUseCaseItems:  (project, slug)       => _get(`/memory/${enc(project)}/use-case-items/${enc(slug)}`),
+  deleteUseCaseItem: (project, body)       => fetch(
+    _base() + `/memory/${enc(project)}/use-case-item`,
+    { method: 'DELETE', headers: _headers(), body: JSON.stringify(body) },
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  restoreUseCaseItem:(project, body)       => _post(`/memory/${enc(project)}/use-case-item`, body),
 };
 
 api.pipeline = {
