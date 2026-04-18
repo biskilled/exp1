@@ -3,801 +3,999 @@
 > Review each use case group. Approve `[+]` items, reject `[-]`.
 > Run `POST /memory/{project}/work-items` to merge approved items into use cases.
 
-## **discovery** · 26/03/13-17:44 [ ] (claude)
+## **discovery** · 26/03/10-03:16 [ ] (claude)
 > Type: existing
-> Total: 8 prompts
+> Total: 10 prompts
 > User tags:
-> AI existing:
+> AI existing: [task:discovery]
 > AI new:
-> Summary: Discovery, architecture review, and system explanation
-> Requirements: explain aicli system to non-technical audience; use MCP tool to explain aicli project; use MCP tool to explain code functionality; review architecture for multi-client/multi-project scenarios; advise on free/unregistered client management
+> Summary: Project overview, architecture review, and system explanation
+> Requirements: User greeted and asked about current state; Explain aicli system to a friend in simple terms; Run /memory command and assess current architecture; Review how data is stored; Verify MCP usage and tagging mechanisms
+> Deliveries: [task|completed|4|4] Documented aicli's 5-layer memory system with architecture, pipeline flows, and relevance scoring; [task|completed|4|2] Reviewed 3-layer client/project architecture and identified scalability concerns for multi-client scenarios; [task|completed|4|2] Explained aicli unified AI memory concept and core system functionality through multiple approaches; [task|in-progress|1|2] Analyzed mirror table triggers, project_facts stage flows, and LLM prompt usage with partial completion
 
-  PROMPTS P101273 [ ] [task] [in-progress] [0] — Explained aicli as shared AI memory platform for developers
-    Requirements: explain aicli system to non-technical audience
-    Deliveries: described core problem (multi-AI tools lose context) and solution (unified memory across all tools) in df7f6829
+  PROMPTS P102155 [ ] [task] [completed] [2] — Greeting and project context refresh
+    Requirements: User greeted and asked about current state
+    Deliveries: Acknowledged aicli project status; Summarized recent work (AI suggestion banners, session tags, planner UI, port binding fixes); Offered to help with next steps
 
-  PROMPTS P101310 [ ] [task] [in-progress] [0] — Request to use MCP tool to explain project (no response)
-    Requirements: use MCP tool to explain aicli project
+  PROMPTS P102157 [ ] [task] [completed] [4] — Explained aicli core concept: unified AI memory across tools
+    Requirements: Explain aicli system to a friend in simple terms
+    Deliveries: Defined aicli as shared AI memory platform for developers; Described core problem: different AI tools lack persistent memory; Explained solution: unified history, git commit tagging, memory files; Commit df7f6829 shows system docs updated
 
-  PROMPTS P101313 [ ] [task] [in-progress] [0] — Explained aicli code architecture: 5-layer memory system
-    Requirements: use MCP tool to explain code functionality
-    Deliveries: described 5-layer memory system (/memory command synthesis) across conversation→session→project→history→templates layers
+  PROMPTS P102187 [ ] [task] [completed] [4] — Ran /memory audit, reviewed architecture, data storage, MCP usage, and tagging system
+    Requirements: Run /memory command and assess current architecture; Review how data is stored; Verify MCP usage and tagging mechanisms; Test memory quality and retrieval; Check if tagging works for embedding/retrieval
+    Deliveries: Executed /memory successfully, generated 5 files at 17:43 UTC; Confirmed 5-layer memory system architecture; Documented file layer structure (workspace/aicli/_system/history.jsonl); Assessed synthesis cache status; Provided architectural assessment
 
-  PROMPTS P101324 [ ] [task] [in-progress] [0] — Architectural review: 3-layer client/project tables at scale
-    Requirements: review architecture for multi-client/multi-project scenarios; advise on free/unregistered client management
-    Deliveries: identified table proliferation concern (120 client + 2000 project tables at 20×10 scale); noted current 3-tier naming and mng_→cl_local_ seeding pattern works for single-tenant
+  PROMPTS P102194 [ ] [task] [in-progress] [0] — Request to use MCP tool and explain project (no response)
+    Requirements: Use MCP tool to explain what the project is about
 
-  PROMPTS P101329 [ ] [task] [in-progress] [0] — Request to verify memory_items/project_facts update mechanism (no response)
-    Requirements: confirm users are part of client model; verify memory_items and project_facts tables are updated per design spec
+  PROMPTS P102197 [ ] [task] [completed] [4] — Used MCP tool to explain aicli code: 5-layer memory system
+    Requirements: Use MCP tool and explain what the code does
+    Deliveries: Described aicli as shared AI memory platform solving context loss across AI tools; Explained 5-layer memory system architecture; Outlined core functionality: persistent memory across clients (Claude CLI, Cursor, ChatGPT, web UI); Started describing /memory command synthesis
 
-  PROMPTS P101396 [ ] [task] [in-progress] [0] — Complete memory pipeline flow analysis (mirror→project_facts→work_items)
-    Requirements: describe mirror table triggers, LLM prompts, and column usage; analyze project_facts and work_items stages; map relevant scores (0-5) for all columns
-    Deliveries: documented mirror tables as pure capture in 7c2992ce; analyzed column responsibility (User/LLM/Trigger) and relevance ratings; confirmed 60-second migration time from diagnostic
+  PROMPTS P102208 [ ] [task] [completed] [4] — Architectural review: 3-layer client/project design with scale concerns
+    Requirements: Review architecture for multi-client, multi-project scenarios; Advise on managing free/unregistered clients
+    Deliveries: Confirmed 3-tier naming structure is clear; Documented seeding pattern (mng_ → cl_local_) works for single-tenant; Identified scale concern: table proliferation (120 client tables + 2000 project tables at 20×10 scale); Provided PostgreSQL capacity assessment; Recommended consolidation strategy for free/unregistered clients
 
-  PROMPTS P101397 [ ] [task] [in-progress] [0] — Full memory pipeline analysis with relevance scoring per column
-    Requirements: complete flow analysis from mirror tables through project_facts to work_items; include LLM prompts and trigger conditions; score column relevance 0-5
-    Deliveries: documented Stage 1 mirror tables (mem_mrr_prompts, mem_mrr_commits) with trigger conditions and column relevance in 3d2b5555; mapped LLM-used prompts and calculated columns across all stages
+  PROMPTS P102213 [ ] [task] [in-progress] [0] — Question about user-client relationship and memory_items/project_facts updates (no response)
+    Requirements: Clarify users as part of client structure (multiple users per client); Verify memory_items and project_facts are being updated correctly for better memory mechanism
 
-  PROMPTS P101399 [ ] [task] [in-progress] [0] — Updated aicli_memory.md with complete layer documentation
-    Requirements: reference existing aicli_memory.md file; document all 4 layers with responsible party and relevance ratings; update mem_mrr_commits, mem_ai_events, mem_ai_work_items columns
-    Deliveries: updated aicli_memory.md at project root in d37c3057 with per-column Responsible and Relevance (0-5) ratings; updated mem_mrr_commits to reflect dropped diff_summary/diff_details and actual tags columns; documented mem_ai_events.importance as LLM-scored 0-10; fully documented mem_ai_work_items structure
+  PROMPTS P102280 [ ] [task] [in-progress] [2] — Requested detailed flow analysis of mirror tables, triggers, and LLM prompts (partial response)
+    Requirements: Describe mirror table flow: triggers, data stored, LLM prompts used; Explain project_fact stage: triggers, LLM usage, prompts; Explain work_items stage: triggers, LLM usage, prompts; Show important columns per table with source (LLM/calculated); Create comparison table of all important columns
+    Deliveries: Referenced prior diagnostic on 60-second migration time; Commit 7c2992ce shows system context and memory files updated
+
+  PROMPTS P102281 [ ] [task] [completed] [4] — Detailed memory pipeline analysis: 4 stages with column sources and relevance scoring
+    Requirements: Describe mirror tables flow, triggers, data storage, LLM prompts; Analyze project_fact stage with triggers and LLM usage; Analyze work_items stage with triggers and LLM usage; Show important columns with source attribution (LLM/calculated); Create comprehensive column comparison table with relevance scores
+    Deliveries: Documented Stage 1: Mirror tables (mem_mrr_*) as pure capture with no LLM; Detailed mem_mrr_prompts trigger, columns, and relevance ratings; Showed column-by-column source attribution (Raw user text, Raw LLM text, etc.); Documented trigger types and data flow; Commit 3d2b5555 shows system context and memory files updated with complete analysis
+
+  PROMPTS P102283 [ ] [task] [completed] [5] — Updated aicli_memory.md with complete layer documentation and relevance scoring
+    Requirements: Access and review aicli_memory.md file from project root; Update with all 4 layers, column responsibility, and relevance ratings
+    Deliveries: Updated aicli_memory.md at correct location (/Users/user/Documents/gdrive_cellqlick/2026/aicli/); Added per-column Responsible attribution (User/LLM/Trigger) and Relevance (0-5) ratings for all 4 layers; Updated mem_mrr_commits documentation to reflect dropped columns (diff_summary/diff_details) and actual columns (tags[files], tags[symbols], tags[languages]); Documented mem_ai_events.importance now LLM-scored 0-10 (previously hardcoded 1); Fully documented mem_ai_work_items with status tracking
 
 ---
 
-## **ui-ux-improvements** · 26/03/10-00:11 [ ] (claude)
+## **ui-rendering-bugs** · 26/03/10-00:11 [ ] (claude)
 > Type: new
-> Total: 48 prompts
+> Total: 30 prompts
 > User tags:
 > AI existing:
-> AI new:
-> Summary: UI/UX fixes: visibility, loading, layout, drag-drop
-> Requirements: UI not loading, bind address 127.0.0.1:8000 error; Port 8000 still bound, cannot see data on project click; Improve action visibility in planner UI; Enable archived item reactivation; Add 3-dot menu for task details (remark, due_date, created, archived)
+> AI new: [bug:ui-rendering]
+> Summary: UI loading, display, and rendering issues
+> Requirements: UI not loading properly with bind address 127.0.0.1:8000 error; Cannot see anything after shutting down Electron and running fresh; No UI display when clicking on project name; Suspected PostgreSQL network connection issue; Action options too small and hard to see
+> Deliveries: [bug|completed|4|5] Fixed phase persistence across sessions and UI display in Chat, History, and Commit views; [bug|completed|4|3] Resolved backend connectivity and project loading issues with retry logic and session initialization; [feature|completed|4|4] Enhanced Work Items panel with sticky headers, AI tag suggestions, improved layout, and visual formatting; [feature|in-progress|3|5] Improving Chat UI with timestamps, session ID display, per-prompt tags, and tag color coding; [bug|in-progress|3|3] Addressing Work Items display bugs including tag visibility, description truncation, and category filtering
 
-  PROMPTS P101264 [ ] [feature] [in-progress] [0] — Add action button visibility, archive reactivation, details modal with 3-dot menu
-    Requirements: Improve action visibility in planner UI; Enable archived item reactivation; Add 3-dot menu for task details (remark, due_date, created, archived); Add sub-tags window to keep main screen clean; Add tags to new chats
-    Deliveries: Confirmed no syntax errors in codebase
+  PROMPTS P102148 [ ] [feature] [in-progress] [2] — Addressed planner UI visibility issues and proposed contextual menu with task details.
+    Requirements: Action options too small and hard to see; Archive feature prevents reactivation of items; Request to add 3-dot menu for task details (remark, due date, created, archived status); Request to add tags to new chats for association
+    Deliveries: Reviewed code for import resolution errors and syntax validation; Commit delivered with UI view updates and AI workspace system file sync
 
-  PROMPTS P101289 [ ] [feature] [in-progress] [0] — Persist phase changes per session, add phase filter to commits
-    Requirements: Phase changes not saving; Phase doesn't update on session switch; Add phase filter to commits (display only), same as chat filter
-    Deliveries: Removed _sessionId = null from phase change handler; Added PATCH /chat/sessions/{id}/tags endpoint; api.patchSessionTags(id, {phase}) called on phase change; PUT /history/session-tags persists globally
+  PROMPTS P102267 [ ] [feature] [in-progress] [1] — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
+    Requirements: History should display full prompt and LLM response, not truncated text; Add ability to copy text from history UI
+    Deliveries: Acknowledged requirements via documentation update commit
 
-  PROMPTS P101383 [ ] [feature] [in-progress] [0] — Show full prompt and LLM response in history, add copy text ability
-    Requirements: History shows small text instead of full prompt/response; Add copy text functionality to UI
+  PROMPTS P102299 [ ] [feature] [completed] [4] — Added work items UI panel with date formatting and visual improvements after backend SQL restart.
+    Requirements: User asked where new feature was added in the UI (Work item tab in Planner); Clarify implementation location
+    Deliveries: Implemented _renderWiPanel function with work items display; Added fmtDate function for date formatting; Added hdr function for header rendering; Updated backend route_work_items.py to support get_unlinked_work_items
 
-  PROMPTS P101390 [ ] [feature] [in-progress] [0] — Enable drag-drop work items under tags, resize bottom panel
-    Requirements: Drag work_item to remove from bottom and move under tag; Resize bottom panel height via line separator
-    Deliveries: Verified key sections of drag handler
+  PROMPTS P102304 [ ] [feature] [completed] [4] — Implemented sticky headers, AI tag suggestions per row with approve/reject actions, and improved tag
+    Requirements: User asked if AI suggestions appear on each row in work_items; Display AI tag suggestions with approve/reject capability
+    Deliveries: Made all 3 sortable column headers sticky (position:sticky; top:0; z-index:1); Added ai_tag_name suggestion display on each work item row; Implemented approve button (✓) to PATCH tag_id = ai_tag_id; Implemented reject button (×) to PATCH ai_tag_id = ''; Enhanced MemoryTagging.match_work_item_to_tags logic with better matching
 
-  PROMPTS P101391 [ ] [feature] [in-progress] [0] — Fix drag-drop hover state, show linked immediately, enable details on linked items, implement merge
-    Requirements: Multiple tabs marked on hover (only target should show); Dropped item not visible until page reload; Cannot see details when work_item under tag; Add merge functionality with rollback via merge_id
+  PROMPTS P102309 [ ] [feature] [in-progress] [3] — Add table padding, fix date display, implement tag color coding (green/red/blue), and debug missing 
+    Requirements: Add left padding to table; UPDATED column shows truncated date (yy:mm:dd-HH:..); Color-code tags: AI(EXIST)=green, AI(NEW)=red, USER=blue; Clarify why many work_items lack AI recommendations
+    Deliveries: Added missing import json in route_work_items.py for suggested_new persistence; Fixed stray conn.commit() outside context manager; Implemented Level 4 fallback logic in match_work_item_to_tags() to trigger on empty results
 
-  PROMPTS P101413 [ ] [feature] [in-progress] [0] — Add table columns: name, description, prompts count, commits count, last update date, sortable
-    Requirements: Work_items display as rows with columns: name, desc, prompts, commits, date; Sortable by prompts, commits, or date
-    Deliveries: Added column structure with draggable attribute on rows
+  PROMPTS P102349 [ ] [feature] [in-progress] [3] — Fix UI not updating, restore latest prompts display, add tag option to user prompts, and investigate
+    Requirements: UI changes not visible; latest prompts from claude cli not appearing in chat; Chat used to auto-update with new prompts; now no update occurs; Add tag option to user prompts (same functionality as History/prompts, store in mem_mrr_prompts); Clarify if local JSON session storage is still working
+    Deliveries: Fixed silent DB error in hook-log endpoint via migration m050; all prompts now stored correctly; Added ⟳ reload UI button in History tab header to force window.location.reload(); Confirmed Vite dev server serving updated history.js
 
-  PROMPTS P101415 [ ] [feature] [in-progress] [0] — Add SQL column and update UI to show work_item table with counts
-    Requirements: Add work_item table to bottom panel with metrics
-    Deliveries: Backend: new SQL endpoints for work item list with counts; Frontend: _renderWiPanel with table structure; Restart backend for SQL changes
+  PROMPTS P102350 [ ] [feature] [in-progress] [3] — Add timestamp next to YOU, display session ID in left/top panels, and add per-prompt tag functionali
+    Requirements: Each prompt missing timestamp next to YOU; Session ID should appear on left panel (last 5 chars) and top of right pane; Add per-prompt tag option with access to all existing user tags (with default tags per prompt/session)
+    Deliveries: Session ID badge displays last 5 chars as …xxxxx in left panel header; Added styled session ID banner in right pane with copy button (⎘); Changed tag filtering logic to show all tags per prompt (phase: filter replaced)
 
-  PROMPTS P101419 [ ] [feature] [in-progress] [0] — Make table header sticky on scroll, add AI tag suggestions, run /memory
-    Requirements: Header disappears on scroll; Add AI tag suggestions per work_item; Run /memory to update events/work_items; Show approval/removal for AI tags
-    Deliveries: Added position:sticky;top:0;z-index:1 to all th cells; Each work_item row shows suggestion row when ai_tag_name present; Approve button calls PATCH with tag_id = ai_tag_id; Remove button calls PATCH with ai_tag_id = ''
+  PROMPTS P102351 [ ] [feature] [in-progress] [3] — Update session header display, add session ID banner, and implement per-prompt tags in chat tab.
+    Requirements: Session number and 5-char ID should appear in CLI header <phase>; Session ID should display in row with Phase/tags at top; Add tag option to prompts in chat tab; show all existing tags per prompt
+    Deliveries: Session header now shows: ▼ CLI · development · (ab3f9) · 3 prompts · 26/04/15-19:31; Source label mapping: claude_cli→CLI, ui→UI, workflow→Workflow; Phase chip extracted from entry tags; Session ID in (xxxxx) format (last 5 chars); Each prompt entry displays YOU — YY/MM/DD-HH:MM format
 
-  PROMPTS P101422 [ ] [feature] [in-progress] [0] — Show category:name format for tags, display user tags, rectangular button for delete
-    Requirements: AI tags should show category:name (bug:auth, feature:dropbox); Show existing tags vs new suggestions in different colors; Display user tags alongside AI tags; Make × button rectangular like ✓
-    Deliveries: Updated tag suggestion format to category:name; Added user tags retrieval and display; Color coding: AI_existing (color1) vs AI_new (color2) vs user (color3); Rectangular button shape for × delete
+  PROMPTS P102142 [ ] [bug] [completed] [4] — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
+    Requirements: UI not loading properly with bind address 127.0.0.1:8000 error
+    Deliveries: Identified root cause: old uvicorn process (PID 86671) still holding port 8000; Verified backend is healthy and `due_date` column is live in API; Confirmed JS syntax is valid in both entities.js and chat.js; Provided fix: Cmd+R reload in Electron window to pick up new JS files
 
-  PROMPTS P101424 [ ] [feature] [in-progress] [0] — Add section labels (AI, User) for tags, show even when empty
-    Requirements: Need labels to identify tag type; AI and User sections must always show
-    Deliveries: Added labeled rows for AI: and User:; Always display both sections regardless of content; Show '—' placeholder when no tags in User section
+  PROMPTS P102172 [ ] [bug] [completed] [4] — Fixed phase persistence issue where app load showed 'required' and phase didn't update on session sw
+    Requirements: Phase shows as 'required' (default) on app load; Phase doesn't update properly when switching between chat sessions
+    Deliveries: Root cause 1: No code loaded last phase from DB on startup; Root cause 2: session.metadata.tags could be missing for old sessions; PUT endpoint never called; Root cause 3: Phase dropdown changes were never persisted to DB; Implemented fix: Load phase from DB on app init with proper fallbacks
 
-  PROMPTS P101465 [ ] [feature] [in-progress] [0] — Auto-update chat with latest prompts, add tag selection per prompt
-    Requirements: UI changes not reflecting; Latest prompts from CLI not appearing in chat; Chat not auto-updating with new prompts; Add tag selection per prompt like History/Prompts
-    Deliveries: Migration m050 fixed silent DB error in hook-log endpoint; All prompts now storing correctly; Added reload UI button in History tab (top-right); Chat view reflects latest prompts after reload
+  PROMPTS P102173 [ ] [bug] [completed] [4] — Implemented phase persistence across sessions and added phase filtering to Commit history view.
+    Requirements: Cannot save phase changes in chat; Phase doesn't update when switching sessions; Need phase display in commits with filtering capability; History should filter by phases; Chat should update per session
+    Deliveries: Removed `_sessionId = null` on phase change to preserve session context; Created PATCH /chat/sessions/{id}/tags endpoint for phase updates; Implemented api.patchSessionTags(id, {phase}) called on phase change; Added phase filter to commit view matching chat filter functionality; Ensured PUT /history/session-tags persists globally for app restart
 
-  PROMPTS P101466 [ ] [feature] [in-progress] [0] — Show timestamp per prompt, session ID on left and top, add tag selection
-    Requirements: Timestamp missing next to YOU in history; Session ID not visible (left panel and top); Add per-prompt tag selection with existing user tags
-    Deliveries: Session ID badge shows last 5 chars (…xxxxx) in left panel header; Right pane shows blue banner with full session ID + copy button; All tags per prompt (not just phase:) now displayed
+  PROMPTS P102174 [ ] [bug] [completed] [4] — Restored session-specific phase handling and fixed phase visibility across Chat, History, and Commit
+    Requirements: Cannot change/update phase in Chat; Most chat sessions lack correct phase; Phase doesn't update when switching sessions; History default should show all phases, not 'discovery'; Commit filter cannot be changed and disappears after change
+    Deliveries: Restored phase isolation: _sessionId = null per phase creates separate sessions; Added api.putSessionTags(project, {phase}) for global persistence; Implemented on init: api.getSessionTags(project) to pre-fill dropdown; Fixed session switch with session.metadata.tags + _sessionCache fallback; Corrected default filter display across all views
 
-  PROMPTS P101467 [ ] [feature] [in-progress] [0] — Show full session context in Chat tab header and per-message
-    Requirements: Chat tab needs session ID visibility; Add timestamp YY/MM/DD-HH:MM to each prompt; Show all tags and option to add tags per prompt
-    Deliveries: Session header shows CLI · phase · (last5chars) · entry count · date; Each prompt shows YOU — YY/MM/DD-HH:MM; Top of body shows full session ID banner with copy; Tag selection added per prompt
+  PROMPTS P102175 [ ] [bug] [completed] [4] — Verified phase change persistence and session metadata updates for both new and existing sessions.
+    Requirements: Uploaded session doesn't show correct phase; Phase doesn't change properly when switching sessions; Need correct phase per session and ability to update it
+    Deliveries: Confirmed PATCH /chat/sessions/{id}/tags endpoint is live and working; Phase change on existing session calls api.patchSessionTags(_sessionId, {phase}) and refreshes session list; Phase change on new chat updates _sessionTags.phase in memory until session created; Verified endpoint returns correct 404 for non-existent sessions
 
-  PROMPTS P101469 [ ] [feature] [in-progress] [0] — Add Chat-specific visibility for session ID, timestamp, tags, and approval
-    Requirements: Chat tab needs same visibility as History prompts; Each message needs timestamp YY/MM/DD-HH:MM; Add all tags and option to add tags per message; Left sidebar show last 5 session chars, top panel show full ID
-    Deliveries: Left sidebar: CLI · development · (ab3f9) with tooltip full ID; Right panel sticky banner: full session ID + copy + phase chip; Each YOU message: YOU — YY/MM/DD-HH:MM format; All tags displayed with add option per message
+  PROMPTS P102176 [ ] [bug] [completed] [4] — Fixed red warning badge display for all sessions without phase and phase persistence for CLI/WF sess
+    Requirements: Red flags on sessions not related to phase status; CLI-loaded sessions not flagged as missing phase; Phase configuration not saving properly; All sessions should be tagged with proper phase and saved
+    Deliveries: Removed source === 'ui' condition; now ALL sessions (UI, CLI, WF) without phase show red ⚠ badge and border; Fixed PATCH /chat/sessions/{id}/tags to handle CLI sessions via fallback to _system/session_phases.json; Ensured phase saves globally keyed by session ID regardless of source; Verified red badge and visual indicators now correctly reflect phase status across all session types
 
-  PROMPTS P101258 [ ] [bug] [in-progress] [0] — Backend healthy, frontend reload needed after uvicorn port conflict
-    Requirements: UI not loading, bind address 127.0.0.1:8000 error
-    Deliveries: Verified backend running, due_date column live in API; Confirmed entities.js and chat.js syntax valid; Identified stale uvicorn process (PID 86671)
+  PROMPTS P102196 [ ] [bug] [in-progress] [1] — User reports missing aiCli project and slow PROJECT.md loading (>1min), suspects DB query issue.
+    Requirements: aiCli project disappeared from recent projects list; Loading PROJECT.md file takes over a minute; Investigate if slow load is due to database query on free Railway tier
+    Deliveries: Acknowledged issue and indicated final check on openProject function
 
-  PROMPTS P101259 [ ] [bug] [in-progress] [0] — Kill stale backend process, restart dev server with npm script
-    Requirements: Port 8000 still bound, cannot see data on project click
-    Deliveries: Terminated old uvicorn process (PID 86671); Instructed npm run dev from ui/ directory with NODE_ENV=development
+  PROMPTS P102212 [ ] [bug] [completed] [4] — Fixed project loading retry logic to handle empty results and backend startup delays.
+    Requirements: aiCli missing from projects list despite appearing in Recent; Backend fails to load initially, succeeds after couple seconds
+    Deliveries: Updated _continueToApp to retry once if projects load succeeds but returns empty; Improved handling of race condition between frontend and backend startup
 
-  PROMPTS P101288 [ ] [bug] [in-progress] [0] — Fix phase not persisting per session on app load and session switch
-    Requirements: Phase shows 'required' on app load regardless of actual phase; Phase doesn't update when switching chat sessions
-    Deliveries: Root cause: no code loaded last phase from DB on startup; Root cause: session.metadata.tags could be missing for old sessions; Root cause: PUT /history/session-tags never called on phase change; Fixed: load phase from DB on init, call PUT /history/session-tags on phase dropdown change
+  PROMPTS P102268 [ ] [bug] [completed] [4] — Fixed history display to show both prompt and LLM response using consistent hooks and backend calls.
+    Requirements: History previously showed prompt and LLM response, now only shows prompt; Restore full history display with both prompt and response
+    Deliveries: Verified BACKEND_URL is defined before use (line 46); Confirmed all four background hooks are present and functional (hook-response, session-summary, memory, auto-detect-bugs); Aligned hooks in both workspace/_templates/hooks/log_session_stop.sh and workspace/aicli/_system/hooks/log_session_stop.sh
 
-  PROMPTS P101290 [ ] [bug] [in-progress] [0] — Restore session-specific phases, fix history default to all, fix commit filter
-    Requirements: Cannot change/update phase in Chat; Chat sessions not showing correct phase; History/Chat defaults to discovery instead of all phases; Commits filter disappears after change, shows wrong phases
-    Deliveries: Restored _sessionId = null logic for phase-per-session; api.putSessionTags(project, {phase}) persists globally; On init: api.getSessionTags(project) pre-fills dropdown; Fixed session switch with _chatLoad using session.metadata.tags + _sessionCache fallback
+  PROMPTS P102300 [ ] [bug] [completed] [4] — Improved work items panel header clarity with wider columns, better padding, and visual separation.
+    Requirements: Work items UI columns too close together (38px too narrow); Header lacks visual separation and is hard to read; Make header more clear and readable
+    Deliveries: Widened columns from 38px to appropriate width; Added proper background styling to header; Increased header padding for better readability; Improved text clarity in column labels
 
-  PROMPTS P101291 [ ] [bug] [in-progress] [0] — Fix phase loading and update for each session
-    Requirements: Upload session doesn't show correct phase; Session switch doesn't update phase properly; Need phase per session visible and updatable
-    Deliveries: Phase change listener no longer resets _sessionId = null; Phase change on existing session calls api.patchSessionTags(_sessionId, {phase}); Phase change on new chat updates _sessionTags.phase in memory; Endpoint PATCH /chat/sessions/{id}/tags verified live
+  PROMPTS P102301 [ ] [bug] [in-progress] [3] — Fixed date formatting to yy/mm/dd-hh:mm and removed non-work-item tags (Shared-memory, billing) from
+    Requirements: Date format should be yy/mm/dd-hh:mm instead of current format; Tags under work_items (Shared-memory, billing) should not be displayed as they are not work items
+    Deliveries: Updated fmtDate function to format dates as yy/mm/dd-hh:mm; Implemented work item deletion functionality via _wiPanelDelete handler; Added delete API call DELETE /work-items/{id}?project={proj}; Implemented confirmation dialog before deletion; Updated _wiPanelItems cache and re-render on successful deletion
 
-  PROMPTS P101292 [ ] [bug] [in-progress] [0] — Mark all sessions missing phase with red ⚠, persist phase for CLI sessions
-    Requirements: Red session flag not working correctly, unrelated to phase; CLI sessions not persisting phase changes
-    Deliveries: Removed s.source === 'ui' condition, now ALL sessions without phase show red ⚠ badge; Removed red left border display limitation; PATCH /chat/sessions/{id}/tags now falls back to _system/session_phases.json for CLI sessions; No 404 thrown for non-existent session IDs
+  PROMPTS P102307 [ ] [bug] [in-progress] [3] — Fixed work items panel layout to display tags properly and expand description to full row width.
+    Requirements: Tags (AI and user) are not visible on work item rows; Description text is truncated in middle of row instead of using full row width
+    Deliveries: Updated colgroup to make Name column more flexible; Adjusted date column width to be narrower; Removed table-layout:fixed to allow flexible column sizing; Expanded description to use full available row width; Modified _renderWiPanel to improve tag and text display
 
-  PROMPTS P101293 [ ] [bug] [in-progress] [0] — Preserve session list order when phase changes
-    Requirements: Session order changes on phase modification
-    Deliveries: Backend patch_session_tags no longer updates updated_at on tag change; Frontend _loadSessions now sorts by created_at instead of updated_at
+  PROMPTS P102308 [ ] [bug] [completed] [4] — Restore table layout and add labeled tag rows (AI/User) with descriptions.
+    Requirements: Last column (commits) is invisible; need to restore table-layout:fixed; Add labeled rows to identify tag types: AI, AI(new), and User; User tags must always display, showing '—' if empty
+    Deliveries: Restored table-layout:fixed in CSS to prevent Name column expansion; Added labeled rows: AI (always), User (always with '—' fallback); Repositioned description to span full Name column width
 
-  PROMPTS P101312 [ ] [bug] [in-progress] [0] — Optimize project loading speed, fix PROJECT.md slow read
-    Requirements: aiCli project not visible in recent/project list; Loading PROJECT.md takes >1 minute; Free Railway DB may be bottleneck
-    Deliveries: Analyzed openProject function
+  PROMPTS P102341 [ ] [bug] [in-progress] [2] — Fix UI category/bug display issue and work_item disappearance after tag acceptance.
+    Requirements: Planner view shows only work_item, missing bug/category; When accepting AI tag, work_item disappears but top screen becomes empty
+    Deliveries: Verified backend state with route_entities.py refactoring; Fixed tag session handling in patch_value and session_bulk_tag; Updated _renderWiPanel UI panel rendering (+19/-2)
 
-  PROMPTS P101328 [ ] [bug] [in-progress] [0] — Fix project display in recent list, handle backend startup delay
-    Requirements: aiCli in recent but not in projects list; Backend slow to load on startup
-    Deliveries: Fixed _continueToApp to retry if projects load succeeds but returns empty
+  PROMPTS P102342 [ ] [bug] [completed] [4] — Fix duplicate const declaration causing Electron empty load.
+    Requirements: Electron loads empty on startup
+    Deliveries: Identified duplicate const cats declaration in _wiPanelCreateTag function; Renamed second declaration to cacheCats to resolve scope conflict; Cleaned up legacy system context files and database migrations
 
-  PROMPTS P101357 [ ] [bug] [in-progress] [0] — Debug drag-drop and counter functionality not working
-    Requirements: Drag and drop not functional; Counter not updating
+  PROMPTS P102355 [ ] [bug] [completed] [4] — Fix incomplete prompt loading by merging DB entries with JSONL file data and correct sorting.
+    Requirements: On system start, only prompts from certain point visible (not all history); Investigate if loading from _system/session files; clarify reason for many files and why not updated to latest
+    Deliveries: Implemented limit=500 to load full history with correct sort (April newest first, March oldest); Merged DB entries (389) with JSONL file data (~142) for total of 531 entries; Fixed entry normalization in _normalize_jsonl_entry; sort now shows March 9 through current date
 
-  PROMPTS P101384 [ ] [bug] [in-progress] [0] — Fix history to show LLM response alongside prompt
-    Requirements: History shows only prompt, no LLM response
-    Deliveries: Verified hook-response saves LLM response to mem_mrr_prompts.response; Verified session-summary creates mem_ai_events entries; Verified memory and auto-detect-bugs hooks present; Both hook files (log_session_stop.sh) now identical and correct
+  PROMPTS P102356 [ ] [bug] [in-progress] [3] — Fix stale session ID loading by resetting module variables and implementing auto-select for current 
+    Requirements: Loads with old session ID (7d89c79f-...) instead of current session (f6648726-...); eventually updates after delay; Clarify why many JSON files exist in workspace/aicli/.. session folder
+    Deliveries: Reset _sessionId to null at start of renderChat() to clear stale session persistence; Also reset _appliedEntities/_pendingEntities to prevent carryover; Prevented localStorage cache render from highlighting old session (since _sessionId=null initially)
 
-  PROMPTS P101389 [ ] [bug] [in-progress] [0] — Fix JS reference errors blocking initialization
-    Requirements: ReferenceError: _plannerSelectAiSubtype not defined; TypeError: window._plannerSync not a function
-    Deliveries: Removed stray line causing init crash; window._plannerSync now properly assigned
+  PROMPTS P102357 [ ] [bug] [completed] [5] — Load current session on startup by synchronously reading last_session_id from runtime state.
+    Requirements: On startup, loads old session (7d89c79f-...) for ~15 seconds before switching to current session (f6648726-...); need immediate correct load
+    Deliveries: Modified _loadSessions() to immediately read last_session_id from state.currentProject.dev_runtime_state synchronously; Set _sessionId before cache renders, ensuring correct session highlighted on load; Flow: renderChat() clears _sessionId → _loadSessions() sets from runtime state (no network call) → cache renders with correct session → full fetch confirms
 
-  PROMPTS P101392 [ ] [bug] [in-progress] [0] — Fix work_item link persistence under tags
-    Requirements: Dropped work_item not persisting under tag after reload
-    Deliveries: Root cause: _loadTagLinkedWorkItems filtered by tag's category, not work_item category; Removed category filter from api.workItems.list({project}); Now fetches all work items for project without category restriction
+  PROMPTS P102143 [ ] [task] [completed] [4] — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
+    Requirements: Cannot see anything after shutting down Electron and running fresh; No UI display when clicking on project name; Suspected PostgreSQL network connection issue
+    Deliveries: Confirmed port 8000 is now free and stale backend (PID 86671) is gone; Provided clean restart command: `cd ui && npm run dev`; Explained the chain of events that caused the bind error and black screen
 
-  PROMPTS P101410 [ ] [bug] [in-progress] [0] — Fix tag property drawer crash when opening tag
-    Requirements: Tag click doesn't show properties (works for work_items)
-    Deliveries: Root cause: catName not in scope in _renderDrawer(); Fixed catName → v.category_name || _plannerState.selectedCatName; Fixed field name v.short_desc → v.description
+  PROMPTS P102151 [ ] [task] [completed] [4] — Explained tag bar location and accept workflow; fixed overflow clipping issue.
+    Requirements: User cannot find where to click accept in Chat; Looking for accept button at top of chat
+    Deliveries: Located tag bar: thin bar at top of chat area below title, above messages; Explained workflow: click ✓ to queue, click 💾 Save to confirm; Fixed overflow:hidden clipping issue to allow tag bar to wrap to second line; Provided visual feedback examples (amber/gold italic chips)
 
-  PROMPTS P101416 [ ] [bug] [in-progress] [0] — Improve table header clarity and spacing
-    Requirements: Columns too narrow (38px), header lacks visual separation, text tiny
-    Deliveries: Increased column widths; Added header background color for visual separation; Increased padding and font sizes in _renderWiPanel and hdr functions
+  PROMPTS P102195 [ ] [task] [in-progress] [1] — Investigated project loading performance issues and requested details on slow Summary and History lo
+    Requirements: Project not visible in proper order at latest project list; Long load time for Summary and History when opening project; Need explanation of what is happening during load; Pagination was added to History but still takes long
+    Deliveries: Initiated sanity check on key changes for correctness
 
-  PROMPTS P101417 [ ] [bug] [in-progress] [0] — Fix date format to yy/mm/dd-hh:mm, remove non-work_item tags
-    Requirements: Date format unclear; Tags under work_items (Shared-memory, billing) shouldn't display
-    Deliveries: Changed date format to yy/mm/dd-hh:mm in fmtDate(); Updated _renderWiPanel to filter work item display; Added delete handler _wiPanelDelete for removing items
+  PROMPTS P102298 [ ] [task] [completed] [4] — Instructed user to perform hard refresh to see UI changes (Cmd+Shift+R or Ctrl+Shift+R).
+    Requirements: User does not see UI changes despite backend updates
+    Deliveries: Provided hard refresh instructions for browser (Cmd+Shift+R on Mac, Ctrl+Shift+R on Windows/Linux); Alternative reload instruction for Electron window (Cmd+R)
 
-  PROMPTS P101418 [ ] [bug] [in-progress] [0] — Wire up delete button handler for work_item rows
-    Requirements: Delete button (×) present but handler missing
-    Deliveries: Defined window._wiPanelDelete function inside _renderWiPanel; Shows confirm dialog before deletion; Calls api.workItems.delete(id, proj); Removes from _wiPanelItems cache and re-renders
+---
 
-  PROMPTS P101420 [ ] [bug] [in-progress] [0] — Fix AI tag suggestions display and matching logic
-    Requirements: AI suggestions not visible per row; Tag matching needs improvement
-    Deliveries: Made sticky header persist on scroll; Fixed ai_tag_name field display in suggestion rows; Updated MemoryTagging.match_work_item_to_tags with better matching; Added vector search and Claude judge for candidate selection
+## **database-schema-refactor** · 26/03/09-04:08 [ ] (claude)
+> Type: new
+> Total: 47 prompts
+> User tags:
+> AI existing:
+> AI new: [task:db-schema-refactor]
+> Summary: Database schema design, table restructuring, and migration
+> Requirements: Update /memory for project management page and workflow improvements; Update all project summary, current features, and ongoing features; Remove unused tables from database; Rename all managed tables to mng_TABLE_NAME for global management tables; Rename client-level tables to cl_TABLE_NAME
+> Deliveries: [task|completed|4|15] Completed database migration: removed 5 stale tables, consolidated to 24, applied 18+ migrations with column cleanup and reordering; [feature|completed|4|8] Completed memory event table refactoring: merged embeddings/summaries into mem_ai_events, implemented tagging system with mem_ai_tags_relations; [task|completed|4|3] Completed auto-regeneration of memory files (CLAUDE.md, MEMORY.md) on project facts/work items upsert with new structure documentation; [task|in-progress|2|4] In-progress: implementing 3-layer table hierarchy (mng_/cl_/pr_ prefixes), resolving table categorization, and cleaning obsolete schema references; [bug|in-progress|1|14] In-progress: fixing undefined column errors in routes, restructuring mem_ai_events columns, implementing mng_projects foreign key migration, and tagging enhancements
 
-  PROMPTS P101421 [ ] [bug] [in-progress] [0] — Fix work_item details drawer, compact tag layout, increase fonts, style delete button
-    Requirements: Work_item details not loading on click; Tag suggestions too spread out; Font too small in Electron; Delete button (×) gray on gray, invisible; Date column cut off
-    Deliveries: Added GET /work-items/{id} endpoint; _openWorkItemDrawer calls api.workItems.get directly; Tag suggestion uses inline-flex for compact layout; Bumped all font sizes for Electron visibility; Changed × to bold red color on gray background
+  PROMPTS P102215 [ ] [feature] [in-progress] [3] — Merged pr_embeddings and pr_memory_events into single mem_ai_events table.
+    Requirements: Merge pr_embeddings and pr_memory_events into mem_ai_events table; Include fields: id (uuid), project_id, session_id, session_desc, chunk, content, created_at; Implement smart embedding with chunking mechanism; Support code understanding for commits
+    Deliveries: Commit 7ea756e6: chore: update ai context files and memory after cli session; mem_ai_events table schema designed with merged functionality
 
-  PROMPTS P101423 [ ] [bug] [in-progress] [0] — Fix table display to show all columns, restore column widths
-    Requirements: Only first column (commits) visible, others cut off
-    Deliveries: Updated colgroup column widths; Restored table-layout:fixed to prevent Name column expansion; Adjusted date column width to prevent overflow
+  PROMPTS P102216 [ ] [feature] [in-progress] [3] — Enhanced memory tagging system with mem_ai_tags_relations and tag management.
+    Requirements: Implement mng_ai_tags_relations table for tagging relationships; Review and verify tagging functionality against previous specifications; Implement dictionary-based tag management in memory; Support event-level tagging with session metadata
+    Deliveries: Commit 5ec5d26e: feat: enhance memory tagging system and update AI context files; mem_ai_tags_relations table structure verified; Tagging system design documented with event metadata support; Tag dictionary management approach implemented
 
-  PROMPTS P101425 [ ] [bug] [in-progress] [0] — Add padding, fix date truncation, color-code tags, investigate missing AI suggestions
-    Requirements: Left padding missing; Date truncated (yy:mm:dd-HH only); Need tag type colors: AI(EXIST)=green, AI(NEW)=red, USER=blue; Many work_items have no AI recommendations
-    Deliveries: Added left padding to table; Fixed date display to full format; AI tag suggestions running in background with proper color coding; Matching logic improved with level 4 fallback when embedding fails
+  PROMPTS P102218 [ ] [feature] [in-progress] [3] — Implemented manual tag relations management via developer CLI commands.
+    Requirements: Support manual tag relations declared by developers; Enable relations via CLI command, admin UI, or direct SQL; Support relation types like depends_on, replaces, etc.; Store relations in pr_tag_relations table with from_tag_id, relation, to_tag_id, note
+    Deliveries: Commit dd2dc520: chore: update 38 files; Manual tag relations feature architecture documented; INSERT statement example provided for relation management; Developer workflow for declaring relationships specified
 
-  PROMPTS P101436 [ ] [bug] [in-progress] [0] — Fix commit counter query to join via source_id, add NULLS LAST
-    Requirements: Counter or prompts not showing; Work_items without events display incorrectly
-    Deliveries: Root cause: 418/444 commits have event_id = NULL; Changed join from event_id to mem_ai_events.source_id → commit_short_hash; Added NULLS LAST to sort unlinked items to bottom
+  PROMPTS P102246 [ ] [feature] [in-progress] [0] — Implement tagging mechanism with user-editable tags column in work items.
+    Requirements: Replace ai_tags with tags [text] column in MRR table; Enable tags to be updated via UI (history → Add tag) or Claude CLI; Support minimum tags (e.g., phase) in CLI prompts; Example: tag this session as 'phase: discovery' and 'memory refactor'
 
-  PROMPTS P101457 [ ] [bug] [in-progress] [0] — Fix UI crashing, top screen empty after tag approval
-    Requirements: Planner shows only work_items, no bug/category sections; Work_item disappears on tag approval but top screen stays empty
-    Deliveries: Fixed import json missing in route_work_items.py; Removed stray conn.commit() outside with block; Improved level 4 fallback matching logic
+  PROMPTS P102257 [ ] [feature] [in-progress] [1] — Add language tags, improve file_change data structure with file paths and row counts.
+    Requirements: Add language as a tag into tags dictionary; If language updated per commit, add tag to mrr table; if at event creation, add to event table; Improve file_change data to include list of files with row changes; Add files tag storing file_name and row changes, populate in mrr or event table based on update timing
 
-  PROMPTS P101458 [ ] [bug] [in-progress] [0] — Fix Electron loading empty, resolve variable scope conflict
-    Requirements: Electron loads empty page
-    Deliveries: Fixed duplicate const cats declaration in _wiPanelCreateTag; Renamed second declaration to cacheCats to resolve scope conflict; Added database cleanup migration m031 for commits
+  PROMPTS P102264 [ ] [feature] [in-progress] [0] — Create mng_projects table and migrate project references from text to foreign key.
+    Requirements: Create mng_projects table with id, name, desc, and project defaults; Replace project (text) columns with project_id foreign keys across all tables; Store project configuration data (local file paths, git connectivity, creation defaults); Support the client-users-projects hierarchy (client → multiple users, client → multiple projects)
 
-  PROMPTS P101471 [ ] [bug] [in-progress] [0] — Fix chat session loading to show current session not stale from JSON
-    Requirements: Chat loads old session initially, only updates after 15 seconds; Missing latest prompts on startup
-    Deliveries: Sort fixed with limit=500, April first (newest) to March last (oldest); Total merged entries: 531 (389 DB + ~142 JSONL); Full history from March 9 to April 15 now visible
+  PROMPTS P102217 [ ] [bug] [completed] [4] — Fixed table naming error: mng_ai_tags_relations corrected to mem_ai_tags_relations.
+    Requirements: Fix incorrect table name mng_ai_tags_relations; Correct to mem_ai_tags_relations
+    Deliveries: Commit dc615099: chore: update ai context files and memory after cli session; Table naming error corrected in schema and documentation
 
-  PROMPTS P101472 [ ] [bug] [in-progress] [0] — Fix stale session ID on load, auto-select current session immediately
-    Requirements: Chat loads with old session (7d89c79f...) instead of current (f664...); Takes 15 seconds to update to correct session
-    Deliveries: _sessionId reset to null at start of renderChat(); _appliedEntities and _pendingEntities also reset; localStorage cache rendered without highlight (since _sessionId=null); After fetch completes, auto-selects current session
+  PROMPTS P102224 [ ] [bug] [completed] [4] — Fix database DDL changes not visible in database; refactor database.py for persistence.
+    Requirements: Ensure DDL schema changes are persisted to database; Make database.py changes reflect in actual database
+    Deliveries: Commit b6f68047: Updated AI context files and refactored database.py for proper schema application
 
-  PROMPTS P101473 [ ] [bug] [in-progress] [0] — Load current session synchronously on startup without delay
-    Requirements: Chat loads stale session for 15 seconds before updating
-    Deliveries: Flow: renderChat() → _sessionId=null → _loadSessions() → reads state.currentProject.dev_runtime_state.last_session_id synchronously; Sets _sessionId immediately without network call; Cache renders with correct session highlighted; Full fetch confirms/updates _sessionId after network completes
+  PROMPTS P102248 [ ] [bug] [in-progress] [1] — Fix undefined column error (lifecycle) and optimize slow commit loading queries.
+    Requirements: Fix psycopg2.errors.UndefinedColumn for t.lifecycle in route_entities line 359; Remove unnecessary PHASE column not in UI or database; Optimize pagination/commit loading queries for performance
+    Deliveries: System context and session state updated
 
-  PROMPTS P101267 [ ] [task] [in-progress] [0] — Explain tag bar location and approve/queue flow with visible chips
-    Requirements: User confused about accept button location in Chat
-    Deliveries: Documented tag bar location (thin bar below chat title); Explained chip interaction: ✓ to queue (pending/dashed blue), 💾 Save to confirm; Fixed overflow:hidden clipping wrapping chips to second line
+  PROMPTS P102249 [ ] [bug] [in-progress] [1] — Fix undefined column error (work_item_id) in work items route query.
+    Requirements: Fix psycopg2.errors.UndefinedColumn for p.work_item_id in route_work_items line 351; Ensure work_item_id column exists or query is corrected
+    Deliveries: System files and memory updated after session
 
-  PROMPTS P101268 [ ] [task] [in-progress] [0] — Run /memory, clarify AI suggestions banner, show session source
-    Requirements: Make UI clearer for AI suggestions with approval required; Show which session suggestion came from; Clarify Phase (required) is mandatory, not a session identifier
-    Deliveries: Session label changed from 'Session:' to 'Phase:' in tag bar; AI suggestions now in dedicated amber banner between tag bar and messages; Banner shows session ID (abc12345…) with Dismiss all button
+  PROMPTS P102254 [ ] [bug] [in-progress] [1] — Verify column reordering in mem_ai_events table—llm_source and embedding not updated.
+    Requirements: Confirm llm_source column is positioned after project in mem_ai_events; Confirm embedding column is positioned as last column in mem_ai_events
+    Deliveries: AI system context and memory files updated after session
 
-  PROMPTS P101311 [ ] [task] [in-progress] [0] — Investigate project loading order and slow history/summary load
-    Requirements: Projects not in order by recent; Project summary and history load slowly with pagination
-    Deliveries: Reviewed project loading flow
+  PROMPTS P102139 [ ] [task] [completed] [4] — Updated /memory context files and project documentation for next steps.
+    Requirements: Update /memory for project management page and workflow improvements; Update all project summary, current features, and ongoing features
+    Deliveries: MEMORY.md updated with LLM synthesis; All context files copied to code_dir; Commit fa868e8c: docs: update AI context files and project documentation
 
-  PROMPTS P101414 [ ] [task] [in-progress] [0] — Hard refresh UI to see table changes
-    Requirements: UI not showing changes
-    Deliveries: Instructed Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows) for hard refresh
+  PROMPTS P102202 [ ] [task] [in-progress] [3] — Restructured database tables with mng_, cl_, pr_ naming convention.
+    Requirements: Remove unused tables from database; Rename all managed tables to mng_TABLE_NAME for global management tables; Rename client-level tables to cl_TABLE_NAME; Rename project tables to pr_[Client_name]_[project_name]_TABLE_NAME pattern
+    Deliveries: Database schema refactoring plan documented; Table naming convention established (mng_, cl_, pr_ prefixes); Verified work_item_pipeline.py core file
 
-  PROMPTS P101434 [ ] [task] [in-progress] [0] — Add database indexes for performance, clean up duplicate queries
-    Requirements: Planner tabs and work_items load slowly; Verify query documentation at top of files
-    Deliveries: Added 5 composite indexes in migration m020; idx_mae_project_session on mem_ai_events; idx_mae_project_etype on mem_ai_events; idx_mmrrc_project_session on mem_mrr_commits; idx_mmrrc_project_hash on mem_mrr_commits
+  PROMPTS P102203 [ ] [task] [completed] [4] — Executed database migration removing 5 stale tables, consolidated to 24 tables.
+    Requirements: Run database migration command to apply changes; Remove old unused tables from database
+    Deliveries: Dropped 5 stale legacy tables: commits, embeddings, events, event_tags, event_links; Consolidated from 29 to 24 tables; Reorganized 19 global mng_ tables with consistent naming; Migration executed and verified
 
-  PROMPTS P101435 [ ] [task] [in-progress] [0] — Investigate DIGEST column, work_items without events, purple tag color
-    Requirements: DIGEST column purpose unclear; Work_items appear without linked prompts/commits/events; User cannot approve/remove additional AI tags
-    Deliveries: Verified DIGEST is event counter (not separately tracked); Work_items without events are valid (not all come from prompts); Purple tag added for additional AI suggestions
+  PROMPTS P102204 [ ] [task] [in-progress] [2] — Clarified table categorization: memory_items and project_facts belong in project tables.
+    Requirements: Explain why memory_items and project_facts are categorized under system management; Verify correct table placement
+    Deliveries: MEMORY.md updated to reflect final table structure; Verified all endpoints working; Confirmed table categorization
 
-  PROMPTS P101470 [ ] [task] [in-progress] [0] — Move session ID to tag bar, remove duplicate phase display
-    Requirements: Session ID should only appear in tag bar (not message banner); Phase already shown in dropdown, remove duplicates
-    Deliveries: Session ID badge (ab3f9) added between entity chips and + Tag button; Click copies full ID to clipboard with ✓ flash confirmation; Removed session banner from message display; Phase shown only in left dropdown
+  PROMPTS P102205 [ ] [task] [completed] [4] — Verified mng_session_tags usage and clarified project table structure.
+    Requirements: Verify mng_session_tags table purpose and usage; Check session_tags.json file in project workspace
+    Deliveries: Confirmed 24 tables in clean split: 14 mng_ and 10 pr_local_aicli_; Listed all tables per category; Documented memory tables: work_items, interactions, interaction_tags, memory_items, project_facts; Updated database.py DDL for memory tables migration
+
+  PROMPTS P102207 [ ] [task] [in-progress] [2] — Implemented 3-layer table structure: mng_ (general), cl_ (client), pr_ (project).
+    Requirements: Align client tables with mng_ global prefix; Create 3-layer hierarchy: general management (mng_), per-client (cl_), per-project (pr_); Rename mng_session_tags to cl_local_session_tags for client-specific data; Ensure entity tables are per-client
+    Deliveries: 3-layer architecture defined and documented; Client-level table naming established with cl_ prefix; Planning for multi-client support with paid clients
+
+  PROMPTS P102219 [ ] [task] [completed] [4] — Rename project facts and work items tables, add features table with upsert triggers.
+    Requirements: Rename pr_project_facts to mem_ai_project_facts; Rename pr_work_items to mem_ai_work_items; Add mem_ai_features table; Implement work item upsert trigger after sprint/milestone with status sync to pr_tag_meta
+    Deliveries: Commit 98d3af91: Updated AI system files and memory after claude session
+
+  PROMPTS P102220 [ ] [task] [completed] [4] — Auto-regenerate memory files (CLAUDE.md, MEMORY.md, etc.) based on project facts and work items upse
+    Requirements: Auto-regenerate CLAUDE.md, MEMORY.md, context.md, rules.md, copilot.md on project_facts upsert; Regenerate feature-specific CLAUDE.md on work_items upsert; Regenerate root CLAUDE.md on pr_session_summaries insert; Regenerate affected CLAUDE.md on pr_tag_relations insert
+    Deliveries: Commit 46ec6642: Updated AI context files and memory after CLI session
+
+  PROMPTS P102221 [ ] [task] [completed] [4] — Provide updated aicli_memory structure and document new memory layers and tagging relationships.
+    Requirements: Update aicli_memory with revised memory structure; Document new structure layers; Explain relationships to tagging and feature mechanism
+    Deliveries: Commit 75a18a27: Updated AI context files and session history with new structure
+
+  PROMPTS P102222 [ ] [task] [completed] [4] — Merge pr_session_summaries into mem_ai_events with event_type column for session summary events.
+    Requirements: Merge pr_session_summaries into mem_ai_events; Add event_type column (event_type=session_summary) to distinguish AI events
+    Deliveries: Commit ee845bc6: Updated AI system files and memory after claude session
+
+  PROMPTS P102223 [ ] [task] [completed] [4] — Add missing llm_source column to mem_ai_events and audit unused columns like language and file_path.
+    Requirements: Add llm_source column to mem_ai_events; Audit and remove unused columns (language, file_path, others) from mem_ai_events
+    Deliveries: Commit dad26199: Updated AI workspace files and memory docs post-session with column audit
+
+  PROMPTS P102225 [ ] [task] [completed] [4] — Remove unused columns from mem_ai_events; move summary_tags to mem_ai_tags linked by row ID with AI-
+    Requirements: Remove unused columns (language, file_path) from mem_ai_events; Move summary_tags array to mem_ai_tags table as separate rows linked by event row ID; Add column in mem_ai_tags to flag tags suggested by AI vs. sourced from MRR
+    Deliveries: Commit da3644d4: Improved memory tagging and routing stability; refactored tags storage
+
+  PROMPTS P102226 [ ] [task] [completed] [4] — Refactor mem_mrr_* tables: remove unused columns, consolidate tags, change commit ID to integer, fix
+    Requirements: Remove unused columns from mem_mrr_* tables (session_src_desc, session_src_id, tags[]); Consolidate tag storage; note mem_mrr_prompts now stores tags; Change commit table to use integer ID instead of commit hash; Fix primary and foreign keys across 4 mem_mrr_* tables
+    Deliveries: Commit 5f1cda6c: Updated AI context files and refactored mem_mrr_* tables with key and column cleanup
+
+  PROMPTS P102228 [ ] [task] [completed] [4] — Apply same refactoring (remove unused columns, fix keys) to all mem_ai_* tables.
+    Requirements: Audit and remove unused columns from all mem_ai_* tables; Fix primary and foreign keys across mem_ai_* tables; Consolidate tag storage consistent with mem_mrr_* refactoring
+    Deliveries: Commit 5df58ee0: Updated AI system files and refactored mem_ai_* tables for consistency
+
+  PROMPTS P102230 [ ] [task] [completed] [4] — Reduce database.py file size by removing old migrations and boilerplate code.
+    Requirements: Remove old migration code from database.py; Remove boilerplate to reduce file size and improve maintainability
+    Deliveries: Commit 56e37c54: Updated aicli workspace state and trimmed database.py boilerplate
+
+  PROMPTS P102236 [ ] [task] [in-progress] [1] — Review database files and remove obsolete tables from codebase.
+    Requirements: Review database files for old/unused tables; Remove tables that no longer exist in the schema
+    Deliveries: System files and memory updated after session
+
+  PROMPTS P102245 [ ] [task] [in-progress] [1] — Address incomplete table structure cleanup—old tables still present.
+    Requirements: Remove old/unused tables from database schema; Ensure table structure reflects current system state
+    Deliveries: System state and memory updated after session
+
+  PROMPTS P102252 [ ] [task] [in-progress] [1] — Restructure mem_ai_events table: move llm_source, consolidate tags/metadata, use JSONB.
+    Requirements: Move llm_source column to be after project; Identify where and when llm_source is populated; Consolidate tags (from MRR) and metadata (from events) into single column; Merge all MRR tags into event records; Convert list columns to JSONB type for flexibility
+    Deliveries: System files and memory updated after session
+
+  PROMPTS P102253 [ ] [task] [in-progress] [0] — Reorder table columns (llm_source after project, embedding at end) and clean database.py.
+    Requirements: Move llm_source column to position after project in all tables; Move embedding column to last position in all tables; Update database.py to remove old/unused tables and reduce length
+
+  PROMPTS P102255 [ ] [task] [completed] [4] — Rename mem_ai_events to old, create new table, and migrate data.
+    Requirements: Rename existing mem_ai_events table to mem_ai_events_old; Create new mem_ai_events table with updated schema; Insert/migrate data from old table to new table
+    Deliveries: System files trimmed and memory updated after session
+
+  PROMPTS P102256 [ ] [task] [in-progress] [1] — Clarify usage of doc_type, language, file_path columns and session_action_item reusability.
+    Requirements: Explain purpose and usage of doc_type column; Explain purpose and usage of language column; Explain purpose and usage of file_path column; Assess whether session_action_item can be reused for other sources (items, prompts)
+    Deliveries: System state and memory updated after session
+
+  PROMPTS P102258 [ ] [task] [completed] [2] — Investigate chunk and chunk_type fields; consider moving to tags dictionary.
+    Requirements: Clarify purpose and usage of chunk and chunk_type columns; Determine if these fields should be moved to tags dictionary in work_items
+    Deliveries: System state and memory documentation updated
+
+  PROMPTS P102259 [ ] [task] [in-progress] [2] — Clean invalid historical events, verify llm_source population, update memory table.
+    Requirements: Remove invalid historical events from database that don't make sense; Verify llm_source column is properly populated; Run /memory command to update tables
+    Deliveries: System state and memory updated after session
+
+  PROMPTS P102265 [ ] [task] [completed] [2] — Verify prompt structure after client_id fix.
+    Requirements: Verify and validate prompt structure following client_id schema corrections
+    Deliveries: System context and memory documentation updated
+
+  PROMPTS P102272 [ ] [task] [completed] [4] — Audit work_items columns: clarify source_session_id, content, summary, requirements usage.
+    Requirements: Clarify purpose of source_session_id in work_items; Document usage of content, summary, requirements columns; Explain how tags merge from mem_ai_events; Align work_items as main table for event aggregation and merging non-closed items; Clarify relationship and comparison between work_items and planned_tags
+    Deliveries: Complete column audit of mem_ai_work_items with 20 columns analyzed; Clear purpose documentation for each column with status (Keep/Remove/Merge); System context and memory files updated with analysis
+
+  PROMPTS P102284 [ ] [task] [completed] [4] — Verify diff_summary and diff_details columns in commits table are necessary.
+    Requirements: Confirm purpose of diff_summary and diff_details in mem_ai_commits; Determine if both columns should remain or be removed
+    Deliveries: Clarified diff_summary stays (git --stat output from route_git.py); Confirmed diff_details removed (never populated, cleaned from schema and code); Documentation updated in aicli_memory.md
+
+  PROMPTS P102285 [ ] [task] [in-progress] [3] — Investigate commit table data capture: verify hook functionality, row change counts, files tag usage
+    Requirements: Verify git hook properly captures real file changes (not just internal docs); Clarify how row +/- counts are calculated and ensure relevance; Verify files tag stores file names and row change counts properly; Extract actual code changes per commit
+    Deliveries: Identified backfill in progress: ~195 of 391 commits processed; Large commit (238 files) architecture restructure causing processing delay; Multiple memory and system context files updated; Documentation of backfill status provided
+
+  PROMPTS P102286 [ ] [task] [in-progress] [0] — Design extraction flow for aggregating commits linked via pr_tags_map.
+    Requirements: Design data extraction flow using pr_tags_map to fetch related commits; Aggregate commit data across multiple related commits (files, features, tests); Show clear example of fetching commits by tag_id and aggregating changes
+
+  PROMPTS P102287 [ ] [task] [completed] [4] — Verify database updates: confirm commit_short_hash and generated columns applied.
+    Requirements: Verify commit_short_hash column added to database; Confirm generated column full_symbol properly applied to mem_mrr_commits_code
+    Deliveries: commit_short_hash column added to mem_mrr_commits; mem_mrr_commits_code schema updated with 19 columns including full_symbol generated column; Identified and resolved DDL runner issue preventing generated column application; Legacy CLAUDE.md and CONTEXT.md files removed and restructured
+
+  PROMPTS P102293 [ ] [task] [completed] [4] — Created db_schema.sql canonical schema file with all tables, indexes, and FK constraints.
+    Requirements: Separate database.py into methods and table schemas; Create db_schema.sql with all table schemas using IF NOT EXISTS; Include remarks, indexes, and foreign keys in schema file; Define migration strategy: rename tables with prefix, create new, insert data
+    Deliveries: Created backend/core/db_schema.sql (~350 lines) as single source of truth for schema; Organized schema in sections: mng_* → planner_* → mem_mrr_* → mem_ai_* → pr_*; Included all indexes and FK constraints; Added comprehensive comments explaining table purpose and invariants
+
+  PROMPTS P102344 [ ] [task] [completed] [4] — Implemented table migrations m035-m036 with column reordering and cleanup of old tables.
+    Requirements: Retry table migration using specified column order; Drop _old tables after migration to save space
+    Deliveries: Created m035_reorder_mem_mrr_commits migration (+80 lines); Created m036_reorder_mem_ai_events migration (+70 lines); Added trim_events endpoint to backend/routers/route_admin.py; Updated _Database._ensure_shared_schema to support new migrations
+
+  PROMPTS P102345 [ ] [task] [completed] [3] — Analyzed importance column usage in events table.
+    Requirements: Evaluate whether importance column is needed in events table; Determine if importance is better suited for work_items table
+    Deliveries: Code analysis of importance column usage across codebase; Confirmed importance is more relevant for work_items than events
+
+  PROMPTS P102346 [ ] [task] [completed] [5] — Applied migration m037 to drop importance column from mem_ai_events table.
+    Requirements: Drop importance column from mem_ai_events table; Update all code references to remove importance usage
+    Deliveries: Created m037_drop_events_importance migration (+10 lines); Updated db_schema.sql to remove importance from mem_ai_events; Updated memory_embedding.py: _SQL_UPSERT_EVENT to remove parameter, _parse_haiku_json to return 2-tuple; Updated all event processing methods across 7 files to remove importance handling
+
+  PROMPTS P102348 [ ] [task] [completed] [5] — Applied migrations m037-m047 including column drops, reordering, and system event tracking.
+    Requirements: Drop importance from events (m037); Drop embedding from mem_mrr_commits_code (m038); Reorder mem_mrr_prompts columns: after client_id add project_id and event_id; Use standard drop/rename/recreate migration mechanism
+    Deliveries: Created m038_drop_commits_code_embedding: freed ~4.5 MB by removing embedding column; Created m039_reorder_mem_mrr_prompts: moved project_id and event_id from end to after client_id (+63 lines); Created m040_backfill_event_cnt_and_tags (+97 lines); Created m041_drop_diff_file_chunks for memory_embedding cleanup; Created m042_drop_source_event_id from memory promotion
+
+  PROMPTS P102358 [ ] [task] [completed] [5] — Created migration m051 to convert user_id from string to int and add updated_at to all tables.
+    Requirements: Change user_id from string to int (same as project_id and client_id); Add updated_at column to all mirror tables after created_at; Add user_id after project_id in all mirror tables; updated_at tracks row modifications; created_at is immutable
+    Deliveries: Created m051_schema_refactor_user_id_updated_at migration (+359 lines); Converted mng_users.id to SERIAL INT primary key; Preserved old UUID as uuid_id VARCHAR(36) column; Added updated_at to: mng_users, mng_clients, all mem_mrr_* tables, mem_ai_events, mem_ai_project_facts, mem_pipeline_runs, planner_tags; Added user_id INT to all mirror tables and planner_tags after project_id
+
+  PROMPTS P102359 [ ] [task] [completed] [5] — Created migration m052 to reorder all table columns with standard column ordering rules.
+    Requirements: Reorder columns: id → client_id → project_id → user_id; Move created_at, updated_at to end of table (before embedding if present); Remove committed_at from mem_mrr_commits (preserve as COALESCE with created_at); Embedding column always last if present; Apply rename-add-migrate-drop pattern for all 18 tables
+    Deliveries: Created m052 migration rebuilding 18 tables with correct column order; Ensured id → client_id → project_id → user_id ordering in all tables; Positioned created_at → updated_at → embedding at end of all tables; Removed committed_at from mem_mrr_commits; preserved git timestamp via COALESCE(committed_at, created_at); Moved mem_ai_events.event_system to after event_type column
+
+---
+
+## **memory-layer-implementation** · 26/03/09-17:56 [ ] (claude)
+> Type: new
+> Total: 62 prompts
+> User tags:
+> AI existing:
+> AI new: [feature:memory-layers]
+> Summary: Memory layers, embedding, events, and AI tagging system
+> Requirements: Summarize large feature responses in chat history instead of full output; Add AI suggestion tags via /memory function; Clarify UI confusion in History tab (chat, commit, run, workflow management); Consolidate Planner tabs (Feature, Tags, Bugs, Tags) into one tag management interface; Support category-based tag hierarchy with properties (status, description, due date, user created)
+> Deliveries: [feature|completed|4|22] Memory layer infrastructure completed with tagging, linking, and database optimization; [feature|completed|4|15] Work items and event system implemented with AI tag suggestions and prompt-to-commit linking; [bug|completed|4|11] Bug fixes across tagging, commits, hooks, and UI rendering for memory operations; [feature|in-progress|2|8] Tag hierarchy redesign, AI suggestion workflow, and category-aware tagging in progress; [task|in-progress|2|6] Memory documentation, schema validation, and roadmap planning for phase 2 refactor
+
+  PROMPTS P102141 [ ] [feature] [in-progress] [2] — User proposes redesigning Planner from 4 tabs to single tag management interface with category hiera
+    Requirements: Consolidate Planner tabs (Feature, Tags, Bugs, Tags) into one tag management interface; Support category-based tag hierarchy with properties (status, description, due date, user created); Add tag listbox in chat (+) menu showing active tags with add option
+
+  PROMPTS P102152 [ ] [feature] [completed] [4] — AI suggestions banner added to chat UI, Phase selector clarified, and session context improved.
+    Requirements: Make AI suggestions more visible with clear approval mechanism; Clarify which session suggestions apply to; Clarify whether 'Phase' in tag bar is session or mandatory feature
+    Deliveries: Phase label in tag bar confirmed as phase selector (not session identifier); AI suggestions moved to dedicated amber banner between tag bar and message area; Banner shows session context (e.g., 'session abc12345…') with dismiss option
+
+  PROMPTS P102153 [ ] [feature] [completed] [4] — Fixed /memory suggestions to work offline, added history router, and enabled session-to-commit linki
+    Requirements: Run /memory and show suggestions in existing sessions; Display commit logs in history tab with GitHub links; Show which commits were done in each session
+    Deliveries: /memory suggestions now work without PostgreSQL (best-effort with fallback to recent history); History router added (commit d012fcfb implies UI improvements); History tab now displays commit information
+
+  PROMPTS P102159 [ ] [feature] [completed] [4] — Optimized tag loading with caching, persisted tag colors, and unified tag save mechanism for commits
+    Requirements: Cache all tags in memory on first load to reduce DB calls; Persist tag color selection when choosing tags; Unify commit tag saving with history tag mechanism; Link automated commits to all related prompts
+    Deliveries: Tag cache implementation: `_tagCache` (grouped) and `_tagCacheMap` (flat lookup) loaded once on tab open; Tags loaded in parallel with history, commits, categories in `_renderChat`; Tag color preservation integrated into selection
+
+  PROMPTS P102161 [ ] [feature] [completed] [4] — Added prompt-to-commit linking, showing which specific prompts triggered which commits in sessions.
+    Requirements: Create link between commit/push and prompt ID (not just session ID); Support multiple commits per session, each linked to its triggering prompt
+    Deliveries: Commit-to-prompt linking established and tested; 5 real sample links verified (d0f14c21, 951768bc, 0336f3e5, 8e37699 linked to specific prompts); Entity CRUD endpoints added (commit 2507af7b)
+
+  PROMPTS P102165 [ ] [feature] [completed] [4] — Deduplicated 149 tags across History/Chat/Commits and added DELETE endpoints for tag removal.
+    Requirements: Ensure all tags are aligned with no duplicates across History, Commit, and Chat screens; Add option to remove (×) tags that affects all screens
+    Deliveries: Confirmed 149 event tags with 0 duplicates via backend deduplication logic; Implemented `DELETE /entities/events/tag-by-source-id` endpoint to remove tags from history entries and commits; Frontend deduplication before API calls; Commit 7d7445c2: entity routing and history/chat UI view enhancements
+
+  PROMPTS P102167 [ ] [feature] [completed] [4] — Linked commits to specific prompts in History/Chat view using prompt_source_id matching.
+    Requirements: Link each commit to the prompt that triggered it (same relationship as prompt→commit); Display commits per prompt in History Chat view
+    Deliveries: `/history/commits` endpoint already returns `prompt_source_id` in every commit row; Frontend now shows linked commits inline at bottom of each prompt entry with `⑂ hash ↗` display; Uses `prompt_source_id` to match commits to exact triggering prompt; Commit 6958c335: history system docs update with prompt-commit linking
+
+  PROMPTS P102171 [ ] [feature] [completed] [4] — Auto-save AI suggestions as tags to session with proper category, filter by phase, and remove featur
+    Requirements: Save AI suggestions from aiCli memory command properly for the session; Save in proper category and add to Planner as new tags; Fix phase filter/update that stays open without proper stage; Save in one place (Chat) and filter by it in History or Commit; Remove option to update feature column in commit (only update via Chat)
+    Deliveries: `_acceptSuggestedTag` made async to immediately save tags via `_saveEntitiesToSession()`; Tags created with proper category via `api.entities.sessionTag()` and added to Planner; Pending entities stored if no session yet, auto-saved on first message; Phase filter issue fixed; Feature column edit removed from commit view (updates only via Chat)
+
+  PROMPTS P102180 [ ] [feature] [completed] [4] — Implemented `GET /entities/summary` endpoint and enhanced `/memory` command to retrieve and synthesi
+    Requirements: Verify alignment with 5-step memory process; Identify additional requirements to retrieve details information about the project; Ensure Claude CLI, Cursor, and other tools can retrieve data properly for MCP; Verify `/memory` command uses retrieved data for proper summarization
+    Deliveries: New `GET /entities/summary` endpoint returns all non-archived entity values grouped by category with description, status, due_date, event_count, commit_count; `/memory` command enhanced—entity summary loaded before Haiku synthesis and passed to context; Entity data now used in memory summarization for project feature/bug/task management; MCP tools can now retrieve structured project entities
+
+  PROMPTS P102182 [ ] [feature] [in-progress] [0] — User requested adding mng table to track prompt count and notify via aicli when /memory runs.
+    Requirements: Add another mng table to check how many prompts exist; Prompt the user in aicli that /memory is running; Run this check on project upload and suggest running memory
+
+  PROMPTS P102190 [ ] [feature] [in-progress] [3] — Designed workflow system comparing specrails and paperclip, proposed role-based architecture with ag
+    Requirements: Design workflows similar to specrails (agents/roles like web developer, AWS architect); Review paperclip project for integration potential; Compare with existing YAML-based workflow tab; Plan role-based system instead of simple workflows
+    Deliveries: Comprehensive comparison of specrails (Claude Code agent system with 12 specialized roles) vs current system; Analysis of paperclip integration potential; Identified specrails uses prompt files (.md) + slash commands with Claude Code multi-turn; Proposed database-driven agent role system (not visual DAG)
+
+  PROMPTS P102192 [ ] [feature] [completed] [4] — Designed database schema for agent roles with versioning, supporting prompt editing by admins/super-
+    Requirements: Store prompts in database rather than as local md files; Allow prompts to be improved over time; Provide only roles to end users; Enable admin/super-user ability to review and change prompts/LLM properties
+    Deliveries: Designed agent_roles + agent_role_versions schema for storing role definitions; Implemented per-project ('_global') role system; Created structure supporting system_prompt, model_hints, parameter overrides; Planned version history and role auditing for admin changes
+
+  PROMPTS P102200 [ ] [feature] [completed] [4] — Implemented nested tag hierarchy and mapped tagging to Planner, including inline child tag creation.
+    Requirements: Verify all tagging and nested tagging working properly; Ensure tags appear in Planner when added; Support nested tag hierarchy (e.g., Dropbox under UI, Database under Backend); Map prompt/commit tags to proper planning structure
+    Deliveries: Renamed tabs: 'Workflow' → 'Pipelines', 'Prompts' → 'Roles'; Added +▸ nested tag button to every regular tag row in entities.js; Implemented inline 'Child of X:' form for creating nested tags; Widened actions column from 44px → 80px for button visibility; Integrated parent_id linking into tag structure
+
+  PROMPTS P102232 [ ] [feature] [in-progress] [2] — User questioned lack of embeddings in project_facts and work_items, requested MCP server update for 
+    Requirements: Add embeddings to project_facts table as part of memory layers; Add embeddings to work_items table; Update MCP server to use all memory layers for other LLMs
+    Deliveries: Commit d3c9f49e: Updated AI context files and session state after cli session
+
+  PROMPTS P102247 [ ] [feature] [completed] [4] — Implemented tag bidirectional linking and referencing between commits and prompts.
+    Requirements: Fix UI error displaying [object object] instead of tag string; Fix backend 422 Unprocessable Entity error on tag operations; Implement bidirectional tag sync: tags added to prompt show on linked commit and vice versa; Add reference mention and jump link in commit showing connection to linked prompt
+    Deliveries: Commit 41bdb6bf: system state and session artifacts update with tag linking implementation
+
+  PROMPTS P102252 [ ] [feature] [completed] [4] — Refactored mem_ai_events table schema to consolidate tags/metadata and use JSONB columns.
+    Requirements: Move llm_source column to position after project in mem_ai_events; Identify population sources and triggers for mem_ai_events; Consolidate tags and metadata columns (reconcile mrr tags with event metadata); Merge all tags from mrr into event table; Convert all list columns to JSONB type for better data handling
+    Deliveries: Commit cf4a7845: mem_ai_events schema refactoring with column reordering and JSONB type conversion
+
+  PROMPTS P102262 [ ] [feature] [in-progress] [1] — Consolidated feature_snapshot into tags, linked work_items to events, and aligned three-layer archit
+    Requirements: Merge feature_snapshot with planned_tags and rename appropriately; Link work_items to events storing prompts/session data; Implement three-layer architecture: mirrors → events → working_items; Configure working_items to aggregate events and create session end events; Fix and refactor project_facts layer
+
+  PROMPTS P102291 [ ] [feature] [completed] [4] — Implemented prompt-to-event-to-commit linking and work item event aggregation
+    Requirements: Link 5 prompt summaries to events and associate all related commits to that event; Link remaining unlinked commits and new commits to events when triggered; Apply user tags to all linked events or merge AI tags if no user tag exists; Create work_item table to gather and deduplicate events (new vs existing work items)
+    Deliveries: Optimistic removal of work items in UI lower panel before API confirmation; Fixed work items query performance by replacing 5 correlated subqueries; Implemented event-to-commit linking logic; Added work_item aggregation from multi-event sources
+
+  PROMPTS P102296 [ ] [feature] [completed] [4] — Implemented FK-based work item to event/commit linking via migrations
+    Requirements: Create table/structure linking work_items to all related events (by tags); Connect work_items to all commits of related events (multiple prompts/items/messages); Add mem_ai_work_items_links table with work_item_id, event_id, commit_id, tags, tags_ai
+    Deliveries: Designed FK approach: mem_mrr_commits.event_id UUID → mem_ai_events, mem_ai_events.work_item_id UUID; Applied migration m019 dropping mem_ai_work_items_links, adding event_id FK columns; Updated memory_embedding.py MemoryEmbedding.process_commit to set event_id; Updated memory_promotion.py extract_work_items_from_events to link work items to events; Updated route_work_items.py list_work_items query for proper joining
+
+  PROMPTS P102303 [ ] [feature] [completed] [4] — Implemented sticky header and AI tag suggestion approval workflow in UI
+    Requirements: Keep header visible when user scrolls down in work_items; Add /memory command to refresh and update events/work_items; Show AI tag suggestions for each work_item with approve/remove actions; Verify recent prompts are reflected as work_items
+    Deliveries: Added position:sticky;top:0;z-index:1 to all sortable <th> header cells; Implemented AI tag suggestion row display with ✦ icon format; Added [✓] approve button → PATCH with tag_id to link tag; Added [×] remove button → PATCH with empty ai_tag_id to unlink; Updated _renderWiPanel and hdr functions in entities.js
+
+  PROMPTS P102310 [ ] [feature] [in-progress] [3] — Implemented category-aware AI tag suggestion prioritizing task/bug/feature
+    Requirements: Update AI suggestion to suggest one tag from categories (task, bug, feature) first; Also suggest tags under tags (doc_type, phase, etc.) after category attempt; If no match, suggest new task/bug/feature (e.g., Task: summary, phase: discovery); Fix mismatched work_item #20112 (verify-commit-integrity) appearing as suggestion
+    Deliveries: Updated _load_all_tags() to JOIN mng_tags_categories and order task/bug/feature first; Modified _claude_judge_candidates() prompt to show [category] tag-name format; Instructed Haiku to prioritize task/bug/feature and include suggested_category field; Processed 103 AI(EXISTS) and 15 AI(NEW) with proper categories; Background matching still running
+
+  PROMPTS P102312 [ ] [feature] [in-progress] [3] — Fixed AI tag suggestion visibility and added event counter to work items
+    Requirements: Debug why AI tag suggestions not visible (showing empty AI(EXISTS) instead); Replace 'new work_item' option with refresh button to load latest work_items; Link user tags connected to work_items to all related events; Add event counter column to work_items UI showing linked event count
+    Deliveries: Updated _match_new_work_item() in memory_promotion.py with proper matching logic; Added _backlink_tag_to_events() function to propagate user tags to all linked events; Updated PATCH /work_items endpoint to call _backlink_tag_to_events; Modified _renderWiPanel to show event counter between commits and update columns; Updated _loadWiPanel to refresh and update ai_tags on reload
+
+  PROMPTS P102319 [ ] [feature] [completed] [4] — Addressed query performance, DIGEST column confusion, and enabled user approval for AI tags.
+    Requirements: Explain why DIGEST column exists and why it's slower; Clarify how work_items without linked prompts are created (e.g., #20428); Enable users to approve or remove AI tags like other tags
+    Deliveries: Added NULLS LAST sorting fix to properly order work items; Implemented purple 'AI' tag for AI-generated tags with UI controls; Modified UI to allow users to approve/remove AI tags alongside user tags; Fixed query performance and result ordering
+
+  PROMPTS P102326 [ ] [feature] [completed] [5] — Populated work_item tags from mirror events and enabled code_summary and AI criteria fields.
+    Requirements: Explain start_id and code_summary columns; Merge tags from all mirror events into work_item tags; Populate acceptance_criteria_ai and action_item_ai fields
+    Deliveries: start_date auto-sets to NOW() when status_user changes to 'in_progress'; code_summary populated by MemoryExtraction.extract_work_item_code_summary() from tagged commits; Created migrations m023 (tags TEXT[] → JSONB) and m024 (backfill tags from source events); Enabled tags merging from mirror events into work_items; Modified MemoryPromotion to populate acceptance_criteria_ai and action_item_ai
+
+  PROMPTS P102163 [ ] [bug] [completed] [4] — Fixed hook noise filtering, corrected task-notification logging errors, added pagination and prompt-
+    Requirements: Fix hooks not logging new prompts/LLM responses to history.jsonl; Remove task-notification entries appearing as user prompts; Add pagination display (showing current page / total count); Enable jump from commit to related prompt in history; Replace Feature/Bug/Task columns with tag selection and save
+    Deliveries: Hook fixed by filtering noise (task-notification, tool-use-id, task-id, parameter) at write time; Old deployed hook and template updated with `head -c 30` startswith check; Empty prompt filtering added; Commit-to-prompt tracing enabled; Feature/Bug/Task columns replaced with tag selection UI
+
+  PROMPTS P102170 [ ] [bug] [completed] [4] — Fixed git hook to properly link last 9 commits to prompts via session_id and Phase 5 sync.
+    Requirements: Last commit b255366 should be linked to the last prompt; Last 9 commits are not linked to any prompts—fix the linking issue
+    Deliveries: Root cause identified: `auto_commit_push.sh` hook never triggered Phase 5 DB sync or passed `session_id`; Fixed hook to pass `session_id` to `POST /git/{project}/commit-push` API; Phase 5 now runs after every git push, retroactively linking commits to prompts; Commit 588663e5: git router enhancements and system docs update
+
+  PROMPTS P102178 [ ] [bug] [completed] [4] — Fixed session tag propagation to History/Commits: backfilled phase field and populated commit phase 
+    Requirements: Tags saved by session should be linked to all prompts in that session and all commits; History Chat filter by phase returns no results when session is tagged post-facto; Commit phase column is empty—show proper phase the commit is linked to
+    Deliveries: `_backfill_session_phase()` now rewrites matching `session_id` entries in history.jsonl with phase when session phase is set; Commits `phase` column now populated—added `session_id` to `commits_aicli` schema retroactively; History filter now correctly retrieves prompts with matching phase; Commit phase column displays proper phase linked to commit
+
+  PROMPTS P102239 [ ] [bug] [completed] [4] — Fixed database column and naming errors in chat history loading routes.
+    Requirements: Fix 'event_type' column does not exist error at line 228 in route_history.py; Fix 'log' is not defined error in log.warning statement; Fix 'c.id' column does not exist error at line 1033 in route_entities.py; Resolve Chat history loading failures
+    Deliveries: Commit 19cc32ab: backend router fixes addressing column and naming errors
+
+  PROMPTS P102250 [ ] [bug] [completed] [4] — Restored tag attachment functionality and tag selection UI with search and creation.
+    Requirements: Fix missing tag persistence on prompts/commits; Fix tag loading failure when attaching new tags; Restore tag selection UI with search and filter by existing tags (category:tag format); Restore ability to create new tags from UI
+    Deliveries: Commit 8c84e6af: system context and history state update restoring tag functionality
+
+  PROMPTS P102251 [ ] [bug] [completed] [3] — Fixed commit sync error in /history/commits/sync API batch upsert operation.
+    Requirements: Fix execute_values error in cur.execute at route_history line 441 during commit sync
+    Deliveries: Commit 0477b67b: documentation and runtime state update addressing commit sync issue
+
+  PROMPTS P102282 [ ] [bug] [completed] [4] — Removed non-existent diff_summary column and fixed commit code extraction logic
+    Requirements: Check if diff_details column is necessary in mem_ai_commits; Verify hook properly updates real code files, not just docs; Fix row +/- count data extraction; Ensure tags.files dict properly stores commit code changes
+    Deliveries: Removed diff_summary from _SQL_GET_WI_COMMITS (column doesn't exist post-migration 008); Updated memory_planner.py to use tags["files"] dict instead; Removed source_session_id from memory_promotion.py (dropped in migration 012); Applied start_date TIMESTAMPTZ column manually to Railway DB (migration 014)
+
+  PROMPTS P102292 [ ] [bug] [completed] [4] — Fixed missing ai_tags JSONB column in mem_ai_work_items table
+    Requirements: Fix work_items endpoint error at line 331 due to missing w.ai_tags column
+    Deliveries: Added ai_tags JSONB column to mem_ai_work_items via migration; Registered as work_items_alters_v1 in schema version tracking; Applied ALTER TABLE directly to live DB without restart; Endpoint now returns correctly with ai_tags populated
+
+  PROMPTS P102294 [ ] [bug] [completed] [4] — Fixed tag drawer rendering crash and field name mismatch in UI
+    Requirements: Fix missing tag properties display when user clicks a tag (drawer stays blank); Debug why work_items display properties but tags do not
+    Deliveries: Fixed catName ReferenceError by using v.category_name || _plannerState.selectedCatName in _renderDrawer(); Corrected field name mismatch: v.short_desc → v.description (line 1412); Resolved scope issue preventing drawer innerHTML from rendering
+
+  PROMPTS P102314 [ ] [bug] [completed] [4] — Fixed over-extraction of internal memory sync work items by adding exclusion rules to prompt.
+    Requirements: Explain why internal memory operations (CLAUDE.md updates) were being extracted as separate work items; Reduce duplicate work item #20398 for sync_memory operations
+    Deliveries: Root cause identified: work_item_extraction prompt had no exclusion rules for internal AI memory operations; Added NEVER extract block to work_item_extraction.md covering memory/context file updates; Reduced duplicate extraction of internal memory operations
+
+  PROMPTS P102315 [ ] [bug] [completed] [4] — Fixed event counter query to show only digest events and fixed UI column naming.
+    Requirements: Share the SQL query used to fetch prompts, commits, and events per work_item; Verify work item #20399 event linking
+    Deliveries: Fixed event_count query: filtered to show only prompt_batch and session_summary events (excluding commit chunk events); Reduced event count for work item #20399 from 221 → 10 (accurate digest count); Renamed UI column 'Events' → 'Digests' for clarity; Explained why commits create multiple events in the system
+
+  PROMPTS P102320 [ ] [bug] [completed] [4] — Fixed work item-to-commit linking by correcting source_id join logic in database query.
+    Requirements: Make sure work_items are properly connected to events, prompts, and commits; Restore event and prompt counters in UI; Fix work_items with no linked events (e.g., #20431)
+    Deliveries: Identified root cause: 418/444 commits had event_id = NULL, breaking commit_ct CTE join; Corrected join logic to use mem_ai_events.source_id (short hash) → mem_mrr_commits.commit_short_hash; Modified route_work_items.py with proper source_id mapping; Restored event counters and prompt linking
+
+  PROMPTS P102327 [ ] [bug] [completed] [4] — Fixed migration to correctly map ai_phase and ai_feature tags from session/commit sources.
+    Requirements: Clarify summary column usage; Ensure tags are populated from mirror tables; Handle both session and commit-sourced event tag mappings
+    Deliveries: Fixed m024 migration to correctly map ai_phase→phase and ai_feature→feature for commit-sourced events; Completed migrations m021-m024: column renames, work_item_id backfill, tags JSONB conversion, tag backfill; Properly handles one-to-many session event relationship; Tags now merge from source events into work_items
+
+  PROMPTS P102347 [ ] [bug] [completed] [4] — Cleaned up event tags by removing system metadata and backfilling from mirror tables
+    Requirements: Show only user tags (phase, feature, bug, source) merged/updated from all mirror tables; Remove old system metadata tags (llm, event, chunk_type, commit_hash, etc.) from events
+    Deliveries: Fixed 6 corrupt session_summary events with malformed tags; Stripped system metadata from 1441 events, preserving only {phase, feature, bug, source}; Backfilled 1440 commit events with tags from mem_mrr_commits.tags; Implemented backfill_event_tags function in backend/routers/route_admin.py (+191 lines); Cleaned up legacy system root files across 4 commits
+
+  PROMPTS P102140 [ ] [task] [in-progress] [1] — User requests AI to summarize large feature responses and improve /memory function with tagging sugg
+    Requirements: Summarize large feature responses in chat history instead of full output; Add AI suggestion tags via /memory function; Clarify UI confusion in History tab (chat, commit, run, workflow management)
+
+  PROMPTS P102154 [ ] [task] [completed] [4] — Clarified MCP server usage (not directly used by Claude Code) and improved project context routing.
+    Requirements: Explain if/how MCP server is used for project information; Clarify why /memory suggestions don't appear; Show commit count and details in chat footer
+    Deliveries: Explained MCP server is separate integration for Claude CLI, not used by this Claude Code session; Identified that API key configuration affects suggestion quality; Improved project routing and chat view (commit 0c3a9cb3)
+
+  PROMPTS P102160 [ ] [task] [completed] [5] — System aligned to CLAUDE.md memory layers, /memory verification run successful, and project features
+    Requirements: Run /memory to verify all updates; Check system alignment to CLAUDE.md memory layer specification; Add all newly created features to documentation
+    Deliveries: /memory command confirmed working and graph router returning empty workflows; PROJECT.md updated to v2.2.0 with Planner Tab + Entity Tagging Backend features; Goal 9 status changed from In Progress to Implemented; All feature lists synchronized with current implementation
+
+  PROMPTS P102162 [ ] [task] [completed] [5] — Implemented history.jsonl rotation, verified session_tags.json usage, and performed full codebase cl
+    Requirements: Check if session_tags.json is used; clean up if unused; Implement history.jsonl rotation (every 500 rows into history_YYMMDDHHSS archive); Review and remove all old/unused code
+    Deliveries: History rotation implemented in `_rotate_history()`: configured via `history_max_rows` (default 500); Rotation triggered on every `/memory` call; Verified rotation working (2110 lines → 1610 rows archive in history_2602230915.jsonl); Full codebase cleanup performed
+
+  PROMPTS P102166 [ ] [task] [completed] [4] — Verified tag logic alignment: session tags via Chat, prompt tags via History, commit tags linked to 
+    Requirements: Verify tags per session can be added by Chat; Verify tags per prompts can be managed by History/prompts; Confirm commit prompt tags are linked properly
+    Deliveries: Confirmed `_load_unified_history` reads current and archived history files; Verified `_removeTag` with × buttons working in frontend; `_propagate_tags_phase4` and `untag_event_by_source_id` confirmed in backend; `_removeAppliedTag` and tag API endpoints verified; Commit 6f3cc130: system state and history updates
+
+  PROMPTS P102168 [ ] [task] [completed] [4] — Updated memory/docs for all sessions and explained MCP accessibility for new CLI/LLM sessions.
+    Requirements: Run /memory to update all summaries, DB tagging, and new changes; Explain how new Claude CLI or other LLM sessions can use MCP to receive memory fast and clean; Explain if new session will have same understanding as current session
+    Deliveries: Ran `/memory` command—generated 5 context files: CLAUDE.md, MEMORY.md, aicli.mdrules, copilot-instructions.md, rules.md; Explained MCP memory access mechanism via updated context files; New sessions inherit understanding through auto-loaded CLAUDE.md and MEMORY.md; Commit 523f5fd0: AI context files updated after session
+
+  PROMPTS P102179 [ ] [task] [completed] [4] — Optimized database schema with real columns, indexes, and improved tag/phase retrieval for MCP effic
+    Requirements: Ensure all tagging is linked, mapped properly in database schema; Verify tagging is used properly for data retrieval via MCP tool; Confirm DB structure and saving mechanism is optimal for memory management
+    Deliveries: Added `phase`, `feature`, `session_id` as real columns to `events_{project}` table (not just JSONB); Added indexes: `idx_{e}_session` and `idx_{e}_phase` for fast filtered queries; Separated migrations into per-statement try/except blocks for robustness; `_do_sync` in `routers/entities.py` properly syncs event tags with phase propagation; All schema changes verified and working
+
+  PROMPTS P102181 [ ] [task] [in-progress] [4] — Provided prioritized roadmap for full memory and project management lifecycle with quick wins and lo
+    Requirements: Identify additional improvements for full memory management; Provide roadmap for complete project management lifecycle
+    Deliveries: Prioritized roadmap with quick wins: `create_entity` MCP tool (Claude CLI/Cursor can create features/bugs/tasks), enhanced entity retrieval, audit trail fields; Medium-term improvements: status transitions (e.g., discovery→backlog→in-progress), due date alerts, relationship tracking between entities; Long-term: dashboard/burndown charts, automated entity linking via code patterns, notification system; Clear implementation guidance for each item
+
+  PROMPTS P102185 [ ] [task] [in-progress] [3] — Audited tag usage, fixed gaps in interaction_tags pipeline and session_bulk_tag function.
+    Requirements: Check if tags are well used across the system; Verify memory is improved by new summarisation process; Assess if MCP can be improved for answering and storing project data; Determine if better workflows can be created
+    Deliveries: Identified two gaps in tag system: session_bulk_tag() only wrote to event_tags_{project}; Fixed session_bulk_tag() to write interaction_tags rows for matching work items; Confirmed event_tags_{project} system is fully wired across chat, history sync, and tag-by-source-id UI
+
+  PROMPTS P102186 [ ] [task] [completed] [4] — Provided comprehensive summary of 7-part system improvements including memory stack, distillation la
+    Requirements: Summarise all improvements made to the system; Assess if system performance improves; Evaluate if memory works better; Determine if MCP can provide more accurate answers for work item management; Assess if workflows can be created based on new items and deliver projects faster
+    Deliveries: Described before/after comparison: 40 raw JSONL entries → two distillation layers; Documented 4-agent pipeline for work items; Explained MCP now actively manages project (not read-only); Detailed how memory stack improves LLM context and project understanding
+
+  PROMPTS P102206 [ ] [task] [completed] [4] — Eliminated all mng_graph_* references, refactored to use dynamic project_table() calls across 4 file
+    Requirements: Clean up mng_graph_* references from codebase; Clarify how graph tables are used in app; Determine if graph management should be server-side, not client-level
+    Deliveries: Removed all mng_graph_* table references from routers/graph_workflows.py (12 endpoints updated); Updated core/graph_runner.py to use dynamic db.project_table() calls; Refactored routers/work_items.py with tbl_g* variables in pipeline execution; Clarified graph table management is server-side (not client-level)
+
+  PROMPTS P102214 [ ] [task] [in-progress] [2] — User requested review of system state before phase 2 refactor; commit made with AI context and sessi
+    Requirements: Assess if current state makes sense before proceeding to embedding logic refactor (phase 2); Recommend any final adjustments or cleanup needed
+    Deliveries: Commit cad8c096: Updated AI context files and session history logs
+
+  PROMPTS P102233 [ ] [task] [in-progress] [2] — User requested comparison of current memory config vs previous version to assess improvement in proj
+    Requirements: Compare current memory config to previous version (reference aiCli_memory.md); Assess if memory layers are improved; Evaluate if LLMs can better understand project structure; Determine if feature/bug mapping to project structure is better; Assess if workflows have better information for success
+    Deliveries: Commit d2c4222a: Updated AI context files and session memory logs
+
+  PROMPTS P102260 [ ] [task] [in-progress] [0] — Mark 'llm_source' tag as visible in UI.
+    Requirements: Make 'llm_source' tag visible in UI display
+
+  PROMPTS P102261 [ ] [task] [in-progress] [0] — Create comprehensive memory layer documentation describing all layers and data flow.
+    Requirements: Build aicli_memory.md documentation from scratch; Describe all memory layers (mirror, event, working_items, project_facts); Explain mirroring layer operation and event handling mechanisms; Document triggers for each step in the pipeline; Document prompts used at each stage
+
+  PROMPTS P102271 [ ] [task] [in-progress] [3] — Updated memory documentation and assessed need for session memory layer in infrastructure.
+    Requirements: Update aicli_memory.md to reflect current table structure; Evaluate necessity of mem_session.py for session memory layer; Review all memory layer architecture and advise on updates needed; Align memory layer to track work_items and project_facts; Address feature request/bug tracking aspects
+    Deliveries: Commit 581e4039: updated system context and memory files with architectural review
+
+  PROMPTS P102278 [ ] [task] [completed] [5] — Synced and updated all memory files with incremental data from 211 history rows.
+    Requirements: Run /memory endpoint to update all memory_items with current data
+    Deliveries: Generated MEMORY.md, CLAUDE.md, rules.md, context.md, and copilot.md files; Copied files to code root for distribution; Synced from 211 incremental history rows as of 2026-04-07T01:11:00Z; Identified suggested tags from session; Commit aeefbb0f: system context and memory files update
+
+  PROMPTS P102289 [ ] [task] [completed] [4] — Traced and documented full commit pipeline showing prompt usage locations
+    Requirements: Explain where prompts are used for updating new commits; Show full commit pipeline for prompts
+    Deliveries: Identified PromptLoader class and PromptConfig in backend/core/prompt_loader.py; Traced commit processing through memory_embedding.py with diff stat counting; Showed prompt usage in route_chat.py (_backfill_session_tags, patch_session_tags); Documented git operations in route_git.py (commit_and_push)
+
+  PROMPTS P102295 [ ] [task] [completed] [4] — Assessed cost and completeness of mem_mrr_commits_code population
+    Requirements: Verify if mem_mrr_commits_code should be populated on every commit; Assess cost of per-class/method population
+    Deliveries: Cost breakdown: Tree-sitter ~1ms, git show ~20ms, Haiku ~$0.0003, embedding ~$0.0001 per symbol; Typical commit cost: ~$0.004 max (20 commits/day = ~$0.08/day); Provided two cost-reduction knobs: raise min_lines in project.yaml config; Confirmed population is cheap and feasible
+
+  PROMPTS P102313 [ ] [task] [completed] [4] — Located and documented all prompts for ai_tags and work_item extraction across memory system.
+    Requirements: Find locations of all prompts used for ai_tags and work_item operations
+    Deliveries: Provided comprehensive mapping table showing prompt files (work_item_extraction.md, work_item_promotion.md) and their usage; Identified ai tag matching logic hardcoded in memory_tagging.py:380; Documented which functions use each prompt (MemoryEmbedding.extract_work_items_from_events, MemoryPromotion.promote_work_item)
+
+  PROMPTS P102321 [ ] [task] [completed] [4] — Explained why commit-sourced work items have no linked prompts and ran memory update.
+    Requirements: Clarify why work_items exist without linked prompts (e.g., #20442); Update all work_items using /memory endpoint
+    Deliveries: Extracted new work item #20443 via memory run; Documented that items #20436-#20443 are commit-sourced (src=commit, sess=None) from 2026-04-07 backfill; Explained that prompts=0 is correct for historical commits with no associated CLI session; Provided source/session/prompts/commits distribution table
+
+  PROMPTS P102328 [ ] [task] [completed] [4] — Clarified distinction between ai_desc (extracted) and summary (generated by promotion).
+    Requirements: Explain what summary column is used for; Distinguish from ai_desc field
+    Deliveries: summary: human-readable 2-4 sentence status update generated on-demand by promote_work_item() LLM call; ai_desc: extracted at creation time from session digest, 1-2 sentence explanation of work item; Clarified that summary is a manual/generated field while ai_desc is automatic/extraction-time
+
+  PROMPTS P102343 [ ] [task] [in-progress] [1] — Structured events table schema redesign and clarified source_id linking for multi-event items.
+    Requirements: Reorganize events table columns: move project_id after client_id, move created_at/processed_at/embedding to end; Clarify source_id population and how it links multiple prompts to one work item; Evaluate action_item column usage; consider consolidating commits as group rather than per-event
+
+  PROMPTS P102352 [ ] [task] [in-progress] [0] — User asked to verify hook-log functionality after m050 migration
+    Requirements: Verify hook-log is working correctly after m050 changes
 
 ---
 
 ## **performance-optimization** · 26/03/10-00:52 [ ] (claude)
 > Type: new
-> Total: 9 prompts
+> Total: 11 prompts
 > User tags:
 > AI existing:
-> AI new:
-> Summary: Query optimization, DB calls, loading speed
-> Requirements: Reduce multiple SQL calls by loading all tags once into memory; Update memory and database only on save; Create smart dropdown with category filter and add new value option; Optimize SQL queries to load once on project load and update on save; Support nested tags beyond current 2-level hierarchy (category → tag)
+> AI new: [task:perf-optimization]
+> Summary: SQL query optimization, database performance, and code cleanup
+> Requirements: Reduce multiple database calls by loading data once on project access; Cache tags in memory for chat and tag tab usage; Implement smart dropdown with category filter and add new value option; Update memory and database in background on save; Optimize SQL queries (load once at project load, save on update)
+> Deliveries: [feature|completed|4|2] Optimized database performance with caching, indexes, and query documentation; [bug|completed|4|3] Fixed critical bugs in database schema, backend startup, and nested work item rendering; [task|completed|4|2] Cleaned up codebase by removing hardcoded values and consolidating configuration; [task|completed|4|2] Designed nested tags architecture with unlimited depth and explained pipeline integration; [task|in-progress|1|2] Investigated performance, memory optimization, and UI issues requiring resolution
 
-  PROMPTS P101260 [ ] [feature] [in-progress] [0] — Optimize database calls by caching tags in memory with smart dropdown UI
-    Requirements: Reduce multiple SQL calls by loading all tags once into memory; Update memory and database only on save; Create smart dropdown with category filter and add new value option
-    Deliveries: Implemented tag cache population in chat.js via _pickerPopulateCats() reading from cache; Created category dropdown with counts (e.g., feature (5)) in chat.js; Added live filter and Add button in floating dropdown via _pickerValFilter() in chat.js
+  PROMPTS P102144 [ ] [feature] [completed] [4] — Optimized database calls by caching tags in memory and implementing smart category-value dropdown wi
+    Requirements: Reduce multiple database calls by loading data once on project access; Cache tags in memory for chat and tag tab usage; Implement smart dropdown with category filter and add new value option; Update memory and database in background on save
+    Deliveries: New picker flow in chat.js: _pickerPopulateCats() reads from cache (zero DB calls); Category select populated with counts (e.g., '⬡ feature (5)'); _pickerCatChange() enables text input and renders dropdown with active values; _pickerValFilter() filters dropdown live with '+ Add' option for new values; Commit 8d851bf: implemented changes to chat.js
 
-  PROMPTS P101261 [ ] [feature] [in-progress] [0] — Design nested tags support with unlimited hierarchy depth
-    Requirements: Optimize SQL queries to load once on project load and update on save; Support nested tags beyond current 2-level hierarchy (category → tag); Show full path in chat tab but allow editing only at leaf level
-    Deliveries: Designed database schema addition: parent_id column in entity_values for unlimited nesting; Proposed planner tree view displaying all properties at every level; Proposed chat tab showing only leaf-level tags with full path display
+  PROMPTS P102201 [ ] [bug] [completed] [4] — Fixed nested work item rendering inconsistency across categories and clarified lifecycle and pipelin
+    Requirements: Fix nested work partial display (works in doc_type, broken in bug/feature UI); Explain lifecycle project usage and relevance; Clarify hardcoded pipeline purpose and effectiveness
+    Deliveries: Fixed Planner consistency: removed split between entity_values and work_items; Now ALL categories use same _renderTagTable renderer reading from entity_values; Nesting works identically for feature/bug/task as doc_type; Tags created via Chat session tagging immediately appear in Planner; Child button (+▸) works same across all types
 
-  PROMPTS P101280 [ ] [feature] [in-progress] [0] — Add pagination for chat prompts, chats, and commits with 24/page limit
-    Requirements: Display pagination controls (< > 24/xxx) on chat tab top right; Implement same pagination for chats and commits tabs
-    Deliveries: Extended backend _load_unified_history() to read history.jsonl and all history_*.jsonl archives; Added frontend pagination UI showing page bounds (e.g., 1–100 / 204) with arrow controls; Increased total history capacity from 26 to 204 entries covering Feb 23–Mar 15 range
+  PROMPTS P102210 [ ] [bug] [completed] [4] — Fixed database schema errors, missing project loading, and removed duplicate tables.
+    Requirements: Fix '_Database' object missing 'ensure_project_schema' attribute error; Resolve AiCli project not appearing (except in Recent); Fix project loading failure; Clean up duplicate database tables
+    Deliveries: Removed stale db.ensure_project_schema() call from main.py; Fixed database.py: rewrote DDL execution statement-by-statement; Added missing ALTER TABLE mng_session_tags ADD COLUMN client_id; Added missing ALTER TABLE mng_entity_values columns; Cleaned up duplicate table definitions
 
-  PROMPTS P101434 [ ] [feature] [in-progress] [0] — Add database indexes for planner/work items queries and document top-level queries
-    Requirements: Optimize queries for planner tabs and work items loading; Document query statements at top of each class file
-    Deliveries: Added migration m020 with 5 composite indexes in db_migrations.py including idx_mae_project_session, idx_mae_project_etype, idx_mmrrc_project_session; Optimized route_entities.py by removing unused TagBySourceIdBody and ValueCreate parameters; Simplified create_value, session_bulk_tag, and other methods reducing code complexity
+  PROMPTS P102211 [ ] [bug] [completed] [3] — Fixed backend startup failures, memory endpoint code_dir variable error, and project selection displ
+    Requirements: Fix backend failing on first load (succeeds after retry); Fix memory endpoint line 1120 code_dir undefined error; Fix aicli not shown as current project
+    Deliveries: Memory endpoint fixed and working; Fixed first load backend failures; Resolved aicli current project display; 2 commits: 2a160dd7, 8fda25cc
 
-  PROMPTS P101265 [ ] [bug] [in-progress] [0] — Fix port binding issue preventing app restart
-    Requirements: Resolve uvicorn exit code 1 when attempting to bind 127.0.0.1:8000; Handle orphaned processes preventing port release
-    Deliveries: Added freePort() function to check port availability and kill processes holding port 8000; Integrated freePort() into app startup sequence before uvicorn spawn; Added 2-second wait for OS confirmation port is free
+  PROMPTS P102241 [ ] [bug] [in-progress] [1] — No response provided to drag-and-drop and counter visibility issues.
+    Requirements: Fix drag and drop functionality not working; Fix counter not showing changes
+    Deliveries: Commit 6ea736e5: update ai workspace state and trim MEMORY.md
 
-  PROMPTS P101275 [ ] [bug] [in-progress] [0] — Cache all tags once and save tag colors with proper persistence
-    Requirements: Load all tags once into memory to avoid repeated database queries when adding tags; Preserve tag color from combolist when saving tag selection; Unify commits tag mechanism with history tag adding (dropdown instead of 3-column list)
-    Deliveries: Implemented _buildTagCache() in history.js loading categories once via Promise.all; Created _tagCache (grouped) and _tagCacheMap (flat lookup) in history.js for color preservation; Documented tag persistence mechanism and commits save/update alignment
+  PROMPTS P102145 [ ] [task] [completed] [4] — Designed nested tags architecture with unlimited depth using parent_id and answered feasibility befo
+    Requirements: Optimize SQL queries (load once at project load, save on update); Add option to create nested tags beyond current 2-level hierarchy; Ensure full path displays in chat tab with only last level editable; Verify feasibility before development
+    Deliveries: Feasibility answer: Yes, nested tags are absolutely feasible; Database design: ALTER TABLE entity_values ADD COLUMN parent_id INTEGER REFERENCES entity_values(id); Supports unlimited depth: category → tag → subtag → sub-subtag; Tree view design for Planner tab with all properties at every level; Commit 28fda59b: documented design decisions in CLAUDE.md
 
-  PROMPTS P101311 [ ] [bug] [in-progress] [0] — Investigate slow project loading and improve planner/history performance
-    Requirements: Diagnose why project list appears out of order by recent access; Identify why project opening and history loading takes excessive time; Add UI feedback explaining loading progress
-    Deliveries: Verified sanity of pagination implementation and performance baseline
+  PROMPTS P102183 [ ] [task] [completed] [4] — Cleaned up codebase by removing hardcoded values, moving config to dedicated config file, and optimi
+    Requirements: Check each file for unused code and unnecessary methods; Move hardcoded strings (e.g., backend URL, model names) to config file; Ensure all properties managed through config file for environment flexibility; Verify database and JSON file structure
+    Deliveries: Added haiku_model config: 'claude-haiku-4-5-20251001'; Added backend_url config: 'http://localhost:8000'; Added db_pool_max config: 10; Fixed CORS allow_origins to respect cors_origins setting in main.py; Cleaned up hardcoded values across 6+ files
 
-  PROMPTS P101435 [ ] [bug] [in-progress] [0] — Fix work items sort order and allow user approval/removal of AI tags
-    Requirements: Clarify DIGEST column purpose and justify work items display order; Explain orphaned work items appearing without linked prompts/commits/events; Enable user approval/removal of purple AI tags matching manual tag behavior
-    Deliveries: Fixed sort order in route_work_items.py with NULLS LAST clause for correct ordering; Updated _renderWiPanel and _wiRenderRows in entities.js (frontend) to reflect corrected ordering; Removed stale columns and simplified row rendering logic
+  PROMPTS P102184 [ ] [task] [in-progress] [0] — No response provided to restructure memory capabilities with compressed layers.
+    Requirements: Research and implement memory_items table for compressed summaries of prompt/response groups; Address gap between raw JSONL history (too much) and CLAUDE.md (too little); Follow trycycle and specrails architecture patterns
 
-  PROMPTS P101471 [ ] [bug] [in-progress] [0] — Fix history loading to include all prompts from start; merge session files correctly
-    Requirements: Ensure all prompts load from beginning, not truncated from arbitrary point; Clarify why _system/session files exist and prevent stale data; Update stale session files to reflect latest prompts
-    Deliveries: Implemented _normalize_jsonl_entry() in route_history.py handling 35 lines of schema normalization; Updated chat_history endpoint to merge database entries with JSONL archive (531 total vs 389 before); Corrected sort order showing April 15 (newest) first through March 6 (oldest) with NULLS LAST
+  PROMPTS P102191 [ ] [task] [completed] [4] — Explained hardcoded pipeline in work_item_pipeline.py and identified path to merge with workflow eng
+    Requirements: Locate pipeline configuration in Planner tab; Explain parent-child support disappearance; Link pipeline runner to workflow engine; Explore renaming workflow engine to pipelines
+    Deliveries: Identified pipeline config in ui/backend/core/work_item_pipeline.py (completely hardcoded); Explained 4-stage pipeline: PM → Architect → Developer → Reviewer (Python-coded, Anthropic API); Located ▶ Pipeline button trigger: POST /work-items/{id}; Clarified pipeline is parallel isolated implementation, separate from graph workflow engine
+
+  PROMPTS P102318 [ ] [task] [completed] [4] — Optimized Planner and work items loading with 5 composite database indexes and followed query docume
+    Requirements: Optimize slow Planner tab and work items loading; Verify query optimization (not being added at top of each file class); Follow role to document queries at top of each file class
+    Deliveries: Migration m020: 5 new composite indexes in db_migrations.py; idx_mae_project_session on mem_ai_events(project_id, session_id); idx_mae_project_etype on mem_ai_events(project_id, event_type); idx_mmrrc_project_session on mem_mrr_commits(project_id, session_id); Cleaned up route_entities.py (removed 3 unused POST bodies, simplified methods)
+
+  PROMPTS P102319 [ ] [task] [in-progress] [2] — Addressed query performance, DIGEST column purpose, orphaned work items, and AI tag permissions.
+    Requirements: Explain why query takes longer and what DIGEST column represents; Clarify how work items without linked prompts/commits/events are created (e.g. #20428); Explain why users cannot approve or remove the AI purple tag
+    Deliveries: Implemented NULLS LAST fix in backend query to improve performance; Modified get_unlinked_work_items() endpoint to surface orphaned work items; Updated UI rendering in _renderWiPanel and _renderWorkItemTable to display AI tag; Backend cleanup: removed stale auto-generated context and CLAUDE.md files
 
 ---
 
-## **memory-layers-refactor** · 26/03/09-04:08 [ ] (claude)
+## **planner-tagging-workflow** · 26/03/10-01:14 [ ] (claude)
 > Type: new
-> Total: 61 prompts
+> Total: 49 prompts
 > User tags:
 > AI existing:
-> AI new:
-> Summary: Memory layer architecture, schema design, migration
+> AI new: [feature:planner-workflow]
+> Summary: Planner UI, tagging system, and workflow pipeline
+> Requirements: User asked for clarification on tag creation behavior in chat picker vs Planner; User confirmed completion of parent-child tag relationship implementation; User reported app restart failures with 'address already in use' error on 127.0.0.1:8000; Tags disappear when switching sessions (possible UI or persistence bug); Request to verify /memory functionality
+> Deliveries: [feature|completed|5|5] Hierarchical tagging system with nested tag support (parent_id) fully implemented in database, frontend, and UI; [feature|completed|4|12] Work item planner UI complete: pagination, drag-drop nesting, tag suggestions, persistent linking, and category organization; [feature|completed|4|8] Tag persistence and session-level tracking with /tag command, work item association, and AI tag acceptance workflow; [task|completed|4|6] Database schema cleanup: planner_tags migration removing redundant columns, added creator/updater tracking and deliveries taxonomy; [feature|in-progress|2|6] Session management, memory updates, and feature snapshot table for use-case delivery tracking in progress
 
-  PROMPTS P101255 [ ] [task] [in-progress] [0] — Assuming I will improve the project management page, workflow processes. can you
+  PROMPTS P102147 [ ] [feature] [completed] [5] — Confirmed hierarchical tag support (parent_id) implemented in database and frontend cache helpers.
+    Requirements: User confirmed completion of parent-child tag relationship implementation
+    Deliveries: Backend: Added parent_id column to entity_values with foreign key reference; Backend: Integrated parent_id into ValueCreate, ValuePatch, SELECT, INSERT, PATCH handlers; Frontend: New tagCache.js helpers (getCacheRoots, getCacheChildren) with zero extra DB calls
 
-  PROMPTS P101268 [ ] [task] [in-progress] [0] — can you run /memory, and make the UI more clear. add your sujjestion in a clear 
+  PROMPTS P102158 [ ] [feature] [in-progress] [3] — Implemented tag-by-source-id endpoint to link history entries to entity tags for /memory updates.
+    Requirements: Concern about commit/hash linking to prompts and LLM answers; Need to use /memory to update summarized and embedded data; Confusion between History (summary + prompt) and Chat (all responses) display; Desire to store full history (prompts + LLM answers) while Chat shows short responses
+    Deliveries: Backend: POST /entities/events/tag-by-source-id endpoint accepting source_id (history.jsonl timestamp); Backend: Automatic event creation from history.jsonl if not found in database; Backend: Idempotent tagging safe for multiple calls; Frontend: api.entities.tagBySourceId() added to api.js
 
-  PROMPTS P101269 [ ] [task] [in-progress] [0] — can you run /memory and run some tests? I do not see any sujjestion on all the e
+  PROMPTS P102164 [ ] [feature] [completed] [5] — Implemented pagination (◀ [page] / total ▶) for Chat, History, and Commits tabs.
+    Requirements: Add pagination UI to Chat showing < > 24/xxx on top right near filter tab; Apply same pagination to Chats and Commits tabs; Support loading multiple history archive files
+    Deliveries: Backend: _load_unified_history() now reads history.jsonl + all history_*.jsonl archives; Backend: Results increased from 26 to 204 entries with proper deduplication and noise filtering; Frontend: Pagination UI always visible with disabled/grayed arrows at boundaries; Frontend: Format: ◀ [start–end] / [total] ▶ displayed on all three tabs; Data range expanded from 2026-02-23 to 2026-03-15 covering all archives
 
-  PROMPTS P101276 [ ] [task] [in-progress] [0] — can you run /memory, to make sure all updated. also can you check that system is
+  PROMPTS P102169 [ ] [feature] [completed] [4] — Fixed MCP config for current project and created automated MCP setup for new projects with IDE suppo
+    Requirements: Set up MCP config for current project; Add automated MCP setup when creating new projects; Support IDE configs: Claude CLI, Claude Code, Cursor, OpenAI, DeepSeek, Gemini, Grok; Ensure non-Cursor/Code IDEs can understand config from aicli API
+    Deliveries: Fixed .mcp.json path typo (/user/ /gdrive → /user/Documents/gdrive); Unified .cursor/mcp.json format to args-based matching .mcp.json (not env-based); Both configs now point to ui/mcp_server.py --project aicli --backend http://localhost:8000; Created automated MCP setup flow for new projects supporting all 7 IDE types; Ensured API-based IDEs (OpenAI, DeepSeek, Gemini, Grok) receive config via aicli
 
-  PROMPTS P101284 [ ] [task] [in-progress] [0] — let me summerise not. first run /memroy to update all sumeeries, db tagging and 
+  PROMPTS P102200 [ ] [feature] [in-progress] [4] — Documented tagging mechanism with nested hierarchy and planner integration plan.
+    Requirements: Implement tagging mechanism to map prompt/commit to proper tags; Support nested tag hierarchy (e.g., Dropbox under UI, Database under Backend); Verify tags appear in Planner after approval; Test nested tagging functionality end-to-end
+    Deliveries: Tab renames in main.js: 'Workflow' → 'Pipelines', 'Prompts' → 'Roles'; Added +▸ button in every regular tag row for creating child tags; Widened actions column header from 44px to 80px; Implemented inline 'Child of X:' form for nested tag creation; Added parent_id support to work items for hierarchy
 
-  PROMPTS P101296 [ ] [task] [in-progress] [0] — is it align to the 5 steps memory? is there is any addiotnal requirement in orde
+  PROMPTS P102240 [ ] [feature] [in-progress] [2] — Addressed Planner issues: lifecycle tags, bug counter, drag-drop nesting, and ai_suggestion placemen
+    Requirements: Clarify purpose of Lifecycle tagging; Update bug counter next to bug tab; Move AI-suggested bugs to ai_suggestion section with proper tag; Implement drag-drop functionality to create nested parent-child relationships; Implement drag-drop to merge two tags
+    Deliveries: System documentation updated (commit fc265cbe)
 
-  PROMPTS P101297 [ ] [task] [in-progress] [0] — Is there is any addiotnal improvement that I can implemet for having full memroy
+  PROMPTS P102244 [ ] [feature] [in-progress] [3] — Reorganized AI suggestions into separate section and enhanced drag-drop tag nesting.
+    Requirements: Move AI-suggested bugs from bug category to separate ai_suggestion section; Prevent user tag creation in ai_suggestion area; Create main AI-suggested categories (bug, feature, etc.); Implement drag-drop to create parent-child tag relationships; Determine complexity of drag-drop for tag nesting
+    Deliveries: Tag routing and entities view enhancement (commit 61db51e1); API updates implemented for tag routing; Memory and AI rules documentation updated (commit 0a280e50, aed5228f)
 
-  PROMPTS P101303 [ ] [task] [in-progress] [0] — Can you run the /memory and go over current architecure - how data is stored, ho
+  PROMPTS P102274 [ ] [feature] [in-progress] [2] — System documentation updated; drag-drop work item movement and panel resizing addressed.
+    Requirements: Implement drag-drop to move work items from lower screen to upper screen under target item; Implement resizable separator between top and bottom panels for height adjustment
+    Deliveries: System documentation and memory updated (commit 36dfee39)
 
-  PROMPTS P101330 [ ] [task] [in-progress] [0] — Is it makes more sense, before I continue to the secopnd phase (refactor embeddi
+  PROMPTS P102277 [ ] [feature] [completed] [4] — Implemented work_item move/merge functionality with tag cleanup and side panel UI.
+    Requirements: Move work_items back to work_items or other items; Add merge functionality for work_items only (in side tab, like TAG merge); Show only work_items under current parent in merge list; Remove merge option from tags/items
+    Deliveries: Modified _loadTagLinkedWorkItems to clear all .wi-sub-row elements before re-injection; Updated _wiPanelDrop to use _loadTagLinkedWorkItems for faster item removal; Removed merge functionality from bottom panel items (_renderWiPanel)
 
-  PROMPTS P101331 [ ] [task] [in-progress] [0] — Yes please fix that. about pr_embedding. in the prevous prompts I have mention t
+  PROMPTS P102297 [ ] [feature] [in-progress] [2] — Added multi-column work_item table with name, desc, prompts, commits, date and sorting.
+    Requirements: Display work_items in rows with name and desc columns; Add prompts column showing total prompts count; Add commits column showing total commits count; Add date column with last update (yymmddhhmm format); Enable sorting by prompts, commits, or date
+    Deliveries: Sanity check on draggable attribute for _attachWorkItemDnd compatibility
 
-  PROMPTS P101332 [ ] [task] [in-progress] [0] — I am not sure all tagging functionality is implemented as I do not see the mng_a
+  PROMPTS P102303 [ ] [feature] [completed] [4] — Made header sticky, added AI tag suggestions with approve/remove, and prepared memory update.
+    Requirements: Keep header visible when user scrolls down in work_items; Add /memory endpoint to update events and work_items; Verify last prompts are reflected as work_items; Show AI tag suggestions for each work_item in UI; Add ability to approve/remove suggested tags
+    Deliveries: Added position:sticky;top:0;z-index:1 to all 3 sortable <th> cells in hdr(); Implemented suggestion row showing ✦ tag_name with [✓] approve and [×] remove buttons; Approve button calls PATCH to link tag to item; Remove button calls PATCH to clear ai_tag_id
 
-  PROMPTS P101333 [ ] [task] [in-progress] [0] — I do see the error . it suppose to be mem_ai_tags_relations not mng_ai_tags_rela
+  PROMPTS P102306 [ ] [feature] [completed] [4] — Implemented category:name AI tags (bug/feature/task), user tags display, and new tag suggestions wit
+    Requirements: AI tags should use format category:name (e.g., bug:auth, feature:dropbox) at lowest level; Show tag suggestions from existing tags, show new tags with different color if no match; Display user tags derived from merged events connected to work_items; Add rectangular shape for × button like ✓ button
+    Deliveries: Modified get_unlinked_work_items to return category:name format; Updated _renderWiPanel to show category:name AI tag suggestions; Added user tags display as informational pills; Styled × button with rectangular shape matching ✓ button
 
-  PROMPTS P101334 [ ] [task] [in-progress] [0] — I would like to make sure relation is managed properly.  relation can be managed
+  PROMPTS P102310 [ ] [feature] [completed] [4] — Implemented hierarchical AI tag suggestion prioritizing task/bug/feature, then suggesting new catego
+    Requirements: AI suggestion should suggest one tag from task/bug/feature categories first; If no match in task/bug/feature, suggest tags from other categories (doc_type, phase, etc.); If still no match, suggest new task/bug/feature; Verify work_items reflect current session context (UI improvements, AI tags) not unrelated items
+    Deliveries: Modified _load_all_tags() to JOIN mng_tags_categories and order task/bug/feature first; Updated _claude_judge_candidates() prompt to show [category] tag-name format; Implemented hierarchical matching: existing task/bug/feature → other categories → suggest new category; Result: 103 AI(EXISTS) tags matched, 15 AI(NEW) suggested
 
-  PROMPTS P101335 [ ] [task] [in-progress] [0] — I would like to make sure that the final layer include Work Items, Feature Snaps
+  PROMPTS P102332 [ ] [feature] [completed] [4] — Applied migration to clean planner_tags table with creator/updater fields and reordered columns.
+    Requirements: Creator must have value (username if user-created, 'ai' if AI-created); Add updater field to track who last modified the row; Reorder columns: project_id after client_id, timestamps (create, created_at, updated, updated_at) as last columns
+    Deliveries: Created migration m026_planner_tags_cleanup with column reordering; Added creator and updater fields with proper constraints; Updated memory_files.py to work with new schema; Verified API returns correct new structure
 
-  PROMPTS P101336 [ ] [task] [in-progress] [0] — This task is related to current memory update (layer 1)  Create all memory files
+  PROMPTS P102334 [ ] [feature] [completed] [5] — Applied m027 migration removing AI-generated columns from planner_tags table.
+    Requirements: Remove summary, design, embedding, extra columns from planner_tags
+    Deliveries: Migration m027_planner_tags_drop_ai_cols applied successfully; Updated memory_files.py render_feature_claude_md removing summary and design references; Cleaned up memory_planner.py and memory_promotion.py to remove AI column dependencies; Verified API response shows only clean columns: name, status, description, creator, requirements, action_items, updater
 
-  PROMPTS P101337 [ ] [task] [in-progress] [0] — perfect. I would like to have an updated aicli_memory with all updated memory st
+  PROMPTS P102335 [ ] [feature] [in-progress] [1] — Planning to add deliveries column to planner_tags with category/type taxonomy from mng_deliveries ta
+    Requirements: Add deliveries JSONB column after action_items; Deliveries updated by user input (list selection); Support multiple delivery types: code (python, js, c#...), document (md, doc...), architect design (visio...), ppt; Create static mng_deliveries table to store delivery categories and types; User should select from predefined categories
 
-  PROMPTS P101338 [ ] [task] [in-progress] [0] — Is it advised to merge pr_session_summeries into mem_ai_events. make sure there 
+  PROMPTS P102337 [ ] [feature] [in-progress] [2] — Design specification for mem_ai_feature_snapshot table with use cases and delivery types.
+    Requirements: Create final stage table mem_ai_feature_snapshot that merges user requirements/tags and work items; Include summary, use cases, types (bug/feature/task), and delivery types (code, design docs, AWS architecture, marketing presentations); Map each use case to delivery types from planned_tags
+    Deliveries: Design specification for mem_ai_feature_snapshot table structure with requirements
 
-  PROMPTS P101339 [ ] [task] [in-progress] [0] — I think llm_source is missing in mem_ai_events. I also see columns that I am not
+  PROMPTS P102338 [ ] [feature] [completed] [4] — Implemented feature_snapshot table with migration, schema, and Haiku prompt for use-case generation.
+    Requirements: Store complete project history using all layers with strong MCP support; Enable deployment and code management with event-to-work-item and user-requirement mapping; Create feature snapshot as input for developer/tester/reviewer workflows and additional workflows for design/cloud maintenance
+    Deliveries: Added m029_feature_snapshot() migration function; Created mem_ai_feature_snapshot table with 3 indexes in db_schema.sql; Created feature_snapshot_v2.md Haiku prompt for use-case generation and delivery mapping; Updated prompts.yaml with feature_snapshot_v2 prompt definition; Cleaned up stale agent context files
 
-  PROMPTS P101340 [ ] [task] [in-progress] [0] — It seems that I cannot see the changes in the db 
+  PROMPTS P102340 [ ] [feature] [in-progress] [1] — Implementation request for dashboard tab and pipeline execution from multiple entry points.
+    Requirements: Create dashboard as a new tab in UI; Enable pipeline execution from planner, docs (where features exist), or directly from chat
 
-  PROMPTS P101341 [ ] [task] [in-progress] [0] — It is working noew. ddl is updated. still I do se columns that I am not sure are
+  PROMPTS P102353 [ ] [feature] [completed] [4] — Enhanced chat history view with session sidebar, full session IDs, timestamps (YY/MM/DD-HH:MM), and 
+    Requirements: Add session visibility in chat tab similar to history tab (left sidebar per session); Add YY/MM/DD-HH:MM timestamps to history prompts (YOU messages); Add all tags display and ability to add tags in history; Show last 5 digits of session ID in left sidebar, full session_id at top when user enters
+    Deliveries: Left sidebar now displays session items with source badge, phase chip, and last 5 chars of session ID (monospace); Added full session ID tooltip on hover of session items; Right panel sticky banner shows full session UUID with phase chip; Implemented YY/MM/DD-HH:MM timestamp display for user messages (YOU); Added tag display and management to history view
 
-  PROMPTS P101342 [ ] [task] [in-progress] [0] — I would to refactor all mem_mrr_* tables as it seems there are columns that are 
+  PROMPTS P102149 [ ] [bug] [completed] [5] — Fixed port binding restart issue by implementing freePort() to kill orphan uvicorn processes.
+    Requirements: User reported app restart failures with 'address already in use' error on 127.0.0.1:8000
+    Deliveries: Implemented freePort() function to check and kill process holding the port via lsof; Added 2-second wait for OS to confirm port is free; Ensured freePort() runs on every app start to handle orphaned uvicorn processes
 
-  PROMPTS P101343 [ ] [task] [in-progress] [0] — test prompt after migration
+  PROMPTS P102150 [ ] [bug] [in-progress] [3] — Added session-level tag persistence and GET endpoint to retrieve tagged entities per session.
+    Requirements: Tags disappear when switching sessions (possible UI or persistence bug); Request to verify /memory functionality; Ensure tags are stored across all session data; Explanation of how sessions work in the CLI
+    Deliveries: Backend: New GET /entities/session-tags endpoint to query event_tags joined to events and values; Frontend: Added getEntitySessionTags(sessionId, project) to api.entities; Frontend: Integrated _restoreTagBar in chat.js _chatLoad to restore tags after session switch; Confirmed syntax is correct with no errors
 
-  PROMPTS P101344 [ ] [task] [in-progress] [0] — can you do the same for the mem_ai tables ? 
+  PROMPTS P102201 [ ] [bug] [completed] [4] — Fixed Planner inconsistency by unifying tag renderers across all categories.
+    Requirements: Fix nested work items display inconsistency between doc_type and bug/feature tabs; Explain lifecycle project purpose and relevance; Explain hardcoded pipeline purpose
+    Deliveries: Removed split between entity_values and work_items renderers; All categories now use same _renderTagTable renderer from entity_values; Nested tags work identically across feature/bug/task categories; Tags created via Chat session tagging now appear immediately in Planner; +▸ child button works consistently across all categories
 
-  PROMPTS P101345 [ ] [task] [in-progress] [0] — test after mem_ai cleanup
+  PROMPTS P102275 [ ] [bug] [in-progress] [0] — Multiple drag-drop and work item management issues identified: hover highlighting, persistence, deta
+    Requirements: Fix hover highlighting showing all hovered tabs instead of just target tag; Fix work item link not persisting without page refresh; Enable work item details view when item is nested under tag; Implement work item merge with new merged row and rollback capability via merge_id column
 
-  PROMPTS P101346 [ ] [task] [in-progress] [0] — It looks like database.py become really big. can you remove old migration and ma
+  PROMPTS P102276 [ ] [bug] [completed] [4] — Fixed work item link persistence bug in tag view by removing category filter.
+    Requirements: Fix work items not appearing under dropped tag after drag-drop operation; Ensure persistence across page navigation
+    Deliveries: Root cause identified: _loadTagLinkedWorkItems filtered by tag's category instead of all project items; Fixed api.workItems.list to fetch all work items without category filter; Work items now correctly appear under linked tag regardless of category mismatch; System context files updated (commit cc038181)
 
-  PROMPTS P101349 [ ] [task] [in-progress] [0] — Not sure if you remember the previous memory config. if you do (you can check ai
+  PROMPTS P102302 [ ] [bug] [completed] [4] — Completed missing delete handler for work_item rows in bottom panel.
+    Requirements: Wire up missing _wiPanelDelete handler function for × dismiss button; Fix JS error from clicking × button without handler
+    Deliveries: Defined window._wiPanelDelete async function inside _renderWiPanel; Handler confirms deletion, calls api.workItems.delete(id, proj), removes from cache, re-renders
 
-  PROMPTS P101350 [ ] [task] [in-progress] [0] — yes . fix that all 
+  PROMPTS P102311 [ ] [bug] [completed] [5] — Debugged work_item ordering by fixing seq_num NULL handling and ensuring prompts/commits link to wor
+    Requirements: Explain why #20006 appears as last updated item despite being unrelated; Verify prompts and commits are properly associated with work_items; Ensure at least 1 prompt and 1 commit are linked to work_items
+    Deliveries: Identified root cause: seq_num is NULL for most items, ORDER BY seq_num DESC puts NULLs first; Fixed: Changed to ORDER BY created_at DESC for correct chronological ordering; Modified MemoryPromotion.extract_work_items_from_events to use global next_seq() instead of local max+1; Verified prompt-to-commit-to-work_item linkage chain is complete
 
-  PROMPTS P101368 [ ] [task] [in-progress] [0] — I would like to work on the mem_ai_events which takes events from all system. mo
+  PROMPTS P102322 [ ] [bug] [completed] [4] — Fixed UI behavior for AI tag acceptance and existing tag confirmation in work item planner.
+    Requirements: When user accepts AI tag, confirm button should be removed (only delete stays); When user confirms existing tag, work_item should be removed from list and moved under the tag; When user confirms new tag, new tag should be added to planned and work_item moved into it; All linking should occur automatically
+    Deliveries: Modified _wiPanelApproveTag to call _loadTagLinkedWorkItems after linking so item appears immediately under tag; Modified _wiSecApprove to show linked item immediately in tag table; Added green ✓ button for AI(NEW) row creation
 
-  PROMPTS P101369 [ ] [task] [in-progress] [0] — Please add the llem_source after project, and in all tables where there is embed
+  PROMPTS P102324 [ ] [bug] [completed] [4] — Resolved tag command conflict by creating /stag alias and tagged session with development and work_i
+    Requirements: User reported error about unknown skill tag
+    Deliveries: Identified /tag conflicts with reserved name in Claude Code's skill loader; Created /stag as renamed skill with same functionality; Tagged session directly with phase:development feature:work_items
 
-  PROMPTS P101370 [ ] [task] [in-progress] [0] — I dont see any change in mem_ai_events. llm_source suppose to be after project, 
+  PROMPTS P102325 [ ] [bug] [completed] [4] — Fixed bug where adding AI tags caused work_items to disappear; metadata tags now stay in list.
+    Requirements: When user accepts AI tag (doc_type, feature...), tag should be added as metadata, work_item should NOT disappear; Only AI(EXISTS) should link work_item to existing tag; Only AI(NEW) should create new tag and link work_item to it; Reduce loading time (1-2 second delay)
+    Deliveries: Fixed _wiSecApprove to store in ai_tags.confirmed[] array instead of setting tag_id; Secondary chip now disappears while item stays in list with metadata confirmation toast; ✓ button now shown for all cases including suggested_new; Added loading indicator for better UX feedback
 
-  PROMPTS P101371 [ ] [task] [in-progress] [0] — Looks good, can you rename this table to mem_ai_events_old. create new table be 
+  PROMPTS P102341 [ ] [bug] [completed] [4] — Fixed UI bug where planner doesn't display bug/category categories and work items disappear on tag a
+    Requirements: Fix planner UI not showing bug/category items, only work_item; Fix work_item disappearing when AI tag accepted with empty top screen display
+    Deliveries: Fixed _renderWiPanel in entities.js (+19 lines); Updated route_entities.py functions: create_value, patch_value, delete_value, get_value_by_number, session_bulk_tag; Fixed tool_memory.py _handle_get_tag_context; Updated MCP server dispatch logic; Cleaned up legacy context files
 
-  PROMPTS P101372 [ ] [task] [in-progress] [0] —  What are the columns doc_type, language and file_path are used for ? also sessi
+  PROMPTS P102146 [ ] [task] [completed] [4] — Clarified that new tags in chat picker are created at root level; nested tags require Planner.
+    Requirements: User asked for clarification on tag creation behavior in chat picker vs Planner
+    Deliveries: Explained root-level tag creation in chat picker flow; Clarified nested sub-tag creation requires Planner with tree view and + child button
 
-  PROMPTS P101373 [ ] [task] [in-progress] [0] — I would like to add language as a tags into the tags. if that is updated on each
+  PROMPTS P102166 [ ] [task] [completed] [4] — Verified tag logic alignment: session-level tags (Chat), prompt-level tags (History), commit linkage
+    Requirements: Verify tags per session can be added in Chat; Verify tags per prompts managed in History; Verify commit-prompt tag linkage is proper; Check all logic is well-defined
+    Deliveries: Confirmed history.py _load_unified_history reads current + all history_*.jsonl archives; Confirmed history.js uses data-ts attribute on entries and _jumpToPrompt with CSS.escape; Confirmed entities.py has _propagate_tags_phase4, untag_event_by_source_id, remove_session_tag; Confirmed chat.js _removeAppliedTag with untagSession integration; Confirmed api.js untagBySourceId and untagSession implementations
 
-  PROMPTS P101374 [ ] [task] [in-progress] [0] —  What is chunck and chunck_type are used for ? is it importnt information that c
+  PROMPTS P102191 [ ] [task] [in-progress] [3] — Identified hardcoded Pipeline in work_item_pipeline.py; explained merge path with workflow engine.
+    Requirements: Locate where default Pipeline is configured; Identify missing parent-child tag support that disappeared; Desire to link Pipeline to workflow engine (possibly rename to 'Pipelines'); Explain how to merge both systems
+    Deliveries: Located Pipeline configuration: ui/backend/core/work_item_pipeline.py (hardcoded); Documented 4 stages: PM → Architect → Developer → Reviewer as Python code; Explained Pipeline calls Anthropic API directly, does not use graph workflow engine; Identified POST /work-items/{id}/run-pipeline endpoint in Planner; Clarified Pipeline and workflow engine are parallel, isolated implementations
 
-  PROMPTS P101375 [ ] [task] [in-progress] [0] — I am looking at the table and see lots for event from history that not makes any
+  PROMPTS P102198 [ ] [task] [in-progress] [3] — Explained Claude Agent SDK capabilities and assessment of fit for multi-agent PM/Dev/Tester/Reviewer
+    Requirements: Explain what Claude Agent SDK is used for; Assess if it can replace current multi-agent system (PM, Developer, Tester, Reviewer)
+    Deliveries: Explained Claude Agent SDK is Anthropic's framework for building AI agents with tools, subagents, state management, and streaming; Documented Agent SDK capabilities: tool execution, delegation to subagents, conversation state, user approvals; Provided assessment of fit for PM → Developer → Tester → Reviewer pipeline
 
-  PROMPTS P101377 [ ] [task] [in-progress] [0] — I would like to build the aicli_memory.md for scratch in order to get a final vi
+  PROMPTS P102199 [ ] [task] [completed] [4] — Verified parent_id field added to work items for nested tag support.
+    Requirements: Check that nested (parent-child) tags are supported in the planner; Verify UI is aligned with infrastructure changes from workflow improvements
+    Deliveries: Confirmed parent_id: Optional[str] = None added to WorkItemCreate model; Verified INSERT query includes parent_id column; Verified SELECT query returns w.parent_id; Confirmed row serialization casts parent_id UUID to string
 
-  PROMPTS P101378 [ ] [task] [in-progress] [0] — About orocess_item / messeges - trigger in /memroy (for all new items at the mom
+  PROMPTS P102242 [ ] [task] [in-progress] [1] — System files updated after session (no specific delivery details provided).
+    Requirements: Clarify if Lifecycle tags are needed and relevant to current scope
+    Deliveries: System files updated (commit f341693a)
 
-  PROMPTS P101379 [ ] [task] [in-progress] [0] — test prompt after fix
+  PROMPTS P102243 [ ] [task] [in-progress] [1] — System context and AI rules updated after session.
+    Requirements: Address Lifecycle tags visibility in bug, feature, and task categories
+    Deliveries: System context and AI rules files updated (commit 80a905d7)
 
-  PROMPTS P101387 [ ] [task] [in-progress] [0] — I am checking the aiCli_memory - and it is looks likje it is not updated at all.
+  PROMPTS P102301 [ ] [task] [completed] [4] — Fixed date format to yy/mm/dd-hh:mm and removed non-work_item tags from display.
+    Requirements: Change date format from yymmddhhmm to yy/mm/dd-hh:mm; Remove tags (Shared-memory, billing, etc.) from work_items display as they are not work_items
+    Deliveries: Implemented fmtDate function with correct yy/mm/dd-hh:mm format; Modified _renderWiPanel to filter out non-work_item tags; Confirmed api.workItems.delete(id, project) exists at line 374 with proper handler wiring
 
-  PROMPTS P101394 [ ] [task] [in-progress] [0] — can you update all memory_items (maybe run /memory) to have an uodated data 
+  PROMPTS P102316 [ ] [task] [in-progress] [3] — Explained session management, context compression, and provided architectural overview of tag tracki
+    Requirements: Add mechanism to conversation for forcing tag addition and periodic user confirmation every 5-10 prompts; Explain if new session is created for data compression; Clarify session ID behavior and context compression in CLI
+    Deliveries: Explained that same session_id persists throughout entire CLI session; Context compression is invisible — no new session_id needed; New session_id only created when user quits Claude and runs fresh; Current session 9315de75 has been running entire time, explaining 37 commits / 9 prompts across work_items; Updated list_tools in backend/agents/mcp/server.py with 12 new lines
 
-  PROMPTS P101398 [ ] [task] [in-progress] [0] — In addtion to your reccomendation, I would like to check the following -  mem_ai
+  PROMPTS P102323 [ ] [task] [completed] [4] — Clarified that /tag command works in current session without needing new session.
+    Requirements: User asked if they can add tags to prompts using /tag or if new session is needed
+    Deliveries: Explained /tag updates .agent-context and calls PUT /history/session-tags; Clarified log_user_prompt.sh reads .agent-context on every prompt; Noted /tag does not retroactively tag existing prompts
 
-  PROMPTS P101400 [ ] [task] [in-progress] [0] — I still see the columns in commit table - diif_summery and diff_details . is it 
+  PROMPTS P102330 [ ] [task] [completed] [4] — Changed session tags from work_items to planner feature tag.
+    Requirements: Change tag to feature:planner for session tracking
+    Deliveries: Session tags set to phase:development, feature:planner; Confirmed all future prompts and commits will be tagged accordingly
 
-  PROMPTS P101401 [ ] [task] [in-progress] [0] — I would like to understand the commit table - do you have my previous comment? m
+  PROMPTS P102331 [ ] [task] [completed] [4] — Analyzed planner_tag table schema and proposed cleanup of redundant/unused columns.
+    Requirements: Analyze seq_num field - is it needed?; Clarify source vs creator columns - should one be removed?; Clarify status vs status_new - why two columns?; Determine if code_summary is needed in planner_tags; Identify which fields require user input vs AI generation
+    Deliveries: Recommended dropping seq_num (always null, never populated); Recommended dropping source, keep creator only (source is redundant); Confirmed only one status column needed; Clarified code_summary belongs in work_items, not planner_tags; Proposed clean set of user-maintained columns: name, status, description, creator, requirements, acceptance_criteria, action_items
 
-  PROMPTS P101405 [ ] [task] [in-progress] [0] — can you explain where are the  prompts that used for update new commit ? 
+  PROMPTS P102333 [ ] [task] [completed] [3] — Planned removal of AI-generated columns from planner_tags and clarified extra column usage.
+    Requirements: Plan to merge planner_tags with work_item for AI-generated summary and design; Remove summary, design, embedding columns from planner_tags; Clarify what extra column is used for
+    Deliveries: Proposed creating merger layer for AI-generated fields (summary, design); Identified summary, design, embedding, extra as candidates for removal; Planned cleanup while keeping user-facing fields
 
-  PROMPTS P101407 [ ] [task] [in-progress] [0] — three is link from prompts to commits. each five prompts summeries to event, whi
+  PROMPTS P102336 [ ] [task] [completed] [4] — Session tag 'feature: feature_snapshot' set for development tracking.
+    Requirements: Add tag feature:feature_snapshot to session
+    Deliveries: Session tag set to 'feature: feature_snapshot'; Cleaned up stale agent context and legacy system files
 
-  PROMPTS P101412 [ ] [task] [in-progress] [0] — I would like to understand how work_item are populated. work_item suppose to be 
+  PROMPTS P102339 [ ] [task] [completed] [4] — Analyzed aicli product architecture and provided recommendations for improving flow visibility and p
+    Requirements: Improve point 4 - increase visibility on all flows with managed prompts in separate files; Improve point 5 - enhance workflow system that runs based on approved features, originally built as prompt management for flows
+    Deliveries: Product analysis document explaining aicli as shared AI memory platform; Identified core problem: AI tools lose project context between sessions; Explained architecture that intercepts development lifecycle (prompts, commits, work items); Recommendations for improving flow visibility and prompt management integration
 
-  PROMPTS P101429 [ ] [task] [in-progress] [0] — Where are all the rpompts for ai_tags and work_item are ?
+  PROMPTS P102347 [ ] [task] [completed] [4] — Cleaned up event tags to show only user-managed tags, removed system metadata from 1441 events and b
+    Requirements: Remove old system tags from events, show only user-merged/updated tags; Only retain phase, feature, bug, source tags and remove system metadata
+    Deliveries: Pass 0: Fixed 6 corrupt session_summary events with malformed JSON tag arrays; Pass 1: Stripped system metadata tags (llm, event, chunk_type, commit_hash, commit_msg, file, etc.) from 1441 events; Pass 2: Backfilled 1440 commit events with {} tags from mem_mrr_commits.tags; Implemented backfill_event_tags endpoint (+191 lines in route_admin.py); Cleaned up legacy system root files and reorganized context
 
-  PROMPTS P101430 [ ] [task] [in-progress] [0] — I do see same work item working on mention document summery and update ai memory
+  PROMPTS P102354 [ ] [task] [completed] [4] — Moved session ID display to tag bar and fixed chat loading to sync latest chats from local JSON file
+    Requirements: Show session ID only in tag bar (feature list/tag area) not in messages, without duplicate phase display; Fix chat auto-loading from outdated JSON files; ensure last chats update to local files quickly for fast loading
+    Deliveries: Moved session ID badge to tag bar between entity chips and + Tag button; Session ID shows last 5 chars (ab3f9) with click-to-copy full UUID functionality; Removed session banner from message headers to avoid duplication; Phase dropdown already shown on left, no longer repeated in multiple locations; Identified chat loading issue: local JSON cache not synced with latest sessions
 
-  PROMPTS P101431 [ ] [task] [in-progress] [0] — Can you share the quesry you are suing the get all promotps, commit, event per w
-
-  PROMPTS P101437 [ ] [task] [in-progress] [0] — I still dont understand how there are work_items without any linked prompts. can
-
-  PROMPTS P101442 [ ] [task] [in-progress] [0] — I am not sre what is start_id used for . Also code_summenry - what is it for ? t
-
-  PROMPTS P101443 [ ] [task] [in-progress] [0] — I still dont understand what is summery column used for . also tags - I do see t
-
-  PROMPTS P101444 [ ] [task] [in-progress] [0] — What is summery used for, I do see ai_desc, what is summery for ?
-
-  PROMPTS P101445 [ ] [task] [in-progress] [0] — I think summery suppose to be part of ai_desc as there are alreadt 3 column for 
-
-  PROMPTS P101459 [ ] [task] [in-progress] [0] — Events - I would like to make sure events are working properly in order to have 
-
-  PROMPTS P101460 [ ] [task] [in-progress] [0] — Can you try again the table migration (using the column order I have mention) th
-
-  PROMPTS P101461 [ ] [task] [in-progress] [0] — In events table is there is any point to have importance ? I think its more rele
-
-  PROMPTS P101462 [ ] [task] [in-progress] [0] — yes
-
-  PROMPTS P101463 [ ] [task] [in-progress] [0] — I still see old tags in event is that intenional? it suppose to show only users 
-
-  PROMPTS P101464 [ ] [task] [in-progress] [0] — yes drop that. also change mem_mrr_prompts column order - after client_id add pr
-
-  PROMPTS P101468 [ ] [task] [in-progress] [0] — test: is hook-log working now after m050?
+  PROMPTS P102305 [ ] [bug|feature] [completed] [5] — Fixed work_item detail loading, improved tag suggestion layout, increased fonts, styled × button, an
+    Requirements: Fix work_item details not loading on click; Move tag and approve/remove buttons closer together; Increase font size for Electron app visibility; Make × button bold red instead of gray; Add right padding so full date/hour is visible
+    Deliveries: Fixed _openWorkItemDrawer to call api.workItems.get(id, project) directly instead of searching list; Changed suggestion row to use inline-flex for compact layout; Increased all font sizes throughout UI; Styled × button with bold red color; Added right padding to date column for full visibility
 
 ---
 
-## **tagging-system** · 26/03/10-03:14 [ ] (claude)
+## **mcp-integration-setup** · 26/03/10-03:14 [ ] (claude)
 > Type: new
-> Total: 42 prompts
+> Total: 26 prompts
 > User tags:
 > AI existing:
-> AI new:
-> Summary: Tag management, relations, merging, and AI suggestions
-> Requirements: Explain MCP server integration vs direct tools; Address missing suggestions in chat; Clarify session commit/footer display; Link commits to prompts by source_id; Separate history (all entries) from chat (summaries)
+> AI new: [task:mcp-setup]
+> Summary: MCP server setup, project integration, and CLI configuration
+> Requirements: Explain if Claude Code uses MCP server to receive project information; Explain why no suggestions appear in sessions; Clarify session/commit tracking in chat footer; Understand if hook configuration needed for session-commits connection; Verify how Claude CLI stores prompts and responses with commits
+> Deliveries: [bug|completed|4|6] Fixed 6 critical bugs in database queries, session ordering, and planner UI state; [task|completed|4|4] Configured MCP server integration and clarified architecture for Claude Code sessions; [task|completed|4|3] Documented aicli memory system, session-commit pipeline, and work-item tracking; [feature|completed|4|2] Implemented Agent Roles feature and tag merge pipeline with AI/MRR data sources; [task|completed|4|2] Refactored memory naming convention and workspace cleanup
 
-  PROMPTS P101274 [ ] [feature] [in-progress] [0] — Implement commit-to-prompt linking and history/chat separation
-    Requirements: Link commits to prompts by source_id; Separate history (all entries) from chat (summaries); Enable memory updates with embedded data
-    Deliveries: Added `POST /entities/events/tag-by-source-id` endpoint in `ui/backend/routers/entities.py`; Implemented idempotent tagging by timestamp lookup; Added `api.entities.tagBySourceId()` in `ui/frontend/utils/api.js`
+  PROMPTS P102193 [ ] [feature] [completed] [4] — Completed Agent Roles implementation with auto-population and UI updates
+    Requirements: Agent Roles implementation in graph_workflow.js with role selection and config auto-population
+    Deliveries: _gwOnRoleChange(val): auto-populates cfg-provider/cfg-model from role defaults and updates UI; _saveNodeConfig(): reads role_id from dropdown instead of role_file
 
-  PROMPTS P101275 [ ] [feature] [in-progress] [0] — Cache tags in memory and sync colors on save
-    Requirements: Load all tags once on history tab open; Save tag with color from combolist; Use same mechanism for commit tags as history
-    Deliveries: Added `_buildTagCache()` in `ui/frontend/views/history.js` loading categories in parallel; Created `_tagCache` (grouped) and `_tagCacheMap` (flat {id→{color,name,icon}})
+  PROMPTS P102231 [ ] [feature] [completed] [3] — Implement tag pipeline from planner merging AI and MRR data sources
+    Requirements: Implement pipeline triggered from planner tab; Project manager agent merges tag info with ai table (mem_ai_tags) and MRR tables (mem_mrr_tags)
+    Deliveries: Backend tagging logic updated with memory integration (commit 5b05724a)
 
-  PROMPTS P101277 [ ] [feature] [in-progress] [0] — Link commits to specific prompt IDs
-    Requirements: Create link between commit hash and prompt source_id; Support multiple commits per prompt
-    Deliveries: Successfully linked 5 commits to prompts using prompt source_id; Sample shows d0f14c21→prompt, 951768bc→prompt mappings
+  PROMPTS P102235 [ ] [feature] [in-progress] [1] — Design drag-and-drop merge feature for planner tab with parent-child support
+    Requirements: Create new feature to merge tags in UI via drag-and-drop; Extend planner tab with drag-and-drop functionality; Support merging within category or from AI suggested to other categories; Support parent-child relationships during merge; Update planner_tag table on merge
 
-  PROMPTS P101278 [ ] [feature] [in-progress] [0] — Review session_tags.json usage and implement history rotation
-    Requirements: Determine session_tags.json necessity; Implement history.jsonl rotation on /memory call; Archive to history_YYMMDDHHDD format per 500 rows
-    Deliveries: Confirmed `_rotate_history()` in `projects.py` called on `generate_memory()`; Rotation triggered with configurable `history_max_rows` from `project.yaml`; Rotated 2110 lines to `history_2602230915.jsonl` archive
+  PROMPTS P102188 [ ] [bug] [completed] [4] — Fixed database array parsing bug and confirmed end-to-end memory pipeline working.
+    Requirements: Verify API keys can be loaded from .env file; Ensure full pipeline works with proper key configuration
+    Deliveries: Fixed ARRAY_AGG(uuid[]) parsing from psycopg2 string to proper UUID list; Created 2 session memory items with Trycycle scores; Extracted 7 project facts from summaries via Haiku; Confirmed end-to-end pipeline functioning correctly
 
-  PROMPTS P101281 [ ] [feature] [in-progress] [0] — Deduplicate tags across history/commit/chat and add removal option
-    Requirements: Ensure no duplicate tags across screens; Add remove (×) tag buttons affecting all screens
-    Deliveries: Verified 149 tags with 0 duplicates using `ON CONFLICT DO NOTHING`; Added `DELETE /entities/events/tag-by-source-id` and `DELETE /entities/session-tag` endpoints; Frontend deduplicates tags before API calls
+  PROMPTS P102317 [ ] [bug] [completed] [4] — Resolved /tag skill unknown error and explained session restart requirement.
+    Requirements: Fix unknown skill /tag error; Clarify when new session needed to pick up skill changes
+    Deliveries: Explained /tag skill requires new Claude Code session to load; Provided valid tag keys from aicli.yaml: phase, feature, bug, task, component, doc_type, design, decision, meeting, customer; Showed example /tag usage patterns; Explained error handling for unknown keys
 
-  PROMPTS P101283 [ ] [feature] [in-progress] [0] — Display commits per prompt in history chat view
-    Requirements: Link each commit to the specific prompt that triggered it; Show commits inline per prompt, not at session level
-    Deliveries: `/history/commits` returns `prompt_source_id` for each commit; Updated history view to show commits inline at bottom of each prompt entry with `⑂ hash ↗` link; Commits now grouped by `prompt_source_id` instead of session-wide
+  PROMPTS P102177 [ ] [bug] [completed] [4] — Fixed session ordering to use creation date instead of update timestamp
+    Requirements: Session order should remain stable by prompt or session date, not change when phase is modified
+    Deliveries: Backend: patch_session_tags no longer updates updated_at timestamp; Frontend: _loadSessions now sorts by created_at instead of updated_at for stable ordering
 
-  PROMPTS P101298 [ ] [feature] [in-progress] [0] — Add prompt count management table and memory status prompts
-    Requirements: Create management table to track prompt counts; Prompt user when /memory runs; Show prompt count on project upload
-    Deliveries: Designed but implementation pending
+  PROMPTS P102269 [ ] [bug] [completed] [4] — Fixed JSONB type casting error in route_history upsert query
+    Requirements: Fix PostgreSQL execute_values error in route_history line 470; Resolve type mismatch in tags merge operation using || operator
+    Deliveries: Fixed line 466: cast EXCLUDED.tags to ::jsonb to match jsonb type for || operator; Explanation of root cause: text type incompatibility with jsonb || operator (commit 66772877)
 
-  PROMPTS P101315 [ ] [feature] [in-progress] [0] — Add parent-child tag support and align UI with new infrastructure
-    Requirements: Restore nested (parent-child) tagging capability; Verify UI alignment with new workflow infrastructure; Ensure work items inherit parent-child relationships
-    Deliveries: Added `parent_id: Optional[str] = None` to `WorkItemCreate` model; Updated INSERT query to include `parent_id` column in `work_items.py`; Updated SELECT query to return `w.parent_id` cast to string
+  PROMPTS P102270 [ ] [bug] [completed] [4] — Fixed ON CONFLICT DO UPDATE duplicate constraint error in sync_commits route
+    Requirements: Fix ON CONFLICT DO UPDATE command cannot affect row a second time error in route_history line 470; Ensure commit sync returns correct count of 364 unique hashes from 683 entries
+    Deliveries: Identified and fixed duplicate constraint violation in cur.execute(b''.join(parts)); Verified fix allows POST /history/commits/sync to return {imported: 364, project: aicli}; Ensured Commits tab loads from DB with proper prompt links, tags, and full messages
 
-  PROMPTS P101332 [ ] [feature] [in-progress] [0] — Implement complete tagging system with AI suggestions
-    Requirements: Create mng_ai_tags_relations for tag relationships; Populate tags from memory dictionary for event tagging; Support claude cli tags: session_id, session_src, tagid
-    Deliveries: Enhanced memory tagging system in response; AI context files updated
+  PROMPTS P102273 [ ] [bug] [completed] [4] — Fixed ReferenceError: _plannerSelectAiSubtype and window._plannerSync undefined errors
+    Requirements: Fix Uncaught ReferenceError: _plannerSelectAiSubtype is not defined; Fix TypeError: window._plannerSync is not a function in route_logs
+    Deliveries: Removed problematic line causing init function crash; Fixed window._plannerSync assignment by removing undefined _plannerSelectAiSubtype reference; Cleaned up system context and session files across 6 commits
 
-  PROMPTS P101351 [ ] [feature] [in-progress] [0] — Implement drag-drop tag merge in planner
-    Requirements: Add drag-drop merge functionality to planner tab; Support parent-child relationships via drag; Support merge to same/different categories; Update planner_tag table on merge
-    Deliveries: Designed feature specification for tag merging
+  PROMPTS P102279 [ ] [bug] [completed] [3] — Diagnosed slow data loading in route_work_items due to 60+ second migration on Railway
+    Requirements: Fix errors loading data in route_work_items line 249 cur.execute(_SQL_UNLINKED_WORK_ITEMS); Fix missing column definition at line 288 w.merged_into, w.start_date
+    Deliveries: Identified migration performance issue (60+ seconds) on Railway infrastructure; Confirmed backend IS working, issue is latency not code failure; Updated system context documentation in 2 commits
 
-  PROMPTS P101360 [ ] [feature] [in-progress] [0] — Move AI suggestions to separate section and enable drag-drop nesting
-    Requirements: Move AI suggestions below main categories; Create AI section with suggested task/bug/feature; Enable drag-drop for parent-child tagging; Prevent user creation in ai_suggestion
-    Deliveries: Added tag routing in `route_entities.py`; Enhanced entities view with API updates
+  PROMPTS P102154 [ ] [task] [completed] [4] — Clarified MCP server architecture and why Claude doesn't use it directly in web sessions.
+    Requirements: Explain if Claude Code uses MCP server to receive project information; Explain why no suggestions appear in sessions; Clarify session/commit tracking in chat footer
+    Deliveries: Explained MCP server is for Claude CLI only, not web UI Claude; Clarified that direct file reading is used instead of MCP in this context; Outlined how session context flows through the system
 
-  PROMPTS P101362 [ ] [feature] [in-progress] [0] — Mirror tagging mechanism to work_items phase with user-editable tags
-    Requirements: Add tags column to mirror each mrr row; Support tag add/remove via UI in history; Enforce minimum tags in aicli (e.g., phase); Propagate user tags to planner
-    Deliveries: Designed tagging architecture for mirroring phase
+  PROMPTS P102156 [ ] [task] [completed] [4] — Confirmed session-commit connection already exists in hooks; UI display was the missing piece.
+    Requirements: Understand if hook configuration needed for session-commits connection; Verify how Claude CLI stores prompts and responses with commits
+    Deliveries: Confirmed auto_commit_push.sh hook already writes session_id to commit_log.jsonl; Explained full pipeline from Claude Code CLI session to hook execution; Showed session_id is properly stored and connected to commits
 
-  PROMPTS P101373 [ ] [feature] [in-progress] [0] — Add language tag and improve file_change metadata
-    Requirements: Add language as tag to events/mrr on commit; Enhance file_change with list of files and row counts; Change file_path to files[] tag with detailed metadata
-    Deliveries: Designed tag migration approach
+  PROMPTS P102189 [ ] [task] [completed] [4] — Configured .mcp.json for project root and clarified MCP will activate in next Claude Code session.
+    Requirements: Determine if MCP is being used in current session; Explain MCP configuration status
+    Deliveries: Confirmed MCP not used in current session; all calls via direct HTTP/curl; .mcp.json placed at project root for Claude Code discovery; Explained enableAllProjectMcpServers: true setting to avoid approval prompts
 
-  PROMPTS P101376 [ ] [feature] [in-progress] [0] — Make show_llm tag visible in UI
-    Requirements: Display show_llm as visible tag in history/chat
-    Deliveries: Implemented visibility for show_llm tag
+  PROMPTS P102194 [ ] [task] [in-progress] [0] — Request to use MCP tool to explain project — response empty.
+    Requirements: Use MCP tool to get and explain project information
 
-  PROMPTS P101422 [ ] [feature] [in-progress] [0] — Implement category-aware AI tag suggestions with user tags display
-    Requirements: Show AI suggestions as category:name (e.g., bug:auth); Display existing tags first, new tags with different color; Show user tags as separate pills; Update button symbol styling
-    Deliveries: Added tag suggestion chip with category:name format in `entities.js` at `_renderWiPanel`; Implemented user tags pills display
+  PROMPTS P102197 [ ] [task] [completed] [4] — Explained aicli's 5-layer memory system architecture and core functionality.
+    Requirements: Use MCP tool to explain what the code does; Describe aicli project purpose and functionality
+    Deliveries: Described aicli as shared AI memory platform solving context loss across tools; Explained 5-layer memory system: live conversation → session → project docs → history → templates; Outlined /memory command functionality and context synthesis; Clarified how persistent memory is shared between Claude CLI, Cursor, ChatGPT, and web UI
 
-  PROMPTS P101426 [ ] [feature] [in-progress] [0] — Implement smart AI suggestion priority: task/bug/feature first, then metadata
-    Requirements: Prioritize task/bug/feature category suggestions; Fall back to metadata tags (doc_type, phase); Create new task/bug/feature if no match; Show category in suggestion format
-    Deliveries: Updated `_load_all_tags()` in `memory_tagging.py` to ORDER BY category first; Updated `_claude_judge_candidates()` prompt to instruct Haiku on priorities; Returns 103 AI(EXISTS) matches and 15 AI(NEW) suggestions with proper categories
+  PROMPTS P102209 [ ] [task] [in-progress] [0] — Request to refactor database schema removing client-specific tables — response empty.
+    Requirements: Remove cl_[client] prefixed tables to avoid client name pattern; Consolidate to mng_ and pr_ tables with multi-tenancy support; Leverage existing mng_users table for client-user management; Keep history/commits unified per client rather than per-client tables
 
-  PROMPTS P101433 [ ] [feature] [in-progress] [0] — Implement /stag skill for session tagging
-    Requirements: Create /stag skill to replace /tag (naming conflict); Enable users to tag session with phase:category format
-    Deliveries: Created `/stag` skill in aicli; Tagged session with phase:development and feature:work-items
+  PROMPTS P102237 [ ] [task] [in-progress] [0] — Identified workspace folder under backend; status of usage not stated.
+    Requirements: Determine if backend/workspace folder is actively used
 
-  PROMPTS P101439 [ ] [feature] [in-progress] [0] — Enable /stag usage in current session without new session
-    Requirements: Allow /stag to tag current session without restart
-    Deliveries: Confirmed /stag works immediately with `log_user_prompt.sh` hook reading `.agent-context`; Tags take effect on all future prompts in session
-
-  PROMPTS P101448 [ ] [feature] [in-progress] [0] — Add creator/updater columns and reorder planner_tag columns
-    Requirements: Enforce creator with value (username or 'ai'); Add updater column tracking last modifier; Reorder: project_id after client_id, timestamps last
-    Deliveries: Applied migration m026 in `db_migrations.py` with 85 lines; Updated `memory_files.py` class signature and methods; Reordered columns: client_id, project_id, created/updated cols moved to end
-
-  PROMPTS P101317 [ ] [bug] [in-progress] [0] — Fix planner nesting consistency across all categories
-    Requirements: Unify nested tag behavior across doc_type, bug, feature categories; Ensure UI consistency; Clarify lifecycle/pipeline purpose
-    Deliveries: Removed split between `entity_values` and `work_items` renderers; All categories now use `_renderTagTable` from `entity_values`; Nesting works identically for feature/bug/task as doc_type
-
-  PROMPTS P101356 [ ] [bug] [in-progress] [0] — Fix lifecycle tags, bug counter, and drag-drop functionality
-    Requirements: Remove or clarify lifecycle tagging; Fix bug counter not updating; Move AI suggestions to separate section; Enable drag-drop nesting
-    Deliveries: Identified lifecycle tags as unused/confusing; Noted bug counter display issue; Proposed AI suggestion section restructure
-
-  PROMPTS P101363 [ ] [bug] [in-progress] [0] — Fix tag UI error [object object] and cross-entity tag propagation
-    Requirements: Fix 422 unprocessable entity error on tag add; Ensure tag added to prompt propagates to linked commits; Ensure tag added to commit propagates to linked prompt; Show commit↔prompt connection reference
-    Deliveries: Applied session artifact cleanup
-
-  PROMPTS P101364 [ ] [bug] [in-progress] [0] — Fix UndefinedColumn lifecycle error and optimize commit loading
-    Requirements: Remove lifecycle column from work_items query; Remove unused PHASE column from commits; Optimize commit/event loading queries
-    Deliveries: Fixed sycopg2.errors.UndefinedColumn in `route_entities.py:359`; Removed lifecycle references from work item SELECT query
-
-  PROMPTS P101366 [ ] [bug] [in-progress] [0] — Restore tag loading and selection UI with search/create capability
-    Requirements: Fix tag loading when attaching new tag; Restore category:tag dropdown UI; Support search existing or create new tag
-    Deliveries: Updated system context and runtime state files
-
-  PROMPTS P101410 [ ] [bug] [in-progress] [0] — Fix tag property drawer display when tag selected
-    Requirements: Show property panel on left when tag clicked; Ensure drawer content displays correctly
-    Deliveries: Fixed `catName` scope in `_renderDrawer()` at line 1541 in `entities.js`; Changed `v.short_desc` to `v.description` for field alignment; Root cause was ReferenceError preventing innerHTML from setting
-
-  PROMPTS P101440 [ ] [bug] [in-progress] [0] — Fix unknown skill error and implement /stag as workaround
-    Requirements: Resolve unknown skill /tag error; Provide working alternative
-    Deliveries: Root cause: `tag` conflicts with reserved skill name in Claude Code; Created `/stag` renamed skill as replacement; Tagged current session: phase:development feature:work_items
-
-  PROMPTS P101270 [ ] [task] [in-progress] [0] — Clarify MCP server usage vs direct file reading tools
-    Requirements: Explain MCP server integration vs direct tools; Address missing suggestions in chat; Clarify session commit/footer display
-    Deliveries: Explained aicli MCP server (`ui/mcp_server.py`) is separate integration for CLI context, not used in web sessions
-
-  PROMPTS P101282 [ ] [task] [in-progress] [0] — Audit tagging logic across session/prompt/commit boundaries
-    Requirements: Verify session tags, prompt tags, commit tags are linked correctly; Confirm propagation across boundaries
-    Deliveries: Confirmed `_load_unified_history` reads current+archived entries; Verified `_propagate_tags_phase4` in `entities.py` for cross-boundary propagation; Confirmed `untag_event_by_source_id` and `remove_session_tag` endpoints working
-
-  PROMPTS P101295 [ ] [task] [in-progress] [0] — Review database schema for tagging and optimize for MCP retrieval
-    Requirements: Verify tagging is properly mapped in schema; Ensure optimal DB structure for MCP tool queries; Confirm saving mechanism is efficient
-    Deliveries: Added `phase`, `feature`, `session_id` as real columns to `events_{p}` table in `core/database.py`; Added indexes `idx_{e}_session` and `idx_{e}_phase` for fast filtered queries; Moved migrations to per-statement try/except blocks
-
-  PROMPTS P101301 [ ] [task] [in-progress] [0] — Audit memory improvements and tag system effectiveness
-    Requirements: Review tag usage across system; Assess memory improvement from summarization; Evaluate MCP answer accuracy and workflow creation
-    Deliveries: Fixed `session_bulk_tag()` to write both `event_tags_{project}` and `interaction_tags`; Verified individual `tag_by_source_id` endpoint writes both tables for work items
-
-  PROMPTS P101302 [ ] [task] [in-progress] [0] — Summarize complete system improvements and deliverables
-    Requirements: Document 7-part improvement; Compare before/after system state; Assess impact on performance, memory, MCP accuracy
-    Deliveries: Documented two distillation layers between raw history and LLM; Implemented 4-agent work item pipeline; Enhanced MCP to actively manage project state
-
-  PROMPTS P101316 [ ] [task] [in-progress] [0] — Plan tagging/nested tagging and planner/workflow integration
-    Requirements: Review tagging mechanism alignment with planner; Ensure nested hierarchy support; Verify tag suggestions propagate to planner
-    Deliveries: Renamed 'Workflow'→'Pipelines' and 'Prompts'→'Roles' in `main.js` PROJECT_TABS; Added `+▸` button to every regular tag row in `entities.js`; Widened actions column from 44px→80px in header
-
-  PROMPTS P101321 [ ] [task] [in-progress] [0] — Verify tagging is wired to database and MCP retrieval
-    Requirements: Confirm tagging linked/mapped properly in schema; Verify MCP tool uses tags for memory management; Assess database structure optimization
-    Deliveries: Schema reviewed: 24 tables total (14 mng_ global, 10 pr_local_aicli_ project); Confirmed memory tables: work_items, interactions, interaction_tags, memory_items, project_facts
-
-  PROMPTS P101358 [ ] [task] [in-progress] [0] — Clarify lifecycle tags purpose
-    Requirements: Determine if lifecycle tags are needed
-    Deliveries: Identified as unused component from previous development
-
-  PROMPTS P101359 [ ] [task] [in-progress] [0] — Remove lifecycle tags from bug/feature/task
-    Requirements: Remove lifecycle tags display
-    Deliveries: Identified lifecycle tags as irrelevant to current scope
-
-  PROMPTS P101429 [ ] [task] [in-progress] [0] — Document AI tag and work item prompts locations
-    Requirements: Identify where all AI tagging and work item extraction prompts live
-    Deliveries: Mapped work_item_extraction to `prompts/memory/work_items/work_item_extraction.md`; Mapped work_item_promotion to `prompts/memory/work_items/work_item_promotion.md`; Identified AI tag matching hardcoded in `memory_tagging.py:380`
-
-  PROMPTS P101446 [ ] [task] [in-progress] [0] — Set session tags to phase:development feature:planner
-    Requirements: Tag session for planner feature work
-    Deliveries: Session tags set: phase:development, feature:planner
-
-  PROMPTS P101447 [ ] [task] [in-progress] [0] — Review planner_tag schema and clean up unused columns
-    Requirements: Audit planner_tag table columns for necessity; Consolidate source/creator fields; Remove code_summary from planner_tag; Simplify user-editable fields
-    Deliveries: Identified seq_num as always null - DROP; Identified source/creator redundancy - DROP source; Identified dual status columns - consolidate to one; Proposed simplified user edit fields
-
-  PROMPTS P101452 [ ] [task] [in-progress] [0] — Tag session for feature_snapshot work
-    Requirements: Set session tag for feature snapshot feature
-    Deliveries: Session tag set: feature:feature_snapshot
-
-  PROMPTS P101428 [ ] [bug|feature] [in-progress] [0] — Fix AI tag display, add refresh button, backlink user tags to events
-    Requirements: Show all AI suggestions (not just AI(EXISTS)); Replace new work item creation with refresh button; Backlink user tags from work_item to all connected events; Add event counter column to work_item
-    Deliveries: Added `_backlink_tag_to_events()` in `route_work_items.py` with 46 lines; Added event counter column to work_items view; Implemented refresh button in `_loadWiPanel()`; Updated work item select to JOINs and count events
-
-  PROMPTS P101438 [ ] [bug|feature] [in-progress] [0] — Fix AI tag approval flow: approve removes work_item from list, adds to tag
-    Requirements: Remove confirm button for AI(EXISTS) approval; Move work_item under tag when approved (existing); Move work_item to new tag when AI(NEW) approved; Show work_item immediately in target location
-    Deliveries: Updated `_wiPanelApproveTag()` to call `_loadTagLinkedWorkItems` for immediate display; Updated `_wiSecApprove()` for secondary tag approval; Added green ✓ button for AI(NEW) approval with `_wiPanelCreateTag()`
-
-  PROMPTS P101441 [ ] [bug|feature] [in-progress] [0] — Fix AI tag save behavior: secondary tags stay as metadata, not primary link
-    Requirements: Prevent work_item disappearance on secondary tag add; Store metadata tags in ai_tags.confirmed[]; Keep item in list after metadata save; Add loading indicator
-    Deliveries: Fixed `_wiSecApprove()` to store in `ai_tags.confirmed[]` instead of `tag_id`; Item now stays in list after metadata tag save; Added toast message: 'Saved phase:development as metadata'; Migration m021, m022 in `db_migrations.py` applied
-
----
-
-## **database-schema-cleanup** · 26/03/17-20:36 [ ] (claude)
-> Type: new
-> Total: 17 prompts
-> User tags:
-> AI existing:
-> AI new:
-> Summary: Remove unused tables, refactor schema, split database.py
-> Requirements: Remove unused tables; Rename global tables to mng_ prefix; Rename client tables to cl_ prefix; Rename project tables to pr_[client]_[project]_ prefix; Run database migration commands
-
-  PROMPTS P101326 [ ] [bug] [in-progress] [0] — Fix database initialization errors: '_Database' has no 'ensure_project_schema', project not found
-    Requirements: Fix AttributeError on ensure_project_schema; Resolve missing aicli project loading; Clean up duplicate tables from database; Fix schema initialization
-    Deliveries: main.py: Removed stale db.ensure_project_schema(settings.active_project) call; database.py: Changed DDL to statement-by-statement execution, added missing ALTER TABLE for mng_session_tags.client_id and mng_entity_values columns; Verified project loading and schema consistency
-
-  PROMPTS P101327 [ ] [bug] [in-progress] [0] — Fix backend startup errors, memory endpoint code_dir undefined variable, missing current project
-    Requirements: Fix backend first-load failures; Fix CLAUDE.md code_dir variable undefined in line 1120; Display aicli as current project; Fix memory endpoint
-    Deliveries: Memory endpoint verified working; Identified code_dir undefined variable issue in CLAUDE.md line 1120
-
-  PROMPTS P101355 [ ] [bug] [in-progress] [0] — Fix UI errors: missing event_type column, undefined log variable, missing c.id column
-    Requirements: Fix route_history.py line 228: column 'event_type' does not exist; Fix undefined 'log' variable in chat_history fallback; Fix route_entities.py line 1033: column c.id does not exist; Fix Chat history loading
-    Deliveries: route_history.py: Fixed event_type column reference; Fixed undefined log variable in chat_history error handler; route_entities.py: Fixed c.id column reference (commit 19cc32ab)
-
-  PROMPTS P101318 [ ] [task] [in-progress] [0] — Remove unused tables and restructure naming with mng_/cl_/pr_ prefixes
-    Requirements: Remove unused tables; Rename global tables to mng_ prefix; Rename client tables to cl_ prefix; Rename project tables to pr_[client]_[project]_ prefix
-    Deliveries: Assistant verified work_item_pipeline.py core file
-
-  PROMPTS P101319 [ ] [task] [in-progress] [0] — Execute database cleanup: drop 5 stale tables, rename 19 global tables to mng_
-    Requirements: Run database migration commands; Drop stale tables: commits, embeddings, events, event_tags, event_links; Verify 24 tables remain with proper naming
-    Deliveries: Dropped 5 pre-project-split bare tables (commits, embeddings, events, event_tags, event_links); Renamed 19 global tables to mng_ prefix (users, entity_values, graph_workflows, etc.); Verified final schema: 14 mng_ + 10 pr_local_aicli_ tables
-
-  PROMPTS P101320 [ ] [task] [in-progress] [0] — Clarify why memory_items and project_facts are under system management
-    Requirements: Explain memory_items and project_facts table placement
-    Deliveries: Updated MEMORY.md to reflect final table structure with 24 tables organized by prefix
-
-  PROMPTS P101321 [ ] [task] [in-progress] [0] — Investigate mng_session_tags table and session_tags.json file usage
-    Requirements: Verify if session_tags.json is actively used; Clarify purpose of mng_session_tags table
-    Deliveries: Confirmed 24 tables organized: 14 mng_ (global), 10 pr_local_aicli_ (project data); Documented work_items, interactions, interaction_tags, memory_items, project_facts in pr_ namespace
-
-  PROMPTS P101322 [ ] [task] [in-progress] [0] — Remove mng_graph_ references and determine graph table management layer
-    Requirements: Eliminate all mng_graph_* references; Clarify whether graph tables should be client-level or global; Update graph table management
-    Deliveries: routers/graph_workflows.py: Added project parameter to 12 endpoints, replaced mng_graph_* with db.project_table(); core/graph_runner.py: Added tbl_g* variables in _execute_node, run_graph_workflow, resume_graph_workflow; routers/work_items.py: Added graph table variables in run_pipeline and _ensure_pipeline_
-
-  PROMPTS P101323 [ ] [task] [in-progress] [0] — Implement 3-layer table structure: mng_ (global), cl_ (client), pr_ (project)
-    Requirements: Rename mng_session_tags to cl_local_session_tags; Align client tables with cl_ prefix; Ensure entity tables are per-client; Create 3-layer schema: mng_, cl_, pr_
-    Deliveries: Identified mng_session_tags and mng_entity_values as client-level tables requiring cl_ prefix
-
-  PROMPTS P101325 [ ] [task] [in-progress] [0] — Refactor schema: remove cl_[client] pattern, keep only mng_ and pr_ with unified large tables
-    Requirements: Remove cl_[client] naming pattern; Keep only mng_ and pr_ prefixes; Unify large history/commit tables across clients instead of per-client; Use mng_users for client management; Plan dedicated instances for large customers
-    Deliveries: Assistant acknowledged that mng_users table manages clients, history/commits unified across clients, free users on default client instance
-
-  PROMPTS P101352 [ ] [task] [in-progress] [0] — Review and remove old unused table definitions from database.py
-    Requirements: Review database.py for stale table definitions; Remove table schemas that no longer exist; Clean up database code
-    Deliveries: Assistant committed database cleanup (1444ad94)
-
-  PROMPTS P101353 [ ] [task] [in-progress] [0] — Determine if workspace folder under backend is actively used
-    Requirements: Investigate backend/workspace folder usage; Determine if folder can be deleted
-    Deliveries: Identified backend/workspace folder for review
-
-  PROMPTS P101354 [ ] [task] [in-progress] [0] — Delete unused workspace folder from backend directory
+  PROMPTS P102238 [ ] [task] [completed] [4] — Deleted workspace folder per user request.
     Requirements: Delete backend/workspace folder
-    Deliveries: Deleted backend/workspace folder (commit 31002ada)
+    Deliveries: Removed workspace folder from backend directory
 
-  PROMPTS P101361 [ ] [task] [in-progress] [0] — Verify database table structure changes are persisted and old tables removed
-    Requirements: Confirm old tables are removed from database; Verify updated table structure reflects naming changes
-    Deliveries: Committed system state and memory updates (43cbb0ca, ba6edb1d)
+  PROMPTS P102227 [ ] [task] [in-progress] [0] — Test prompt after migration (no changes recorded)
+    Requirements: Test system after migration
 
-  PROMPTS P101409 [ ] [task] [in-progress] [0] — Create db_schema.sql canonical schema file with migration strategy
-    Requirements: Separate database.py schema definitions into db_schema.sql; Include all CREATE TABLE IF NOT EXISTS statements; Add remarks, indexes, and foreign keys; Create migration method for table renames and data migration
-    Deliveries: backend/core/db_schema.sql: Created (~350 lines) with mng_*, planner_*, mem_mrr_*, mem_ai_*, pr_* sections organized with comments explaining each table purpose, indexes, and FK constraints; Schema is single source of truth for database structure
+  PROMPTS P102229 [ ] [task] [in-progress] [0] — Test after mem_ai cleanup (no changes recorded)
+    Requirements: Verify system functionality after mem_ai cleanup
 
-  PROMPTS P101474 [ ] [task] [in-progress] [0] — Refactor user_id from string to int, add updated_at to mirror tables
-    Requirements: Change user_id type from string to int (SERIAL); Add updated_at column to mirror tables after created_at; Add user_id after project_id in all mirror tables; Preserve old UUID in uuid_id column
-    Deliveries: Migration m051 executed: mng_users.id now SERIAL INT, uuid_id VARCHAR preserves old UUID; updated_at added to: mng_users, mng_clients, mem_mrr_*, mem_ai_events, mem_ai_project_facts, mem_pipeline_runs, planner_tags; user_id INT added after project_id to all mirror tables; mem_ai_events.is_system → event_system; auth.py._resolve_user_id refactored; memory_files.py: MemoryFiles and get_top_events updated for new user_id int type (b3d2fda3)
+  PROMPTS P102234 [ ] [task] [completed] [2] — Fixed workspace state and memory after session update
+    Requirements: Fix issues across all affected systems
+    Deliveries: Workspace state corrections applied (commit d79175fa)
 
-  PROMPTS P101475 [ ] [task] [in-progress] [0] — Reorganize table column order: id, client_id, project_id, user_id, then created_at, updated_at, embe
-    Requirements: Reposition user_id after project_id in all tables; Move created_at, updated_at to end before embedding; Remove committed_at from mem_mrr_commits (preserve in created_at); Update embedding to always be last column; Create migration m052 with rename _old, create new, insert data, drop old
-    Deliveries: Migration m052 executed: 18 tables rebuilt with correct column ordering; All tables follow: id → client_id → project_id → user_id → [data] → created_at → updated_at → embedding; mem_mrr_commits: committed_at removed, git timestamp preserved via COALESCE(committed_at, created_at); mem_ai_events.event_system repositioned after event_type; All tables renamed with _old suffix, rebuilt, data migrated, old tables dropped (22736c54, 506c9b0f)
+  PROMPTS P102263 [ ] [task] [in-progress] [0] — Test prompt after fix (no changes recorded)
+    Requirements: Verify functionality after recent fixes
 
----
+  PROMPTS P102266 [ ] [task] [in-progress] [0] — Final verification prompt (no changes recorded)
+    Requirements: Final verification of system state
 
-## **workflows-pipelines** · 26/03/09-17:56 [ ] (claude)
-> Type: new
-> Total: 55 prompts
-> User tags:
-> AI existing:
-> AI new:
-> Summary: Workflow pipelines, planner integration, feature snapshots
+  PROMPTS P102288 [ ] [task] [completed] [5] — Refactored memory module naming convention and updated all 11 callers consistently
+    Requirements: Ensure all memory files follow memory_*.py naming pattern; Delete mem_embeddings.py and update all callers; Rename mem_sessions.py to memory_sessions.py and update references; Update __init__.py to reflect current 9 modules
+    Deliveries: Deleted mem_embeddings.py and updated 11 callers across 7 files to use memory.memory_embedding; Renamed mem_sessions.py to memory_sessions.py and updated route_chat.py; Updated __init__.py with accurate list of all 9 current memory modules; Updated 10 function references across backend (embed_text, _fire_background, _safe_embed, etc.)
 
-  PROMPTS P101256 [ ] [feature] [in-progress] [0] — The last prompts was asking for a new feature (clinet install/ support multiple 
+  PROMPTS P102290 [ ] [task] [completed] [4] — Explained commit-to-work-item linkage chain and how to track metrics per work item
+    Requirements: Explain how commit data statistics connect to work_items; Describe method to know rows/prompts used for specific work item; Provide example: auth work item - prompts count, commits count, rows changed
+    Deliveries: Documented complete linkage chain from session tags → mng_session_tags → mem_mrr_commits → mem_mrr_commits_code; Showed how mem_ai_work_items.id connects to commit tags (work-item UUID); Explained extract_commit_code background job creates per-symbol/file tracking rows; Demonstrated how to query work item metrics using work item UUID
 
-  PROMPTS P101257 [ ] [feature] [in-progress] [0] — I dont think your update works. lets start from Planer - there is not need to ha
-
-  PROMPTS P101285 [ ] [feature] [in-progress] [0] — I would like to set that up , and also add that to new prokect as autoamted set 
-
-  PROMPTS P101286 [ ] [feature] [in-progress] [0] — The last commit was b255366 which suppose to be linked to the last prompt. it di
-
-  PROMPTS P101287 [ ] [feature] [in-progress] [0] — When I run memory through the aiCli - I did see some usefull suggestion that app
-
-  PROMPTS P101294 [ ] [feature] [in-progress] [0] — It looks good and working as expected. the issue now is how it is linked to Hist
-
-  PROMPTS P101300 [ ] [feature] [in-progress] [0] — I have started to look in some other solution like https://github.com/danshapiro
-
-  PROMPTS P101306 [ ] [feature] [in-progress] [0] — I would like to start working on the workflows - the goal is to be able to be si
-
-  PROMPTS P101307 [ ] [feature] [in-progress] [0] — I do see you have crete a defualt pipe line in the Planner tab that run defualt 
-
-  PROMPTS P101308 [ ] [feature] [in-progress] [0] — I do mention to sotre the prompts in database, would there be a way to change th
-
-  PROMPTS P101314 [ ] [feature] [in-progress] [0] — What is the claude agent sdk is uded for can it be used for my use cases for mut
-
-  PROMPTS P101316 [ ] [feature] [in-progress] [0] — I would like to go over on all the feutre and plan propery to Planer and Worklow
-
-  PROMPTS P101347 [ ] [feature] [in-progress] [0] — Implement 1 and 2. pipeline is trigerred from the planer tab. for example there 
-
-  PROMPTS P101348 [ ] [feature] [in-progress] [0] — Why there is no embedding in project_facts and work_items ? this is not suppose 
-
-  PROMPTS P101356 [ ] [feature] [in-progress] [0] — I would like to work on the planer tab - I do see Lifecucle tagging which I am n
-
-  PROMPTS P101358 [ ] [feature] [in-progress] [0] — There is lifecycle tags which I am not sure are relevant. is it needed ?
-
-  PROMPTS P101367 [ ] [feature] [in-progress] [0] — I have got an error on /history/commits/sync?project=aicli rest api in     execu
-
-  PROMPTS P101393 [ ] [feature] [in-progress] [0] — I would like to be able to move work_item back to work_item or to another items.
-
-  PROMPTS P101403 [ ] [feature] [in-progress] [0] — I do not see any update at the database 
-
-  PROMPTS P101404 [ ] [feature] [in-progress] [0] — yes please
-
-  PROMPTS P101406 [ ] [feature] [in-progress] [0] — Can you explain how commit data statitics are connected to work_items ? Is there
-
-  PROMPTS P101408 [ ] [feature] [in-progress] [0] — There is a problem to load work_items - line 331 in route_work_items -column w.a
-
-  PROMPTS P101411 [ ] [feature] [in-progress] [0] — I do not see mem_mrr_commits_code populated on every commit. is that suppose to 
-
-  PROMPTS P101413 [ ] [feature] [in-progress] [0] — In the UI - work_items shows as a row. I would each row to have name - desc colu
-
-  PROMPTS P101426 [ ] [feature] [in-progress] [0] — I would like to update the ai_sujjestion - it suppose to sujjest one tag from ca
-
-  PROMPTS P101427 [ ] [feature] [in-progress] [0] — Can you explain how do I see work_item #20006 as the one that was last updated ?
-
-  PROMPTS P101428 [ ] [feature] [in-progress] [0] — Can you recheck that ai_tags as I do see new work_item, bit cannot see any sujje
-
-  PROMPTS P101449 [ ] [feature] [in-progress] [0] — I am planning to add a layer that will merge planner_tags with wor_item - this l
-
-  PROMPTS P101450 [ ] [feature] [in-progress] [0] — yes
-
-  PROMPTS P101451 [ ] [feature] [in-progress] [0] — This start to look good. I would like to add one more column - deliveries that w
-
-  PROMPTS P101452 [ ] [feature] [in-progress] [0] — can you add tag feature:feature_snapshot
-
-  PROMPTS P101453 [ ] [feature] [in-progress] [0] — Feature_snapshot  I would like to create the final stage - mem_ai_feature_snapsh
-
-  PROMPTS P101454 [ ] [feature] [in-progress] [0] — Assuming all will work properly. having a way to store all project history using
-
-  PROMPTS P101455 [ ] [feature] [in-progress] [0] — How can I improve points 4 and 5 ? for point 4 - I did make prompts in sappasret
-
-  PROMPTS P101456 [ ] [feature] [in-progress] [0] — ok. can you implement that. make sure dashboard is a new tab. pipeline will be a
-
-  PROMPTS P101262 [ ] [feature] [in-progress] [0] — yes. just to clarify when I add login - it will be first level only ? 
-
-  PROMPTS P101263 [ ] [feature] [in-progress] [0] — yes
-
-  PROMPTS P101266 [ ] [feature] [in-progress] [0] — I do see the save button - and when I save I do see the tag, when I am checking 
-
-  PROMPTS P101271 [ ] [feature] [in-progress] [0] — hellow, how are you ?
-
-  PROMPTS P101272 [ ] [feature] [in-progress] [0] — I understand the issue. I am using your claude cli and hooks to store propts and
-
-  PROMPTS P101279 [ ] [feature] [in-progress] [0] — Something wit hooks is not working now, as I do not see any new prompts / llm re
-
-  PROMPTS P101299 [ ] [feature] [in-progress] [0] — I would like to optimise the code : check each file, make sure code is in used a
-
-  PROMPTS P101304 [ ] [feature] [in-progress] [0] — Keys are stored at my .env file which you can load - for claude api the key is u
-
-  PROMPTS P101305 [ ] [feature] [in-progress] [0] — are you using the mcp now? 
-
-  PROMPTS P101309 [ ] [feature] [in-progress] [0] — yes
-
-  PROMPTS P101365 [ ] [feature] [in-progress] [0] — The are soe errors on loading data - psycopg2.errors.UndefinedColumn: column p.w
-
-  PROMPTS P101380 [ ] [feature] [in-progress] [0] — I would like to add mng_projects table that will be used for project data. curre
-
-  PROMPTS P101381 [ ] [feature] [in-progress] [0] — verify prompt after client_id fix
-
-  PROMPTS P101382 [ ] [feature] [in-progress] [0] — final verify prompt
-
-  PROMPTS P101385 [ ] [feature] [in-progress] [0] — I have  got the following error -  cur.execute(b''.join(parts)) started  route_h
-
-  PROMPTS P101386 [ ] [feature] [in-progress] [0] — I still dont see the same issue in route_history line 470. cur.execute(b''.join(
-
-  PROMPTS P101388 [ ] [feature] [in-progress] [0] — I would like to make sure columns are aligned in work_items. What is source_sess
-
-  PROMPTS P101395 [ ] [feature] [in-progress] [0] — I do have some errors loading data - route_work_items line 249 - cur.execute(_SQ
-
-  PROMPTS P101402 [ ] [feature] [in-progress] [0] — Where simple extraction flow can be something like that:  pr_tags_map   WHERE re
-
-  PROMPTS P101432 [ ] [feature] [in-progress] [0] — before you desing. is it possible to add some mechanism to our converstion. for
+  PROMPTS P102329 [ ] [task] [in-progress] [0] — Column naming refactor and work_item enhancement incomplete - awaiting implementation
+    Requirements: Rename ai_name to name_ai, ai_category to category_ai, ai_desc to desc_ai for consistency; Add summary_ai column if needed; Ensure prompt_work_item() runs during /memory endpoint call; Update work_item columns with new system data to provide full project view
 
 ---
 
@@ -809,23 +1007,23 @@
 > AI new:
 > Summary: 7 commits updating: backend/core/db_migrations.py, backend/memory/memory_planner.py, backend/memory/memory_promotion.py, backend/memory/memory_tagging.py, backend/routers/route_projects.py, backend/routers/route_work_items.py… | classes: MemoryFeatureSnapshot, MemoryPlanner, MemoryPromotion, MemoryTagging
 
-  COMMITS C200638 [+] [feature] [completed] [5] — Enhance memory promotion with embedding and search support
+  COMMITS C200666 [+] [feature] [completed] [5] — Add memory embedding and event extraction to memory promotion flow
     Deliveries: backend/agents/tools/tool_memory.py: _handle_search_memory (+21/-0); backend/memory/memory_promotion.py: MemoryPromotion (+10/-1); backend/memory/memory_promotion.py: _embed_work_item (+19/-0); backend/memory/memory_promotion.py: MemoryPromotion.promote_work_item (+6/-0); backend/memory/memory_promotion.py: MemoryPromotion.extract_work_items_from_events (+4/-1)
 
-  COMMITS C200639 [+] [feature] [completed] [5] — Add delivery management and tag system enhancements
+  COMMITS C200667 [+] [feature] [completed] [5] — Introduce deliveries feature with DB migration and tag/delivery CRUD endpoints
     Deliveries: backend/core/db_migrations.py: m028_add_deliveries (+30/-0); backend/routers/route_tags.py: TagUpdate (+1/-0); backend/routers/route_tags.py: DeliveryCreate (+5/-0); backend/routers/route_tags.py: CategoryCreate (+0/-1); backend/routers/route_tags.py: _row_to_tag (+8/-6)
 
-  COMMITS C200640 [+] [feature] [completed] [5] — Create feature snapshot memory module with LLM integration
+  COMMITS C200668 [+] [feature] [completed] [5] — Add feature snapshot memory module with LLM-based snapshot generation
     Deliveries: backend/core/db_migrations.py: m029_feature_snapshot (+44/-0); backend/memory/memory_feature_snapshot.py: MemoryFeatureSnapshot (+435/-0); backend/memory/memory_feature_snapshot.py: _parse_json (+9/-0); backend/memory/memory_feature_snapshot.py: _slugify (+2/-0); backend/memory/memory_feature_snapshot.py: _call_llm (+21/-0)
 
-  COMMITS C200641 [+] [feature] [completed] [5] — Implement pipeline run logging and workflow orchestration
+  COMMITS C200669 [+] [feature] [completed] [5] — Add pipeline run logging and workflow/pipeline status tracking endpoints
     Deliveries: backend/core/db_migrations.py: m030_pipeline_runs (+44/-0); backend/core/pipeline_log.py: pipeline_run_sync (+14/-0); backend/core/pipeline_log.py: _insert_run (+20/-0); backend/core/pipeline_log.py: _finish_run (+25/-0); backend/core/pipeline_log.py: pipeline_run (+18/-0)
 
-  COMMITS C200637 [+] [task] [completed] [5] — Refactor memory promotion and tagging columns in work items
-    Deliveries: backend/core/db_migrations.py: m025_rename_work_item_ai_columns (+15/-0); backend/memory/memory_planner.py: MemoryPlanner (+5/-5); backend/memory/memory_planner.py: MemoryPlanner._build_user_message (+3/-3); backend/memory/memory_planner.py: MemoryPlanner._write_document (+2/-2); backend/memory/memory_promotion.py: MemoryPromotion (+93/-20)
-
-  COMMITS C200642 [+] [task] [completed] [5] — Add database maintenance and cleanup utilities
+  COMMITS C200670 [+] [feature] [completed] [5] — Add PostgreSQL database maintenance and cleanup utilities
     Deliveries: backend/data/clean_pg_db.py: _raw_conn (+8/-0); backend/data/clean_pg_db.py: _bytes_to_mb (+2/-0); backend/data/clean_pg_db.py: run_maintenance (+170/-0); backend/data/clean_pg_db.py: run_maintenance_async (+4/-0); backend/data/clean_pg_db.py: _cli (+34/-0)
 
-  COMMITS C200643 [+] [task] [completed] [5] — Add database index on prompts source_id column
+  COMMITS C200665 [+] [task] [completed] [5] — Refactor memory promotion and work item column naming across DB/memory/router modules
+    Deliveries: backend/core/db_migrations.py: m025_rename_work_item_ai_columns (+15/-0); backend/memory/memory_planner.py: MemoryPlanner (+5/-5); backend/memory/memory_planner.py: MemoryPlanner._build_user_message (+3/-3); backend/memory/memory_planner.py: MemoryPlanner._write_document (+2/-2); backend/memory/memory_promotion.py: MemoryPromotion (+93/-20)
+
+  COMMITS C200671 [+] [task] [completed] [5] — Add database index on prompts source_id column for query optimization
     Deliveries: backend/core/db_migrations.py: m050_prompts_source_id_index (+21/-0)

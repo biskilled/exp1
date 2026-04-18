@@ -701,24 +701,42 @@ function _groupHtml(grp, idx = 0) {
 }
 
 /**
- * Build the deliveries table from items directly.
- * Each item (prompt/commit/etc.) = one row, sorted: completed first by ai_score desc.
- * Max 7 rows shown as a compact summary above the detail items.
+ * Build the deliveries table.
+ *
+ * Priority:
+ *   1. grp.deliveries — LLM-synthesised group deliveries (3-5 thematic items).
+ *      Each has {classify, status, ai_score, event_count, desc}.
+ *   2. items fallback — one row per event, sorted completed-first.
+ *
+ * Max 7 rows shown.
  */
 function _deliveriesTable(deliveries, items) {
-  if (!items || !items.length) return '';
+  let rows = [];
+  let isSynthesised = false;
 
-  let rows = items.map(it => ({
-    classify: it.classify || 'task',
-    status:   it.status   || 'in-progress',
-    ai_score: it.ai_score ?? 0,
-    desc:     it.summary  || '',
-  }));
-
-  // Sort: completed first (ai_score desc), then in-progress (ai_score desc)
-  const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
-  const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
-  rows = [...done, ...prog];
+  if (deliveries && deliveries.length) {
+    // Synthesised: already sorted completed-first by backend
+    rows = deliveries.map(d => ({
+      classify:    d.classify    || 'task',
+      status:      d.status      || 'in-progress',
+      ai_score:    d.ai_score    ?? 0,
+      event_count: d.event_count ?? 1,
+      desc:        d.desc        || '',
+    }));
+    isSynthesised = true;
+  } else if (items && items.length) {
+    // Fallback: one row per item
+    rows = items.map(it => ({
+      classify:    it.classify || 'task',
+      status:      it.status   || 'in-progress',
+      ai_score:    it.ai_score ?? 0,
+      event_count: 1,
+      desc:        it.summary  || '',
+    }));
+    const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
+    const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
+    rows = [...done, ...prog];
+  }
 
   if (!rows.length) return '';
 
@@ -727,18 +745,26 @@ function _deliveriesTable(deliveries, items) {
     const icon     = isDone ? '✓' : '⏳';
     const iconCls  = isDone ? 'bl-delivery-status-done' : 'bl-delivery-status-prog';
     const typeCls  = `bl-delivery-type bl-delivery-type-${r.classify}`;
+    const cntBadge = (isSynthesised && r.event_count > 1)
+      ? `<span class="bl-delivery-score" style="margin-left:3px" title="${r.event_count} events">${r.event_count}×</span>`
+      : '';
     return `
       <tr>
         <td class="bl-delivery-icon ${iconCls}">${icon}</td>
         <td><span class="${typeCls}">${_esc(r.classify)}</span></td>
-        <td><span class="bl-delivery-score">AI:${r.ai_score}</span></td>
+        <td><span class="bl-delivery-score">AI:${r.ai_score}</span>${cntBadge}</td>
         <td class="bl-delivery-desc" title="${_esc(r.desc)}">${_esc(r.desc)}</td>
       </tr>`;
   }).join('');
 
+  const total = isSynthesised ? rows.length : items.length;
+  const label = isSynthesised
+    ? `Deliveries — ${rows.length} theme${rows.length !== 1 ? 's' : ''}`
+    : `Items (${Math.min(rows.length, 7)}${rows.length > 7 ? ' of ' + total : ''})`;
+
   return `
     <div class="bl-deliveries-section">
-      <div class="bl-deliveries-label">Deliveries (${Math.min(rows.length, 7)}${rows.length > 7 ? ' of ' + rows.length : ''})</div>
+      <div class="bl-deliveries-label">${label}</div>
       <table class="bl-deliveries-table">${tableRows}</table>
     </div>`;
 }

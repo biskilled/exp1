@@ -298,8 +298,14 @@ class MemoryBacklog:
         if cfg_path.exists():
             try:
                 project_cfg = yaml.safe_load(cfg_path.read_text()) or {}
-                # Deep-merge at top level (project overrides base)
-                self._cfg = {**base_cfg, **project_cfg}
+                # Deep-merge: for dict values, merge recursively one level
+                merged = dict(base_cfg)
+                for k, v in project_cfg.items():
+                    if isinstance(v, dict) and isinstance(merged.get(k), dict):
+                        merged[k] = {**merged[k], **v}
+                    else:
+                        merged[k] = v
+                self._cfg = merged
             except Exception as e:
                 log.debug(f"project backlog_config read error: {e}")
                 self._cfg = base_cfg
@@ -968,15 +974,28 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                         group_completed = [c.strip() for c in raw.split(";") if c.strip()]
                     elif ls.startswith("Deliveries:"):
                         raw = ls[len("Deliveries:"):].strip()
-                        # Format: [classify|status|ai_score] summary; ...
+                        # Format: [classify|status|ai_score|event_count] summary; ...
                         for part in raw.split("; "):
                             part = part.strip()
+                            # New format with event_count: [classify|status|score|N] summary
+                            m2 = re.match(r"\[([^\]]+)\|([^\]]+)\|(\d+)\|(\d+)\]\s*(.*)", part)
+                            if m2:
+                                group_action_items.append({
+                                    "classify":    m2.group(1),
+                                    "status":      m2.group(2),
+                                    "ai_score":    int(m2.group(3)),
+                                    "event_count": int(m2.group(4)),
+                                    "desc":        m2.group(5).strip(),
+                                })
+                                continue
+                            # Old format without event_count: [classify|status|score] summary
                             m2 = re.match(r"\[([^\]]+)\|([^\]]+)\|(\d+)\]\s*(.*)", part)
                             if m2:
                                 group_action_items.append({
                                     "classify": m2.group(1),
                                     "status":   m2.group(2),
                                     "ai_score": int(m2.group(3)),
+                                    "event_count": 1,
                                     "desc":     m2.group(4).strip(),
                                 })
                             elif part:
@@ -1451,10 +1470,19 @@ class _FullDigest:
                 "ai_existing_tags": group.get("ai_existing_tags", []),
                 "ai_new_tags":      group.get("ai_new_tags", []),
                 "items":            entries,
+                # group_deliveries filled after synthesis call below
+                "group_deliveries": [],
             })
             total_entries += len(entries)
 
-        # 5. All standalone commits → one "general-commits" group
+        # 5. Group-level synthesis: cluster events into 3-5 thematic deliveries
+        for gs in group_sections:
+            if gs.get("items"):
+                gs["group_deliveries"] = await self._synthesize_group_deliveries(
+                    gs["items"], gs["slug"], gs.get("topic", gs["slug"])
+                )
+
+        # 6. All standalone commits → one "general-commits" group
         if standalone_commits:
             commits_section = await self._build_commits_group(
                 standalone_commits, c_refs, commit_stamp
@@ -1463,7 +1491,7 @@ class _FullDigest:
                 group_sections.append(commits_section)
                 total_entries += len(commits_section.get("items", []))
 
-        # 5. Write backlog.md with GROUP sections
+        # 7. Write backlog.md with GROUP sections
         self._write_group_sections(group_sections)
 
         # 6. Stamp all source rows
@@ -1646,48 +1674,48 @@ Return JSON array only. No markdown. No extra text.
             "items":            entries,
         }
 
-    async def _summarize_prompts_batch(
-        self, rows: list[dict], slug: str, classify: str
+    def _build_event_block(self, i: int, r: dict, global_offset: int = 0) -> str:
+        """Format one prompt row into a text block for the summarization prompt."""
+        p    = (r.get("prompt")   or "")[:600].replace("\n", " ").strip()
+        resp = (r.get("response") or "")[:500].replace("\n", " ").strip()
+        block = f"[{i + global_offset}]\nPROMPT: {p}\nRESPONSE: {resp}"
+        for ctx in r.get("commits", []):
+            block += f"\nCOMMIT {ctx['hash'][:8]}: {ctx['msg'][:120]}"
+            for sym in ctx.get("symbols", [])[:10]:
+                cls = f"{sym['class']}." if sym.get("class") else ""
+                mth = sym.get("method") or ""
+                nm  = f"{cls}{mth}" if (cls or mth) else sym.get("file", "")
+                block += f"\n  {sym.get('file','?')}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
+        return block
+
+    async def _summarize_chunk(
+        self,
+        rows: list[dict],
+        global_offset: int,
+        slug: str,
+        classify: str,
+        model: str,
+        desc: str,
+        max_tokens: int,
     ) -> list[dict]:
-        """Batch-summarize prompts → one dict per event.
-
-        Returns list aligned with input rows (same length, same order).
-        Uses full prompt text (600 chars) + response (500 chars) + all commit symbols.
-        """
-        model      = self.summary_cfg.get("llm", settings.haiku_model)
-        desc       = self.summary_cfg.get("desc", "")
-        max_tokens = int(self.summary_cfg.get("max_tokens", 8000))
-
-        parts: list[str] = []
-        for i, r in enumerate(rows):
-            p    = (r.get("prompt")   or "")[:600].replace("\n", " ").strip()
-            resp = (r.get("response") or "")[:500].replace("\n", " ").strip()
-            block = f"[{i}]\nPROMPT: {p}\nRESPONSE: {resp}"
-            for ctx in r.get("commits", []):
-                block += f"\nCOMMIT {ctx['hash'][:8]}: {ctx['msg'][:120]}"
-                for sym in ctx.get("symbols", [])[:10]:
-                    cls = f"{sym['class']}." if sym.get("class") else ""
-                    mth = sym.get("method") or ""
-                    nm  = f"{cls}{mth}" if (cls or mth) else sym.get("file", "")
-                    block += f"\n  {sym.get('file','?')}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
-            parts.append(block)
-
-        system_p = f"""{desc}
-
-Use case: {slug}  |  default classify: {classify}
-
-IMPORTANT: Return a valid JSON ARRAY — one element per event, same count and order as input.
-Array length MUST equal {len(rows)}."""
-
-        user_p = f"Events ({len(rows)}):\n\n" + "\n\n---\n\n".join(parts)
-        raw = await _call_haiku(system_p, user_p, model, max_tokens=max_tokens)
-
+        """Summarize a single chunk (≤10 events). Returns list aligned with input."""
         def _fallback(i: int, r: dict) -> dict:
             return {
                 "summary": (r.get("prompt") or "")[:80].replace("\n", " "),
-                "classify": classify, "requirements": [], "deliveries": [], "action_items": [],
-                "status": "in-progress", "ai_score": 0,
+                "classify": classify, "requirements": [], "deliveries": [],
+                "action_items": [], "status": "in-progress", "ai_score": 0,
             }
+
+        # Always use local 0-based indices so LLM output aligns regardless of chunk offset
+        parts = [self._build_event_block(i, r, 0) for i, r in enumerate(rows)]
+        system_p = (
+            f"{desc}\n\nUse case: {slug}  |  default classify: {classify}\n\n"
+            f"IMPORTANT: Return a valid JSON ARRAY — one element per event, same count "
+            f"and order as input. Array length MUST equal {len(rows)}. "
+            f"event_index values: {list(range(len(rows)))} (0-based within this chunk)."
+        )
+        user_p = f"Events ({len(rows)}):\n\n" + "\n\n---\n\n".join(parts)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=max_tokens)
 
         if not raw:
             return [_fallback(i, r) for i, r in enumerate(rows)]
@@ -1696,11 +1724,83 @@ Array length MUST equal {len(rows)}."""
         try:
             result = json.loads(cleaned)
             if isinstance(result, list):
+                # event_index is local (0-based); map directly
                 result_map = {item.get("event_index", j): item for j, item in enumerate(result)}
                 return [result_map.get(i, _fallback(i, r)) for i, r in enumerate(rows)]
         except Exception as e:
-            log.warning(f"full_digest: _summarize_prompts_batch parse error: {e}")
+            log.warning(f"full_digest: _summarize_chunk (offset={global_offset}) parse error: {e}")
         return [_fallback(i, r) for i, r in enumerate(rows)]
+
+    async def _summarize_prompts_batch(
+        self, rows: list[dict], slug: str, classify: str
+    ) -> list[dict]:
+        """Batch-summarize prompts → one dict per event.
+
+        Processes in chunks of chunk_size (default 10) to avoid token-limit
+        truncation on large groups. Returns list aligned with input rows.
+        """
+        model      = self.summary_cfg.get("llm", settings.haiku_model)
+        desc       = self.summary_cfg.get("desc", "")
+        max_tokens = int(self.summary_cfg.get("max_tokens", 4000))
+        chunk_size = int(self.summary_cfg.get("chunk_size", 10))
+
+        results: list[dict] = []
+        for start in range(0, len(rows), chunk_size):
+            chunk = rows[start : start + chunk_size]
+            chunk_results = await self._summarize_chunk(
+                chunk, start, slug, classify, model, desc, max_tokens
+            )
+            results.extend(chunk_results)
+
+        return results
+
+    async def _synthesize_group_deliveries(
+        self, event_summaries: list[dict], slug: str, topic: str
+    ) -> list[dict]:
+        """Post-process: cluster event summaries into 3-5 thematic group deliveries.
+
+        Returns list of {summary, classify, status, ai_score, event_count} dicts,
+        sorted completed-first by ai_score desc.
+        """
+        cfg        = self.bl._config().get("full_digest", {}).get("group_synthesis_prompt", {})
+        model      = cfg.get("llm", settings.haiku_model)
+        desc       = cfg.get("desc", "")
+        max_tokens = int(cfg.get("max_tokens", 1000))
+
+        if not desc or not event_summaries:
+            return []
+
+        lines: list[str] = []
+        for i, sv in enumerate(event_summaries):
+            reqs = sv.get("requirements", [])
+            reqs_str = "; ".join(reqs[:2]) if isinstance(reqs, list) else str(reqs)[:100]
+            lines.append(
+                f"[{i}] [{sv.get('classify','task')}|{sv.get('status','in-progress')}|"
+                f"{sv.get('ai_score',0)}] {sv.get('summary','')[:100]} | req: {reqs_str}"
+            )
+
+        system_p = f"{desc}\n\nUse case slug: {slug}\nGroup topic: {topic}"
+        user_p   = f"Events ({len(event_summaries)}):\n" + "\n".join(lines)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=max_tokens)
+
+        if not raw:
+            return []
+        cleaned = re.sub(r"```(?:json)?\s*", "", raw).strip()
+        try:
+            result = json.loads(cleaned)
+            if isinstance(result, list):
+                done = sorted(
+                    [r for r in result if r.get("status") == "completed"],
+                    key=lambda x: -int(x.get("ai_score", 0)),
+                )
+                prog = sorted(
+                    [r for r in result if r.get("status") != "completed"],
+                    key=lambda x: -int(x.get("ai_score", 0)),
+                )
+                return done + prog
+        except Exception as e:
+            log.warning(f"full_digest: _synthesize_group_deliveries parse error: {e}")
+        return []
 
     async def _summarize_commits_batch(
         self, commits: list[dict], slug: str, classify: str
@@ -1935,6 +2035,16 @@ def _fmt_group_block(group: dict) -> str:
         lines.append(f"> Summary: {topic}")
     if all_reqs[:5]:
         lines.append(f"> Requirements: {'; '.join(all_reqs[:5])}")
+
+    # Synthesised group deliveries (3-5 thematic items from LLM synthesis call)
+    group_deliveries: list[dict] = group.get("group_deliveries", [])
+    if group_deliveries:
+        parts = [
+            f"[{d.get('classify','task')}|{d.get('status','in-progress')}|"
+            f"{d.get('ai_score',0)}|{d.get('event_count',1)}] {d.get('summary','')}"
+            for d in group_deliveries[:5]
+        ]
+        lines.append(f"> Deliveries: {'; '.join(parts)}")
 
     lines.append("")
 

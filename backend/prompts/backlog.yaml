@@ -56,17 +56,17 @@ full_digest:
     llm: claude-haiku-4-5-20251001
     temperature: 0.2
 
-  # ── B: batch-summarize all prompts in a group (ONE call per group) ───────────
+  # ── B: batch-summarize all prompts in a group (one call per CHUNK of ≤10) ────
   # Input: full prompt text (600 chars) + response (500 chars) + all commit symbols.
   # Output: JSON array, one element per event, aligned with input order.
+  # NOTE: processed in chunks of max 10 events to avoid token-limit truncation.
   summary_prompt:
     desc: >
       You are extracting structured summaries from AI development session events.
       Each event contains:
         - PROMPT: what the user asked or described (the requirement)
-        - RESPONSE: what the assistant answered or implemented
-        - COMMITS: linked git commits with code symbols (file, class, method,
-          lines added/removed) — this is the actual code delivered
+        - RESPONSE: what the assistant answered or implemented (may be long — read it carefully)
+        - COMMITS (optional): linked git commits with code symbols showing actual code delivered
       For EACH event return one JSON object. The array must have the SAME LENGTH
       and SAME ORDER as the input events.
       [
@@ -75,7 +75,7 @@ full_digest:
           "summary":      "one clear sentence (max 120 chars) describing what was done",
           "classify":     "bug|feature|task",
           "requirements": ["exact user request or problem statement (one sentence each)"],
-          "deliveries":   ["specific thing delivered — reference file/class/method from COMMITS if present"],
+          "deliveries":   ["specific thing delivered (code change, explanation, decision, fix)"],
           "action_items": [{{"desc": "open task not yet done", "acceptance": "done when ..."}}],
           "status":       "completed|in-progress",
           "ai_score":     <0-5>
@@ -84,19 +84,59 @@ full_digest:
       classify rules:
         "bug"     — user reported an error, crash, incorrect behaviour, or fix
         "feature" — user asked to add new functionality, new endpoint, new UI component
-        "task"    — refactoring, configuration, documentation, maintenance, cleanup
-      status: "completed" if COMMITS show the work was delivered, "in-progress" otherwise.
-      ai_score: 0=not started, 1=discussed only, 2=design decided, 3=partially coded,
-                4=implemented (no tests), 5=done and tested.
-      requirements: capture the USER'S INTENT from the PROMPT — what problem they
-        wanted solved. Be specific. Use their own words where possible.
-      deliveries: if COMMITS are present, extract from file/class/method changes.
-        If no commits, extract from RESPONSE descriptions.
-      action_items: only truly OPEN tasks (not yet in deliveries).
-      One sentence per list item. Be specific. Avoid vague phrases like "improved X".
+        "task"    — explanation, research, refactoring, config, docs, maintenance
+      status rules — a task is "completed" when ANY of these apply:
+        - COMMITS contain actual code that addresses the PROMPT
+        - RESPONSE contains a complete, substantive answer to the PROMPT question
+        - RESPONSE shows the user's issue was fully resolved
+        "in-progress" only when RESPONSE is empty, partial, or the work is explicitly unfinished.
+      ai_score:
+        0 = not started / empty response
+        1 = discussed only (brief acknowledgement, no real content)
+        2 = design/approach decided, no implementation
+        3 = partially coded or partially answered
+        4 = fully answered or code implemented (not yet tested)
+        5 = done, tested, and verified working
+        NOTE: explanation tasks (no code) can reach score 4-5 if the response is complete.
+      requirements: capture the USER'S INTENT from the PROMPT.
+      deliveries: extract from COMMITS (code changes) OR from RESPONSE (explanations,
+        decisions, answers). Every substantive response IS a delivery.
+      action_items: only truly OPEN tasks not yet addressed in the response.
     llm: claude-haiku-4-5-20251001
     temperature: 0.3
-    max_tokens: 8000
+    max_tokens: 4000
+    chunk_size: 10
+
+  # ── B2: group-level synthesis — produce 3-5 thematic deliveries ───────────────
+  # Run AFTER per-event summarization. Takes all event summaries for a group and
+  # synthesises them into 3-5 high-level deliveries grouped by topic.
+  group_synthesis_prompt:
+    desc: >
+      You are synthesising a list of AI session event summaries into 3-5 high-level
+      thematic deliveries for a use case group.
+      You receive:
+        - Group topic and use case slug
+        - A list of event summaries, each with: summary, classify, status, ai_score, requirements, deliveries
+      Cluster related events into THEMES. For each theme return one delivery object.
+      Return JSON array (3-5 items maximum):
+      [
+        {{
+          "summary":  "one sentence describing what was achieved in this theme (max 120 chars)",
+          "classify": "bug|feature|task",
+          "status":   "completed|in-progress",
+          "ai_score": <0-5>,
+          "event_count": <number of events in this theme>
+        }}
+      ]
+      Rules:
+        - Merge events with the same goal into ONE delivery.
+        - status=completed if MOST events in the theme are completed.
+        - ai_score = average (rounded) of events in the theme.
+        - Sort: completed items first (ai_score desc), in-progress last.
+        - Be specific: reference what was actually built or answered.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.2
+    max_tokens: 1000
 
   # ── C: batch-summarize standalone commits (ONE call for all commits) ─────────
   # Commits not linked to any prompt. Always status=completed, ai_score=5.
