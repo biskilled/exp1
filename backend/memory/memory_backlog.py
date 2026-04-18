@@ -151,12 +151,13 @@ def _get_code_dir(project: str) -> Optional[Path]:
 # Header format:  SOURCE YY/MM/DD-HH:MM REF_ID [APPROVE] [slug] [classify] (user) — summary
 # APPROVE values: [ ] = pending | [+] or [x] = approved | [-] = rejected
 
-# New GROUP header: YY/MM/DD-HH:MM [APPROVE] (source) — slug
+# New GROUP header: ## **slug** · YY/MM/DD-HH:MM [APPROVE] (source)
 _GROUP_HEADER_RE = re.compile(
-    r"^(\d{2}/\d{2}/\d{2}(?:-\d{2}:\d{2})?)\s+"
-    r"\[([+ x\-]*)\]\s+"
-    r"\(([^)]*)\)\s+"
-    r"—\s+(.+)$"
+    r"^## \*\*([^*]+)\*\*"                          # group 1: slug (bold)
+    r"\s+·\s+"
+    r"(\d{2}/\d{2}/\d{2}(?:-\d{2}:\d{2})?)"        # group 2: date
+    r"\s+\[([+ x\-]*)\]"                            # group 3: approve
+    r"\s+\(([^)]*)\)"                               # group 4: source
 )
 
 # New ITEM header: SOURCE REF_ID [APPROVE] [CLASSIFY] [STATUS] [AI_SCORE] — summary
@@ -874,7 +875,7 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
         groups: list[dict] = []
 
-        for chunk in re.split(r"\n---\n", pending_text):
+        for chunk in re.split(r"\n\n?---\n\n?", pending_text):
             chunk = chunk.strip()
             if not chunk:
                 continue
@@ -883,20 +884,20 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
             # ── Try new GROUP format ──────────────────────────────────────
             group_m = None
-            for ln in lines[:3]:  # header should be in first 3 lines
+            for ln in lines:  # scan all lines (first chunk includes file header)
                 group_m = _GROUP_HEADER_RE.match(ln.strip())
                 if group_m:
                     break
 
             if group_m:
-                dt        = group_m.group(1)
-                ap_raw    = group_m.group(2).strip()
-                source    = group_m.group(3).strip()
-                slug      = group_m.group(4).strip()
+                slug      = group_m.group(1).strip()
+                dt        = group_m.group(2)
+                ap_raw    = group_m.group(3).strip()
+                source    = group_m.group(4).strip()
 
                 approve = "x" if ap_raw in ("+", "x") else ("-" if ap_raw == "-" else " ")
 
-                # Parse metadata lines
+                # Parse metadata lines (new "> Key: ..." format + old "<!-- G_TYPE -->" compat)
                 slug_type   = "existing"
                 user_tags: list[str] = []
                 ai_existing: list[dict] = []
@@ -904,8 +905,14 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
                 for ln in lines:
                     ls = ln.strip()
+                    # New "> Key: value" format
+                    if ls.startswith("> "):
+                        ls = ls[2:]
+                    # Old HTML comment compat
                     if ls.startswith("<!-- G_TYPE:"):
                         slug_type = ls.split(":", 1)[1].strip(" -->").strip()
+                    elif ls.startswith("Type:"):
+                        slug_type = ls[len("Type:"):].strip()
                     elif ls.startswith("User tags:"):
                         raw_tags = ls[len("User tags:"):].strip()
                         user_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
@@ -959,7 +966,8 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                             current_item["requirements"] = ls[len("Requirements:"):].strip()
                         elif ls.startswith("Deliveries:"):
                             current_item["deliveries"] = ls[len("Deliveries:"):].strip()
-                        elif ls and not ls.startswith("<!--") and not ls.startswith("Total:") \
+                        elif ls and not ls.startswith("<!--") and not ls.startswith("> ") \
+                             and not ls.startswith("Total:") \
                              and not ls.startswith("User tags") and not ls.startswith("AI "):
                             current_item["raw"] += "\n" + ln
 
@@ -1117,7 +1125,7 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
         new_text = header
         if pending_blocks:
-            new_text += "\n---\n\n".join(pending_blocks) + "\n"
+            new_text += "\n\n---\n\n".join(pending_blocks) + "\n"
 
         # ── Rejected section ─────────────────────────────────────────────────
         # Preserve any existing rejected entries from the file
@@ -1648,7 +1656,7 @@ One sentence per item. Be specific with file/class/method names."""
         path.parent.mkdir(parents=True, exist_ok=True)
 
         section_blocks = [_fmt_group_block(g) for g in groups]
-        content = "\n---\n\n".join(section_blocks)
+        content = "\n\n---\n\n".join(section_blocks)
 
         # Preserve archive
         archive_block = ""
@@ -1765,34 +1773,33 @@ def _fmt_group_block(group: dict) -> str:
     ai_new        = group.get("ai_new_tags", [])
 
     lines = [
-        f"{date_str} [{approve}] ({source}) — {slug}",
-        f"<!-- G_SLUG: {slug} -->",
-        f"<!-- G_TYPE: {slug_type} -->",
-        f"Total: {total_line}",
+        f"## **{slug}** · {date_str} [{approve}] ({source})",
+        f"> Type: {slug_type}",
+        f"> Total: {total_line}",
     ]
 
     if user_tags:
-        lines.append(f"User tags: {', '.join(str(t) for t in user_tags)}")
+        lines.append(f"> User tags: {', '.join(str(t) for t in user_tags)}")
     else:
-        lines.append("User tags:")
+        lines.append("> User tags:")
 
     if ai_existing:
         chips = " ".join(
             f"[{t.get('category','?')}:{t.get('name','?')}]"
             for t in ai_existing
         )
-        lines.append(f"AI existing: {chips}")
+        lines.append(f"> AI existing: {chips}")
     else:
-        lines.append("AI existing:")
+        lines.append("> AI existing:")
 
     if ai_new:
         chips = " ".join(
             f"[{t.get('category','?')}:{t.get('name','?')}]"
             for t in ai_new
         )
-        lines.append(f"AI new: {chips}")
+        lines.append(f"> AI new: {chips}")
     else:
-        lines.append("AI new:")
+        lines.append("> AI new:")
 
     lines.append("")
 

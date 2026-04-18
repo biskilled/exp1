@@ -240,7 +240,9 @@ async def patch_backlog_entry(
 
     # Find the chunk containing this ref_id
     import re as _re
-    chunks = _re.split(r"\n---\n", text)
+    # Support both old "\n---\n" and new "\n\n---\n\n" separators
+    sep_pattern = r"\n\n?---\n\n?"
+    chunks = _re.split(sep_pattern, text)
 
     updated = False
     new_chunks: list[str] = []
@@ -248,8 +250,7 @@ async def patch_backlog_entry(
         if ref_id in chunk:
             if body.approve is not None:
                 val = body.approve[:1] if body.approve else " "
-                # New format: SOURCE DATE REF_ID [APPROVE] [slug] [classify] (user) — ...
-                # Replace the [APPROVE] bracket right after the ref_id
+                # New GROUP format: item line is "  SOURCE REF_ID [APPROVE] ..."
                 chunk = _re.sub(
                     rf"({_re.escape(ref_id)}\s+)\[[+ x\-]*\]",
                     rf"\1[{val}]",
@@ -262,8 +263,6 @@ async def patch_backlog_entry(
                     chunk,
                 )
             if body.tag is not None:
-                # New format: replace the [slug] field (5th bracket group)
-                # For simplicity, replace the TAG comment (legacy) or the slug bracket
                 chunk = _re.sub(
                     r"<!--\s*TAG:\s*.*?-->",
                     f"<!-- TAG: {body.tag} -->",
@@ -275,7 +274,7 @@ async def patch_backlog_entry(
     if not updated:
         raise HTTPException(status_code=404, detail=f"Ref ID '{ref_id}' not found in backlog")
 
-    path.write_text("\n---\n".join(new_chunks))
+    path.write_text("\n\n---\n\n".join(new_chunks))
     return {"status": "updated", "ref_id": ref_id, "project": project}
 
 
