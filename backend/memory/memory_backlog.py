@@ -2369,6 +2369,18 @@ def _merge_into_use_case(uc_dir: Path, slug: str, entry: dict) -> None:
 
 # ── mem_backlog_links helpers ─────────────────────────────────────────────────
 
+def _get_client_id(project_id: int) -> Optional[int]:
+    """Return the client_id for a given project_id."""
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT client_id FROM mng_projects WHERE id=%s", (project_id,))
+                row = cur.fetchone()
+                return row[0] if row else None
+    except Exception:
+        return None
+
+
 def _insert_backlog_link(
     project_id: int,
     ref_id: str,
@@ -2376,28 +2388,45 @@ def _insert_backlog_link(
     use_case_slug: str,
     classify: str,
     summary: str,
+    tag_name: str = "",
+    use_case_id: Optional[str] = None,
+    is_llm: bool = False,
+    client_id: Optional[int] = None,
+    user_id: Optional[int] = None,
 ) -> None:
     """Insert or update a mem_backlog_links row for an approved backlog entry.
 
     This is the stable DB record that survives .md file edits/deletion.
     UNIQUE(project_id, ref_id) — one backlog entry can only belong to one use case.
+
+    is_llm=False  → mirror-table event (ref_id like 'P100042', 'C200001')
+                    tag_id points to the use-case planner_tag
+    is_llm=True   → AI-generated delivery item (ref_id = child planner_tag UUID)
+                    tag_id = child planner_tag, use_case_id = parent use-case tag
     """
     if not db.is_available():
         return
+    if client_id is None:
+        client_id = _get_client_id(project_id)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO mem_backlog_links
-                       (project_id, ref_id, tag_id, use_case_slug, classify, summary)
-                       VALUES (%s, %s, %s::uuid, %s, %s, %s)
+                       (client_id, project_id, user_id, ref_id, tag_id, tag_name,
+                        use_case_id, use_case_slug, classify, is_llm, summary)
+                       VALUES (%s, %s, %s, %s, %s::uuid, %s, %s::uuid, %s, %s, %s, %s)
                        ON CONFLICT (project_id, ref_id) DO UPDATE SET
                            tag_id        = COALESCE(EXCLUDED.tag_id, mem_backlog_links.tag_id),
+                           tag_name      = COALESCE(EXCLUDED.tag_name, mem_backlog_links.tag_name),
+                           use_case_id   = COALESCE(EXCLUDED.use_case_id, mem_backlog_links.use_case_id),
                            use_case_slug = EXCLUDED.use_case_slug,
                            classify      = EXCLUDED.classify,
+                           is_llm        = EXCLUDED.is_llm,
                            summary       = EXCLUDED.summary,
-                           approved_at   = NOW()""",
-                    (project_id, ref_id, tag_id, use_case_slug, classify, summary or ""),
+                           updated_at    = NOW()""",
+                    (client_id, project_id, user_id, ref_id, tag_id, tag_name or "",
+                     use_case_id, use_case_slug, classify, is_llm, summary or ""),
                 )
             conn.commit()
     except Exception as e:
@@ -2626,29 +2655,45 @@ async def run_work_items_for_group(project: str, slug: str, approve: str) -> dic
                 # group share the same slug so the tag_uuid should be consistent)
                 if tag_uuid and not group_tag_uuid:
                     group_tag_uuid = tag_uuid
+                # Mirror-table event → is_llm=False; tag_name = use-case slug
                 _insert_backlog_link(
                     project_id=project_id,
                     ref_id=item["ref_id"],
                     tag_id=tag_uuid,
+                    tag_name=item_slug,
+                    use_case_id=tag_uuid,
                     use_case_slug=item_slug,
                     classify=classify,
+                    is_llm=False,
                     summary=item.get("summary", ""),
                 )
             approved_ids.append(item["ref_id"])
 
         # Create child planner_tags for each group-level delivery theme
+        # and insert them as AI-generated links (is_llm=True)
         if project_id and group_tag_uuid:
             for delivery in target.get("deliveries", []):
                 d_linked_id = (delivery.get("tag_id") or "").strip()
                 if d_linked_id:
-                    # User linked to an existing tag — no new tag needed
+                    # User linked to an existing tag — just insert backlog link pointing there
+                    _insert_backlog_link(
+                        project_id=project_id,
+                        ref_id=d_linked_id,
+                        tag_id=d_linked_id,
+                        tag_name=(delivery.get("name") or "").strip() or delivery.get("desc", "")[:80],
+                        use_case_id=group_tag_uuid,
+                        use_case_slug=slug,
+                        classify=delivery.get("classify", "task"),
+                        is_llm=True,
+                        summary=delivery.get("desc", ""),
+                    )
                     continue
                 d_name = (delivery.get("name") or "").strip() or delivery.get("desc", "")[:80]
                 if not d_name:
                     continue
                 d_classify = delivery.get("classify", "task")
                 try:
-                    _upsert_planner_tag(
+                    child_result = _upsert_planner_tag(
                         project=project,
                         project_id=project_id,
                         name=d_name,
@@ -2657,6 +2702,20 @@ async def run_work_items_for_group(project: str, slug: str, approve: str) -> dic
                         description=delivery.get("desc", ""),
                         parent_id=group_tag_uuid,
                     )
+                    child_uuid = child_result[0] if child_result else None
+                    if child_uuid:
+                        # AI-generated delivery → is_llm=True, ref_id = child tag UUID
+                        _insert_backlog_link(
+                            project_id=project_id,
+                            ref_id=child_uuid,
+                            tag_id=child_uuid,
+                            tag_name=d_name,
+                            use_case_id=group_tag_uuid,
+                            use_case_slug=slug,
+                            classify=d_classify,
+                            is_llm=True,
+                            summary=delivery.get("desc", ""),
+                        )
                 except Exception as e:
                     log.debug(f"run_work_items_for_group: child tag ({d_name}) error: {e}")
 
@@ -2775,8 +2834,11 @@ async def run_work_items(project: str) -> dict:
                 project_id=project_id,
                 ref_id=entry["ref_id"],
                 tag_id=tag_uuid,
+                tag_name=slug,
+                use_case_id=tag_uuid,
                 use_case_slug=slug,
                 classify=classify,
+                is_llm=False,
                 summary=entry.get("summary", ""),
             )
 

@@ -2637,6 +2637,66 @@ def m060_drop_feature_snapshot(conn) -> None:
     conn.commit()
 
 
+def m061_rebuild_backlog_links(conn) -> None:
+    """Rebuild mem_backlog_links with richer schema.
+
+    New columns vs old:
+      client_id     INT       — links to mng_clients
+      user_id       INT       — user who approved (NULL for automated runs)
+      tag_name      TEXT      — name of the linked planner_tag (avoids extra join)
+      use_case_id   UUID FK   — UUID of the parent use-case planner_tag
+      is_llm        BOOL      — TRUE for AI-generated delivery items (child tags);
+                                FALSE for mirror-table events (P/C/M/I refs)
+      created_at    TIMESTAMPTZ — replaces approved_at
+      updated_at    TIMESTAMPTZ
+
+    Distinction:
+      Mirror events   → is_llm=FALSE, ref_id='P100042', tag_id=use_case_tag_id
+      AI deliveries   → is_llm=TRUE,  ref_id=child_tag_uuid, tag_id=child_tag_id,
+                        use_case_id=parent_use_case_tag_id
+    """
+    with conn.cursor() as cur:
+        # Drop old table (data will be lost — re-populated on next approval run)
+        cur.execute("DROP TABLE IF EXISTS mem_backlog_links CASCADE")
+        cur.execute("""
+            CREATE TABLE mem_backlog_links (
+                id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id     INT         REFERENCES mng_clients(id) ON DELETE CASCADE,
+                project_id    INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                user_id       INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+                ref_id        TEXT        NOT NULL,
+                tag_id        UUID        REFERENCES planner_tags(id) ON DELETE SET NULL,
+                tag_name      TEXT,
+                use_case_id   UUID        REFERENCES planner_tags(id) ON DELETE SET NULL,
+                use_case_slug TEXT        NOT NULL,
+                classify      TEXT,
+                is_llm        BOOLEAN     NOT NULL DEFAULT FALSE,
+                summary       TEXT,
+                created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (project_id, ref_id)
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_tag     "
+            "ON mem_backlog_links(tag_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_uc      "
+            "ON mem_backlog_links(use_case_id)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_proj    "
+            "ON mem_backlog_links(project_id, use_case_slug)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backlog_links_proj_uc "
+            "ON mem_backlog_links(project_id, use_case_id)"
+        )
+    conn.commit()
+    log.info("m061: mem_backlog_links rebuilt with client_id, user_id, tag_name, use_case_id, is_llm")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -2685,4 +2745,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m058_tag_deps", m058_tag_deps),
     ("m059_drop_legacy_tables", m059_drop_legacy_tables),
     ("m060_drop_feature_snapshot", m060_drop_feature_snapshot),
+    ("m061_rebuild_backlog_links", m061_rebuild_backlog_links),
 ]

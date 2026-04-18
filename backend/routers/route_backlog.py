@@ -1002,16 +1002,17 @@ async def get_use_case_events(
 
                 # Fetch all links for this slug
                 cur.execute(
-                    """SELECT ref_id, classify, summary, approved_at, tag_id::text
+                    """SELECT ref_id, classify, summary, created_at,
+                              tag_id::text, tag_name, is_llm, use_case_id::text
                        FROM mem_backlog_links
                        WHERE project_id=%s AND use_case_slug=%s
-                       ORDER BY approved_at""",
+                       ORDER BY created_at""",
                     (project_id, slug),
                 )
                 links = cur.fetchall()
 
                 events = []
-                for ref_id, classify, summary, approved_at, t_id in links:
+                for ref_id, classify, summary, created_at, t_id, tag_name, is_llm, uc_id in links:
                     # Determine source type from prefix letter
                     prefix = ref_id[0] if ref_id else ""
                     src_map = {"P": "prompts", "C": "commits", "M": "messages", "I": "items"}
@@ -1051,11 +1052,14 @@ async def get_use_case_events(
 
                     events.append({
                         "ref_id":      ref_id,
-                        "source_type": src_type,
+                        "source_type": src_type or ("ai_delivery" if is_llm else None),
                         "classify":    classify,
                         "summary":     summary,
-                        "approved_at": str(approved_at) if approved_at else None,
+                        "tag_name":    tag_name,
+                        "is_llm":      is_llm,
+                        "created_at":  str(created_at) if created_at else None,
                         "tag_id":      t_id,
+                        "use_case_id": uc_id,
                         "source_rows": source_row,
                     })
 

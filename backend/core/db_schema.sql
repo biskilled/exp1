@@ -474,17 +474,25 @@ CREATE INDEX IF NOT EXISTS idx_mmrr_m_tags       ON mem_mrr_messages USING gin(t
 --    WHERE l.tag_id = '{use_case_tag_uuid}'
 CREATE TABLE IF NOT EXISTS mem_backlog_links (
     id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id     INT         REFERENCES mng_clients(id) ON DELETE CASCADE,
     project_id    INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
-    ref_id        TEXT        NOT NULL,       -- P100042 / C200001 / M300001 / I400001
+    user_id       INT         REFERENCES mng_users(id) ON DELETE SET NULL,
+    ref_id        TEXT        NOT NULL,       -- P100042 / C200001 / child-tag UUID (is_llm=true)
     tag_id        UUID        REFERENCES planner_tags(id) ON DELETE SET NULL,
-    use_case_slug TEXT        NOT NULL,       -- slug = planner_tags.name
+    tag_name      TEXT,                       -- human name for the tag / delivery item
+    use_case_id   UUID        REFERENCES planner_tags(id) ON DELETE SET NULL,
+    use_case_slug TEXT        NOT NULL,       -- slug = use case planner_tags.name
     classify      TEXT,                       -- bug / feature / task / use_case
+    is_llm        BOOLEAN     NOT NULL DEFAULT FALSE, -- true = AI-synthesised delivery item
     summary       TEXT,                       -- one-line summary from backlog entry
-    approved_at   TIMESTAMPTZ DEFAULT NOW(),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (project_id, ref_id)              -- one ref belongs to exactly one use case
 );
-CREATE INDEX IF NOT EXISTS idx_backlog_links_tag  ON mem_backlog_links(tag_id);
-CREATE INDEX IF NOT EXISTS idx_backlog_links_proj ON mem_backlog_links(project_id, use_case_slug);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_tag     ON mem_backlog_links(tag_id);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_uc      ON mem_backlog_links(use_case_id);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_proj    ON mem_backlog_links(project_id);
+CREATE INDEX IF NOT EXISTS idx_backlog_links_proj_uc ON mem_backlog_links(project_id, use_case_slug);
 
 -- ============================================================================
 -- SECTION 4: mem_ai_* — Layer 2/3: AI Digests + Structured Artifacts
