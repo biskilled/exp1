@@ -60,8 +60,12 @@ _TABLE: dict[str, str] = {
     "items":    "mem_mrr_items",
 }
 
-# Template location (relative to project root)
+# Primary prompt config: backend/prompts/backlog.yaml
+# Fallback / legacy template kept for project-level override copies
+_BACKLOG_PROMPTS_PATH = Path(__file__).parent.parent / "prompts" / "backlog.yaml"
 _TEMPLATE_PATH = Path(__file__).parent.parent.parent / "workspace" / "_templates" / "backlog_config.yaml"
+# Use case prompts: backend/prompts/use_case.yaml
+_USE_CASE_PROMPTS_PATH = Path(__file__).parent.parent / "prompts" / "use_case.yaml"
 
 # SQL SIMILAR TO pattern for system/generated file paths (no real code symbols)
 _SYSTEM_FILE_PATTERN = (
@@ -267,31 +271,51 @@ class MemoryBacklog:
     # ── Config ─────────────────────────────────────────────────────────────────
 
     def _config(self) -> dict:
+        """Load pipeline config.
+
+        Priority order (later overrides earlier):
+          1. backend/prompts/backlog.yaml  — system prompt definitions
+          2. {code_dir}/.ai/backlog_config.yaml — project-level overrides (optional)
+        """
         if self._cfg is not None:
             return self._cfg
+
+        # 1. Base: backend/prompts/backlog.yaml
+        base_cfg: dict = {}
+        if _BACKLOG_PROMPTS_PATH.exists():
+            try:
+                base_cfg = yaml.safe_load(_BACKLOG_PROMPTS_PATH.read_text()) or {}
+            except Exception as e:
+                log.debug(f"backlog.yaml load error: {e}")
+
+        # 2. Project-level overrides
         code_dir = _get_code_dir(self.project)
         if code_dir:
             cfg_path = code_dir / ".ai" / "backlog_config.yaml"
         else:
             cfg_path = Path(settings.workspace_dir) / self.project / ".ai" / "backlog_config.yaml"
 
-        if not cfg_path.exists():
-            # Auto-copy template on first run
+        if cfg_path.exists():
             try:
-                cfg_path.parent.mkdir(parents=True, exist_ok=True)
-                if _TEMPLATE_PATH.exists():
-                    shutil.copy2(_TEMPLATE_PATH, cfg_path)
-                    log.info(f"backlog_config: copied template → {cfg_path}")
+                project_cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                # Deep-merge at top level (project overrides base)
+                self._cfg = {**base_cfg, **project_cfg}
             except Exception as e:
-                log.debug(f"backlog_config template copy error: {e}")
-
-        try:
-            self._cfg = yaml.safe_load(cfg_path.read_text()) or {} if cfg_path.exists() else {}
-        except Exception as e:
-            log.debug(f"backlog_config read error: {e}")
-            self._cfg = {}
+                log.debug(f"project backlog_config read error: {e}")
+                self._cfg = base_cfg
+        else:
+            self._cfg = base_cfg
 
         return self._cfg
+
+    def _use_case_cfg(self) -> dict:
+        """Load use_case.yaml prompts."""
+        if _USE_CASE_PROMPTS_PATH.exists():
+            try:
+                return yaml.safe_load(_USE_CASE_PROMPTS_PATH.read_text()) or {}
+            except Exception as e:
+                log.debug(f"use_case.yaml load error: {e}")
+        return {}
 
     def _source_cfg(self, source_type: str) -> dict:
         return self._config().get("mirroring_event_summary", {}).get(source_type, {})
@@ -1622,52 +1646,41 @@ Return JSON array only. No markdown. No extra text.
         """Batch-summarize prompts → one dict per event.
 
         Returns list aligned with input rows (same length, same order).
+        Uses full prompt text (600 chars) + response (500 chars) + all commit symbols.
         """
-        model = self.summary_cfg.get("llm", settings.haiku_model)
-        desc  = self.summary_cfg.get("desc", "")
+        model      = self.summary_cfg.get("llm", settings.haiku_model)
+        desc       = self.summary_cfg.get("desc", "")
+        max_tokens = int(self.summary_cfg.get("max_tokens", 8000))
 
         parts: list[str] = []
         for i, r in enumerate(rows):
-            p    = (r.get("prompt")   or "")[:300].replace("\n", " ")
-            resp = (r.get("response") or "")[:200].replace("\n", " ")
-            block = f"[{i}] PROMPT: {p}\nRESPONSE: {resp}"
+            p    = (r.get("prompt")   or "")[:600].replace("\n", " ").strip()
+            resp = (r.get("response") or "")[:500].replace("\n", " ").strip()
+            block = f"[{i}]\nPROMPT: {p}\nRESPONSE: {resp}"
             for ctx in r.get("commits", []):
-                block += f"\n  COMMIT {ctx['hash'][:7]}: {ctx['msg'][:80]}"
-                for sym in ctx.get("symbols", [])[:5]:
+                block += f"\nCOMMIT {ctx['hash'][:8]}: {ctx['msg'][:120]}"
+                for sym in ctx.get("symbols", [])[:10]:
                     cls = f"{sym['class']}." if sym.get("class") else ""
                     mth = sym.get("method") or ""
-                    nm  = f"{cls}{mth}" if (cls or mth) else sym["file"]
-                    block += f"\n    {sym['file']}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
+                    nm  = f"{cls}{mth}" if (cls or mth) else sym.get("file", "")
+                    block += f"\n  {sym.get('file','?')}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
             parts.append(block)
 
         system_p = f"""{desc}
 
 Use case: {slug}  |  default classify: {classify}
 
-Return a JSON ARRAY with one element per event (same order as input):
-[
-  {{
-    "event_index": 0,
-    "summary": "one-line description max 100 chars",
-    "classify": "bug|feature|task",
-    "status": "completed|in-progress",
-    "ai_score": 3,
-    "requirements": ["user request"],
-    "deliveries": ["what was done referencing file/class/method"],
-    "action_items": [{{"desc": "...", "acceptance": "..."}}]
-  }}
-]
-status: "completed" if fully implemented, "in-progress" if partially done or only discussed.
-ai_score: 0=not started, 1=discussed, 2=design ready, 3=partial, 4=implemented, 5=tested/done.
-One sentence per item. Be specific with file/class/method names."""
+IMPORTANT: Return a valid JSON ARRAY — one element per event, same count and order as input.
+Array length MUST equal {len(rows)}."""
 
-        user_p = f"Events ({len(rows)}):\n\n" + "\n\n".join(parts)
-        raw = await _call_haiku(system_p, user_p, model, max_tokens=6000)
+        user_p = f"Events ({len(rows)}):\n\n" + "\n\n---\n\n".join(parts)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=max_tokens)
 
         def _fallback(i: int, r: dict) -> dict:
             return {
                 "summary": (r.get("prompt") or "")[:80].replace("\n", " "),
-                "classify": classify, "requirements": [], "completed": [], "action_items": [],
+                "classify": classify, "requirements": [], "deliveries": [], "action_items": [],
+                "status": "in-progress", "ai_score": 0,
             }
 
         if not raw:
@@ -1686,46 +1699,45 @@ One sentence per item. Be specific with file/class/method names."""
     async def _summarize_commits_batch(
         self, commits: list[dict], slug: str, classify: str
     ) -> list[dict]:
-        """Batch-summarize standalone commits → one dict per commit."""
-        model = self.commits_batch_cfg.get("llm", settings.haiku_model)
-        desc  = self.commits_batch_cfg.get("desc", "")
+        """Batch-summarize standalone commits → one dict per commit.
+
+        Data source: commit message + all symbols from mem_mrr_commits_code.
+        classify is inferred from commit message keywords + symbol changes.
+        """
+        model      = self.commits_batch_cfg.get("llm", settings.haiku_model)
+        desc       = self.commits_batch_cfg.get("desc", "")
+        max_tokens = int(self.commits_batch_cfg.get("max_tokens", 6000))
 
         parts: list[str] = []
         for i, c in enumerate(commits):
-            msg = (c.get("commit_msg") or "")[:150]
+            msg   = (c.get("commit_msg") or "")[:200]
             block = f"[{i}] COMMIT: {msg}"
-            for sym in c.get("symbols", [])[:8]:
+            symbols = c.get("symbols", [])
+            for sym in symbols[:15]:
                 cls = f"{sym['class']}." if sym.get("class") else ""
                 mth = sym.get("method") or ""
-                nm  = f"{cls}{mth}" if (cls or mth) else sym["file"]
-                block += f"\n  {sym['file']}: {nm} (+{sym.get('+',0)}/-{sym.get('-',0)})"
+                nm  = f"{cls}{mth}" if (cls or mth) else sym.get("file", "")
+                chg = sym.get("change", "")
+                block += (
+                    f"\n  [{chg}] {sym.get('file','?')}: {nm}"
+                    f" (+{sym.get('+',0)}/-{sym.get('-',0)})"
+                )
             parts.append(block)
 
         system_p = f"""{desc}
 
-Use case: {slug}  |  default classify: {classify}
+Use case: {slug}
 
-Return a JSON ARRAY with one element per commit (same order as input):
-[
-  {{
-    "event_index": 0,
-    "summary": "one-line description max 100 chars",
-    "classify": "bug|feature|task",
-    "status": "completed",
-    "ai_score": 5,
-    "deliveries": ["what was changed referencing file/class/method"]
-  }}
-]
-Commits are always completed (status=completed, ai_score=5).
-One sentence per item. Be specific with file/class/method names."""
+IMPORTANT: Return a valid JSON ARRAY — one element per commit, same count and order.
+Array length MUST equal {len(commits)}."""
 
-        user_p = f"Commits ({len(commits)}):\n\n" + "\n\n".join(parts)
-        raw = await _call_haiku(system_p, user_p, model, max_tokens=5000)
+        user_p = f"Commits ({len(commits)}):\n\n" + "\n\n---\n\n".join(parts)
+        raw = await _call_haiku(system_p, user_p, model, max_tokens=max_tokens)
 
         def _fallback(i: int, c: dict) -> dict:
             return {
                 "summary": (c.get("commit_msg") or "")[:80],
-                "classify": classify, "completed": [],
+                "classify": "task", "deliveries": [], "status": "completed", "ai_score": 5,
             }
 
         if not raw:

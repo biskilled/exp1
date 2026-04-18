@@ -509,8 +509,10 @@ api.backlog = {
   syncBacklog:       (project, mode, source) => _post(`/memory/${enc(project)}/sync-backlog${mode ? `?mode=${enc(mode)}` : source ? `?source=${enc(source)}` : ''}`, {}),
   runWorkItems:      (project)              => _post(`/memory/${enc(project)}/work-items/sync`, {}),
   patch:             (project, refId, body)   => _patch(`/memory/${enc(project)}/backlog/${enc(refId)}`, body),
+  patchGroup:        (project, slug, body)    => _patch(`/memory/${enc(project)}/backlog/group/${enc(slug)}`, body),
   approveGroup:      (project, slug, approve) => _post(`/memory/${enc(project)}/backlog/approve-group`, { slug, approve }),
   deleteEntry:       (project, refId)         => _del(`/memory/${enc(project)}/backlog/${enc(refId)}`),
+  listSlugs:         (project)               => _get(`/memory/${enc(project)}/use-case-slugs`),
   getUseCaseSection: (project, ref)           => _get(`/memory/${enc(project)}/use-case-section?ref=${enc(ref)}`),
 };
 

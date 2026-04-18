@@ -14,8 +14,9 @@ import { api }  from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { state } from '../stores/state.js';
 
-let _project = '';
+let _project  = '';
 let _polling  = null;
+let _allSlugs = [];  // cached slug list for combobox datalist
 
 export function destroyBacklog() {
   if (_polling) { clearInterval(_polling); _polling = null; }
@@ -255,6 +256,34 @@ export async function renderBacklog(container, projectName) {
       .bl-stat-n.warn   { color:var(--accent) }
       .bl-stat-n.ok     { color:#16a34a }
       .bl-empty { text-align:center;padding:3rem;color:var(--muted);font-size:0.82rem }
+
+      /* ── Slug combobox ── */
+      .bl-slug-wrap { display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer }
+      .bl-slug-edit-btn {
+        border:none;background:transparent;color:var(--muted);font-size:0.65rem;
+        cursor:pointer;padding:0 2px;opacity:0;transition:opacity .15s;line-height:1;
+      }
+      .bl-group-header:hover .bl-slug-edit-btn { opacity:1 }
+      .bl-slug-input {
+        font-size:0.9rem;font-weight:800;border:1px solid var(--accent);border-radius:4px;
+        padding:1px 5px;background:var(--surface);color:var(--text);width:180px;
+      }
+
+      /* ── Summary inline edit ── */
+      .bl-summary-wrap { position:relative }
+      .bl-summary-edit-btn {
+        position:absolute;top:4px;right:6px;
+        border:none;background:transparent;color:var(--muted);font-size:0.65rem;
+        cursor:pointer;padding:0 2px;opacity:0;transition:opacity .15s;
+      }
+      .bl-summary-wrap:hover .bl-summary-edit-btn { opacity:1 }
+      .bl-summary-textarea {
+        width:100%;box-sizing:border-box;
+        font-size:0.81rem;line-height:1.55;
+        border:1px solid var(--accent);border-radius:calc(var(--radius) - 2px);
+        padding:0.4rem 0.65rem;background:var(--surface);color:var(--text);
+        resize:vertical;min-height:60px;
+      }
     </style>
   `;
 
@@ -267,7 +296,26 @@ export async function renderBacklog(container, projectName) {
 // ── Loaders ───────────────────────────────────────────────────────────────────
 
 async function _loadAll() {
-  await Promise.all([_loadStats(), _loadEntries()]);
+  await Promise.all([_loadStats(), _loadEntries(), _loadSlugs()]);
+}
+
+async function _loadSlugs() {
+  if (!_project) return;
+  try {
+    const data = await api.backlog.listSlugs(_project);
+    _allSlugs = data.slugs || [];
+    _updateSlugsDatalist();
+  } catch { /* non-critical */ }
+}
+
+function _updateSlugsDatalist() {
+  let dl = document.getElementById('bl-all-slugs');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'bl-all-slugs';
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = _allSlugs.map(s => `<option value="${_esc(s)}">`).join('');
 }
 
 async function _loadStats() {
@@ -374,6 +422,37 @@ async function _onRemove(refId, itemEl) {
   }
 }
 
+async function _onSlugChange(oldSlug, newSlug, slugWrapEl) {
+  if (!newSlug || newSlug === oldSlug) return;
+  try {
+    await api.backlog.patchGroup(_project, oldSlug, { new_slug: newSlug });
+    // Update the wrap element's data attribute and visible text
+    slugWrapEl.dataset.slug = newSlug;
+    const textEl = slugWrapEl.querySelector('.bl-slug-text');
+    if (textEl) textEl.textContent = newSlug;
+    // Add new slug to datalist
+    if (!_allSlugs.includes(newSlug)) {
+      _allSlugs.push(newSlug);
+      _updateSlugsDatalist();
+    }
+    toast(`Renamed → ${newSlug}`, 'success');
+  } catch (e) {
+    toast(`Rename failed: ${e.message}`, 'error');
+  }
+}
+
+async function _onSummaryEdit(slug, newText, summaryEl) {
+  try {
+    await api.backlog.patchGroup(_project, slug, { summary: newText });
+    // Update the displayed summary text
+    const textNode = summaryEl.querySelector('.bl-summary-text');
+    if (textNode) textNode.textContent = newText;
+    toast('Summary updated', 'success');
+  } catch (e) {
+    toast(`Summary update failed: ${e.message}`, 'error');
+  }
+}
+
 // ── Renderers ─────────────────────────────────────────────────────────────────
 
 function _renderCounters(data) {
@@ -440,6 +519,64 @@ function _renderGroups(groups) {
     if (apAllBtn) apAllBtn.addEventListener('click', () => _onGroupApprove(grp.slug));
     if (rjAllBtn) rjAllBtn.addEventListener('click', () => _onGroupReject(grp.slug));
 
+    // Slug rename — edit button inside .bl-slug-wrap
+    const slugWrap = grpEl.querySelector('.bl-slug-wrap');
+    const slugEditBtn = grpEl.querySelector('.bl-slug-edit-btn');
+    if (slugWrap && slugEditBtn) {
+      slugEditBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const currentSlug = slugWrap.dataset.slug || grp.slug;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentSlug;
+        input.className = 'bl-slug-input';
+        input.setAttribute('list', 'bl-all-slugs');
+        slugWrap.style.display = 'none';
+        slugWrap.parentNode.insertBefore(input, slugWrap.nextSibling);
+        input.focus(); input.select();
+        const confirm = async () => {
+          const newSlug = input.value.trim();
+          input.remove();
+          slugWrap.style.display = '';
+          await _onSlugChange(currentSlug, newSlug, slugWrap);
+        };
+        input.addEventListener('blur', confirm);
+        input.addEventListener('keydown', e2 => {
+          if (e2.key === 'Enter') { e2.preventDefault(); input.blur(); }
+          if (e2.key === 'Escape') { input.remove(); slugWrap.style.display = ''; }
+        });
+      });
+    }
+
+    // Summary inline edit
+    const sumWrap = grpEl.querySelector('.bl-summary-wrap');
+    const sumEditBtn = grpEl.querySelector('.bl-summary-edit-btn');
+    if (sumWrap && sumEditBtn) {
+      sumEditBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const currentText = sumWrap.querySelector('.bl-summary-text')?.textContent || '';
+        const currentSlug = slugWrap?.dataset.slug || grp.slug;
+        const ta = document.createElement('textarea');
+        ta.value = currentText;
+        ta.className = 'bl-summary-textarea';
+        sumWrap.style.display = 'none';
+        sumWrap.parentNode.insertBefore(ta, sumWrap.nextSibling);
+        ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+        const save = async () => {
+          const newText = ta.value.trim();
+          ta.remove();
+          sumWrap.style.display = '';
+          if (newText !== currentText) {
+            await _onSummaryEdit(currentSlug, newText, sumWrap);
+          }
+        };
+        ta.addEventListener('blur', save);
+        ta.addEventListener('keydown', e2 => {
+          if (e2.key === 'Escape') { ta.remove(); sumWrap.style.display = ''; }
+        });
+      });
+    }
+
     // Per-item controls
     (grp.items || []).forEach(item => {
       const card = document.getElementById(`bl-card-${item.ref_id}`);
@@ -498,9 +635,14 @@ function _groupHtml(grp, idx = 0) {
       ${aiNew.map(t => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
     </div>` : '';
 
-  // Summary paragraph
+  // Summary paragraph — with inline edit button
   const summaryHtml = grp.summary ? `
-    <div class="bl-group-summary">${_esc(grp.summary)}</div>` : '';
+    <div class="bl-summary-wrap">
+      <div class="bl-group-summary">
+        <span class="bl-summary-text">${_esc(grp.summary)}</span>
+      </div>
+      <button class="bl-summary-edit-btn" title="Edit summary">✎</button>
+    </div>` : '';
 
   // Requirements block
   const reqs = grp.requirements || [];
@@ -534,7 +676,10 @@ function _groupHtml(grp, idx = 0) {
     <div class="bl-group${isCommitsGroup ? ' bl-commits-only' : ''}" id="${grpId}">
       <div class="bl-group-header">
         <div style="flex:1;min-width:0;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-          <span class="bl-group-slug">${_esc(slug)}</span>
+          <span class="bl-slug-wrap" data-slug="${_esc(slug)}">
+            <span class="bl-group-slug bl-slug-text">${_esc(slug)}</span>
+            <button class="bl-slug-edit-btn" title="Rename group">✎</button>
+          </span>
           ${slugType === 'new' ? '<span class="bl-chip bl-chip-type-new">NEW</span>' : ''}
           <span class="bl-group-counts">${countStr}</span>
           <span class="bl-group-meta">${date}</span>

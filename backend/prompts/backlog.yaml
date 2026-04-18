@@ -1,0 +1,213 @@
+# backlog.yaml — Backlog pipeline prompt configuration
+#
+# Primary prompt definitions for the backlog pipeline.
+# Project-specific overrides: {code_dir}/.ai/backlog_config.yaml (deep-merged on top)
+# Use case prompts: backend/prompts/use_case.yaml
+#
+# Pipeline overview:
+#   mem_mrr_* rows (backlog_ref=NULL)
+#     → full_digest groups prompts → ONE call summarises each group → backlog.md
+#     → standalone commits → ONE "general-commits" group (commit_code symbols)
+#     → user reviews in Backlog UI, approves groups / edits items
+#     → POST /work-items/sync merges approved items → use_cases/{slug}.md
+
+file_name: backlog.md
+rotation: false   # true = daily rotation → backlog_2026-04-16.md
+
+# ── Full-digest mode ──────────────────────────────────────────────────────────
+# Triggered by: POST /memory/{project}/sync-backlog?mode=full
+# All pending prompts → max max_groups clusters (one grouping call).
+# Each group → one batch-summarize call.
+# All standalone commits → one "general-commits" group (no LLM grouping needed).
+
+full_digest:
+  max_groups: 7
+
+  # ── A: group ALL prompts into use case clusters (one LLM call) ──────────────
+  grouping_prompt:
+    desc: >
+      You are grouping AI development session prompts (user ↔ assistant exchanges)
+      into use case clusters. Each cluster shares a single use case and dominant
+      intent (bug fix, new feature, or maintenance task).
+      You receive:
+        1. A numbered list of prompt previews with dates and commit counts
+        2. Existing active use case slugs with descriptions
+      Group into AT MOST {max_groups} clusters (hard limit — merge related topics).
+      Return a JSON array:
+        [{{
+          "slug": "auth-refactor",
+          "slug_type": "existing|new",
+          "classify": "bug|feature|task",
+          "topic": "one-line group description (max 120 chars)",
+          "prompt_indices": [0,1,2],
+          "user_tags": ["development"],
+          "ai_existing_tags": [{{"category": "feature", "name": "auth-refactor"}}],
+          "ai_new_tags": [{{"category": "task", "name": "token-refresh"}}]
+        }}]
+      Rules:
+        - Every prompt index must appear in exactly one group.
+        - Prefer existing slugs. Only create new slug if topic is genuinely novel.
+        - New slugs must be lowercase-hyphenated (e.g. "stripe-billing").
+        - classify: "bug" for error/crash fixes, "feature" for new functionality,
+          "task" for refactoring/maintenance/configuration.
+        - Merge minor topics (1-3 events) into the closest related group.
+        - ai_existing_tags: max 1 per category; must exactly match an existing tag.
+        - ai_new_tags: max 1 per category; only if no existing tag fits.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.2
+
+  # ── B: batch-summarize all prompts in a group (ONE call per group) ───────────
+  # Input: full prompt text (600 chars) + response (500 chars) + all commit symbols.
+  # Output: JSON array, one element per event, aligned with input order.
+  summary_prompt:
+    desc: >
+      You are extracting structured summaries from AI development session events.
+      Each event contains:
+        - PROMPT: what the user asked or described (the requirement)
+        - RESPONSE: what the assistant answered or implemented
+        - COMMITS: linked git commits with code symbols (file, class, method,
+          lines added/removed) — this is the actual code delivered
+      For EACH event return one JSON object. The array must have the SAME LENGTH
+      and SAME ORDER as the input events.
+      [
+        {{
+          "event_index": 0,
+          "summary":      "one clear sentence (max 120 chars) describing what was done",
+          "classify":     "bug|feature|task",
+          "requirements": ["exact user request or problem statement (one sentence each)"],
+          "deliveries":   ["specific thing delivered — reference file/class/method from COMMITS if present"],
+          "action_items": [{{"desc": "open task not yet done", "acceptance": "done when ..."}}],
+          "status":       "completed|in-progress",
+          "ai_score":     <0-5>
+        }}
+      ]
+      classify rules:
+        "bug"     — user reported an error, crash, incorrect behaviour, or fix
+        "feature" — user asked to add new functionality, new endpoint, new UI component
+        "task"    — refactoring, configuration, documentation, maintenance, cleanup
+      status: "completed" if COMMITS show the work was delivered, "in-progress" otherwise.
+      ai_score: 0=not started, 1=discussed only, 2=design decided, 3=partially coded,
+                4=implemented (no tests), 5=done and tested.
+      requirements: capture the USER'S INTENT from the PROMPT — what problem they
+        wanted solved. Be specific. Use their own words where possible.
+      deliveries: if COMMITS are present, extract from file/class/method changes.
+        If no commits, extract from RESPONSE descriptions.
+      action_items: only truly OPEN tasks (not yet in deliveries).
+      One sentence per list item. Be specific. Avoid vague phrases like "improved X".
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.3
+    max_tokens: 8000
+
+  # ── C: batch-summarize standalone commits (ONE call for all commits) ─────────
+  # Commits not linked to any prompt. Always status=completed, ai_score=5.
+  # Data comes entirely from mem_mrr_commits_code symbols.
+  commits_batch_summary_prompt:
+    desc: >
+      You are summarising standalone git commits (not linked to any user session).
+      The work is already done and delivered. Use the commit message and code symbols
+      (file path, class name, method name, lines added/removed) to describe each commit.
+      Return a JSON ARRAY (same length and order as input):
+      [
+        {{
+          "event_index": 0,
+          "summary":    "one sentence (max 120 chars) describing the change",
+          "classify":   "bug|feature|task",
+          "deliveries": ["file/class/method changed — what it does"],
+          "status":     "completed",
+          "ai_score":   5
+        }}
+      ]
+      classify rules:
+        "bug"     — commit message or changed code suggests a fix (fix/, hotfix/, bug/)
+        "feature" — new files created or significant new methods/classes added
+        "task"    — refactoring, rename, config changes, dependency updates
+      deliveries: list up to 5 most significant changes; reference specific
+        file paths, class names, and method names from the symbols data.
+      status is always "completed" and ai_score is always 5.
+    llm: claude-haiku-4-5-20251001
+    temperature: 0.2
+    max_tokens: 6000
+
+
+# ── Step-2 threshold-based digest (used by check_and_trigger) ────────────────
+# Runs automatically when pending row count reaches `cnt` for that source.
+# Each source has its own grouping + summary pair.
+
+mirroring_event_summary:
+
+  prompts:
+    cnt: 5
+    grouping_prompt:
+      desc: >
+        Group AI session prompts into topic clusters (same as full_digest grouping).
+        Return JSON array: [{{"event_indices":[0,1],"slug":"auth","slug_type":"existing|new",
+        "classify":"bug|feature|task","topic":"description"}}]
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        Summarise a group of AI session prompts. Return JSON:
+        {{"requirements":["..."],"deliveries":["..."],"action_items":[{{"desc":"...","acceptance":"..."}}],
+        "status":"completed|in-progress","ai_score":<0-5>}}
+        Use commit symbols from LINKED COMMIT sections for deliveries.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+
+  commits:
+    cnt: 5
+    grouping_prompt:
+      desc: >
+        Group standalone commits by use case. Return same schema as prompts grouping.
+        Commits touching only system files (CLAUDE.md, .cursorrules etc.) → slug "SKIP".
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        Summarise standalone commits. Use code symbols for deliveries.
+        Return JSON: {{"deliveries":["..."],"status":"completed","ai_score":5}}
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+
+  items:
+    cnt: 1
+    grouping_prompt:
+      desc: >
+        Group document/meeting items by use case. Return same schema as prompts grouping.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        Summarise a document or meeting item.
+        Return JSON: {{"requirements":["..."],"deliveries":["..."],
+        "action_items":[{{"desc":"...","acceptance":"..."}}],"status":"completed|in-progress","ai_score":<0-5>}}
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+
+  messages:
+    cnt: 20
+    grouping_prompt:
+      desc: >
+        Group Slack/chat messages by use case. Off-topic messages → slug "SKIP".
+        Return same schema as prompts grouping.
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.2
+    summary_prompt:
+      desc: >
+        Summarise a chat thread. Return JSON:
+        {{"requirements":["..."],"deliveries":["..."],
+        "action_items":[{{"desc":"...","acceptance":"..."}}],"status":"completed|in-progress","ai_score":<0-5>}}
+      llm: claude-haiku-4-5-20251001
+      temperature: 0.3
+
+
+# ── Work items merge configuration ────────────────────────────────────────────
+
+work_items:
+  slug_fallback: general
+  spelling_threshold: 0.85
+  suggest_threshold:  0.65
+  classify_to_category:
+    use_case: use_case
+    feature:  feature
+    bug:      bug
+    task:     feature

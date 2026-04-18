@@ -31,11 +31,17 @@ class BacklogPatchRequest(BaseModel):
     tag:      Optional[str] = None   # tag override (replaces TAG comment)
     classify: Optional[str] = None   # "feature" | "task" | "bug" | "use_case"
     status:   Optional[str] = None   # "in-progress" | "completed"
+    summary:  Optional[str] = None   # update the item's one-line summary text
 
 
 class GroupActionRequest(BaseModel):
     slug:    str
     approve: str   # "x" = approve all → merge into use case; "-" = reject all
+
+
+class GroupMetaPatchRequest(BaseModel):
+    new_slug: Optional[str] = None   # rename the group
+    summary:  Optional[str] = None   # update > Summary: line
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -289,6 +295,14 @@ async def patch_backlog_entry(
                     rf"\1[{body.status}]",
                     chunk,
                 )
+            if body.summary is not None:
+                # Replace summary text after "— " on the item line
+                chunk = _re.sub(
+                    rf"^(  \w+\s+{_re.escape(ref_id)}\s+(?:\[[^\]]*\]\s+){{3}}\[[^\]]*\]\s*—\s+).*$",
+                    lambda m, s=body.summary: m.group(1) + s,
+                    chunk,
+                    flags=_re.MULTILINE,
+                )
             updated = True
         new_chunks.append(chunk)
 
@@ -312,6 +326,84 @@ async def approve_group(project: str, body: GroupActionRequest):
         return {"project": project, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{project}/backlog/group/{slug}")
+async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchRequest):
+    """Rename a backlog group or update its Summary line in-place.
+
+    new_slug: renames the ## **{slug}** header to the new slug.
+    summary:  replaces (or inserts) the > Summary: line in the group block.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    import re as _re
+
+    bl = MemoryBacklog(project)
+    path = bl._backlog_path()
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="backlog.md not found")
+
+    text = path.read_text(errors="ignore")
+    sep_pattern = r"\n\n?---\n\n?"
+    chunks = _re.split(sep_pattern, text)
+
+    updated = False
+    new_chunks: list[str] = []
+    for chunk in chunks:
+        # Identify group chunk by its header slug
+        if f"## **{slug}**" not in chunk:
+            new_chunks.append(chunk)
+            continue
+
+        if body.summary is not None:
+            if _re.search(r"^> Summary:", chunk, _re.MULTILINE):
+                chunk = _re.sub(
+                    r"^> Summary:.*$",
+                    f"> Summary: {body.summary}",
+                    chunk,
+                    flags=_re.MULTILINE,
+                )
+            else:
+                # Insert after the header line
+                chunk = _re.sub(
+                    r"(^## \*\*.+\*\*.*$)",
+                    rf"\1\n> Summary: {body.summary}",
+                    chunk,
+                    flags=_re.MULTILINE,
+                    count=1,
+                )
+
+        if body.new_slug is not None:
+            new_slug = body.new_slug.strip().lower()
+            new_slug = _re.sub(r"[^a-z0-9\-]", "-", new_slug).strip("-") or "general"
+            chunk = chunk.replace(f"## **{slug}**", f"## **{new_slug}**", 1)
+
+        updated = True
+        new_chunks.append(chunk)
+
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Group '{slug}' not found in backlog")
+
+    path.write_text("\n\n---\n\n".join(new_chunks))
+    return {"status": "updated", "slug": slug,
+            "new_slug": body.new_slug or slug, "project": project}
+
+
+@router.get("/{project}/use-case-slugs")
+async def get_use_case_slugs(project: str):
+    """Return all known use-case slugs: from use_cases/ directory and current backlog groups."""
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+    uc_dir = bl._use_cases_dir()
+    file_slugs: list[str] = []
+    if uc_dir.exists():
+        file_slugs = [f.stem for f in uc_dir.glob("*.md")
+                      if f.stem not in ("use_case_template",)]
+    groups = bl.parse_backlog()
+    group_slugs = [g["slug"] for g in groups if g.get("slug")]
+    all_slugs = sorted(set(file_slugs + group_slugs))
+    return {"project": project, "slugs": all_slugs}
 
 
 @router.delete("/{project}/backlog/{ref_id}")
