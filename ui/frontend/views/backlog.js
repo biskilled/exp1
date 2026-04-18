@@ -701,36 +701,24 @@ function _groupHtml(grp, idx = 0) {
 }
 
 /**
- * Build the deliveries table from group.deliveries (pre-computed in backend)
- * OR fall back to computing from items directly (backward compat).
- *
- * Deliveries are sorted: completed first (ai_score desc), in-progress last.
- * Max 7 rows shown.
+ * Build the deliveries table from items directly.
+ * Each item (prompt/commit/etc.) = one row, sorted: completed first by ai_score desc.
+ * Max 7 rows shown as a compact summary above the detail items.
  */
 function _deliveriesTable(deliveries, items) {
-  let rows = [];
+  if (!items || !items.length) return '';
 
-  if (deliveries && deliveries.length) {
-    // Backend-computed deliveries: {classify, status, ai_score, desc}
-    rows = deliveries.map(d => ({
-      classify: d.classify || 'task',
-      status:   d.status   || 'in-progress',
-      ai_score: d.ai_score ?? 0,
-      desc:     d.desc     || '',
-    }));
-  } else if (items && items.length) {
-    // Fallback: derive from items themselves
-    rows = items.map(it => ({
-      classify: it.classify || 'task',
-      status:   it.status   || 'in-progress',
-      ai_score: it.ai_score ?? 0,
-      desc:     it.summary  || '',
-    }));
-    // Sort: completed first by ai_score desc
-    const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
-    const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
-    rows = [...done, ...prog];
-  }
+  let rows = items.map(it => ({
+    classify: it.classify || 'task',
+    status:   it.status   || 'in-progress',
+    ai_score: it.ai_score ?? 0,
+    desc:     it.summary  || '',
+  }));
+
+  // Sort: completed first (ai_score desc), then in-progress (ai_score desc)
+  const done = rows.filter(r => r.status === 'completed').sort((a,b) => b.ai_score - a.ai_score);
+  const prog = rows.filter(r => r.status !== 'completed').sort((a,b) => b.ai_score - a.ai_score);
+  rows = [...done, ...prog];
 
   if (!rows.length) return '';
 

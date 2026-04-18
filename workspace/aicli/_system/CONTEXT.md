@@ -1,6 +1,6 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-18 10:05 UTC — do not edit manually.
+> Auto-generated 2026-04-18 10:18 UTC — do not edit manually.
 
 ## Quick Stats
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector + m001-m052 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -60,29 +60,29 @@
 
 ## In Progress
 
-- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading by clearing module-level variables and reading last_session_id synchronously from runtime state
-- Database schema consolidation m051-m052: migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form (id → client_id → project_id → user_id → [...] → created_at → updated_at → embedding); removed committed_at from mem_mrr_commits
+- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form (id → client_id → project_id → user_id → [...] → created_at → updated_at → embedding); dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
 - Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
-- Work items linking verification: confirmed all recent work items (#20436-#20443) are commit-sourced with no associated CLI sessions; fixed join logic for commit-sourced items via mem_ai_events.source_id
-- Feature snapshot layer: created mem_ai_feature_snapshot table to merge user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding columns
-- Chat UI session display: added session ID badges, full session ID banners with copy functionality, and tag management per prompt; verified hook-log endpoint working correctly after m050 with 531 total prompts loading properly
+- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading by clearing module-level variables and reading last_session_id synchronously from runtime state
+- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top (newest first)
+- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding/extra/seq_num columns
+- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; pipeline can run from planner/docs/chat; Cytoscape.js visualization with 2-pane approval panel for workflow approval
 
 ## Key Decisions
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files
 - Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; login_as_first_level_hierarchy pattern for hierarchical Clients → Users
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
-- Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions; timestamp tracking with tag deduplication
+- Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash with exec_llm boolean flag
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; all tables now use INT PKs (client_id → project_id → user_id)
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with inline snapshot fields and deliverables JSONB
+- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
+- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; all tables use INT PKs (client_id → project_id → user_id)
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at/embedding always at table end
+- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end
 - Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
 
 ---

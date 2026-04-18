@@ -932,9 +932,15 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
 
                 for ln in lines:
                     ls = ln.strip()
-                    # New "> Key: value" format
+                    # Only parse group-level metadata lines: "> Key: value" or "<!-- G_... -->"
+                    # Item sub-lines ("    Requirements:" / "    Deliveries:") are indented
+                    # and must NOT be processed as group metadata.
                     if ls.startswith("> "):
                         ls = ls[2:]
+                    elif ls.startswith("<!-- G_"):
+                        pass  # handled below as HTML comment compat
+                    else:
+                        continue  # skip item headers, sub-lines, blank lines
                     # Old HTML comment compat
                     if ls.startswith("<!-- G_TYPE:"):
                         slug_type = ls.split(":", 1)[1].strip(" -->").strip()
@@ -1924,31 +1930,11 @@ def _fmt_group_block(group: dict) -> str:
                     seen_reqs.add(r)
                     all_reqs.append(r)
 
-    # Build deliveries-as-items: each item is a delivery with classify|status|ai_score
-    delivery_items: list[dict] = []
-    for it in items:
-        delivery_items.append({
-            "classify": it.get("classify", "task"),
-            "status":   it.get("status", "in-progress"),
-            "ai_score": it.get("ai_score", 0),
-            "summary":  it.get("summary", ""),
-        })
-    # Sort: completed first (by ai_score desc), then in-progress (by ai_score desc)
-    completed_dels  = sorted([d for d in delivery_items if d["status"] == "completed"],
-                              key=lambda x: -x["ai_score"])
-    inprogress_dels = sorted([d for d in delivery_items if d["status"] != "completed"],
-                              key=lambda x: -x["ai_score"])
-    sorted_deliveries = (completed_dels + inprogress_dels)[:7]
-
     topic = group.get("topic", "")
     if topic:
         lines.append(f"> Summary: {topic}")
     if all_reqs[:5]:
         lines.append(f"> Requirements: {'; '.join(all_reqs[:5])}")
-    if sorted_deliveries:
-        parts = [f"[{d['classify']}|{d['status']}|{d['ai_score']}] {d['summary']}"
-                 for d in sorted_deliveries]
-        lines.append(f"> Deliveries: {'; '.join(parts)}")
 
     lines.append("")
 
