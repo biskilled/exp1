@@ -5,9 +5,12 @@
  * source-event items (PROMPTS / COMMITS / MESSAGES / ITEMS).
  *
  * Actions:
- *   ↻ Sync    — POST /sync-backlog?mode=full
- *   ▶ Process — POST /work-items/sync
- *   ✓ / ✗    — PATCH /backlog/{ref_id} per item
+ *   ↻ Sync          — POST /sync-backlog?mode=full
+ *   ✓ Approve all   — POST /backlog/approve-group {slug, approve:"x"}
+ *   ✗ Reject all    — POST /backlog/approve-group {slug, approve:"-"}
+ *   classify select — PATCH /backlog/{ref_id} {classify}
+ *   status select   — PATCH /backlog/{ref_id} {status}
+ *   ✕ remove        — DELETE /backlog/{ref_id}
  */
 
 import { api }  from '../utils/api.js';
@@ -37,10 +40,6 @@ export async function renderBacklog(container, projectName) {
           ↻ Sync
         </button>
         <span style="flex:1"></span>
-        <button id="bl-process-btn" class="btn btn-outline btn-sm" style="display:none"
-                title="Merge approved items into use_cases/*.md and planner_tags">
-          ▶ Process approved (<span id="bl-approved-count">0</span>)
-        </button>
         <span id="bl-status" style="font-size:0.72rem;color:var(--muted)"></span>
       </div>
 
@@ -93,6 +92,54 @@ export async function renderBacklog(container, projectName) {
       .bl-group-body { padding:0.75rem 1rem }
       .bl-group-body.collapsed { display:none }
 
+      /* ── Group summary/completed/actions sections ── */
+      .bl-group-summary {
+        font-size:0.82rem;color:var(--text2);line-height:1.55;
+        margin-bottom:0.75rem;padding:0.5rem 0.75rem;
+        background:var(--surface3);border-radius:calc(var(--radius) - 2px);
+        border-left:3px solid var(--accent);
+      }
+      .bl-group-section { margin-bottom:0.75rem }
+      .bl-group-section-title {
+        font-size:0.68rem;font-weight:800;color:var(--muted);
+        text-transform:uppercase;letter-spacing:.07em;
+        margin-bottom:0.3rem;display:flex;align-items:center;gap:0.4rem;
+      }
+      .bl-completed-list, .bl-actions-list {
+        list-style:none;margin:0;padding:0;
+        display:flex;flex-direction:column;gap:0.2rem;
+      }
+      .bl-completed-list li, .bl-actions-list li {
+        font-size:0.78rem;color:var(--text);
+        padding:0.15rem 0;display:flex;align-items:flex-start;gap:0.4rem;
+      }
+      .bl-completed-list li::before { content:"•";color:#16a34a;flex-shrink:0 }
+      .bl-actions-list li::before   { content:"•";color:var(--accent);flex-shrink:0 }
+      .bl-action-badge {
+        font-size:0.62rem;padding:1px 5px;border-radius:6px;font-weight:700;
+        flex-shrink:0;
+      }
+      .bl-action-badge-feature { background:#dcfce7;color:#16a34a }
+      .bl-action-badge-bug     { background:#fee2e2;color:#dc2626 }
+      .bl-action-badge-task    { background:#dbeafe;color:#1d4ed8 }
+
+      /* ── Group footer ── */
+      .bl-group-footer {
+        display:flex;justify-content:flex-end;gap:0.5rem;
+        padding:0.65rem 1rem;
+        border-top:1px solid var(--border);
+        background:var(--surface2);
+      }
+      .bl-approve-all-btn, .bl-reject-all-btn {
+        border:none;border-radius:4px;padding:4px 14px;cursor:pointer;
+        font-size:0.78rem;font-weight:700;transition:opacity .15s;
+      }
+      .bl-approve-all-btn { background:#16a34a;color:#fff }
+      .bl-reject-all-btn  { background:#dc2626;color:#fff }
+      .bl-approve-all-btn:hover { opacity:.85 }
+      .bl-reject-all-btn:hover  { opacity:.85 }
+      .bl-approve-all-btn:disabled, .bl-reject-all-btn:disabled { opacity:.4;cursor:not-allowed }
+
       /* ── Tag chips ── */
       .bl-tags-row { display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.6rem }
       .bl-chip {
@@ -128,9 +175,8 @@ export async function renderBacklog(container, projectName) {
       }
       .bl-entry-header:hover { background:var(--surface3); }
       .bl-ref  { font-family:var(--font);font-size:0.7rem;font-weight:700;color:var(--accent);min-width:68px }
-      .bl-date { font-size:0.67rem;color:var(--muted);min-width:78px }
       .bl-summary { flex:1;font-size:0.8rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0 }
-      .bl-classify {
+      .bl-classify-badge {
         font-size:0.63rem;padding:1px 6px;border-radius:8px;font-weight:700;
         text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;
       }
@@ -138,7 +184,7 @@ export async function renderBacklog(container, projectName) {
       .bl-classify-bug     { background:#fee2e2;color:#dc2626 }
       .bl-classify-task    { background:#dbeafe;color:#1d4ed8 }
       .bl-classify-use_case{ background:#cffafe;color:#0e7490 }
-      .bl-status {
+      .bl-status-badge {
         font-size:0.63rem;padding:1px 6px;border-radius:8px;font-weight:600;
         flex-shrink:0;
       }
@@ -148,16 +194,20 @@ export async function renderBacklog(container, projectName) {
         font-size:0.63rem;color:var(--muted);background:var(--surface3);
         padding:1px 6px;border-radius:8px;flex-shrink:0;
       }
-      .bl-approve-btn, .bl-reject-btn {
-        border:none;border-radius:4px;padding:2px 8px;cursor:pointer;
-        font-size:0.72rem;font-weight:700;transition:opacity .15s;flex-shrink:0;
+
+      /* ── Item inline controls ── */
+      .bl-item-select {
+        font-size:0.7rem;border:1px solid var(--border);border-radius:4px;
+        background:var(--surface);color:var(--text);padding:1px 4px;
+        cursor:pointer;flex-shrink:0;
       }
-      .bl-approve-btn { background:#16a34a;color:#fff }
-      .bl-reject-btn  { background:#dc2626;color:#fff }
-      .bl-approve-btn:hover { opacity:.85 }
-      .bl-reject-btn:hover  { opacity:.85 }
-      .bl-approved { border-color:#16a34a!important;background:#f0fdf4 }
-      .bl-rejected { border-color:#dc2626!important;background:#fef2f2;opacity:.65 }
+      .bl-item-select:focus { outline:none;border-color:var(--accent) }
+      .bl-remove-btn {
+        border:none;border-radius:4px;padding:1px 7px;cursor:pointer;
+        font-size:0.78rem;font-weight:700;background:transparent;color:var(--muted);
+        transition:color .15s,background .15s;flex-shrink:0;
+      }
+      .bl-remove-btn:hover { background:#fee2e2;color:#dc2626 }
 
       /* ── Item body ── */
       .bl-body {
@@ -193,8 +243,7 @@ export async function renderBacklog(container, projectName) {
     </style>
   `;
 
-  document.getElementById('bl-sync-btn').onclick    = _onSync;
-  document.getElementById('bl-process-btn').onclick = _onProcess;
+  document.getElementById('bl-sync-btn').onclick = _onSync;
 
   await _loadAll();
   _polling = setInterval(_loadStats, 30_000);
@@ -223,7 +272,6 @@ async function _loadEntries() {
   try {
     const data = await api.backlog.entries(_project);
     const entries = data.entries || [];
-    // Support both old flat format and new group format
     if (entries.length && entries[0]?.items !== undefined) {
       _renderGroups(entries);
     } else {
@@ -239,6 +287,7 @@ function _flatToGroups(entries) {
   if (!entries.length) return [];
   return [{ slug: 'backlog', slug_type: 'existing', date: '', source: 'auto',
             approve: ' ', user_tags: [], ai_existing_tags: [], ai_new_tags: [],
+            summary: '', completed: [], action_items: [],
             items: entries }];
 }
 
@@ -261,49 +310,54 @@ async function _onSync() {
   }
 }
 
-async function _onProcess() {
-  const btn = document.getElementById('bl-process-btn');
-  _setStatus('Processing…');
-  btn.disabled = true;
+async function _onGroupApprove(slug) {
+  _setStatus('Approving…');
   try {
-    const r = await api.backlog.runWorkItems(_project);
-    const msg = [
-      r.approved  ? `${r.approved} approved`  : '',
-      r.rejected  ? `${r.rejected} rejected`  : '',
-      r.pending   ? `${r.pending} pending`    : '',
-      r.use_cases_updated?.length ? `${r.use_cases_updated.length} use cases updated` : '',
-    ].filter(Boolean).join(' · ');
-    toast(msg || 'Done', 'success');
+    const r = await api.backlog.approveGroup(_project, slug, 'x');
+    toast(`✓ Approved ${r.processed || 0} items → merged into use case`, 'success');
     await _loadAll();
   } catch (e) {
-    toast(`Process failed: ${e.message}`, 'error');
+    toast(`Approve failed: ${e.message}`, 'error');
   } finally {
-    btn.disabled = false;
     _setStatus('');
   }
 }
 
-async function _onApprove(refId, card) {
+async function _onGroupReject(slug) {
+  _setStatus('Rejecting…');
   try {
-    await api.backlog.patch(_project, refId, { approve: '+' });
-    card.classList.remove('bl-rejected');
-    card.classList.add('bl-approved');
-    _updateItemButtons(card, '+');
-    _refreshApproveCount();
+    const r = await api.backlog.approveGroup(_project, slug, '-');
+    toast(`✗ Rejected ${r.rejected || 0} items`, 'info');
+    await _loadAll();
   } catch (e) {
-    toast(`Could not approve ${refId}: ${e.message}`, 'error');
+    toast(`Reject failed: ${e.message}`, 'error');
+  } finally {
+    _setStatus('');
   }
 }
 
-async function _onReject(refId, card) {
+async function _onClassifyChange(refId, val) {
   try {
-    await api.backlog.patch(_project, refId, { approve: '-' });
-    card.classList.remove('bl-approved');
-    card.classList.add('bl-rejected');
-    _updateItemButtons(card, '-');
-    _refreshApproveCount();
+    await api.backlog.patch(_project, refId, { classify: val });
   } catch (e) {
-    toast(`Could not reject ${refId}: ${e.message}`, 'error');
+    toast(`Could not update classify for ${refId}: ${e.message}`, 'error');
+  }
+}
+
+async function _onStatusChange(refId, val) {
+  try {
+    await api.backlog.patch(_project, refId, { status: val });
+  } catch (e) {
+    toast(`Could not update status for ${refId}: ${e.message}`, 'error');
+  }
+}
+
+async function _onRemove(refId, itemEl) {
+  try {
+    await api.backlog.deleteEntry(_project, refId);
+    itemEl.remove();
+  } catch (e) {
+    toast(`Could not remove ${refId}: ${e.message}`, 'error');
   }
 }
 
@@ -358,30 +412,16 @@ function _renderGroups(groups) {
     return;
   }
 
-  // Count approved items
-  let totalApproved = 0;
-  for (const grp of groups) {
-    for (const item of grp.items || []) {
-      if (item.approve === '+' || item.approve === 'x') totalApproved++;
-    }
-  }
-  const processBtn    = document.getElementById('bl-process-btn');
-  const approvedCount = document.getElementById('bl-approved-count');
-  if (processBtn) {
-    processBtn.style.display = totalApproved > 0 ? '' : 'none';
-    if (approvedCount) approvedCount.textContent = totalApproved;
-  }
-
   el.innerHTML = groups.map((grp, gi) => _groupHtml(grp, gi)).join('');
 
   // Bind group toggle + item events
   groups.forEach((grp, gi) => {
-    const grpId  = `bl-grp-${gi}`;
-    const grpEl  = document.getElementById(grpId);
+    const grpId = `bl-grp-${gi}`;
+    const grpEl = document.getElementById(grpId);
     if (!grpEl) return;
 
-    const hdr  = grpEl.querySelector('.bl-group-header');
-    const body = grpEl.querySelector('.bl-group-body');
+    const hdr   = grpEl.querySelector('.bl-group-header');
+    const body  = grpEl.querySelector('.bl-group-body');
     const arrow = grpEl.querySelector('.bl-group-arrow');
     if (hdr && body) {
       hdr.addEventListener('click', e => {
@@ -391,6 +431,13 @@ function _renderGroups(groups) {
       });
     }
 
+    // Group-level approve/reject buttons
+    const apAllBtn = grpEl.querySelector('.bl-approve-all-btn');
+    const rjAllBtn = grpEl.querySelector('.bl-reject-all-btn');
+    if (apAllBtn) apAllBtn.addEventListener('click', () => _onGroupApprove(grp.slug));
+    if (rjAllBtn) rjAllBtn.addEventListener('click', () => _onGroupReject(grp.slug));
+
+    // Per-item controls
     (grp.items || []).forEach(item => {
       const card = document.getElementById(`bl-card-${item.ref_id}`);
       if (!card) return;
@@ -399,25 +446,28 @@ function _renderGroups(groups) {
       const ib = card.querySelector('.bl-body');
       if (ih && ib) {
         ih.addEventListener('click', e => {
-          if (e.target.closest('button')) return;
+          if (e.target.closest('select') || e.target.closest('button')) return;
           ib.classList.toggle('open');
         });
       }
 
-      const apBtn = card.querySelector('.bl-approve-btn');
-      const rjBtn = card.querySelector('.bl-reject-btn');
-      if (apBtn) apBtn.addEventListener('click', () => _onApprove(item.ref_id, card));
-      if (rjBtn) rjBtn.addEventListener('click', () => _onReject(item.ref_id, card));
+      const clsSel = card.querySelector('.bl-classify-select');
+      const stSel  = card.querySelector('.bl-status-select');
+      const rmBtn  = card.querySelector('.bl-remove-btn');
+
+      if (clsSel) clsSel.addEventListener('change', () => _onClassifyChange(item.ref_id, clsSel.value));
+      if (stSel)  stSel.addEventListener('change',  () => _onStatusChange(item.ref_id, stSel.value));
+      if (rmBtn)  rmBtn.addEventListener('click',   () => _onRemove(item.ref_id, card));
     });
   });
 }
 
 function _groupHtml(grp, idx = 0) {
   const grpId    = `bl-grp-${idx}`;
-  const slug     = grp.slug     || 'unknown';
+  const slug     = grp.slug      || 'unknown';
   const slugType = grp.slug_type || 'existing';
-  const date     = grp.date     || '';
-  const items    = grp.items    || [];
+  const date     = grp.date      || '';
+  const items    = grp.items     || [];
 
   // Counts
   const cnts = { PROMPTS: 0, COMMITS: 0, MESSAGES: 0, ITEMS: 0 };
@@ -425,16 +475,11 @@ function _groupHtml(grp, idx = 0) {
   const countParts = Object.entries(cnts).filter(([,v]) => v > 0).map(([k,v]) => `${v} ${k.toLowerCase()}`);
   const countStr = countParts.join(' · ') || '0 events';
 
-  // Approved / rejected counts
-  const approvedItems = items.filter(i => i.approve === '+' || i.approve === 'x').length;
-  const rejectedItems = items.filter(i => i.approve === '-').length;
-  const pendingItems  = items.length - approvedItems - rejectedItems;
-
   // Tags
-  const userTags     = grp.user_tags       || [];
-  const aiExisting   = grp.ai_existing_tags|| [];
-  const aiNew        = grp.ai_new_tags     || [];
-  const hasAnyTags   = userTags.length || aiExisting.length || aiNew.length;
+  const userTags   = grp.user_tags        || [];
+  const aiExisting = grp.ai_existing_tags || [];
+  const aiNew      = grp.ai_new_tags      || [];
+  const hasAnyTags = userTags.length || aiExisting.length || aiNew.length;
 
   const tagChips = hasAnyTags ? `
     <div class="bl-tags-row">
@@ -443,13 +488,33 @@ function _groupHtml(grp, idx = 0) {
       ${aiNew.map(t => `<span class="bl-chip bl-chip-new">✦ ${_esc(t.category)}:${_esc(t.name)}</span>`).join('')}
     </div>` : '';
 
-  // Progress bar counts
-  const statusLine = `
-    <span style="font-size:0.67rem;color:var(--muted)">
-      ${pendingItems > 0  ? `<span style="color:#f59e0b">⬤ ${pendingItems} pending</span>` : ''}
-      ${approvedItems > 0 ? `<span style="color:#16a34a;margin-left:0.4rem">✓ ${approvedItems} approved</span>` : ''}
-      ${rejectedItems > 0 ? `<span style="color:#dc2626;margin-left:0.4rem">✗ ${rejectedItems} rejected</span>` : ''}
-    </span>`;
+  // Summary paragraph
+  const summaryHtml = grp.summary ? `
+    <div class="bl-group-summary">${_esc(grp.summary)}</div>` : '';
+
+  // Completed section
+  const completed = grp.completed || [];
+  const completedHtml = completed.length ? `
+    <div class="bl-group-section">
+      <div class="bl-group-section-title">✓ Completed</div>
+      <ul class="bl-completed-list">
+        ${completed.map(d => `<li>${_esc(d)}</li>`).join('')}
+      </ul>
+    </div>` : '';
+
+  // Action items section
+  const actionItems = grp.action_items || [];
+  const actionsHtml = actionItems.length ? `
+    <div class="bl-group-section">
+      <div class="bl-group-section-title">⚡ Action items</div>
+      <ul class="bl-actions-list">
+        ${actionItems.map(a => {
+          const cls = a.classify || 'task';
+          const badgeCls = `bl-action-badge bl-action-badge-${cls}`;
+          return `<li><span class="${badgeCls}">${_esc(cls)}</span>${_esc(a.desc || '')}</li>`;
+        }).join('')}
+      </ul>
+    </div>` : '';
 
   // Group items by source type
   const bySource = { PROMPTS: [], COMMITS: [], MESSAGES: [], ITEMS: [] };
@@ -464,6 +529,13 @@ function _groupHtml(grp, idx = 0) {
       </div>`)
     .join('');
 
+  const itemsDivider = items.length ? `
+    <div style="font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+                letter-spacing:.06em;margin:0.6rem 0 0.4rem;border-top:1px solid var(--border);
+                padding-top:0.5rem">
+      Items (${items.length})
+    </div>` : '';
+
   return `
     <div class="bl-group" id="${grpId}">
       <div class="bl-group-header">
@@ -473,26 +545,28 @@ function _groupHtml(grp, idx = 0) {
             ${slugType === 'new' ? '<span class="bl-chip bl-chip-type-new">NEW</span>' : ''}
             <span class="bl-group-counts">${countStr}</span>
             <span class="bl-group-meta">${date}</span>
-            ${statusLine}
           </div>
         </div>
         <span class="bl-group-arrow">▼</span>
       </div>
       <div class="bl-group-body">
         ${tagChips}
+        ${summaryHtml}
+        ${completedHtml}
+        ${actionsHtml}
+        ${itemsDivider}
         ${itemsHtml || '<div style="color:var(--muted);font-size:0.78rem;padding:0.5rem 0">No items</div>'}
+      </div>
+      <div class="bl-group-footer">
+        <button class="bl-approve-all-btn" title="Approve all items in this group → merge into use case file">✓ Approve all</button>
+        <button class="bl-reject-all-btn"  title="Reject all items in this group">✗ Reject all</button>
       </div>
     </div>`;
 }
 
-// Needed because _renderGroups passes idx but _groupHtml receives grp+idx
-// Wrap to use array index:
-const _origGroupHtml = _groupHtml;
-
 function _itemHtml(item) {
-  const ap       = item.approve || ' ';
   const classify = item.classify || 'task';
-  const status   = item.status   || '';
+  const status   = item.status   || 'in-progress';
   const aiScore  = item.ai_score ?? '';
   const refId    = item.ref_id   || '';
   const summary  = item.summary  || '';
@@ -505,10 +579,6 @@ function _itemHtml(item) {
   }[classify] || 'bl-classify-task';
 
   const statusCls = status === 'completed' ? 'bl-status-completed' : 'bl-status-in-progress';
-
-  const approvedStyle = (ap === '+' || ap === 'x') ? 'style="opacity:.4;pointer-events:none"' : '';
-  const rejectStyle   = ap === '-' ? 'style="opacity:.4;pointer-events:none"' : '';
-  const cardCls       = ap === 'x' || ap === '+' ? 'bl-approved' : ap === '-' ? 'bl-rejected' : '';
 
   // Body content
   const reqs = item.requirements || '';
@@ -528,37 +598,28 @@ function _itemHtml(item) {
     </div>` : '';
 
   return `
-    <div class="bl-entry ${cardCls}" id="bl-card-${refId}">
+    <div class="bl-entry" id="bl-card-${refId}">
       <div class="bl-entry-header">
         <span class="bl-ref">${_esc(refId)}</span>
-        ${classify ? `<span class="bl-classify ${classifyCls}">${classify}</span>` : ''}
-        ${status   ? `<span class="bl-status ${statusCls}">${status}</span>` : ''}
+        <select class="bl-item-select bl-classify-select" title="Classify">
+          ${['feature','task','bug','use_case'].map(v =>
+            `<option value="${v}"${v === classify ? ' selected' : ''}>${v}</option>`
+          ).join('')}
+        </select>
+        <select class="bl-item-select bl-status-select" title="Status">
+          ${['in-progress','completed'].map(v =>
+            `<option value="${v}"${v === status ? ' selected' : ''}>${v}</option>`
+          ).join('')}
+        </select>
         ${aiScore !== '' ? `<span class="bl-ai-score">AI:${aiScore}</span>` : ''}
         <span class="bl-summary" title="${_esc(summary)}">${_esc(summary)}</span>
-        <button class="bl-approve-btn" ${approvedStyle} title="Approve — merge into use case on Process">✓</button>
-        <button class="bl-reject-btn"  ${rejectStyle}   title="Reject — move to REJECTED section">✗</button>
+        <button class="bl-remove-btn" title="Remove this item from backlog">✕</button>
       </div>
       ${bodyHtml}
     </div>`;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function _refreshApproveCount() {
-  let total = 0;
-  document.querySelectorAll('.bl-entry.bl-approved').forEach(() => total++);
-  const processBtn    = document.getElementById('bl-process-btn');
-  const approvedCount = document.getElementById('bl-approved-count');
-  if (processBtn) processBtn.style.display = total > 0 ? '' : 'none';
-  if (approvedCount) approvedCount.textContent = total;
-}
-
-function _updateItemButtons(card, val) {
-  const apBtn = card.querySelector('.bl-approve-btn');
-  const rjBtn = card.querySelector('.bl-reject-btn');
-  if (apBtn) { apBtn.style.opacity = (val === '+' || val === 'x') ? '.4' : '1'; apBtn.style.pointerEvents = (val === '+' || val === 'x') ? 'none' : ''; }
-  if (rjBtn) { rjBtn.style.opacity = val === '-' ? '.4' : '1'; rjBtn.style.pointerEvents = val === '-' ? 'none' : ''; }
-}
 
 function _setStatus(msg) {
   const el = document.getElementById('bl-status');

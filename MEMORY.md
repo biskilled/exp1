@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-18 00:15 UTC by aicli /memory_
+_Generated: 2026-04-18 00:56 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -75,24 +75,6 @@ _Generated: 2026-04-18 00:15 UTC by aicli /memory_
 - Work items linking verification: confirmed all recent work items (#20436-#20443) are commit-sourced with no associated CLI sessions; fixed join logic for commit-sourced items via mem_ai_events.source_id
 - Feature snapshot layer: created mem_ai_feature_snapshot table to merge user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs; streamlined planner_tags by removing summary/design/embedding columns
 - Chat UI session display: added session ID badges, full session ID banners with copy functionality, and tag management per prompt; verified hook-log endpoint working correctly after m050 with 531 total prompts loading properly
-
-## Active Features / Bugs / Tasks
-
-### Feature
-
-- **ui-bugs-and-fixes** `[open]` — Add work item embedding and memory search handling to memory promotion
-- **database-schema-refactor** `[open]` — Enhance memory files, MCP server, and entities UI
-- **work-items-management** `[open]` — Update system docs and refactor work items after CLI session
-- **memory-layer-implementation** `[open]` — Refactor work items and update system docs after CLI
-- **discovery** `[open]` — Consolidate 4-tab planner UI into single tag-based management system
-
-### Task
-
-- **general** `[open]` — Bulk update of 63 files
-- **database-schema-refactor** `[open]` — Update system files and refactor backend routes
-- **ui-bugs-and-fixes** `[open]` — Remove stale system context and claude session files
-- **memory-layer-implementation** `[open]` — Update system context and CLAUDE.md documentation files
-- **work-items-management** `[open]` — Remove aicli system context and claude session files
 
 ## Recent Work (last 10 exchanges)
 

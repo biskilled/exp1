@@ -741,3 +741,566 @@
 
   COMMITS C200445 [+] [feature] [completed] [5] — Enhance memory files, MCP server, and entities UI
     Deliveries: Memory files system enhanced with improved storage/retrieval mechanisms; MCP server configuration and protocol handling upgraded; Entities UI components refined for better user interaction and display
+
+---
+
+COMMITS 26/04/18-00:00 C200514 [x] [general] [task] (auto) — Update system files and refactor backend routes
+
+  Completed:
+  - System files updated; backend routes refactored (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200515 [x] [general] [task] (auto) — Update AI session state and memory after session 17cd46bd
+
+  Completed:
+  - AI session state and memory files synchronized post-session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200516 [x] [general] [task] (auto) — Update AI session state and memory files
+
+  Completed:
+  - AI session state and memory files updated (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200517 [x] [general] [task] (auto) — Update system state and memory after claude session d7be5539
+
+  Completed:
+  - System state and memory files synchronized post-session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200518 [x] [general] [task] (auto) — Update memory, rules, and session state files
+
+  Completed:
+  - Memory, rules, and session state files updated (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200524 [x] [general] [task] (auto) — Update MEMORY.md and project docs after claude session
+
+  Requirements:
+  - maintain documentation currency
+  - reflect session outcomes in memory
+
+  Completed:
+  - Updated MEMORY.md and project documentation (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200525 [x] [general] [task] (auto) — Update memory and rules files after claude session
+
+  Requirements:
+  - synchronize memory state
+  - refresh rules documentation
+
+  Completed:
+  - Updated memory and rules files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200526 [x] [general] [task] (auto) — Update memory, rules, and project docs after claude session
+
+  Requirements:
+  - consolidate session updates
+  - maintain documentation consistency
+
+  Completed:
+  - Updated memory, rules, and project documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200527 [x] [general] [task] (auto) — Clean up system files after claude cli session
+
+  Requirements:
+  - remove temporary session artifacts
+
+  Completed:
+  - Cleaned up system files from cli session d7be5539 (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200528 [x] [general] [task] (auto) — Update AI context files and trim MEMORY.md after session
+
+  Requirements:
+  - optimize memory file size
+  - refresh AI context
+
+  Completed:
+  - Updated AI context files and trimmed MEMORY.md (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200519 [x] [general] [task] (auto) — Update MEMORY.md and project docs after claude session
+
+  Requirements:
+  - Maintain accurate project memory state
+  - Keep documentation synchronized with session outcomes
+
+  Completed:
+  - Updated MEMORY.md and project documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200520 [x] [general] [task] (auto) — Update memory and rules files after claude session
+
+  Requirements:
+  - Keep memory files current with session state
+  - Maintain consistent rules documentation
+
+  Completed:
+  - Updated memory and rules files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200521 [x] [general] [task] (auto) — Update memory, rules, and project docs after claude session
+
+  Requirements:
+  - Synchronize memory state across documentation
+  - Update rules and project structure documentation
+
+  Completed:
+  - Updated memory, rules, and project documentation (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200522 [x] [general] [task] (auto) — Clean up system files after claude cli session d7be5539
+
+  Requirements:
+  - Remove temporary or stale system files
+  - Maintain clean repository state
+
+  Completed:
+  - Cleaned up system files from CLI session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200523 [x] [general] [task] (auto) — Update AI context files and trim MEMORY.md after session
+
+  Requirements:
+  - Keep AI context files current
+  - Optimize MEMORY.md file size and relevance
+
+  Completed:
+  - Updated AI context files and trimmed MEMORY.md (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200529 [x] [general] [task] (auto) — Sync system files and update memory/chat after claude session
+
+  Requirements:
+  - Maintain system file consistency
+  - Update session memory
+
+  Completed:
+  - System files and chat memory synchronized (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200530 [x] [general] [task] (auto) — Update system files and memory after claude session 6ffb562b
+
+  Requirements:
+  - Maintain system file consistency
+  - Update session memory
+
+  Completed:
+  - System files and memory updated post-session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200531 [x] [general] [task] (auto) — Update system files and memory after claude session 04d3b8ba
+
+  Requirements:
+  - Maintain system file consistency
+  - Update session memory
+
+  Completed:
+  - System files and memory updated post-session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200532 [x] [general] [task] (auto) — Update system context and CLAUDE.md files post-session
+
+  Requirements:
+  - Update system context documentation
+  - Update CLAUDE.md
+
+  Completed:
+  - System context and CLAUDE.md files updated (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200533 [x] [general] [task] (auto) — Update system context and memory files after claude session
+
+  Requirements:
+  - Update system context
+  - Update memory files
+
+  Completed:
+  - System context and memory files updated (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200534 [x] [general] [task] (auto) — Sync system files and update memory/chat after claude session
+
+  Completed:
+  - Updated system files and memory/chat configuration files post-session (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200535 [x] [general] [task] (auto) — Update system files and memory after claude session 6ffb562b
+
+  Completed:
+  - Updated system files and memory state following session 6ffb562b (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200536 [x] [general] [task] (auto) — Update system files and memory after claude session 04d3b8ba
+
+  Completed:
+  - Updated system files and memory state following session 04d3b8ba (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200537 [x] [general] [task] (auto) — Update system context and CLAUDE.md files post-session
+
+  Completed:
+  - Updated CLAUDE.md and system context documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200538 [x] [general] [task] (auto) — Update system context and memory files after claude session
+
+  Completed:
+  - Updated system context and memory documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200539 [x] [general] [task] (auto) — Update system context and memory files after claude session
+
+  Completed:
+  - Updated system context and memory documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200540 [x] [general] [task] (auto) — Remove aicli system context and claude session files
+
+  Completed:
+  - Removed stale aicli system context and claude session files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200541 [x] [general] [task] (auto) — Update system prompts and memory after claude session
+
+  Completed:
+  - Updated system prompts and memory documentation (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200542 [x] [general] [task] (auto) — Update system prompts and memory after CLI session 14a417f0
+
+  Completed:
+  - Updated system prompts and memory files following CLI session (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200543 [x] [general] [task] (auto) — Remove stale system context and claude session files
+
+  Completed:
+  - Removed stale system context and claude session files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200544 [x] [general] [task] (auto) — Update system context and memory files after claude session
+
+  Completed:
+  - Updated system context and memory documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200545 [x] [general] [task] (auto) — Remove aicli system context and claude session files
+
+  Completed:
+  - Removed stale aicli system context and claude session files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200546 [x] [general] [task] (auto) — Update system prompts and memory after claude session
+
+  Completed:
+  - Updated system prompts and memory files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200547 [x] [general] [task] (auto) — Update system prompts and memory after CLI session 14a417f0
+
+  Completed:
+  - Updated system prompts and memory documentation (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200548 [x] [general] [task] (auto) — Remove stale system context and claude session files
+
+  Completed:
+  - Removed stale system context and claude session files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200549 [x] [general] [task] (auto) — Update system context and memory files after CLI session
+
+  Completed:
+  - System context and memory files updated post-session (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200550 [x] [general] [task] (auto) — Refactor work item columns and memory promotion system
+
+  Requirements:
+  - Rename AI-related work item columns in database
+  - Streamline memory planner message building
+  - Enhance memory promotion logic with batch operations
+  - Update work item routing to use renamed columns
+
+  Completed:
+  - Database migration m025 renaming work item AI columns (code)
+  - MemoryPromotion class refactored with promote_all_work_items method (code)
+  - Work item routes updated to reflect column name changes (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200551 [x] [memory-search-and-embedding] [feature] (auto) — Add memory search and embedding support to promotion system
+
+  Requirements:
+  - Implement memory search in tool handlers
+  - Add work item embedding capability to promotion
+  - Extract work items from events during promotion
+
+  Completed:
+  - tool_memory._handle_search_memory function with search logic (code)
+  - MemoryPromotion._embed_work_item and event extraction methods (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200552 [x] [deliveries-tracking] [feature] (auto) — Add deliveries table and feature snapshot endpoints
+
+  Requirements:
+  - Create deliveries table and CRUD operations
+  - Add delivery tracking to tag management
+  - Implement feature snapshot database migration
+  - Extend tag routes with delivery endpoints
+
+  Completed:
+  - Database migration m028 adding deliveries table (code)
+  - DeliveryCreate model and CRUD functions in route_tags (code)
+  - Tag update endpoints enhanced with delivery support (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200553 [x] [feature-snapshot-generation] [feature] (auto) — Implement feature snapshot generation and promotion
+
+  Requirements:
+  - Create MemoryFeatureSnapshot class for snapshot generation
+  - Add baseline loading and recent events tracking
+  - Implement markdown snapshot writing with structured data
+  - Add snapshot promotion and user-facing APIs
+
+  Completed:
+  - New MemoryFeatureSnapshot class (435 LOC) with full snapshot pipeline (code)
+  - Database migration m029 for feature snapshot support (code)
+  - Feature snapshot endpoints: create, get, promote in route_tags (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200554 [x] [general] [task] (auto) — Update system context and memory files after CLI session
+
+  Completed:
+  - Updated system context and memory documentation files (docs)
+
+---
+
+COMMITS 26/04/18-00:00 C200555 [x] [general] [task] (auto) — Refactor work item columns and memory promotion system
+
+  Requirements:
+  - Rename work item AI columns in database migration
+  - Update memory planner message building logic
+  - Refactor memory promotion to extract and promote work items
+  - Update work item API endpoints to use new column names
+
+  Completed:
+  - Database migration m025_rename_work_item_ai_columns added (code)
+  - MemoryPlanner methods refactored for message building (code)
+  - MemoryPromotion class refactored with promote_all_work_items method (code)
+  - Work item API endpoints updated (search, list, create, patch, merge) (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200556 [x] [discovery] [feature] (auto) — Add memory search tool and embeddings to work item promotion
+
+  Requirements:
+  - Implement memory search handler in tool_memory
+  - Add embedding generation for work item promotion
+  - Add event extraction to work item promotion
+
+  Completed:
+  - tool_memory._handle_search_memory function implemented (code)
+  - memory_promotion._embed_work_item function added (code)
+  - MemoryPromotion.extract_work_items_from_events method enhanced (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200557 [x] [discovery] [feature] (auto) — Add deliveries table and update tag management API
+
+  Requirements:
+  - Create database migration for deliveries table
+  - Add DeliveryCreate model to tags router
+  - Implement list_deliveries, create_delivery, delete_delivery endpoints
+  - Update tag detail retrieval to include deliveries
+
+  Completed:
+  - Database migration m028_add_deliveries created (code)
+  - DeliveryCreate class added to route_tags (code)
+  - Deliveries CRUD endpoints implemented (code)
+  - Tag detail retrieval updated to include deliveries (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200558 [x] [feature-snapshot] [feature] (auto) — Implement feature snapshot generation and promotion system
+
+  Requirements:
+  - Create database migration for feature snapshot table
+  - Build MemoryFeatureSnapshot class with snapshot generation logic
+  - Implement snapshot markdown generation from work items
+  - Add feature snapshot API endpoints (create, get, promote)
+
+  Completed:
+  - Database migration m029_feature_snapshot created (code)
+  - New MemoryFeatureSnapshot class (435 lines) with full implementation (code)
+  - Snapshot markdown writing and event loading functionality (code)
+  - API endpoints: create_feature_snapshot, get_feature_snapshot, promote_feature_snapshot (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200564 [x] [general] [task] (auto) — Clean up legacy system context files and add pipeline run logging
+
+  Requirements:
+  - Remove stale agent context files from session 603
+  - Add pipeline run logging and synchronization
+  - Enhance workflow template and pipeline status endpoints
+  - Improve work item matching and embedding
+
+  Completed:
+  - Added pipeline_run_sync, _insert_run, _finish_run, pipeline_run functions in pipeline_log.py (code)
+  - Enhanced route_memory.py with get_workflow_templates, create_session_summary, get_pipeline_status (code)
+  - Added workflow picker UI component and document viewer improvements (code)
+  - Refactored commit extraction and embedding background tasks in route_git.py (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200565 [x] [general] [task] (auto) — Clean up stale agent context and legacy system files
+
+  Requirements:
+  - Remove obsolete agent context files
+
+  Completed:
+  - Removed stale agent context and legacy system files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200566 [x] [general] [task] (auto) — Add database maintenance utilities and consolidate system context
+
+  Requirements:
+  - Add database cleanup and vacuum functionality
+  - Create maintenance utilities for PostgreSQL
+  - Consolidate system context and memory files
+
+  Completed:
+  - Added clean_pg_db.py with _raw_conn, _bytes_to_mb, run_maintenance, run_maintenance_async, _cli functions (code)
+  - Enhanced route_admin.py with db_vacuum endpoint (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200567 [x] [general] [task] (auto) — Remove stale agent context and system documentation files
+
+  Requirements:
+  - Remove obsolete agent context files
+  - Remove generated system documentation
+
+  Completed:
+  - Removed stale agent context and generated system documentation files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200568 [x] [general] [task] (auto) — Clean up stale agent context and generated system files
+
+  Requirements:
+  - Remove obsolete agent context files
+  - Remove generated system files
+
+  Completed:
+  - Removed stale agent context and generated system files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200559 [x] [general] [task] (auto) — Clean up legacy system context files and refactor pipeline/workflow routing
+
+  Requirements:
+  - Remove obsolete agent context files from Claude CLI session 603
+  - Refactor pipeline logging and run tracking
+  - Update git and work item routing with improved background processing
+  - Add workflow picker UI component
+
+  Completed:
+  - Added pipeline_run_sync, _insert_run, _finish_run functions to pipeline_log.py (code)
+  - Updated route_git.py background processing functions with improved code/commit handling (code)
+  - Enhanced route_memory.py with workflow templates and pipeline status endpoints (code)
+  - Added showWorkflowPicker UI component and document viewer improvements (code)
+  - Modified db_migrations.py with m030_pipeline_runs migration (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200560 [x] [general] [task] (auto) — Clean up stale agent context and legacy system files
+
+  Requirements:
+  - Remove obsolete agent context files
+
+  Completed:
+  - Removed stale agent context files from repository (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200561 [x] [general] [task] (auto) — Consolidate system context/memory files and add database maintenance utilities
+
+  Requirements:
+  - Consolidate and restructure system context files
+  - Add database maintenance and cleanup utilities
+  - Implement database vacuum functionality in admin routes
+
+  Completed:
+  - Added clean_pg_db.py with _raw_conn, _bytes_to_mb, run_maintenance, run_maintenance_async functions (code)
+  - Added CLI interface for database maintenance operations (code)
+  - Enhanced route_admin.py with db_vacuum endpoint (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200562 [x] [general] [task] (auto) — Remove stale agent context and system documentation files
+
+  Requirements:
+  - Remove obsolete agent context files
+  - Clean up generated system documentation
+
+  Completed:
+  - Removed stale agent context and documentation files (code)
+
+---
+
+COMMITS 26/04/18-00:00 C200563 [x] [general] [task] (auto) — Clean up stale agent context and generated system files after Claude session
+
+  Requirements:
+  - Remove obsolete agent context files
+  - Clean up generated system files from Claude CLI session
+
+  Completed:
+  - Removed stale agent context and generated system files (code)
+

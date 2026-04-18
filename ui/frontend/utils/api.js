@@ -506,10 +506,12 @@ api.documents = {
 api.backlog = {
   stats:             (project)              => _get(`/memory/${enc(project)}/backlog-stats`),
   entries:           (project)              => _get(`/memory/${enc(project)}/backlog`),
-  syncBacklog:       (project, source)      => _post(`/memory/${enc(project)}/sync-backlog${source ? `?source=${enc(source)}` : ''}`, {}),
+  syncBacklog:       (project, mode, source) => _post(`/memory/${enc(project)}/sync-backlog${mode ? `?mode=${enc(mode)}` : source ? `?source=${enc(source)}` : ''}`, {}),
   runWorkItems:      (project)              => _post(`/memory/${enc(project)}/work-items/sync`, {}),
-  patch:             (project, refId, body) => _patch(`/memory/${enc(project)}/backlog/${enc(refId)}`, body),
-  getUseCaseSection: (project, ref)         => _get(`/memory/${enc(project)}/use-case-section?ref=${enc(ref)}`),
+  patch:             (project, refId, body)   => _patch(`/memory/${enc(project)}/backlog/${enc(refId)}`, body),
+  approveGroup:      (project, slug, approve) => _post(`/memory/${enc(project)}/backlog/approve-group`, { slug, approve }),
+  deleteEntry:       (project, refId)         => _del(`/memory/${enc(project)}/backlog/${enc(refId)}`),
+  getUseCaseSection: (project, ref)           => _get(`/memory/${enc(project)}/use-case-section?ref=${enc(ref)}`),
 };
 
 api.pipeline = {

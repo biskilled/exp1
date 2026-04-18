@@ -902,6 +902,9 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                 user_tags: list[str] = []
                 ai_existing: list[dict] = []
                 ai_new:      list[dict] = []
+                group_summary: str = ""
+                group_completed: list[str] = []
+                group_action_items: list[dict] = []
 
                 for ln in lines:
                     ls = ln.strip()
@@ -928,6 +931,20 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                             parts = chip.split(":", 1)
                             if len(parts) == 2:
                                 ai_new.append({"category": parts[0], "name": parts[1]})
+                    elif ls.startswith("Summary:"):
+                        group_summary = ls[len("Summary:"):].strip()
+                    elif ls.startswith("Completed:"):
+                        raw = ls[len("Completed:"):].strip()
+                        group_completed = [c.strip() for c in raw.split(";") if c.strip()]
+                    elif ls.startswith("Action items:"):
+                        raw = ls[len("Action items:"):].strip()
+                        for part in raw.split(";"):
+                            part = part.strip()
+                            m2 = re.match(r"\[([^\]]+)\]\s+(.+)", part)
+                            if m2:
+                                group_action_items.append({"classify": m2.group(1), "desc": m2.group(2)})
+                            elif part:
+                                group_action_items.append({"classify": "task", "desc": part})
 
                 # Parse items
                 items: list[dict] = []
@@ -983,6 +1000,9 @@ Return ONLY the JSON array. No markdown fences. No extra text."""
                     "user_tags":        user_tags,
                     "ai_existing_tags": ai_existing,
                     "ai_new_tags":      ai_new,
+                    "summary":          group_summary,
+                    "completed":        group_completed,
+                    "action_items":     group_action_items,
                     "items":            items,
                 })
                 continue
@@ -1801,6 +1821,36 @@ def _fmt_group_block(group: dict) -> str:
     else:
         lines.append("> AI new:")
 
+    # Aggregate deliveries across all items
+    all_deliveries: list[str] = []
+    for it in items:
+        devs = it.get("deliveries", [])
+        if isinstance(devs, str):
+            all_deliveries += [d.strip() for d in devs.split(";") if d.strip()]
+        elif isinstance(devs, list):
+            for d in devs:
+                all_deliveries.append(d.get("desc", str(d)) if isinstance(d, dict) else str(d))
+
+    # Aggregate action_items across all items
+    all_actions: list[dict] = []
+    for it in items:
+        for ai in (it.get("action_items") or []):
+            if isinstance(ai, dict):
+                all_actions.append({"classify": ai.get("classify", it.get("classify", "task")), "desc": ai.get("desc", "")})
+            elif isinstance(ai, str) and ai:
+                all_actions.append({"classify": it.get("classify", "task"), "desc": ai})
+
+    topic = group.get("topic", "")
+    if topic:
+        lines.append(f"> Summary: {topic}")
+    seen_devs: set[str] = set()
+    top5_devs = [d for d in all_deliveries if d not in seen_devs and not seen_devs.add(d)][:5]  # type: ignore
+    if top5_devs:
+        lines.append(f"> Completed: {'; '.join(top5_devs)}")
+    if all_actions[:5]:
+        parts = [f"[{a['classify']}] {a['desc']}" for a in all_actions[:5]]
+        lines.append(f"> Action items: {'; '.join(parts)}")
+
     lines.append("")
 
     # Group items by source type, then by classify
@@ -2312,6 +2362,72 @@ def _tag_display_id(classify: str, seq_num: int) -> str:
 
 
 # ── run_work_items ────────────────────────────────────────────────────────────
+
+async def run_work_items_for_group(project: str, slug: str, approve: str) -> dict:
+    """Process only one named group immediately (approve all or reject all).
+
+    approve="x" → merge all items into use case file + planner_tags
+    approve="-"  → reject all items (moved to REJECTED section)
+    """
+    bl = MemoryBacklog(project)
+    project_id = bl._get_project_id()
+    groups = bl.parse_backlog()
+    target = next((g for g in groups if g.get("slug") == slug), None)
+    if not target:
+        return {"error": f"group '{slug}' not found"}
+
+    approved_ids: list[str] = []
+    rejected: list[dict] = []
+    uc_dir = bl._use_cases_dir()
+
+    if approve == "x":
+        for item in target.get("items", []):
+            item["approve"] = "x"
+            item_slug = (item.get("group_slug") or slug)
+            item_slug = re.sub(r"[^a-z0-9\-]", "-", item_slug.lower()).strip("-") or "general"
+            classify = item.get("classify", "task")
+            if classify not in _CLASSIFY_TO_TAG:
+                classify = "use_case"
+            try:
+                if not _slug_path(uc_dir, item_slug).exists():
+                    _create_use_case(uc_dir, item_slug, item)
+                else:
+                    _merge_into_use_case(uc_dir, item_slug, item)
+            except Exception as e:
+                log.warning(f"run_work_items_for_group: {e}")
+            if project_id:
+                file_ref = f"documents/use_cases/{item_slug}.md"
+                tag_result = _upsert_planner_tag(
+                    project=project,
+                    project_id=project_id,
+                    name=item_slug,
+                    classify=classify,
+                    file_ref=file_ref,
+                    description=item.get("summary", ""),
+                )
+                tag_uuid = tag_result[0] if tag_result else None
+                _insert_backlog_link(
+                    project_id=project_id,
+                    ref_id=item["ref_id"],
+                    tag_id=tag_uuid,
+                    use_case_slug=item_slug,
+                    classify=classify,
+                    summary=item.get("summary", ""),
+                )
+            approved_ids.append(item["ref_id"])
+        if project_id:
+            try:
+                _regenerate_internal_usage(uc_dir, slug, project_id)
+            except Exception as e:
+                log.debug(f"run_work_items_for_group: regenerate_internal_usage({slug}) error: {e}")
+    elif approve == "-":
+        for item in target.get("items", []):
+            item["approve"] = "-"
+        rejected = list(target.get("items", []))
+
+    bl.rewrite(groups=groups, processed=approved_ids, rejected_items=rejected)
+    return {"slug": slug, "processed": len(approved_ids), "rejected": len(rejected)}
+
 
 async def run_work_items(project: str) -> dict:
     """Full pipeline: flush pending → approve → create/merge use cases + planner_tags.

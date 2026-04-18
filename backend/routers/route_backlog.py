@@ -27,8 +27,15 @@ router = APIRouter()
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class BacklogPatchRequest(BaseModel):
-    approve: Optional[str] = None    # "x" | "-" | " "
-    tag:     Optional[str] = None    # tag override (replaces TAG comment)
+    approve:  Optional[str] = None   # "x" | "-" | " "
+    tag:      Optional[str] = None   # tag override (replaces TAG comment)
+    classify: Optional[str] = None   # "feature" | "task" | "bug" | "use_case"
+    status:   Optional[str] = None   # "in-progress" | "completed"
+
+
+class GroupActionRequest(BaseModel):
+    slug:    str
+    approve: str   # "x" = approve all → merge into use case; "-" = reject all
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -268,6 +275,20 @@ async def patch_backlog_entry(
                     f"<!-- TAG: {body.tag} -->",
                     chunk,
                 )
+            if body.classify is not None:
+                # Replace [classify] — 2nd bracket after ref_id (approve is 1st)
+                chunk = _re.sub(
+                    rf"({_re.escape(ref_id)}\s+\[[^\]]*\]\s+)\[[^\]]*\]",
+                    rf"\1[{body.classify}]",
+                    chunk,
+                )
+            if body.status is not None:
+                # Replace [status] — 3rd bracket after ref_id
+                chunk = _re.sub(
+                    rf"({_re.escape(ref_id)}\s+\[[^\]]*\]\s+\[[^\]]*\]\s+)\[[^\]]*\]",
+                    rf"\1[{body.status}]",
+                    chunk,
+                )
             updated = True
         new_chunks.append(chunk)
 
@@ -276,6 +297,84 @@ async def patch_backlog_entry(
 
     path.write_text("\n\n---\n\n".join(new_chunks))
     return {"status": "updated", "ref_id": ref_id, "project": project}
+
+
+@router.post("/{project}/backlog/approve-group")
+async def approve_group(project: str, body: GroupActionRequest):
+    """Approve or reject all items in a backlog group at once.
+
+    approve="x" → merge all items into use_cases/*.md + planner_tags
+    approve="-"  → reject all items (move to REJECTED section)
+    """
+    from memory.memory_backlog import run_work_items_for_group
+    try:
+        result = await run_work_items_for_group(project, body.slug, body.approve)
+        return {"project": project, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{project}/backlog/{ref_id}")
+async def delete_backlog_entry(project: str, ref_id: str):
+    """Remove a single item line (and its sub-lines) from backlog.md.
+
+    If the group has no remaining items after removal, the whole group chunk
+    is deleted too.
+    """
+    from memory.memory_backlog import MemoryBacklog
+    import re as _re
+
+    bl = MemoryBacklog(project)
+    path = bl._backlog_path()
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="backlog.md not found")
+
+    text = path.read_text(errors="ignore")
+    sep_pattern = r"\n\n?---\n\n?"
+    chunks = _re.split(sep_pattern, text)
+
+    updated = False
+    new_chunks: list[str] = []
+    for chunk in chunks:
+        if ref_id not in chunk:
+            new_chunks.append(chunk)
+            continue
+
+        # Remove item line(s): the "  SRC REF_ID ..." line plus any indented
+        # sub-lines (Requirements: / Deliveries:) that follow it
+        lines = chunk.splitlines()
+        out_lines: list[str] = []
+        skip = False
+        for ln in lines:
+            # Detect the item header line for this ref_id
+            if _re.match(rf"\s+\w+\s+{_re.escape(ref_id)}\s+", ln):
+                skip = True
+                updated = True
+                continue
+            # Stop skipping at the next item or non-indented content
+            if skip:
+                stripped = ln.strip()
+                if stripped.startswith("Requirements:") or stripped.startswith("Deliveries:"):
+                    continue  # remove sub-lines too
+                skip = False
+            out_lines.append(ln)
+
+        rebuilt = "\n".join(out_lines).strip()
+
+        # Check if any item lines remain in this chunk
+        from memory.memory_backlog import _ITEM_HEADER_RE
+        has_items = any(_ITEM_HEADER_RE.match(ln) for ln in rebuilt.splitlines())
+
+        if has_items or not updated:
+            new_chunks.append(rebuilt)
+        # else: drop the whole empty group chunk
+
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Ref ID '{ref_id}' not found in backlog")
+
+    path.write_text("\n\n---\n\n".join(new_chunks))
+    return {"status": "deleted", "ref_id": ref_id, "project": project}
 
 
 @router.post("/{project}/reset-all")
