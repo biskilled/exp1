@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-18 22:24 UTC — do not edit manually.
+> Auto-generated 2026-04-18 22:27 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 654
-- **Last active**: 2026-04-18T22:24:00Z
+- **Sessions**: 655
+- **Last active**: 2026-04-18T22:27:20Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -29,7 +29,7 @@
 - **chunking**: Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
-- **database_schema**: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_features (unified); mem_mrr_commits_code, mem_mrr_tags (mirroring); per-project tables; shared users/usage_logs/transactions/session_tags/entity_categories tables
+- **database_schema**: m001-m052 migration framework; canonical INT PK order (id → client_id → project_id → user_id); unified mem_ai_* tables + per-project tables + shared users/roles tables
 - **config_management**: config.py + YAML pipelines + pyproject.toml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form; dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
-- Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
-- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading
-- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top
-- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs
-- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; Cytoscape.js visualization with 2-pane approval panel for workflow approval; pipelines runnable from planner/docs/chat
+- Database schema refactor complete (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); updated_at added to all mirror tables; committed_at removed from mem_mrr_commits
+- Session history UI improvements: Chat and History tabs now display sessions with source badge, phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp; stale session loading fixed
+- Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
+- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
+- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
+- Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs
 
 ## Key Decisions
 
@@ -76,14 +76,14 @@
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
-- 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
+- 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id)
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end; embedding as final column
-- Fire-and-forget async DB initialization on startup: asyncio.get_event_loop().run_in_executor() allows server to start immediately while DB connects in background
+- Session history UI persistence: Chat tab shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
 
 ---
 

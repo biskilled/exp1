@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema reordering (m051-m052): migrated mng_users.id from UUID to SERIAL INT; reordered all 18 tables to canonical form; dropped committed_at from mem_mrr_commits; added updated_at to all mirror tables
-- Event table cleanup: dropped importance column from mem_ai_events; stripped system metadata tags from 1441 events retaining only phase/feature/bug/source user tags; mem_mrr_prompts column reordering complete
-- Session history UI persistence: Chat tab now shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM; fixed stale session loading
-- Hook-log endpoint verification: confirmed all 531 prompts (389 DB + ~142 JSONL merged) loading correctly after m050; sort order now correct with April entries at top
-- Feature snapshot layer creation: implemented mem_ai_feature_snapshot table merging user requirements with work items; added deliverables JSONB to planner_tags for tracking code/documents/designs
-- Dashboard and pipeline UI: added new Dashboard tab for pipeline visibility; Cytoscape.js visualization with 2-pane approval panel for workflow approval; pipelines runnable from planner/docs/chat
+- Database schema refactor complete (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); updated_at added to all mirror tables; committed_at removed from mem_mrr_commits
+- Session history UI improvements: Chat and History tabs now display sessions with source badge, phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp; stale session loading fixed
+- Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
+- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
+- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
+- Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs
