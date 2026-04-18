@@ -49,6 +49,7 @@ class GroupMetaPatchRequest(BaseModel):
     add_requirement:          Optional[str]       = None   # append a requirement (undo support)
     restore_delivery:         Optional[str]       = None   # append a delivery (undo support)
     restore_ai_new_tag:       Optional[str]       = None   # append an AI new tag (undo support)
+    update_delivery:          Optional[dict]      = None   # {"index":int,"name":str,"classify":str,"tag_id":str}
 
 
 class UseCaseItemDeleteRequest(BaseModel):
@@ -494,6 +495,37 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
                                 r"\1" + "\n> AI new: " + tag_val,
                                 chunk, flags=_re.MULTILINE, count=1)
 
+        if body.update_delivery is not None:
+            ud  = body.update_delivery
+            idx = ud.get("index", -1)
+
+            def _update_delivery_line(line: str) -> str:
+                raw_deliveries = line[len("Deliveries:"):].strip()
+                parts = [p.strip() for p in raw_deliveries.split("; ") if p.strip()]
+                if 0 <= idx < len(parts):
+                    dm = _re.match(
+                        r"\[([^\]]+)\|([^\]]+)\|(\d+)\|(\d+)(?:\|([^\]]*)\|([^\]]*))?\]\s*(.*)",
+                        parts[idx],
+                    )
+                    if dm:
+                        classify = ud.get("classify") or dm.group(1)
+                        name     = ud.get("name", dm.group(5) or "")
+                        tag_id   = ud.get("tag_id", dm.group(6) or "")
+                        parts[idx] = (
+                            f"[{classify}|{dm.group(2)}|{dm.group(3)}|{dm.group(4)}"
+                            f"|{name}|{tag_id}] {dm.group(7)}"
+                        )
+                return "> Deliveries: " + "; ".join(parts)
+
+            new_lines: list[str] = []
+            for ln in chunk.splitlines():
+                stripped = ln.lstrip("> ").strip()
+                if stripped.startswith("Deliveries:"):
+                    new_lines.append(_update_delivery_line(stripped))
+                else:
+                    new_lines.append(ln)
+            chunk = "\n".join(new_lines)
+
         updated = True
         new_chunks.append(chunk)
 
@@ -503,6 +535,18 @@ async def patch_backlog_group(project: str, slug: str, body: GroupMetaPatchReque
     path.write_text("\n\n---\n\n".join(new_chunks))
     return {"status": "updated", "slug": slug,
             "new_slug": body.new_slug or slug, "project": project}
+
+
+@router.get("/{project}/rejected")
+async def get_rejected(project: str):
+    """Return content and item count from rejected.md."""
+    from memory.memory_backlog import MemoryBacklog
+    bl = MemoryBacklog(project)
+    path = bl._rejected_path()
+    if not path.exists():
+        return {"content": "", "item_count": 0}
+    text = path.read_text(errors="ignore")
+    return {"content": text, "item_count": text.count("<!-- Rejected:")}
 
 
 @router.get("/{project}/use-case-slugs")

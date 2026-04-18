@@ -338,6 +338,9 @@ class MemoryBacklog:
         base = Path(settings.workspace_dir) / self.project
         return base / "documents" / fname
 
+    def _rejected_path(self) -> Path:
+        return self._backlog_path().parent / "rejected.md"
+
     def _use_cases_dir(self) -> Path:
         base = Path(settings.workspace_dir) / self.project
         return base / "documents" / "use_cases"
@@ -945,32 +948,42 @@ class MemoryBacklog:
                         group_completed = [c.strip() for c in raw.split(";") if c.strip()]
                     elif ls.startswith("Deliveries:"):
                         raw = ls[len("Deliveries:"):].strip()
-                        # Format: [classify|status|ai_score|event_count] summary; ...
+                        # Format: [classify|status|ai_score|event_count|name|tag_id] summary; ...
                         for part in raw.split("; "):
                             part = part.strip()
-                            # New format with event_count: [classify|status|score|N] summary
-                            m2 = re.match(r"\[([^\]]+)\|([^\]]+)\|(\d+)\|(\d+)\]\s*(.*)", part)
+                            # New 6-field format (backward-compatible): [classify|status|score|N|name|tag_id] summary
+                            m2 = re.match(
+                                r"\[([^\]]+)\|([^\]]+)\|(\d+)\|(\d+)(?:\|([^\]]*)\|([^\]]*))?\]\s*(.*)",
+                                part
+                            )
                             if m2:
                                 group_action_items.append({
                                     "classify":    m2.group(1),
                                     "status":      m2.group(2),
                                     "ai_score":    int(m2.group(3)),
                                     "event_count": int(m2.group(4)),
-                                    "desc":        m2.group(5).strip(),
+                                    "name":        m2.group(5) or "",
+                                    "tag_id":      m2.group(6) or "",
+                                    "desc":        m2.group(7).strip(),
                                 })
                                 continue
                             # Old format without event_count: [classify|status|score] summary
                             m2 = re.match(r"\[([^\]]+)\|([^\]]+)\|(\d+)\]\s*(.*)", part)
                             if m2:
                                 group_action_items.append({
-                                    "classify": m2.group(1),
-                                    "status":   m2.group(2),
-                                    "ai_score": int(m2.group(3)),
+                                    "classify":    m2.group(1),
+                                    "status":      m2.group(2),
+                                    "ai_score":    int(m2.group(3)),
                                     "event_count": 1,
-                                    "desc":     m2.group(4).strip(),
+                                    "name":        "",
+                                    "tag_id":      "",
+                                    "desc":        m2.group(4).strip(),
                                 })
                             elif part:
-                                group_action_items.append({"classify": "task", "status": "in-progress", "ai_score": 0, "desc": part})
+                                group_action_items.append({
+                                    "classify": "task", "status": "in-progress",
+                                    "ai_score": 0, "name": "", "tag_id": "", "desc": part,
+                                })
                     # Backward compat: old "Completed:" and "Action items:" lines
                     elif ls.startswith("Completed:"):
                         raw = ls[len("Completed:"):].strip()
@@ -981,9 +994,15 @@ class MemoryBacklog:
                             part = part.strip()
                             m2 = re.match(r"\[([^\]]+)\]\s+(.+)", part)
                             if m2:
-                                group_action_items.append({"classify": m2.group(1), "status": "in-progress", "ai_score": 0, "desc": m2.group(2)})
+                                group_action_items.append({
+                                    "classify": m2.group(1), "status": "in-progress",
+                                    "ai_score": 0, "name": "", "tag_id": "", "desc": m2.group(2),
+                                })
                             elif part:
-                                group_action_items.append({"classify": "task", "status": "in-progress", "ai_score": 0, "desc": part})
+                                group_action_items.append({
+                                    "classify": "task", "status": "in-progress",
+                                    "ai_score": 0, "name": "", "tag_id": "", "desc": part,
+                                })
 
                 # Parse items
                 items: list[dict] = []
@@ -1193,27 +1212,26 @@ class MemoryBacklog:
         if pending_blocks:
             new_text += "\n\n---\n\n".join(pending_blocks) + "\n"
 
-        # ── Rejected section ─────────────────────────────────────────────────
-        # Preserve any existing rejected entries from the file
-        existing_text = path.read_text(errors="ignore") if path.exists() else ""
-        rejected_marker = "\n>>>>>>> REJECTED <<<<<<"
-        existing_rejected_body = ""
-        rej_idx = existing_text.find(rejected_marker)
-        if rej_idx != -1:
-            # Strip the marker line itself and get the body
-            existing_rejected_body = existing_text[rej_idx + len(rejected_marker):].lstrip("\n")
+        # ── Write rejected items to rejected.md (separate file) ─────────────
+        if rejected_items:
+            rej_path = self._rejected_path()
+            existing_rej = rej_path.read_text(errors="ignore") if rej_path.exists() else ""
 
-        new_rejected_blocks: list[str] = []
-        for item in rejected_items:
-            block = _fmt_item_entry(item, item.get("src_label", "PROMPTS")).strip()
-            new_rejected_blocks.append(block + f"\n  <!-- Rejected: {today} -->")
+            new_rej_blocks: list[str] = []
+            for item in rejected_items:
+                block = _fmt_item_entry(item, item.get("src_label", "PROMPTS")).strip()
+                new_rej_blocks.append(block + f"\n  <!-- Rejected: {today} -->")
 
-        if new_rejected_blocks or existing_rejected_body.strip():
-            new_text += "\n>>>>>>> REJECTED <<<<<<\n\n"
-            if existing_rejected_body.strip():
-                new_text += existing_rejected_body.rstrip() + "\n\n"
-            if new_rejected_blocks:
-                new_text += "\n\n".join(new_rejected_blocks) + "\n"
+            if new_rej_blocks:
+                if not existing_rej.strip():
+                    existing_rej = (
+                        "# Rejected\n\n"
+                        "> Items moved here when rejected during backlog review.\n\n"
+                    )
+                rej_path.write_text(
+                    existing_rej.rstrip() + "\n\n"
+                    + "\n\n".join(new_rej_blocks) + "\n"
+                )
 
         path.write_text(new_text)
         log.info(
@@ -2034,12 +2052,16 @@ def _fmt_group_block(group: dict) -> str:
     # Synthesised group deliveries (3-5 thematic items from LLM synthesis call)
     group_deliveries: list[dict] = group.get("group_deliveries", [])
     if group_deliveries:
-        parts = [
-            f"[{d.get('classify','task')}|{d.get('status','in-progress')}|"
-            f"{d.get('ai_score',0)}|{d.get('event_count',1)}] {d.get('summary','')}"
-            for d in group_deliveries[:5]
-        ]
-        lines.append(f"> Deliveries: {'; '.join(parts)}")
+        delivery_strs: list[str] = []
+        for d in group_deliveries[:5]:
+            name   = d.get("name", "")
+            tag_id = d.get("tag_id", "")
+            delivery_strs.append(
+                f"[{d.get('classify','task')}|{d.get('status','in-progress')}|"
+                f"{d.get('ai_score',0)}|{d.get('event_count',1)}|{name}|{tag_id}]"
+                f" {d.get('summary','')}"
+            )
+        lines.append(f"> Deliveries: {'; '.join(delivery_strs)}")
 
     lines.append("")
 
@@ -2474,6 +2496,7 @@ def _upsert_planner_tag(
     classify: str,
     file_ref: str,
     description: str = "",
+    parent_id: Optional[str] = None,
 ) -> Optional[tuple[str, int]]:
     """Find or create a planner_tag row for this use-case / feature / bug.
 
@@ -2526,14 +2549,16 @@ def _upsert_planner_tag(
                 cur.execute(
                     """INSERT INTO planner_tags
                        (project_id, name, category_id, description, status,
-                        creator, seq_num, file_ref)
-                       VALUES (%s, %s, %s, %s, 'open', 'ai', %s, %s)
+                        creator, seq_num, file_ref, parent_id)
+                       VALUES (%s, %s, %s, %s, 'open', 'ai', %s, %s, %s::uuid)
                        ON CONFLICT (project_id, name, category_id) DO UPDATE SET
                            file_ref    = COALESCE(EXCLUDED.file_ref, planner_tags.file_ref),
                            seq_num     = COALESCE(planner_tags.seq_num, EXCLUDED.seq_num),
+                           parent_id   = COALESCE(planner_tags.parent_id, EXCLUDED.parent_id),
                            updated_at  = NOW()
                        RETURNING id::text, seq_num""",
-                    (project_id, name, cat_id, description or name, seq_num, file_ref),
+                    (project_id, name, cat_id, description or name, seq_num, file_ref,
+                     parent_id if parent_id else None),
                 )
                 result = cur.fetchone()
                 conn.commit()
@@ -2569,6 +2594,7 @@ async def run_work_items_for_group(project: str, slug: str, approve: str) -> dic
     approved_ids: list[str] = []
     rejected: list[dict] = []
     uc_dir = bl._use_cases_dir()
+    group_tag_uuid: Optional[str] = None   # the parent planner_tag for this group's use case
 
     if approve == "x":
         for item in target.get("items", []):
@@ -2596,6 +2622,10 @@ async def run_work_items_for_group(project: str, slug: str, approve: str) -> dic
                     description=item.get("summary", ""),
                 )
                 tag_uuid = tag_result[0] if tag_result else None
+                # Track the group-level use-case tag (first item sets it; all items in a
+                # group share the same slug so the tag_uuid should be consistent)
+                if tag_uuid and not group_tag_uuid:
+                    group_tag_uuid = tag_uuid
                 _insert_backlog_link(
                     project_id=project_id,
                     ref_id=item["ref_id"],
@@ -2605,6 +2635,31 @@ async def run_work_items_for_group(project: str, slug: str, approve: str) -> dic
                     summary=item.get("summary", ""),
                 )
             approved_ids.append(item["ref_id"])
+
+        # Create child planner_tags for each group-level delivery theme
+        if project_id and group_tag_uuid:
+            for delivery in target.get("deliveries", []):
+                d_linked_id = (delivery.get("tag_id") or "").strip()
+                if d_linked_id:
+                    # User linked to an existing tag — no new tag needed
+                    continue
+                d_name = (delivery.get("name") or "").strip() or delivery.get("desc", "")[:80]
+                if not d_name:
+                    continue
+                d_classify = delivery.get("classify", "task")
+                try:
+                    _upsert_planner_tag(
+                        project=project,
+                        project_id=project_id,
+                        name=d_name,
+                        classify=d_classify,
+                        file_ref=f"documents/use_cases/{slug}.md",
+                        description=delivery.get("desc", ""),
+                        parent_id=group_tag_uuid,
+                    )
+                except Exception as e:
+                    log.debug(f"run_work_items_for_group: child tag ({d_name}) error: {e}")
+
         if project_id:
             try:
                 _regenerate_internal_usage(uc_dir, slug, project_id)

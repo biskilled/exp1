@@ -385,6 +385,34 @@ export async function renderBacklog(container, projectName) {
         border-top:1px solid var(--border);
       }
 
+      /* ── Delivery row editing ── */
+      .bl-dv-edit { display:flex;gap:0.3rem;margin-top:0.25rem;align-items:center;flex-wrap:wrap }
+      .bl-dv-name {
+        flex:1;min-width:120px;background:#1e293b;border:1px solid #334155;
+        color:#e2e8f0;border-radius:4px;padding:2px 6px;font-size:0.72rem;
+      }
+      .bl-dv-name:focus { outline:none;border-color:#60a5fa }
+      .bl-dv-type {
+        background:#1e293b;border:1px solid #334155;color:#e2e8f0;
+        border-radius:4px;padding:2px 4px;font-size:0.72rem;cursor:pointer;
+      }
+      .bl-dv-pick {
+        background:#1e293b;border:1px solid #334155;color:#94a3b8;
+        border-radius:4px;padding:2px 5px;font-size:0.72rem;cursor:pointer;
+      }
+      .bl-dv-pick:hover { background:#334155;color:#f8fafc }
+      /* ── Delivery tag picker menu ── */
+      .bl-tag-picker-menu {
+        background:#1e293b;border:1px solid #334155;border-radius:6px;
+        box-shadow:0 4px 20px rgba(0,0,0,.4);max-height:200px;overflow-y:auto;min-width:220px;
+      }
+      .bl-tag-picker-item {
+        display:flex;justify-content:space-between;padding:0.35rem 0.75rem;
+        cursor:pointer;font-size:0.78rem;color:#cbd5e1;gap:0.5rem;
+      }
+      .bl-tag-picker-item:hover { background:#334155 }
+      .bl-tag-picker-id { color:#475569;font-size:0.68rem }
+
       /* ── Slug combobox ── */
       .bl-slug-wrap { display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer }
       .bl-slug-edit-btn {
@@ -827,6 +855,63 @@ function _closeOverlay() {
   if (el) el.remove();
 }
 
+/**
+ * Show a delivery-specific tag picker anchored to `anchorEl`.
+ * Filters planner tags by classify type (feature/bug/task) and active status.
+ * Calls onSelect({id, name, category_name}) when the user picks an item.
+ */
+function _showDeliveryTagPicker(anchor, classify, onSelect) {
+  document.getElementById('bl-tag-picker')?.remove();
+
+  const tags = _plannerTags.filter(t =>
+    (t.category_name === classify || !classify) &&
+    t.status !== 'done' && t.status !== 'archived'
+  );
+
+  if (!tags.length) {
+    _showUndoToast(`No open ${classify} tags found`, null, 3000);
+    return;
+  }
+
+  const menu = document.createElement('div');
+  menu.id = 'bl-tag-picker';
+  menu.className = 'bl-tag-picker-menu';
+  menu.style.cssText = 'position:fixed;z-index:9999';
+  menu.innerHTML = tags.map(t =>
+    `<div class="bl-tag-picker-item"
+          data-id="${_esc(t.id || '')}"
+          data-name="${_esc(t.name)}"
+          data-cat="${_esc(t.category_name || '')}">
+       <span class="bl-tag-picker-label">${_esc(t.name)}</span>
+       <span class="bl-tag-picker-id">#${t.seq_num || ''}</span>
+     </div>`
+  ).join('');
+
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.top  = `${rect.bottom + 4}px`;
+  menu.style.left = `${rect.left}px`;
+
+  menu.addEventListener('click', e => {
+    const item = e.target.closest('.bl-tag-picker-item');
+    if (!item) return;
+    onSelect({ id: item.dataset.id, name: item.dataset.name, category_name: item.dataset.cat });
+    menu.remove();
+  });
+
+  // Close on outside click (capture phase, one-time)
+  setTimeout(() => {
+    document.addEventListener('click', () => {
+      document.getElementById('bl-tag-picker')?.remove();
+    }, { once: true, capture: true });
+  }, 0);
+}
+
+function _showUndoToast(msg, _fn, _ms) {
+  // Simple toast shortcut when no undo action needed
+  toast(msg, 'info');
+}
+
 async function _loadGroupCodeStats(slug, idx) {
   const el = document.getElementById(`bl-stats-${idx}`);
   if (!el) return;
@@ -1028,6 +1113,56 @@ function _renderGroups(groups) {
       btn.addEventListener('click', e => {
         e.stopPropagation();
         _onDeliveryRemove(dSlug, idx, desc, btn.closest('tr'));
+      });
+    });
+
+    // Delivery name edit (on blur)
+    grpEl.querySelectorAll('.bl-dv-name').forEach(inp => {
+      inp.addEventListener('blur', () => {
+        const idx  = parseInt(inp.dataset.idx, 10);
+        const dSlug = inp.dataset.slug || grp.slug;
+        api.backlog.patchGroup(_project, dSlug, {
+          update_delivery: { index: idx, name: inp.value.trim() },
+        }).catch(e => toast(`Delivery name update failed: ${e.message}`, 'error'));
+      });
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+      });
+    });
+
+    // Delivery type change
+    grpEl.querySelectorAll('.bl-dv-type').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const idx   = parseInt(sel.dataset.idx, 10);
+        const dSlug = sel.dataset.slug || grp.slug;
+        // Also update the classify badge in the same row
+        const tr = sel.closest('tr');
+        const badge = tr?.querySelector('.bl-delivery-type');
+        if (badge) {
+          badge.className = `bl-delivery-type bl-delivery-type-${sel.value}`;
+          badge.textContent = sel.value;
+        }
+        api.backlog.patchGroup(_project, dSlug, {
+          update_delivery: { index: idx, classify: sel.value },
+        }).catch(e => toast(`Delivery type update failed: ${e.message}`, 'error'));
+      });
+    });
+
+    // Delivery picker button — link to existing planner_tag
+    grpEl.querySelectorAll('.bl-dv-pick').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx      = parseInt(btn.dataset.idx, 10);
+        const dSlug    = btn.dataset.slug    || grp.slug;
+        const classify = btn.dataset.classify || 'task';
+        const tr       = btn.closest('tr');
+        _showDeliveryTagPicker(btn, classify, tag => {
+          const nameInp = tr?.querySelector('.bl-dv-name');
+          if (nameInp) nameInp.value = tag.name;
+          api.backlog.patchGroup(_project, dSlug, {
+            update_delivery: { index: idx, name: tag.name, classify: tag.category_name, tag_id: tag.id },
+          }).catch(e => toast(`Link failed: ${e.message}`, 'error'));
+        });
       });
     });
 
@@ -1260,6 +1395,8 @@ function _deliveriesTable(deliveries, items, slug) {
       ai_score:    d.ai_score    ?? 0,
       event_count: d.event_count ?? 1,
       desc:        d.desc        || '',
+      name:        d.name        || '',
+      tag_id:      d.tag_id      || '',
     }));
     isSynthesised = true;
   } else if (items && items.length) {
@@ -1291,12 +1428,28 @@ function _deliveriesTable(deliveries, items, slug) {
       : (r.ref_id
         ? `<button class="bl-delivery-item-remove" data-ref-id="${_esc(r.ref_id)}" title="Remove from backlog">✕</button>`
         : '');
+
+    // Synthesised rows get inline name/type/picker editing
+    const editControls = isSynthesised ? `
+      <div class="bl-dv-edit">
+        <input class="bl-dv-name" data-idx="${i}" data-slug="${_esc(slug)}"
+               placeholder="${_esc((r.desc || '').slice(0, 50))}"
+               value="${_esc(r.name || '')}" title="Delivery name">
+        <select class="bl-dv-type" data-idx="${i}" data-slug="${_esc(slug)}">
+          <option value="feature" ${r.classify === 'feature' ? 'selected' : ''}>Feature</option>
+          <option value="bug"     ${r.classify === 'bug'     ? 'selected' : ''}>Bug</option>
+          <option value="task"    ${r.classify === 'task'    ? 'selected' : ''}>Task</option>
+        </select>
+        <button class="bl-dv-pick" data-idx="${i}" data-slug="${_esc(slug)}"
+                data-classify="${_esc(r.classify)}" title="Link to existing">📌</button>
+      </div>` : '';
+
     return `
       <tr>
         <td class="bl-delivery-icon ${iconCls}">${icon}</td>
         <td><span class="${typeCls}">${_esc(r.classify)}</span></td>
         <td><span class="bl-delivery-score">AI:${r.ai_score}</span>${cntBadge}</td>
-        <td class="bl-delivery-desc" title="${_esc(r.desc)}">${_esc(r.desc)}</td>
+        <td class="bl-delivery-desc" title="${_esc(r.desc)}">${_esc(r.desc)}${editControls}</td>
         <td>${removeBtn}</td>
       </tr>`;
   }).join('');
