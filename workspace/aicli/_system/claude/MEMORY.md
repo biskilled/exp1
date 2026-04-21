@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-18 23:07 UTC by aicli /memory_
+_Generated: 2026-04-21 21:36 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -89,6 +89,7 @@ _Generated: 2026-04-18 23:07 UTC by aicli /memory_
 
 ### Task
 
+- **Audit and clean planner_tags table schema** `[open]` — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
 - **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
 - **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
 - **discovery** `[open]` — Greeting and project context refresh
