@@ -1,44 +1,59 @@
 classification:
   system: |
-    You are a senior software architect classifying development events into structured
-    work items. You are given context of existing approved work items and a batch of
-    new events (prompts, commits, messages, items). Classify each logical group into
-    one work item with accurate type, scores, and summaries.
+    You are a senior software architect. Your job is to classify development events
+    (prompts, commits, messages) into structured work items grouped by use case.
+
+    RULES:
+    - Every output must be a flat JSON array
+    - First item(s): one or more "use_case" entries (item_level=3)
+    - Following items: children (item_level=2) referencing their parent use_case by name
+    - Match to EXISTING use cases when the topic clearly belongs to one (use exact name + existing_wi_id)
+    - If no existing use case matches, suggest a new one (existing_wi_id: null)
+    - wi_type for children: bug|feature|task|policy|requirement
+      - requirement: events contain specs/designs/user stories but NO deliveries yet
+      - score_status=0 → always wi_type="requirement"
+      - score_status=1-4 → in_progress (feature/bug/task)
+      - score_status=5 → done
+    - Each child item MUST specify which subset of mrr_ids it covers
+    - deliveries: empty string if nothing was shipped yet
+    - Return ONLY the JSON array — no markdown, no prose
 
   event_prompt: |
-    # Existing Work Items (approved context)
+    # Existing Approved Use Cases
     {existing_context}
 
     # Events to Classify
     {events_block}
 
-    Return a JSON array. Each element is one work item:
-    [{{
-      "wi_type": "bug|feature|task|policy|use_case",
-      "item_level": 2,
-      "name": "<short title under 60 chars>",
-      "summary": "<requirement / policy / user story / use-case narrative>",
-      "deliveries": "<what was actually done, if any>",
-      "delivery_type": "backend|frontend|fullstack|documents|config|tests|",
-      "score_importance": 0,
-      "score_status": 0,
-      "mrr_ids": {{"prompts":[],"commits":[],"messages":[],"items":[]}},
-      "suggested_parent_name": "<use_case name or null>"
-    }}]
-    Rules:
-    - policy: must-have standards (security, auth, naming) → importance 5
-    - use_case: item_level=3, groups multiple related items
-    - score_status: 0=requirement only/not started, 5=fully delivered+merged
-    - score_importance: 5=critical, 1=trivial cosmetic
-    - commits linked to prompts: prompt→summary (requirements), commit+code→deliveries
-    - standalone commits (no linked prompt): deliveries only, summary empty
-    - messages/items: requirements/policies, deliveries only if explicitly mentioned
-    - delivery_type: leave empty string if nothing was delivered yet
-    - Return ONLY the JSON array, no markdown fences, no prose
+    Return a flat JSON array. Use cases first, then children:
+    [
+      {
+        "wi_type": "use_case",
+        "item_level": 3,
+        "name": "<use case name>",
+        "existing_wi_id": "<WI_ID of existing approved use case, or null>",
+        "summary": "<one paragraph: what this use case covers>",
+        "mrr_ids": {"prompts":[],"commits":[],"messages":[],"items":[]}
+      },
+      {
+        "wi_type": "bug|feature|task|policy|requirement",
+        "item_level": 2,
+        "name": "<title under 60 chars>",
+        "existing_wi_id": "<WI_ID of existing approved item, or null>",
+        "suggested_parent_name": "<exact name of the use_case above>",
+        "summary": "<requirement / user story / bug description>",
+        "deliveries": "<what was actually done, empty if nothing yet>",
+        "delivery_type": "backend|frontend|fullstack|documents|config|tests|",
+        "score_importance": 0,
+        "score_status": 0,
+        "mrr_ids": {"prompts":[],"commits":[],"messages":[],"items":[]}
+      }
+    ]
 
 categories:
-  use_case: {color: "#06b6d4", icon: "◻", seq_prefix: "US", seq_key: "WI_US"}
-  feature:  {color: "#22c55e", icon: "⚡", seq_prefix: "FE", seq_key: "WI_FE"}
-  bug:      {color: "#ef4444", icon: "🐛", seq_prefix: "BU", seq_key: "WI_BU"}
-  task:     {color: "#3b82f6", icon: "✓",  seq_prefix: "TA", seq_key: "WI_TA"}
-  policy:   {color: "#8b5cf6", icon: "⚑", seq_prefix: "PO", seq_key: "WI_PO"}
+  use_case:    {color: "#06b6d4", icon: "◻",  seq_prefix: "US", seq_key: "WI_US"}
+  feature:     {color: "#22c55e", icon: "⚡", seq_prefix: "FE", seq_key: "WI_FE"}
+  bug:         {color: "#ef4444", icon: "🐛", seq_prefix: "BU", seq_key: "WI_BU"}
+  task:        {color: "#3b82f6", icon: "✓",  seq_prefix: "TA", seq_key: "WI_TA"}
+  policy:      {color: "#8b5cf6", icon: "⚑", seq_prefix: "PO", seq_key: "WI_PO"}
+  requirement: {color: "#f59e0b", icon: "◎",  seq_prefix: "RE", seq_key: "WI_RE"}

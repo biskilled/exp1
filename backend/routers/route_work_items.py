@@ -57,6 +57,20 @@ class WiApproveAllRequest(BaseModel):
     parent_id: str
 
 
+class WiCreateRequest(BaseModel):
+    name:             str
+    wi_type:          str
+    summary:          str   = ""
+    wi_parent_id:     Optional[str] = None
+    score_importance: int   = 2
+    score_status:     int   = 0
+    delivery_type:    str   = ""
+
+
+class WiMdSaveRequest(BaseModel):
+    content: str
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _wi(project: str):
@@ -213,3 +227,43 @@ async def reset_wi_pending(project: str):
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return result
+
+
+@router.post("/{project}/wi")
+async def create_wi(project: str, body: WiCreateRequest):
+    """Create a work item directly (no LLM classification required)."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.create_item(pid, body.model_dump())
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/{project}/wi/{item_id}/md")
+async def get_wi_md(project: str, item_id: str):
+    """Return Markdown content for a use_case work item."""
+    pid     = _pid(project)
+    wi      = _wi(project)
+    content = wi.get_md(item_id, pid)
+    return {"content": content}
+
+
+@router.post("/{project}/wi/{item_id}/md")
+async def save_wi_md(project: str, item_id: str, body: WiMdSaveRequest):
+    """Save edited Markdown back to DB and file."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.save_md(item_id, pid, body.content)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/wi/{item_id}/md/refresh")
+async def refresh_wi_md(project: str, item_id: str):
+    """Regenerate Markdown from DB and write to file."""
+    pid     = _pid(project)
+    wi      = _wi(project)
+    content = wi.refresh_md(item_id, pid)
+    return {"content": content}

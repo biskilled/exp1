@@ -57,17 +57,23 @@ _TABLE: dict[str, str] = {
 
 # ── Type → (seq_key, display_prefix) ─────────────────────────────────────────
 _TYPE_SEQ: dict[str, tuple[str, str]] = {
-    "use_case": ("WI_US", "US"),
-    "feature":  ("WI_FE", "FE"),
-    "bug":      ("WI_BU", "BU"),
-    "task":     ("WI_TA", "TA"),
-    "policy":   ("WI_PO", "PO"),
+    "use_case":    ("WI_US", "US"),
+    "feature":     ("WI_FE", "FE"),
+    "bug":         ("WI_BU", "BU"),
+    "task":        ("WI_TA", "TA"),
+    "policy":      ("WI_PO", "PO"),
+    "requirement": ("WI_RE", "RE"),
 }
 _DEFAULT_SEQ = ("WI_TA", "TA")
 _UUID_RE = re.compile(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     re.IGNORECASE,
 )
+
+
+def _use_case_slug(name: str) -> str:
+    """Convert a use case name to a URL-safe slug for MD filenames."""
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:60]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -153,6 +159,60 @@ def _generate_wi_id(cur, project_id: int, wi_type: str) -> str:
     return f"{prefix}{val:04d}"
 
 
+def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
+    """Insert a single work item row and return the new UUID string."""
+    cur.execute(
+        """INSERT INTO mem_work_items
+           (client_id, project_id, wi_type, item_level, name, summary,
+            deliveries, delivery_type, score_importance, score_status,
+            mrr_ids, wi_parent_id)
+           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid)
+           RETURNING id::text""",
+        (
+            pid,
+            item.get("wi_type", "task"),
+            item.get("item_level", 2),
+            (item.get("name") or "")[:200],
+            item.get("summary") or "",
+            item.get("deliveries") or "",
+            item.get("delivery_type") or "",
+            min(5, max(0, int(item.get("score_importance", 0)))),
+            min(5, max(0, int(item.get("score_status", 0)))),
+            json.dumps(item.get("mrr_ids") or {}),
+            parent_id if parent_id else None,
+        ),
+    )
+    row = cur.fetchone()
+    return row[0] if row else ""
+
+
+def _embed_work_item(item_id: str, fields: dict) -> None:
+    """Compute embedding for an approved work item and store in DB."""
+    try:
+        text = " | ".join(filter(None, [
+            fields.get("name", ""),
+            fields.get("wi_type", ""),
+            fields.get("summary", ""),
+            fields.get("deliveries", ""),
+            fields.get("delivery_type", ""),
+        ]))
+        if not text.strip():
+            return
+        from agents.tools.tool_memory import _embed_sync
+        vector = _embed_sync(text)
+        if not vector:
+            return
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE mem_work_items SET embedding=%s WHERE id=%s::uuid",
+                    (vector, item_id),
+                )
+            conn.commit()
+    except Exception as e:
+        log.debug(f"_embed_work_item({item_id}) skipped: {e}")
+
+
 def _upsert_planner_tag(
     project: str,
     project_id: int,
@@ -171,19 +231,21 @@ def _upsert_planner_tag(
 
     # wi_type → category name
     cat_name_map = {
-        "use_case": "use_case",
-        "feature":  "feature",
-        "bug":      "bug",
-        "task":     "task",
-        "policy":   "policy",
+        "use_case":    "use_case",
+        "feature":     "feature",
+        "bug":         "bug",
+        "task":        "task",
+        "policy":      "policy",
+        "requirement": "requirement",
     }
     # planner seq category (reuse existing uc/feat/bug ranges from m055)
     seq_cat_map = {
-        "use_case": "uc",
-        "feature":  "feat",
-        "bug":      "bug",
-        "task":     "feat",   # tasks fall into feature range
-        "policy":   "feat",
+        "use_case":    "uc",
+        "feature":     "feat",
+        "bug":         "bug",
+        "task":        "feat",   # tasks fall into feature range
+        "policy":      "feat",
+        "requirement": "feat",
     }
     cat_name = cat_name_map.get(wi_type, "use_case")
     seq_cat  = seq_cat_map.get(wi_type, "feat")
@@ -542,28 +604,57 @@ class MemoryWorkItems:
     # ── Existing context ───────────────────────────────────────────────────────
 
     def _load_existing_context(self, pid: int) -> str:
-        """Load recently approved work items as context for the LLM."""
+        """Load recently approved use cases with children as LLM context."""
         if not db.is_available():
             return "(no existing work items)"
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Fetch approved use cases
                     cur.execute(
-                        """SELECT wi_id, wi_type, name, LEFT(summary, 200) AS summary
+                        """SELECT id::text, wi_id, name, LEFT(summary, 300) AS summary
                            FROM mem_work_items
-                           WHERE project_id=%s AND wi_id IS NOT NULL
-                             AND wi_id NOT LIKE 'REJ%%'
+                           WHERE project_id=%s AND wi_type='use_case'
+                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
                            ORDER BY approved_at DESC NULLS LAST
-                           LIMIT 20""",
+                           LIMIT 15""",
                         (pid,),
                     )
-                    rows = cur.fetchall()
-            if not rows:
-                return "(no existing work items)"
-            return "\n".join(
-                f"- [{r[0]}] {r[1]}: {r[2]} — {r[3]}"
-                for r in rows
-            )
+                    uc_rows = cur.fetchall()
+                    if not uc_rows:
+                        return "(no existing use cases)"
+
+                    # Fetch approved children for those use cases
+                    uc_ids = [r[0] for r in uc_rows]
+                    cur.execute(
+                        """SELECT wi_id, wi_type, name, wi_parent_id::text, score_status
+                           FROM mem_work_items
+                           WHERE project_id=%s AND wi_parent_id = ANY(%s::uuid[])
+                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                           ORDER BY created_at ASC""",
+                        (pid, uc_ids),
+                    )
+                    child_rows = cur.fetchall()
+
+            # Build map: uc_id → children list
+            children_map: dict[str, list] = {uid: [] for uid in uc_ids}
+            for c in child_rows:
+                parent = c[3]
+                if parent in children_map:
+                    status_label = "done" if c[4] == 5 else ("in_progress" if c[4] else "requirement")
+                    children_map[parent].append(f"{c[0]} {c[2]} [{status_label}]")
+
+            lines = ["## Approved Use Cases"]
+            for r in uc_rows:
+                uid, wi_id, name, summary = r
+                lines.append(f"### {wi_id} · {name}")
+                lines.append(summary or "")
+                ch = children_map.get(uid, [])
+                if ch:
+                    lines.append(f"Children: {', '.join(ch)}")
+                lines.append("")
+
+            return "\n".join(lines)
         except Exception as e:
             log.debug(f"_load_existing_context error: {e}")
             return "(no existing work items)"
@@ -630,15 +721,16 @@ class MemoryWorkItems:
                 "items":    list(set((mrr.get("items")    or []) + item_ids)),
             }
             valid.append({
-                "wi_type":         wi_type,
-                "item_level":      int(raw_item.get("item_level", 2)),
-                "name":            (raw_item.get("name") or "")[:200],
-                "summary":         raw_item.get("summary") or "",
-                "deliveries":      raw_item.get("deliveries") or "",
-                "delivery_type":   raw_item.get("delivery_type") or "",
-                "score_importance":min(5, max(0, int(raw_item.get("score_importance", 0)))),
-                "score_status":    min(5, max(0, int(raw_item.get("score_status", 0)))),
-                "mrr_ids":         merged_mrr,
+                "wi_type":              wi_type,
+                "item_level":           int(raw_item.get("item_level", 2)),
+                "name":                 (raw_item.get("name") or "")[:200],
+                "existing_wi_id":       (raw_item.get("existing_wi_id") or "").strip(),
+                "summary":              raw_item.get("summary") or "",
+                "deliveries":           raw_item.get("deliveries") or "",
+                "delivery_type":        raw_item.get("delivery_type") or "",
+                "score_importance":     min(5, max(0, int(raw_item.get("score_importance", 0)))),
+                "score_status":         min(5, max(0, int(raw_item.get("score_status", 0)))),
+                "mrr_ids":              merged_mrr,
                 "suggested_parent_name": raw_item.get("suggested_parent_name"),
             })
         return valid
@@ -646,38 +738,54 @@ class MemoryWorkItems:
     # ── Save to DB ─────────────────────────────────────────────────────────────
 
     def _save_classifications(self, items: list[dict], pid: int) -> list[dict]:
-        """Insert classified items into mem_work_items. Returns saved items."""
+        """Two-phase insert: use_cases first, then children with parent FK."""
         if not items or not db.is_available():
             return []
-        saved = []
+        uc_map: dict[str, str] = {}  # use_case name → UUID
+        saved: list[dict] = []
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Phase 1: resolve or create use_cases
                     for item in items:
-                        cur.execute(
-                            """INSERT INTO mem_work_items
-                               (client_id, project_id, wi_type, item_level, name, summary,
-                                deliveries, delivery_type, score_importance, score_status,
-                                mrr_ids)
-                               VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               RETURNING id::text""",
-                            (
-                                pid,
-                                item["wi_type"],
-                                item["item_level"],
-                                item["name"],
-                                item["summary"],
-                                item["deliveries"],
-                                item["delivery_type"],
-                                item["score_importance"],
-                                item["score_status"],
-                                json.dumps(item["mrr_ids"]),
-                            ),
-                        )
-                        row = cur.fetchone()
-                        if row:
-                            item["id"] = row[0]
+                        if item.get("wi_type") != "use_case":
+                            continue
+                        existing = item.get("existing_wi_id", "").strip()
+                        if existing:
+                            cur.execute(
+                                "SELECT id::text FROM mem_work_items "
+                                "WHERE project_id=%s AND wi_id=%s",
+                                (pid, existing),
+                            )
+                            row = cur.fetchone()
+                            if row:
+                                uc_map[item["name"]] = row[0]
+                                continue
+                        uc_id = _insert_wi(cur, item, pid, parent_id=None)
+                        if uc_id:
+                            uc_map[item["name"]] = uc_id
+                            item["id"] = uc_id
                             saved.append(item)
+
+                    # Phase 2: create children
+                    for item in items:
+                        if item.get("wi_type") == "use_case":
+                            continue
+                        existing = item.get("existing_wi_id", "").strip()
+                        if existing:
+                            cur.execute(
+                                "SELECT id::text FROM mem_work_items "
+                                "WHERE project_id=%s AND wi_id=%s",
+                                (pid, existing),
+                            )
+                            if cur.fetchone():
+                                continue  # already approved, skip
+                        parent_id = uc_map.get(item.get("suggested_parent_name") or "")
+                        child_id = _insert_wi(cur, item, pid, parent_id=parent_id)
+                        if child_id:
+                            item["id"] = child_id
+                            saved.append(item)
+
                 conn.commit()
         except Exception as e:
             log.warning(f"_save_classifications error: {e}")
@@ -785,7 +893,8 @@ class MemoryWorkItems:
                              COUNT(*) FILTER (WHERE wi_type='feature') AS features,
                              COUNT(*) FILTER (WHERE wi_type='task') AS tasks,
                              COUNT(*) FILTER (WHERE wi_type='policy') AS policies,
-                             COUNT(*) FILTER (WHERE wi_type='use_case') AS use_cases
+                             COUNT(*) FILTER (WHERE wi_type='use_case') AS use_cases,
+                             COUNT(*) FILTER (WHERE wi_type='requirement') AS requirements
                            FROM mem_work_items
                            WHERE project_id=%s""",
                         (pid,),
@@ -809,7 +918,8 @@ class MemoryWorkItems:
                 with conn.cursor() as cur:
                     # Load the item
                     cur.execute(
-                        """SELECT wi_type, name, summary, mrr_ids, wi_parent_id::text
+                        """SELECT wi_type, name, summary, mrr_ids, wi_parent_id::text,
+                                  deliveries, delivery_type
                            FROM mem_work_items
                            WHERE id=%s::uuid AND project_id=%s AND wi_id IS NULL""",
                         (item_id, pid),
@@ -817,7 +927,7 @@ class MemoryWorkItems:
                     row = cur.fetchone()
                     if not row:
                         return {"error": "item not found or already processed"}
-                    wi_type, name, summary, mrr_ids, parent_id = row
+                    wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type = row
 
                     # Generate ID
                     new_wi_id = _generate_wi_id(cur, pid, wi_type)
@@ -873,6 +983,19 @@ class MemoryWorkItems:
                 description=summary or "",
                 parent_id=parent_id,
             )
+
+            # Compute embedding
+            _embed_work_item(item_id, {
+                "name": name, "wi_type": wi_type, "summary": summary or "",
+                "deliveries": deliveries or "", "delivery_type": delivery_type or "",
+            })
+
+            # For use_cases: write/refresh the MD file
+            if wi_type == "use_case":
+                try:
+                    self.refresh_md(item_id, pid)
+                except Exception as md_err:
+                    log.debug(f"approve: refresh_md skipped: {md_err}")
 
             return {"wi_id": new_wi_id, "item_id": item_id, "wi_type": wi_type, "name": name}
         except Exception as e:
@@ -1038,6 +1161,264 @@ class MemoryWorkItems:
             else:
                 approved.append(result)
         return {"approved": len(approved), "errors": errors}
+
+    # ── MD file methods ───────────────────────────────────────────────────────
+
+    def _status_label(self, score_status: int) -> str:
+        if not score_status or score_status == 0:
+            return "requirement"
+        if score_status >= 5:
+            return "done"
+        return "in_progress"
+
+    def get_md(self, item_id: str, pid: int) -> str:
+        """Render a use_case work item as Markdown string."""
+        if not db.is_available():
+            return ""
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    # Fetch use_case
+                    cur.execute(
+                        """SELECT wi_id, name, summary, score_status, updated_at
+                           FROM mem_work_items
+                           WHERE id=%s::uuid AND project_id=%s""",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return ""
+                    wi_id, name, summary, score_status, updated_at = row
+                    updated_str = (updated_at.strftime("%Y-%m-%d") if updated_at else "")
+
+                    # Fetch approved children
+                    cur.execute(
+                        """SELECT id::text, wi_id, wi_type, name, summary,
+                                  deliveries, delivery_type, score_status, mrr_ids
+                           FROM mem_work_items
+                           WHERE wi_parent_id=%s::uuid AND project_id=%s
+                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                           ORDER BY created_at ASC""",
+                        (item_id, pid),
+                    )
+                    cols = [d[0] for d in cur.description]
+                    approved_children = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                    # Fetch pending children
+                    cur.execute(
+                        """SELECT wi_type, name FROM mem_work_items
+                           WHERE wi_parent_id=%s::uuid AND project_id=%s
+                             AND wi_id IS NULL
+                           ORDER BY created_at ASC""",
+                        (item_id, pid),
+                    )
+                    pending_children = cur.fetchall()
+
+            cats = self._prompts_cfg().get("categories", {})
+            lines = [
+                f"# {name} · {wi_id or 'pending'}",
+                "",
+                f"<!-- wi_id:{wi_id or ''} updated:{updated_str} -->",
+                "",
+                "## Summary",
+                summary or "",
+                "",
+                "## Items",
+                "",
+            ]
+            for ch in approved_children:
+                cat = cats.get(ch["wi_type"], {})
+                icon = cat.get("icon", "•")
+                st = self._status_label(ch["score_status"] or 0)
+                mrr = ch["mrr_ids"] or {}
+                mrr_ids_flat = ", ".join(
+                    str(v) for vals in mrr.values() for v in (vals or [])
+                )
+                lines += [
+                    f"<!-- item:{ch['wi_id']} -->",
+                    f"### {icon} {ch['wi_id']} · {ch['name']} [{st}]",
+                    "",
+                    ch["summary"] or "",
+                    "",
+                    f"**Deliveries**: {ch['deliveries'] or ''} ({ch['delivery_type'] or ''})",
+                    "",
+                    f"Events: {mrr_ids_flat}",
+                    f"<!-- /item:{ch['wi_id']} -->",
+                    "",
+                ]
+
+            if pending_children:
+                lines += ["## Pending Items", "<!-- Awaiting approval — do not edit -->"]
+                for pc in pending_children:
+                    cat = cats.get(pc[0], {})
+                    icon = cat.get("icon", "•")
+                    lines.append(f"- {icon} pending · {pc[1]}")
+                lines.append("")
+
+            return "\n".join(lines)
+        except Exception as e:
+            log.warning(f"get_md({item_id}) error: {e}")
+            return ""
+
+    def save_md(self, item_id: str, pid: int, content: str) -> dict:
+        """Parse MD content and persist changes to DB + file."""
+        if not db.is_available():
+            return {"error": "db not available"}
+        updated = 0
+        embedded = 0
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    # Extract ## Summary block
+                    summary_match = re.search(
+                        r'## Summary\s*\n(.*?)(?=\n## |\Z)', content, re.DOTALL
+                    )
+                    if summary_match:
+                        new_summary = summary_match.group(1).strip()
+                        cur.execute(
+                            "UPDATE mem_work_items SET summary=%s, updated_at=NOW() "
+                            "WHERE id=%s::uuid AND project_id=%s",
+                            (new_summary, item_id, pid),
+                        )
+                        if cur.rowcount:
+                            updated += 1
+
+                    # Extract each <!-- item:X --> ... <!-- /item:X --> block
+                    for m in re.finditer(
+                        r'<!-- item:(\S+) -->(.*?)<!-- /item:\1 -->', content, re.DOTALL
+                    ):
+                        child_wi_id = m.group(1)
+                        block = m.group(2)
+
+                        # Summary: text between ### header line and **Deliveries**:
+                        sum_m = re.search(
+                            r'###[^\n]+\n\s*\n(.*?)(?=\*\*Deliveries\*\*:)', block, re.DOTALL
+                        )
+                        child_summary = sum_m.group(1).strip() if sum_m else ""
+
+                        # Deliveries line
+                        del_m = re.search(r'\*\*Deliveries\*\*:\s*(.+?)(?:\s*\(([^)]*)\))?$',
+                                          block, re.MULTILINE)
+                        child_deliveries = del_m.group(1).strip() if del_m else ""
+                        child_delivery_type = del_m.group(2).strip() if (del_m and del_m.group(2)) else ""
+
+                        cur.execute(
+                            """UPDATE mem_work_items
+                               SET summary=%s, deliveries=%s, delivery_type=%s, updated_at=NOW()
+                               WHERE wi_id=%s AND project_id=%s""",
+                            (child_summary, child_deliveries, child_delivery_type,
+                             child_wi_id, pid),
+                        )
+                        if cur.rowcount:
+                            updated += 1
+                            # Get id for embedding
+                            cur.execute(
+                                "SELECT id::text, wi_type FROM mem_work_items "
+                                "WHERE wi_id=%s AND project_id=%s",
+                                (child_wi_id, pid),
+                            )
+                            ch_row = cur.fetchone()
+                            if ch_row:
+                                _embed_work_item(ch_row[0], {
+                                    "name": child_wi_id,
+                                    "wi_type": ch_row[1],
+                                    "summary": child_summary,
+                                    "deliveries": child_deliveries,
+                                    "delivery_type": child_delivery_type,
+                                })
+                                embedded += 1
+
+                conn.commit()
+
+            # Re-embed use_case itself (summary may have changed)
+            cur_uc = None
+            try:
+                with db.conn() as conn2:
+                    with conn2.cursor() as cur2:
+                        cur2.execute(
+                            "SELECT name, wi_type, summary FROM mem_work_items "
+                            "WHERE id=%s::uuid AND project_id=%s",
+                            (item_id, pid),
+                        )
+                        uc_row = cur2.fetchone()
+                if uc_row:
+                    _embed_work_item(item_id, {
+                        "name": uc_row[0], "wi_type": uc_row[1], "summary": uc_row[2] or ""
+                    })
+                    embedded += 1
+            except Exception:
+                pass
+
+            # Write file
+            self._write_md_file(item_id, pid, content)
+
+            return {"updated": updated, "embedded": embedded}
+        except Exception as e:
+            log.warning(f"save_md({item_id}) error: {e}")
+            return {"error": str(e)}
+
+    def refresh_md(self, item_id: str, pid: int) -> str:
+        """Regenerate MD from DB and write to file. Returns content."""
+        content = self.get_md(item_id, pid)
+        if content:
+            self._write_md_file(item_id, pid, content)
+        return content
+
+    def _write_md_file(self, item_id: str, pid: int, content: str) -> None:
+        """Write MD content to documents/use_cases/{slug}.md."""
+        try:
+            code_dir = _get_code_dir(self.project)
+            if not code_dir:
+                return
+            # Get use_case name to derive slug
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+            if not row:
+                return
+            slug = _use_case_slug(row[0])
+            uc_dir = code_dir / "documents" / "use_cases"
+            uc_dir.mkdir(parents=True, exist_ok=True)
+            (uc_dir / f"{slug}.md").write_text(content, encoding="utf-8")
+        except Exception as e:
+            log.debug(f"_write_md_file({item_id}) error: {e}")
+
+    # ── Direct create ─────────────────────────────────────────────────────────
+
+    def create_item(self, pid: int, fields: dict) -> dict:
+        """Insert a work item directly (wi_id=NULL). Returns the row as dict."""
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            wi_type = fields.get("wi_type", "task")
+            if wi_type not in _TYPE_SEQ:
+                wi_type = "task"
+            parent_id = fields.get("wi_parent_id") or None
+            if parent_id and not _UUID_RE.match(str(parent_id)):
+                parent_id = None
+
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    item_id = _insert_wi(cur, {
+                        "wi_type":         wi_type,
+                        "item_level":      3 if wi_type == "use_case" else 2,
+                        "name":            (fields.get("name") or "")[:200],
+                        "summary":         fields.get("summary") or "",
+                        "deliveries":      fields.get("deliveries") or "",
+                        "delivery_type":   fields.get("delivery_type") or "",
+                        "score_importance": int(fields.get("score_importance", 2)),
+                        "score_status":    int(fields.get("score_status", 0)),
+                        "mrr_ids":         {},
+                    }, pid, parent_id)
+                conn.commit()
+            return {"id": item_id, "wi_type": wi_type, "name": fields.get("name", "")}
+        except Exception as e:
+            log.warning(f"create_item error: {e}")
+            return {"error": str(e)}
 
     def reset_pending(self, pid: int) -> dict:
         """Reset all pending mir rows by setting wi_id=NULL on non-SKIP, non-approved rows."""

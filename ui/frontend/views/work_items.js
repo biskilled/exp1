@@ -26,12 +26,20 @@ let _filter    = '';    // wi_type filter
 // ── Type config ──────────────────────────────────────────────────────────────
 
 const _TYPE = {
-  use_case: { icon: '◻',  label: 'Use Case',  color: '#06b6d4', cls: 'wi-type-uc'   },
-  feature:  { icon: '⚡', label: 'Feature',   color: '#22c55e', cls: 'wi-type-feat' },
-  bug:      { icon: '🐛', label: 'Bug',       color: '#ef4444', cls: 'wi-type-bug'  },
-  task:     { icon: '✓',  label: 'Task',      color: '#3b82f6', cls: 'wi-type-task' },
-  policy:   { icon: '⚑', label: 'Policy',    color: '#8b5cf6', cls: 'wi-type-pol'  },
+  use_case:    { icon: '◻',  label: 'Use Case',    color: '#06b6d4', cls: 'wi-type-uc'  },
+  feature:     { icon: '⚡', label: 'Feature',     color: '#22c55e', cls: 'wi-type-feat' },
+  bug:         { icon: '🐛', label: 'Bug',         color: '#ef4444', cls: 'wi-type-bug'  },
+  task:        { icon: '✓',  label: 'Task',        color: '#3b82f6', cls: 'wi-type-task' },
+  policy:      { icon: '⚑', label: 'Policy',      color: '#8b5cf6', cls: 'wi-type-pol'  },
+  requirement: { icon: '◎',  label: 'Requirement', color: '#f59e0b', cls: 'wi-type-req'  },
 };
+
+function _itemStatus(item) {
+  const s = item.score_status || 0;
+  if (s === 0) return { label: 'requirement', cls: 'wi-s-req'  };
+  if (s >= 5)  return { label: 'done',        cls: 'wi-s-done' };
+  return              { label: 'in_progress', cls: 'wi-s-wip'  };
+}
 
 function _typeMeta(t) {
   return _TYPE[t] || { icon: '?', label: t, color: '#6b7280', cls: '' };
@@ -105,6 +113,39 @@ export async function renderWorkItems(container, projectName) {
       .wi-type-bug  { background:#fee2e2;color:#dc2626 }
       .wi-type-task { background:#dbeafe;color:#1d4ed8 }
       .wi-type-pol  { background:#ede9fe;color:#7c3aed }
+      .wi-type-req  { background:#fef3c7;color:#b45309 }
+
+      .wi-status-badge {
+        font-size:0.62rem;font-weight:700;padding:1px 6px;border-radius:6px;white-space:nowrap;
+      }
+      .wi-s-req  { background:#fef3c7;color:#b45309 }
+      .wi-s-wip  { background:#dbeafe;color:#1d4ed8 }
+      .wi-s-done { background:#dcfce7;color:#16a34a }
+
+      .wi-md-panel {
+        position:fixed;top:0;right:0;width:520px;height:100vh;z-index:900;
+        background:var(--surface);border-left:1px solid var(--border);
+        display:flex;flex-direction:column;box-shadow:-4px 0 24px rgba(0,0,0,.25);
+      }
+      .wi-md-panel-header {
+        padding:0.65rem 1rem;border-bottom:1px solid var(--border);
+        display:flex;align-items:center;gap:0.5rem;flex-shrink:0;background:var(--surface2);
+      }
+      .wi-md-textarea {
+        flex:1;resize:none;border:none;outline:none;padding:1rem;
+        background:var(--surface);color:var(--text);font-family:monospace;
+        font-size:0.8rem;line-height:1.6;
+      }
+      .wi-add-form {
+        padding:0.65rem 0.9rem;border-top:1px solid var(--border);
+        background:var(--surface2);display:none;flex-direction:column;gap:0.4rem;
+      }
+      .wi-add-form.visible { display:flex }
+      .wi-add-form input, .wi-add-form select, .wi-add-form textarea {
+        background:var(--surface);border:1px solid var(--border);border-radius:4px;
+        padding:4px 8px;color:var(--text);font-size:0.8rem;
+      }
+      .wi-add-form textarea { resize:vertical;min-height:50px }
 
       .wi-name { font-size:0.88rem;font-weight:700;color:var(--text);flex:1;min-width:120px }
       .wi-id   { font-size:0.65rem;color:var(--muted);background:var(--surface3);
@@ -268,6 +309,35 @@ function _setupEvents(container) {
       return;
     }
 
+    // Edit MD
+    const mdBtn = e.target.closest('[data-action="edit-md"]');
+    if (mdBtn) {
+      e.stopPropagation();
+      const id   = mdBtn.dataset.id;
+      const name = mdBtn.dataset.name;
+      const item = _allItems.find(i => i.id === id);
+      if (item) _openMdPanel(item);
+      return;
+    }
+
+    // Add item to use_case
+    const addBtn = e.target.closest('[data-action="add-item"]');
+    if (addBtn) {
+      e.stopPropagation();
+      const ucId = addBtn.dataset.ucId;
+      _toggleAddForm(ucId);
+      return;
+    }
+
+    // Submit add-item form
+    const submitAdd = e.target.closest('[data-action="submit-add"]');
+    if (submitAdd) {
+      e.stopPropagation();
+      const ucId = submitAdd.dataset.ucId;
+      await _submitAddForm(ucId);
+      return;
+    }
+
     // Expand/collapse card body
     const header = e.target.closest('.wi-card-header');
     if (header) {
@@ -279,6 +349,95 @@ function _setupEvents(container) {
       }
     }
   });
+}
+
+// ── MD editor panel ────────────────────────────────────────────────────────
+
+let _mdPanel = null;
+
+function _openMdPanel(item) {
+  // Close existing
+  if (_mdPanel) _mdPanel.remove();
+
+  const meta = _typeMeta(item.wi_type);
+  const panel = document.createElement('div');
+  panel.className = 'wi-md-panel';
+  panel.innerHTML = `
+    <div class="wi-md-panel-header">
+      <span>${meta.icon} ${_esc(item.name)}</span>
+      ${item.wi_id ? `<span class="wi-id">${_esc(item.wi_id)}</span>` : ''}
+      <span style="flex:1"></span>
+      <button class="wi-btn wi-btn-ghost" id="wi-md-refresh" style="margin-right:0.25rem">↻ Refresh</button>
+      <button class="wi-btn wi-btn-approve" id="wi-md-save" style="margin-right:0.25rem">Save</button>
+      <button class="wi-btn wi-btn-ghost" id="wi-md-close">✕</button>
+    </div>
+    <textarea class="wi-md-textarea" id="wi-md-content" placeholder="Loading…"></textarea>
+  `;
+  document.body.appendChild(panel);
+  _mdPanel = panel;
+
+  const textarea = panel.querySelector('#wi-md-content');
+
+  // Load content
+  api.wi.md.get(_project, item.id).then(r => {
+    textarea.value = r.content || '';
+  }).catch(err => {
+    textarea.value = `Error: ${err.message}`;
+  });
+
+  panel.querySelector('#wi-md-close').addEventListener('click', () => {
+    panel.remove(); _mdPanel = null;
+  });
+
+  panel.querySelector('#wi-md-refresh').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const r = await api.wi.md.refresh(_project, item.id);
+      textarea.value = r.content || '';
+      toast('Refreshed from DB', 'info');
+    } catch (err) { toast(`Refresh failed: ${err.message}`, 'error'); }
+    finally { e.currentTarget.disabled = false; }
+  });
+
+  panel.querySelector('#wi-md-save').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const r = await api.wi.md.save(_project, item.id, textarea.value);
+      toast(`Saved (${r.updated || 0} updated, ${r.embedded || 0} embedded)`, 'success');
+    } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
+    finally { e.currentTarget.disabled = false; }
+  });
+}
+
+// ── Add-item form ──────────────────────────────────────────────────────────
+
+function _toggleAddForm(ucId) {
+  const form = document.getElementById(`wi-add-form-${ucId}`);
+  if (!form) return;
+  form.classList.toggle('visible');
+}
+
+async function _submitAddForm(ucId) {
+  const nameEl    = document.getElementById(`wi-add-name-${ucId}`);
+  const typeEl    = document.getElementById(`wi-add-type-${ucId}`);
+  const summaryEl = document.getElementById(`wi-add-summary-${ucId}`);
+  if (!nameEl || !typeEl) return;
+
+  const name    = nameEl.value.trim();
+  const wi_type = typeEl.value;
+  const summary = summaryEl?.value.trim() || '';
+  if (!name) { toast('Name is required', 'error'); return; }
+
+  const btn = document.querySelector(`[data-action="submit-add"][data-uc-id="${ucId}"]`);
+  if (btn) btn.disabled = true;
+  try {
+    await api.wi.create(_project, { name, wi_type, summary, wi_parent_id: ucId });
+    toast(`Added: ${name}`, 'success');
+    await _loadAll();
+  } catch (err) {
+    toast(`Add failed: ${err.message}`, 'error');
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Data load ─────────────────────────────────────────────────────────────────
@@ -316,13 +475,14 @@ function _renderStats() {
   if (!el) return;
   const s = _stats;
   const pills = [
-    { label: 'Pending',  val: s.pending  || 0, color: '#f59e0b' },
-    { label: 'Approved', val: s.approved || 0, color: '#22c55e' },
-    { label: 'Rejected', val: s.rejected || 0, color: '#6b7280' },
-    { label: 'Bugs',     val: s.bugs     || 0, color: '#ef4444' },
-    { label: 'Features', val: s.features || 0, color: '#22c55e' },
-    { label: 'Tasks',    val: s.tasks    || 0, color: '#3b82f6' },
-    { label: 'Policies', val: s.policies || 0, color: '#8b5cf6' },
+    { label: 'Pending',      val: s.pending      || 0, color: '#f59e0b' },
+    { label: 'Approved',     val: s.approved     || 0, color: '#22c55e' },
+    { label: 'Rejected',     val: s.rejected     || 0, color: '#6b7280' },
+    { label: 'Bugs',         val: s.bugs         || 0, color: '#ef4444' },
+    { label: 'Features',     val: s.features     || 0, color: '#22c55e' },
+    { label: 'Tasks',        val: s.tasks        || 0, color: '#3b82f6' },
+    { label: 'Policies',     val: s.policies     || 0, color: '#8b5cf6' },
+    { label: 'Requirements', val: s.requirements || 0, color: '#f59e0b' },
   ];
   el.innerHTML = pills.map(p => `
     <div class="wi-stats-pill">
@@ -338,7 +498,7 @@ function _renderStats() {
 function _renderFilterChips() {
   const el = document.getElementById('wi-filter-chips');
   if (!el) return;
-  const types = ['bug', 'feature', 'task', 'policy', 'use_case'];
+  const types = ['bug', 'feature', 'task', 'policy', 'requirement', 'use_case'];
   el.innerHTML = types.map(t => {
     const m = _typeMeta(t);
     return `<button class="wi-filter-chip${_filter === t ? ' active' : ''}" data-type="${t}"
@@ -387,7 +547,9 @@ function _renderList() {
           ${!uc.wi_id ? `
             <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${uc.id}" title="Approve use case">✓</button>
             <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${uc.id}" title="Reject">✗</button>
-          ` : ''}
+          ` : `
+            <button class="wi-btn wi-btn-ghost" data-action="edit-md" data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Edit MD file">✎ MD</button>
+          `}
           ${pendingChildren.length > 0 ? `
             <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}" title="Approve all children">✓ All (${pendingChildren.length})</button>
           ` : ''}
@@ -397,6 +559,26 @@ function _renderList() {
             <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem">No child items</div>
           `}
         </div>
+        <!-- Add Item form -->
+        <div class="wi-add-form" id="wi-add-form-${uc.id}">
+          <div style="display:flex;gap:0.5rem;align-items:center">
+            <input  id="wi-add-name-${uc.id}"    placeholder="Item name" style="flex:1">
+            <select id="wi-add-type-${uc.id}">
+              <option value="feature">⚡ Feature</option>
+              <option value="bug">🐛 Bug</option>
+              <option value="task">✓ Task</option>
+              <option value="policy">⚑ Policy</option>
+              <option value="requirement" selected>◎ Requirement</option>
+            </select>
+          </div>
+          <textarea id="wi-add-summary-${uc.id}" placeholder="Summary (optional)"></textarea>
+          <div style="display:flex;gap:0.5rem">
+            <button class="wi-btn wi-btn-approve" data-action="submit-add" data-uc-id="${uc.id}">Add</button>
+            <button class="wi-btn wi-btn-ghost" onclick="document.getElementById('wi-add-form-${uc.id}').classList.remove('visible')">Cancel</button>
+          </div>
+        </div>
+        <button class="wi-btn wi-btn-ghost" style="margin:0.4rem 0.9rem;font-size:0.72rem"
+                data-action="add-item" data-uc-id="${uc.id}">+ Add Item</button>
       </div>
     `;
   }
@@ -420,11 +602,13 @@ function _renderItemCard(item) {
     mrr.items?.length    ? `I:${mrr.items.length}`      : null,
   ].filter(Boolean);
 
+  const st = _itemStatus(item);
   return `
     <div class="wi-card">
       <div class="wi-card-header" title="Click to expand">
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
         <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
+        <span class="wi-status-badge ${st.cls}">${st.label}</span>
         ${item.wi_id
           ? `<span class="wi-id">${_esc(item.wi_id)}</span>`
           : `<span class="wi-pending">pending</span>`

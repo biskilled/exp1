@@ -2769,6 +2769,23 @@ def m064_add_policy_category(conn) -> None:
     log.info("m064: policy tag category seeded")
 
 
+def m065_add_requirement_type(conn) -> None:
+    """Add requirement wi_type: seed WI_RE seq counter + tag category."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO pr_seq_counters (project_id, category, next_val)
+               SELECT id, 'WI_RE', 6001 FROM mng_projects ON CONFLICT DO NOTHING"""
+        )
+        cur.execute(
+            """INSERT INTO mng_tags_categories (client_id, name, color, icon, description)
+               VALUES (1, 'requirement', '#f59e0b', '◎',
+                       'Spec/user story not yet delivered (RE 6000+)')
+               ON CONFLICT (client_id, name) DO NOTHING"""
+        )
+    conn.commit()
+    log.info("m065: WI_RE seq counter seeded (6001) + requirement tag category added")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2881,4 +2898,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m062_rename_backlog_ref_to_wi_id", m062_rename_backlog_ref_to_wi_id),
     ("m063_create_mem_work_items", m063_create_mem_work_items),
     ("m064_add_policy_category", m064_add_policy_category),
+    ("m065_add_requirement_type", m065_add_requirement_type),
 ]

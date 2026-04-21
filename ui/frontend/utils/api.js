@@ -515,6 +515,12 @@ api.wi = {
   remove:     (p, id)       => _del(`/memory/${enc(p)}/wi/${enc(id)}`),
   moveEvent:  (p, id, b)    => _post(`/memory/${enc(p)}/wi/${enc(id)}/move`, b),
   reset:      (p)           => _post(`/memory/${enc(p)}/wi/reset`, {}),
+  create:     (p, b)        => _post(`/memory/${enc(p)}/wi`, b),
+  md: {
+    get:     (p, id)      => _get(`/memory/${enc(p)}/wi/${enc(id)}/md`),
+    save:    (p, id, txt) => _post(`/memory/${enc(p)}/wi/${enc(id)}/md`, { content: txt }),
+    refresh: (p, id)      => _post(`/memory/${enc(p)}/wi/${enc(id)}/md/refresh`, {}),
+  },
 };
 
 // ── Pipeline API ──────────────────────────────────────────────────────────────
