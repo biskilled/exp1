@@ -375,9 +375,3 @@ class MemoryMirroring:
                     cur.execute(sql, (k, row_id))
         except Exception as e:
             log.debug(f"MemoryMirroring.remove_tag error: {e}")
-
-    # ── Backward compat alias ──────────────────────────────────────────────────
-
-    def set_ai_tag_status(self, source_type: str, row_id: str, status: str) -> None:
-        """Deprecated: use append_tag/remove_tag. No-op — ai_tags column removed."""
-        pass

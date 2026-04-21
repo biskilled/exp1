@@ -44,14 +44,6 @@ _SQL_FACTS = """
     ORDER BY category NULLS LAST, fact_key
 """
 
-_SQL_BLOCKERS = """
-    SELECT NULL, NULL, NULL, NULL WHERE FALSE
-"""
-
-_SQL_ALL_RELATIONS = """
-    SELECT NULL, NULL, NULL, NULL WHERE FALSE
-"""
-
 _SQL_FEATURE_SNAPSHOTS = """
     SELECT t.id, t.name, t.action_items
     FROM planner_tags t
@@ -76,10 +68,6 @@ _SQL_FEATURE_SNAPSHOT_BY_TAG = """
     SELECT t.id, t.name, t.requirements, t.action_items
     FROM planner_tags t
     WHERE t.id = %s AND t.project_id = %s
-"""
-
-_SQL_FEATURE_RELATIONS = """
-    SELECT NULL, NULL, NULL, NULL WHERE FALSE
 """
 
 
@@ -115,8 +103,6 @@ class MemoryFiles:
             "project":          project,
             "facts_by_cat":     {},      # category → [(key, value)]
             "active_tags":      [],      # list of dicts from planner_tags (status open/active)
-            "blockers":         [],      # (from_name, relation, to_name, note)
-            "all_relations":    [],
             "features":         {},      # tag_name → snapshot dict
             "blocked_tags":     [],      # (name, description) — status='active' tags
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -143,20 +129,6 @@ class MemoryFiles:
                             "priority":    t_priority,
                             "due_date":    t_due.isoformat() if t_due else None,
                         })
-
-                    # Blockers and dependencies
-                    cur.execute(_SQL_BLOCKERS, (project_id,))
-                    ctx["blockers"] = [
-                        {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
-                        for r in cur.fetchall()
-                    ]
-
-                    # All relations
-                    cur.execute(_SQL_ALL_RELATIONS, (project_id,))
-                    ctx["all_relations"] = [
-                        {"from": r[0], "relation": r[1], "to": r[2], "note": r[3] or ""}
-                        for r in cur.fetchall()
-                    ]
 
                     # Feature snapshots (inline on planner_tags)
                     cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
@@ -213,22 +185,6 @@ class MemoryFiles:
                 due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
                 desc = f" — {tag['description']}" if tag.get("description") else ""
                 lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
-            lines.append("")
-
-        # Current Blockers
-        blockers = [r for r in ctx["blockers"] if r["relation"] == "blocks"]
-        deps     = [r for r in ctx["blockers"] if r["relation"] == "depends_on"]
-        if blockers:
-            lines += ["## Current Blockers", ""]
-            for r in blockers:
-                note = f" _{r['note']}_" if r["note"] else ""
-                lines.append(f"- `{r['from']}` blocks `{r['to']}`{note}")
-            lines.append("")
-        if deps:
-            lines += ["## Dependencies", ""]
-            for r in deps:
-                note = f" _{r['note']}_" if r["note"] else ""
-                lines.append(f"- `{r['from']}` depends on `{r['to']}`{note}")
             lines.append("")
 
         # Conventions
@@ -428,15 +384,6 @@ class MemoryFiles:
                 lines.append(f"- `{tag['name']}` [{tag['status']}]: {tag['description'][:120]}{due}")
             lines.append("")
 
-        # Blockers
-        blockers = [r for r in ctx["blockers"] if r["relation"] == "blocks"]
-        if blockers:
-            lines += ["## Current Blockers", ""]
-            for r in blockers:
-                note = f" ({r['note']})" if r["note"] else ""
-                lines.append(f"- `{r['from']}` blocks `{r['to']}`{note}")
-            lines.append("")
-
         return "\n".join(lines)
 
     def render_gemini_context(self, ctx: dict) -> str:
@@ -478,14 +425,6 @@ class MemoryFiles:
                 lines += [f"### {tag_name}", ""]
                 if snap.get("action_items"):
                     lines += ["**Action Items:**", snap["action_items"], ""]
-
-        # All relationships
-        if ctx["all_relations"]:
-            lines += ["## Relationships", ""]
-            for r in ctx["all_relations"]:
-                note = f" ({r['note']})" if r["note"] else ""
-                lines.append(f"- `{r['from']}` → **{r['relation']}** → `{r['to']}`{note}")
-            lines.append("")
 
         return "\n".join(lines)
 

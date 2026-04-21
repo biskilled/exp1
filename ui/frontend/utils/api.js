@@ -504,22 +504,22 @@ api.documents = {
 // ── Work Items (mem_work_items) API ───────────────────────────────────────────
 
 api.wi = {
-  stats:      (p)           => _get(`/memory/${enc(p)}/wi/stats`),
-  pending:    (p)           => _get(`/memory/${enc(p)}/wi/pending`),
-  list:       (p, params)   => _get(`/memory/${enc(p)}/wi${params ? `?${params}` : ''}`),
-  classify:   (p, bg)       => _post(`/memory/${enc(p)}/wi/classify${bg ? '?background=true' : ''}`, {}),
-  approve:    (p, id)       => _post(`/memory/${enc(p)}/wi/${enc(id)}/approve`, {}),
-  reject:     (p, id)       => _post(`/memory/${enc(p)}/wi/${enc(id)}/reject`, {}),
-  approveAll: (p, parentId) => _post(`/memory/${enc(p)}/wi/approve-all`, { parent_id: parentId }),
-  update:     (p, id, b)    => _patch(`/memory/${enc(p)}/wi/${enc(id)}`, b),
-  remove:     (p, id)       => _del(`/memory/${enc(p)}/wi/${enc(id)}`),
-  moveEvent:  (p, id, b)    => _post(`/memory/${enc(p)}/wi/${enc(id)}/move`, b),
-  reset:      (p)           => _post(`/memory/${enc(p)}/wi/reset`, {}),
-  create:     (p, b)        => _post(`/memory/${enc(p)}/wi`, b),
+  stats:      (p)           => _get(`/wi/${enc(p)}/stats`),
+  pending:    (p)           => _get(`/wi/${enc(p)}/pending`),
+  list:       (p, params)   => _get(`/wi/${enc(p)}${params ? `?${params}` : ''}`),
+  classify:   (p, bg)       => _post(`/wi/${enc(p)}/classify${bg ? '?background=true' : ''}`, {}),
+  approve:    (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/approve`, {}),
+  reject:     (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/reject`, {}),
+  approveAll: (p, parentId) => _post(`/wi/${enc(p)}/approve-all`, { parent_id: parentId }),
+  update:     (p, id, b)    => _patch(`/wi/${enc(p)}/${enc(id)}`, b),
+  remove:     (p, id)       => _del(`/wi/${enc(p)}/${enc(id)}`),
+  moveEvent:  (p, id, b)    => _post(`/wi/${enc(p)}/${enc(id)}/move`, b),
+  reset:      (p)           => _post(`/wi/${enc(p)}/reset`, {}),
+  create:     (p, b)        => _post(`/wi/${enc(p)}`, b),
   md: {
-    get:     (p, id)      => _get(`/memory/${enc(p)}/wi/${enc(id)}/md`),
-    save:    (p, id, txt) => _post(`/memory/${enc(p)}/wi/${enc(id)}/md`, { content: txt }),
-    refresh: (p, id)      => _post(`/memory/${enc(p)}/wi/${enc(id)}/md/refresh`, {}),
+    get:     (p, id)      => _get(`/wi/${enc(p)}/${enc(id)}/md`),
+    save:    (p, id, txt) => _post(`/wi/${enc(p)}/${enc(id)}/md`, { content: txt }),
+    refresh: (p, id)      => _post(`/wi/${enc(p)}/${enc(id)}/md/refresh`, {}),
   },
 };
 

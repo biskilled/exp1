@@ -103,7 +103,7 @@ app.include_router(route_logs.router,           prefix="/logs",           tags=[
 app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
 app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
 app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
-app.include_router(work_items_router,           prefix="/memory",         tags=["work_items"])
+app.include_router(work_items_router,           prefix="/wi",             tags=["work_items"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

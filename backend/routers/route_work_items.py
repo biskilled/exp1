@@ -1,24 +1,24 @@
 """
 route_work_items.py — API endpoints for the DB-first work items pipeline.
 
-All endpoints are registered at the /memory prefix (set in main.py).
+All endpoints are registered at the /wi prefix (set in main.py).
 
 Endpoints:
-    POST  /memory/{project}/wi/classify         — classify pending mirror rows
-    GET   /memory/{project}/wi/pending          — pending items
-    GET   /memory/{project}/wi                  — all items (type?, level?, status?)
-    GET   /memory/{project}/wi/stats            — counts by status and type
-    POST  /memory/{project}/wi/{id}/approve     — approve → assign wi_id
-    POST  /memory/{project}/wi/{id}/reject      — reject → assign REJxxxxxx
-    PATCH /memory/{project}/wi/{id}             — update editable fields
-    DELETE /memory/{project}/wi/{id}            — delete pending item
-    POST  /memory/{project}/wi/{id}/move        — move mirror event to another item
-    POST  /memory/{project}/wi/approve-all      — approve all under parent
-    POST  /memory/{project}/wi/reset            — reset wi_id=NULL on pending rows
-
-Kept from old route_backlog.py:
-    POST  /memory/{project}/reset-commits       — (in route_memory.py)
-    POST  /memory/{project}/reset-billing       — (in route_memory.py)
+    POST  /wi/{project}/classify         — classify pending mirror rows
+    GET   /wi/{project}/pending          — pending items
+    GET   /wi/{project}                  — all items (type?, level?, status?)
+    GET   /wi/{project}/stats            — counts by status and type
+    POST  /wi/{project}/{id}/approve     — approve → assign wi_id
+    POST  /wi/{project}/{id}/reject      — reject → assign REJxxxxxx
+    PATCH /wi/{project}/{id}             — update editable fields
+    DELETE /wi/{project}/{id}            — delete pending item
+    POST  /wi/{project}/{id}/move        — move mirror event to another item
+    POST  /wi/{project}/approve-all      — approve all under parent
+    POST  /wi/{project}/reset            — reset wi_id=NULL on pending rows
+    POST  /wi/{project}                  — create item directly
+    GET   /wi/{project}/{id}/md          — get Markdown for use_case
+    POST  /wi/{project}/{id}/md          — save Markdown back to DB + file
+    POST  /wi/{project}/{id}/md/refresh  — regenerate Markdown from DB
 """
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ def _pid(project: str) -> int:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/{project}/wi/classify")
+@router.post("/{project}/classify")
 async def classify_work_items(
     project: str,
     background_tasks: BackgroundTasks,
@@ -119,7 +119,7 @@ async def classify_work_items(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{project}/wi/pending")
+@router.get("/{project}/pending")
 async def get_pending(project: str):
     """Return all work items pending approval (wi_id IS NULL)."""
     pid = _pid(project)
@@ -128,7 +128,7 @@ async def get_pending(project: str):
     return {"project": project, "items": items, "count": len(items)}
 
 
-@router.get("/{project}/wi/stats")
+@router.get("/{project}/stats")
 async def get_wi_stats(project: str):
     """Return counts by status and type."""
     pid = _pid(project)
@@ -136,7 +136,7 @@ async def get_wi_stats(project: str):
     return wi.get_stats(pid)
 
 
-@router.get("/{project}/wi")
+@router.get("/{project}")
 async def list_work_items(
     project: str,
     wi_type:    Optional[str] = Query(None),
@@ -149,7 +149,7 @@ async def list_work_items(
     return {"project": project, "items": items, "count": len(items)}
 
 
-@router.post("/{project}/wi/{item_id}/approve")
+@router.post("/{project}/{item_id}/approve")
 async def approve_work_item(project: str, item_id: str):
     """Approve a work item: assign wi_id (BU0001/FE0002/…), mark mirror rows."""
     pid    = _pid(project)
@@ -160,7 +160,7 @@ async def approve_work_item(project: str, item_id: str):
     return result
 
 
-@router.post("/{project}/wi/{item_id}/reject")
+@router.post("/{project}/{item_id}/reject")
 async def reject_work_item(project: str, item_id: str):
     """Reject a work item: assign REJxxxxxx wi_id, mark mirror rows."""
     pid    = _pid(project)
@@ -171,7 +171,7 @@ async def reject_work_item(project: str, item_id: str):
     return result
 
 
-@router.patch("/{project}/wi/{item_id}")
+@router.patch("/{project}/{item_id}")
 async def update_work_item(project: str, item_id: str, body: WiUpdateRequest):
     """Update editable fields on a work item."""
     pid    = _pid(project)
@@ -183,7 +183,7 @@ async def update_work_item(project: str, item_id: str, body: WiUpdateRequest):
     return result
 
 
-@router.delete("/{project}/wi/{item_id}")
+@router.delete("/{project}/{item_id}")
 async def delete_work_item(project: str, item_id: str):
     """Delete a pending work item."""
     pid    = _pid(project)
@@ -194,7 +194,7 @@ async def delete_work_item(project: str, item_id: str):
     return result
 
 
-@router.post("/{project}/wi/{item_id}/move")
+@router.post("/{project}/{item_id}/move")
 async def move_event_to_item(project: str, item_id: str, body: WiMoveRequest):
     """Move a mirror event from one work item to another."""
     pid    = _pid(project)
@@ -205,7 +205,7 @@ async def move_event_to_item(project: str, item_id: str, body: WiMoveRequest):
     return result
 
 
-@router.post("/{project}/wi/approve-all")
+@router.post("/{project}/approve-all")
 async def approve_all_under(project: str, body: WiApproveAllRequest):
     """Approve all pending items under a parent work item."""
     pid    = _pid(project)
@@ -214,7 +214,7 @@ async def approve_all_under(project: str, body: WiApproveAllRequest):
     return result
 
 
-@router.post("/{project}/wi/reset")
+@router.post("/{project}/reset")
 async def reset_wi_pending(project: str):
     """Reset wi_id=NULL on all non-SKIP, non-approved mirror rows.
 
@@ -229,7 +229,7 @@ async def reset_wi_pending(project: str):
     return result
 
 
-@router.post("/{project}/wi")
+@router.post("/{project}")
 async def create_wi(project: str, body: WiCreateRequest):
     """Create a work item directly (no LLM classification required)."""
     pid    = _pid(project)
@@ -240,7 +240,7 @@ async def create_wi(project: str, body: WiCreateRequest):
     return result
 
 
-@router.get("/{project}/wi/{item_id}/md")
+@router.get("/{project}/{item_id}/md")
 async def get_wi_md(project: str, item_id: str):
     """Return Markdown content for a use_case work item."""
     pid     = _pid(project)
@@ -249,7 +249,7 @@ async def get_wi_md(project: str, item_id: str):
     return {"content": content}
 
 
-@router.post("/{project}/wi/{item_id}/md")
+@router.post("/{project}/{item_id}/md")
 async def save_wi_md(project: str, item_id: str, body: WiMdSaveRequest):
     """Save edited Markdown back to DB and file."""
     pid    = _pid(project)
@@ -260,7 +260,7 @@ async def save_wi_md(project: str, item_id: str, body: WiMdSaveRequest):
     return result
 
 
-@router.post("/{project}/wi/{item_id}/md/refresh")
+@router.post("/{project}/{item_id}/md/refresh")
 async def refresh_wi_md(project: str, item_id: str):
     """Regenerate Markdown from DB and write to file."""
     pid     = _pid(project)
