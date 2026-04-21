@@ -52,7 +52,6 @@ _SQL_MERGE_TAGS = """
 """
 
 
-
 class MemoryTagging:
     """Manages planner_tags: create, list, merge."""
 
