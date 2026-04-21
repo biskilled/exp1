@@ -204,10 +204,10 @@ async def _embed_commit_background(project: str, commit_hash: str) -> None:
 
 
 async def _check_backlog_threshold(project: str, source_type: str) -> None:
-    """Trigger backlog digest if pending row count meets the configured threshold."""
+    """Trigger work-item classification if mode=threshold and pending count is met."""
     try:
-        from memory.memory_backlog import MemoryBacklog
-        await MemoryBacklog(project).check_and_trigger(source_type)
+        from memory.memory_work_items import MemoryWorkItems
+        await MemoryWorkItems(project).check_and_trigger(source_type)
     except Exception as e:
         log.debug(f"_check_backlog_threshold({source_type}) error: {e}")
 

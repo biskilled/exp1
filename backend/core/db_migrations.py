@@ -2637,6 +2637,138 @@ def m060_drop_feature_snapshot(conn) -> None:
     conn.commit()
 
 
+def m062_rename_backlog_ref_to_wi_id(conn) -> None:
+    """Rename backlog_ref → wi_id in all mem_mrr_* tables.
+
+    wi_id replaces backlog_ref as the link from mirror rows to mem_work_items.
+    All old P/C/M/I refs (pointing at the now-deleted backlog.md) are reset to
+    NULL so the new classification pipeline can pick them up fresh.
+    SKIP rows are preserved — they are system-generated rows that should never
+    be processed.
+    """
+    with conn.cursor() as cur:
+        for tbl in ("mem_mrr_prompts", "mem_mrr_commits", "mem_mrr_items", "mem_mrr_messages"):
+            cur.execute(f"ALTER TABLE {tbl} RENAME COLUMN backlog_ref TO wi_id")
+            # Reset old P/C/M/I refs — those pointed at the file-based backlog;
+            # the new DB pipeline will re-classify them.
+            cur.execute(
+                f"UPDATE {tbl} SET wi_id = NULL "
+                f"WHERE wi_id IS NOT NULL AND wi_id != 'SKIP'"
+            )
+            # Rename the partial index (backlog_ref IS NULL → wi_id IS NULL)
+            short = tbl.replace("mem_mrr_", "")[:8]
+            old_idx = f"idx_{short}_bref"
+            new_idx = f"idx_{short}_wi_pending"
+            cur.execute(f"DROP INDEX IF EXISTS {old_idx}")
+            cur.execute(
+                f"CREATE INDEX IF NOT EXISTS {new_idx} "
+                f"ON {tbl}(project_id) WHERE wi_id IS NULL"
+            )
+    conn.commit()
+    log.info(
+        "m062: backlog_ref → wi_id renamed in 4 mem_mrr_* tables; "
+        "non-SKIP refs reset to NULL for re-classification"
+    )
+
+
+def m063_create_mem_work_items(conn) -> None:
+    """Create mem_work_items table — the DB-first replacement for backlog.md.
+
+    Each row represents one classified work item (bug, feature, task, policy,
+    or use_case).  Mirror rows (mem_mrr_*) link back via wi_id once approved.
+
+    Levels:
+      1 = raw event cluster (auto-generated)
+      2 = bug / feature / task / policy
+      3 = use_case (groups multiple level-2 items)
+      4 = project (future)
+
+    wi_id NULL means pending classification.
+    wi_id 'BU0001' / 'FE0001' etc. means approved.
+    wi_id starting 'REJ' means rejected.
+
+    mrr_ids JSONB: {"prompts":["uuid1"],"commits":["hash1"],
+                    "messages":["uuid2"],"items":["uuid3"]}
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_work_items (
+                id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id        INT         REFERENCES mng_clients(id) ON DELETE CASCADE,
+                project_id       INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                tags             JSONB       NOT NULL DEFAULT '{}',
+                item_level       SMALLINT    NOT NULL DEFAULT 2,
+                wi_id            TEXT,
+                wi_type          TEXT,
+                score_importance SMALLINT    DEFAULT 0
+                                 CHECK (score_importance BETWEEN 0 AND 5),
+                score_status     SMALLINT    DEFAULT 0
+                                 CHECK (score_status BETWEEN 0 AND 5),
+                name             TEXT,
+                summary          TEXT,
+                deliveries       TEXT,
+                delivery_type    TEXT,
+                mrr_ids          JSONB       NOT NULL DEFAULT '{}',
+                wi_parent_id     UUID        REFERENCES mem_work_items(id) ON DELETE SET NULL,
+                approved_at      TIMESTAMPTZ,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                embedding        VECTOR(1536)
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wi_project ON mem_work_items(project_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_wi_parent  ON mem_work_items(wi_parent_id)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wi_type ON mem_work_items(project_id, wi_type)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wi_level ON mem_work_items(project_id, item_level)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_wi_pending "
+            "ON mem_work_items(project_id, wi_id) WHERE wi_id IS NULL"
+        )
+        # updated_at trigger
+        cur.execute("DROP TRIGGER IF EXISTS trg_updated_at_mem_work_items ON mem_work_items")
+        cur.execute("""
+            CREATE TRIGGER trg_updated_at_mem_work_items
+            BEFORE UPDATE ON mem_work_items
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at()
+        """)
+        # Seed WI_* sequence counters for all existing projects
+        for key, start in [
+            ("WI_US", 1000),
+            ("WI_FE", 2000),
+            ("WI_BU", 3000),
+            ("WI_TA", 4000),
+            ("WI_PO", 5000),
+        ]:
+            # Global key (project_id=NULL via category key)
+            cur.execute(
+                """INSERT INTO pr_seq_counters (project_id, category, next_val)
+                   SELECT id, %s, %s FROM mng_projects ON CONFLICT DO NOTHING""",
+                (key, start + 1),
+            )
+    conn.commit()
+    log.info("m063: mem_work_items table created; WI_US/FE/BU/TA/PO seq counters seeded")
+
+
+def m064_add_policy_category(conn) -> None:
+    """Seed the 'policy' tag category (if not already present).
+
+    policy: mandatory rules and standards (security, auth, naming conventions).
+    Sequence range PO 5000+ via WI_PO counter (seeded in m063).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO mng_tags_categories (client_id, name, color, icon, description)
+               VALUES (1, 'policy', '#8b5cf6', '⚑', 'Mandatory rule or standard (PO 5000+)')
+               ON CONFLICT (client_id, name) DO NOTHING"""
+        )
+    conn.commit()
+    log.info("m064: policy tag category seeded")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2746,4 +2878,7 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m059_drop_legacy_tables", m059_drop_legacy_tables),
     ("m060_drop_feature_snapshot", m060_drop_feature_snapshot),
     ("m061_rebuild_backlog_links", m061_rebuild_backlog_links),
+    ("m062_rename_backlog_ref_to_wi_id", m062_rename_backlog_ref_to_wi_id),
+    ("m063_create_mem_work_items", m063_create_mem_work_items),
+    ("m064_add_policy_category", m064_add_policy_category),
 ]

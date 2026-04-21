@@ -36,7 +36,7 @@ from routers import (
     route_user_api_keys, route_logs, route_agents, route_tags,
 )
 from routers import route_memory
-from routers.route_backlog import router as backlog_router
+from routers.route_work_items import router as work_items_router
 from pwa_router import router as pwa_router
 
 
@@ -103,7 +103,7 @@ app.include_router(route_logs.router,           prefix="/logs",           tags=[
 app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
 app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
 app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
-app.include_router(backlog_router,              prefix="/memory",         tags=["backlog"])
+app.include_router(work_items_router,           prefix="/memory",         tags=["work_items"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

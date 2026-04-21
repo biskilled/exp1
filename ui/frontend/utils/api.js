@@ -501,6 +501,22 @@ api.documents = {
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 };
 
+// ── Work Items (mem_work_items) API ───────────────────────────────────────────
+
+api.wi = {
+  stats:      (p)           => _get(`/memory/${enc(p)}/wi/stats`),
+  pending:    (p)           => _get(`/memory/${enc(p)}/wi/pending`),
+  list:       (p, params)   => _get(`/memory/${enc(p)}/wi${params ? `?${params}` : ''}`),
+  classify:   (p, bg)       => _post(`/memory/${enc(p)}/wi/classify${bg ? '?background=true' : ''}`, {}),
+  approve:    (p, id)       => _post(`/memory/${enc(p)}/wi/${enc(id)}/approve`, {}),
+  reject:     (p, id)       => _post(`/memory/${enc(p)}/wi/${enc(id)}/reject`, {}),
+  approveAll: (p, parentId) => _post(`/memory/${enc(p)}/wi/approve-all`, { parent_id: parentId }),
+  update:     (p, id, b)    => _patch(`/memory/${enc(p)}/wi/${enc(id)}`, b),
+  remove:     (p, id)       => _del(`/memory/${enc(p)}/wi/${enc(id)}`),
+  moveEvent:  (p, id, b)    => _post(`/memory/${enc(p)}/wi/${enc(id)}/move`, b),
+  reset:      (p)           => _post(`/memory/${enc(p)}/wi/reset`, {}),
+};
+
 // ── Pipeline API ──────────────────────────────────────────────────────────────
 
 api.backlog = {

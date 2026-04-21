@@ -15,7 +15,7 @@ import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
 import { renderPipeline, destroyPipeline } from './views/pipeline.js';
-import { renderBacklog, destroyBacklog } from './views/backlog.js';
+import { renderWorkItems as renderBacklog, destroyWorkItems as destroyBacklog } from './views/work_items.js';
 import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
@@ -76,7 +76,7 @@ const PROJECT_TABS = [
   { id: 'documents', icon: '📋', label: 'Documents' },
   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
   { id: 'pipeline',  icon: '◫',  label: 'Dashboard' },
-  { id: 'backlog',  icon: '📥', label: 'Backlog'  },
+  { id: 'backlog',  icon: '📥', label: 'Work Items' },
   { id: 'history',  icon: '⏱',  label: 'History'  },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];

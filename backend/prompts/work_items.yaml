@@ -1,0 +1,44 @@
+classification:
+  system: |
+    You are a senior software architect classifying development events into structured
+    work items. You are given context of existing approved work items and a batch of
+    new events (prompts, commits, messages, items). Classify each logical group into
+    one work item with accurate type, scores, and summaries.
+
+  event_prompt: |
+    # Existing Work Items (approved context)
+    {existing_context}
+
+    # Events to Classify
+    {events_block}
+
+    Return a JSON array. Each element is one work item:
+    [{{
+      "wi_type": "bug|feature|task|policy|use_case",
+      "item_level": 2,
+      "name": "<short title under 60 chars>",
+      "summary": "<requirement / policy / user story / use-case narrative>",
+      "deliveries": "<what was actually done, if any>",
+      "delivery_type": "backend|frontend|fullstack|documents|config|tests|",
+      "score_importance": 0,
+      "score_status": 0,
+      "mrr_ids": {{"prompts":[],"commits":[],"messages":[],"items":[]}},
+      "suggested_parent_name": "<use_case name or null>"
+    }}]
+    Rules:
+    - policy: must-have standards (security, auth, naming) → importance 5
+    - use_case: item_level=3, groups multiple related items
+    - score_status: 0=requirement only/not started, 5=fully delivered+merged
+    - score_importance: 5=critical, 1=trivial cosmetic
+    - commits linked to prompts: prompt→summary (requirements), commit+code→deliveries
+    - standalone commits (no linked prompt): deliveries only, summary empty
+    - messages/items: requirements/policies, deliveries only if explicitly mentioned
+    - delivery_type: leave empty string if nothing was delivered yet
+    - Return ONLY the JSON array, no markdown fences, no prose
+
+categories:
+  use_case: {color: "#06b6d4", icon: "◻", seq_prefix: "US", seq_key: "WI_US"}
+  feature:  {color: "#22c55e", icon: "⚡", seq_prefix: "FE", seq_key: "WI_FE"}
+  bug:      {color: "#ef4444", icon: "🐛", seq_prefix: "BU", seq_key: "WI_BU"}
+  task:     {color: "#3b82f6", icon: "✓",  seq_prefix: "TA", seq_key: "WI_TA"}
+  policy:   {color: "#8b5cf6", icon: "⚑", seq_prefix: "PO", seq_key: "WI_PO"}

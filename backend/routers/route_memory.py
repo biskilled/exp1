@@ -38,13 +38,13 @@ def _require_db():
 _SQL_STATS_COUNTS = """
     SELECT
       (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s) AS prompts_total,
-      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL) AS prompts_pending,
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NULL) AS prompts_pending,
       (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s) AS commits_total,
-      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL) AS commits_pending,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NULL) AS commits_pending,
       (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total,
       (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status IN ('open','active')) AS tags_active,
-      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NOT NULL) AS prompts_processed,
-      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NOT NULL) AS commits_processed
+      (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NOT NULL) AS prompts_processed,
+      (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NOT NULL) AS commits_processed
 """
 
 _SQL_GET_CACHED_STATS = """
@@ -354,14 +354,14 @@ async def get_pipeline_status(project: str):
 
                 # Pending commits (not yet processed into backlog)
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
+                    "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NULL",
                     (project_id,),
                 )
                 commits_not_embedded = cur.fetchone()[0] or 0
 
                 # Pending prompts (not yet processed into backlog)
                 cur.execute(
-                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
+                    "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NULL",
                     (project_id,),
                 )
                 work_items_unmatched = cur.fetchone()[0] or 0  # reuse field name for compat
@@ -478,7 +478,7 @@ async def get_data_dashboard(
                 # Commits: pending backlog processing
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NULL",
                         (project_id,),
                     )
                     mirror["commits"]["pending_backlog"] = cur.fetchone()[0] or 0
@@ -489,7 +489,7 @@ async def get_data_dashboard(
                 # Prompts: pending backlog processing
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NULL",
                         (project_id,),
                     )
                     mirror["prompts"]["pending_backlog"] = cur.fetchone()[0] or 0
@@ -525,8 +525,8 @@ async def get_data_dashboard(
                 try:
                     cur.execute(
                         """SELECT
-                             COUNT(*) FILTER (WHERE backlog_ref IS NULL) AS prompts_pending,
-                             COUNT(*) FILTER (WHERE backlog_ref IS NOT NULL) AS prompts_processed
+                             COUNT(*) FILTER (WHERE wi_id IS NULL) AS prompts_pending,
+                             COUNT(*) FILTER (WHERE wi_id IS NOT NULL) AS prompts_processed
                            FROM mem_mrr_prompts WHERE project_id = %s""",
                         (project_id,),
                     )
@@ -537,8 +537,8 @@ async def get_data_dashboard(
                     }
                     cur.execute(
                         """SELECT
-                             COUNT(*) FILTER (WHERE backlog_ref IS NULL) AS commits_pending,
-                             COUNT(*) FILTER (WHERE backlog_ref IS NOT NULL) AS commits_processed
+                             COUNT(*) FILTER (WHERE wi_id IS NULL) AS commits_pending,
+                             COUNT(*) FILTER (WHERE wi_id IS NOT NULL) AS commits_processed
                            FROM mem_mrr_commits WHERE project_id = %s""",
                         (project_id,),
                     )
@@ -582,7 +582,7 @@ async def get_data_dashboard(
                 # ── Pending ───────────────────────────────────────────────
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND backlog_ref IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NULL",
                         (project_id,),
                     )
                     pending["commits_pending_backlog"] = cur.fetchone()[0] or 0
@@ -592,7 +592,7 @@ async def get_data_dashboard(
 
                 try:
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND backlog_ref IS NULL",
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NULL",
                         (project_id,),
                     )
                     pending["prompts_pending_backlog"] = cur.fetchone()[0] or 0

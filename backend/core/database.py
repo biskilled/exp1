@@ -836,6 +836,7 @@ class _Database:
             ("design",       "#a855f7", "◈",  "Architecture or UX design"),
             ("decision",     "#f59e0b", "⚑",  "Architectural or product decision"),
             ("meeting",      "#6b7280", "◷",  "Meeting summary"),
+            ("policy",       "#8b5cf6", "⚑",  "Mandatory rule or standard (PO 5000+)"),
             ("ai_suggestion","#94a3b8", "✦",  "Auto-suggested by AI — reassign to proper category"),
         ]
         try:

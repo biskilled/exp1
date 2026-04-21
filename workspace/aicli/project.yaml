@@ -12,7 +12,11 @@ git_username: biskilled
 github_client_id: Ov23ligfv0f2DBdvRdim
 github_repo: https://github.com/biskilled/exp1.git
 name: aicli
-commit_code_extraction:
-  min_lines: 5              # per-symbol llm_summary threshold
-  min_diff_lines: 5         # skip all LLM calls for commits with fewer total changed lines
-  only_on_commits_with_tags: false
+work_items:
+  classification:
+    mode: manual          # manual | threshold
+    thresholds:
+      prompts: 2000       # tokens; auto-classify triggers above this
+      commits: 1000
+      messages: 5000
+      items: 500
