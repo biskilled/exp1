@@ -29,8 +29,8 @@ log = logging.getLogger(__name__)
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
             (project_id, commit_hash, session_id, commit_msg, diff_summary,
-             author, author_email, created_at, tags, user_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             author, author_email, created_at, tags, src, wi_id, user_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
@@ -42,6 +42,8 @@ _SQL_UPSERT_COMMIT = """
                 created_at   = COALESCE(EXCLUDED.created_at, mem_mrr_commits.created_at),
                 tags         = CASE WHEN EXCLUDED.tags != '{}' THEN EXCLUDED.tags
                                     ELSE mem_mrr_commits.tags END,
+                src          = COALESCE(EXCLUDED.src, mem_mrr_commits.src),
+                wi_id        = COALESCE(EXCLUDED.wi_id, mem_mrr_commits.wi_id),
                 user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id)
 """
 
@@ -261,6 +263,8 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
             pass
 
         from core.auth import ADMIN_USER_ID
+        # Auto-SKIP commits that only changed generated/memory files — no code content to classify
+        wi_id_val = "SKIP" if not diff_summary or not diff_summary.strip() else None
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -268,7 +272,7 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
                     (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
                      author, author_email,
                      committed_at or datetime.now(timezone.utc),  # git timestamp → created_at
-                     json.dumps(tags_dict), ADMIN_USER_ID),
+                     json.dumps(tags_dict), "git", wi_id_val, ADMIN_USER_ID),
                 )
                 if session_id:
                     commit_ts = committed_at or datetime.now(timezone.utc)

@@ -32,8 +32,8 @@ from memory.memory_sessions import SessionStore
 _SQL_INSERT_INTERACTION = """
     INSERT INTO mem_mrr_prompts
            (project_id, session_id, source_id,
-            prompt, response, tags, created_at, user_id)
-       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz, %s)
+            prompt, response, tags, src, created_at, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s::timestamptz, %s)
        ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
 """
 
@@ -140,17 +140,19 @@ def _append_history(
             prefix = "bug" if k == "bug_ref" else k
             tags_dict[prefix] = v
 
-    tags_dict["source"] = provider or "aicli"
+    # source goes into src column — not user tags
+    src_value = provider or "aicli"
     project_id = db.get_or_create_project_id(project)
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # mem_mrr_prompts — feeds memory distillation pipeline
+                from core.auth import _resolve_user_id as _ruid
                 cur.execute(
                     _SQL_INSERT_INTERACTION,
                     (project_id, session_id, ts,
                      (user_msg or "")[:4000], (response or "")[:8000],
-                     _json.dumps(tags_dict), ts),
+                     _json.dumps(tags_dict), src_value, ts, _ruid(user_id)),
                 )
     except Exception:
         pass  # never break chat because of logging
@@ -543,6 +545,43 @@ async def _check_backlog_threshold(project: str, source_type: str) -> None:
 
 
 
+@router.get("/{project}/hook-health")
+async def hook_health(project: str):
+    """Return last prompt timestamp and staleness for hook monitoring.
+
+    UI polls this to show a warning badge when no prompts have arrived
+    for >4 hours (indicates the UserPromptSubmit hook is broken/offline).
+    """
+    if not db.is_available():
+        return {"ok": False, "reason": "db_unavailable"}
+    try:
+        project_id = db.get_or_create_project_id(project)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(created_at) FROM mem_mrr_prompts "
+                    "WHERE project_id=%s AND src='claude_cli'",
+                    (project_id,),
+                )
+                last_at = cur.fetchone()[0]
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if last_at is None:
+            return {"ok": True, "last_prompt_at": None, "hours_since": None,
+                    "warning": "no_prompts_ever"}
+        if last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=timezone.utc)
+        hours = (now - last_at).total_seconds() / 3600
+        return {
+            "ok": True,
+            "last_prompt_at": last_at.isoformat(),
+            "hours_since": round(hours, 1),
+            "warning": "hook_stale" if hours > 4 else None,
+        }
+    except Exception as e:
+        return {"ok": False, "reason": str(e)}
+
+
 @router.post("/{project}/hook-log")
 async def hook_log_prompt(project: str, body: HookLogRequest):
     """Unauthenticated endpoint — CLI hooks write prompts directly to mem_mrr_prompts.
@@ -572,7 +611,10 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
         import json as _json
         from core.tags import tags_to_dict as _tags_to_dict
         hook_tags = _tags_to_dict(tags_list)
-        hook_tags["source"] = body.source or "claude_cli"
+        # source goes into src column — remove from user tags if present
+        hook_tags.pop("source", None)
+        hook_tags.pop("llm", None)
+        src_value = body.source or "claude_cli"
         project_id = db.get_or_create_project_id(project)
 
         # Fallback: if hook sent no phase/feature/bug, read from active mng_session_tags
@@ -598,7 +640,7 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                     _SQL_INSERT_INTERACTION,
                     (project_id, body.session_id, ts,
                      (body.prompt or "")[:4000], "",
-                     _json.dumps(hook_tags), ts, _ADMIN_UID),
+                     _json.dumps(hook_tags), src_value, ts, _ADMIN_UID),
                 )
 
         # Fire memory batch digest every N prompts (fire-and-forget)

@@ -32,8 +32,8 @@ log = logging.getLogger(__name__)
 _SQL_INSERT_PROMPT = """
     INSERT INTO mem_mrr_prompts
            (project_id, session_id, source_id,
-            prompt, response, tags, created_at, user_id)
-       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::timestamptz, %s)
+            prompt, response, tags, src, created_at, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s::timestamptz, %s)
        ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL DO NOTHING
     RETURNING id
 """
@@ -41,8 +41,8 @@ _SQL_INSERT_PROMPT = """
 _SQL_INSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
            (project_id, commit_hash, commit_msg, summary,
-            session_id, created_at, tags, user_id)
-       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+            session_id, created_at, tags, src, user_id)
+       VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
        ON CONFLICT (commit_hash) DO NOTHING
     RETURNING commit_hash
 """
@@ -78,13 +78,13 @@ _SQL_GET_LAST_N_PROMPTS = """
 """
 
 # "Untagged" = no user-facing classification tags (phase/feature/bug etc.)
-# System keys (source, llm) are always present but do not count as "tagged".
+# src column now holds source system; tags contains only user-intent keys.
 _SQL_GET_UNTAGGED_PROMPTS = """
     SELECT source_id, 'prompt' AS source_type,
            (prompt || ' ' || response)[:500] AS content_preview, created_at
     FROM mem_mrr_prompts
     WHERE project_id=%s
-      AND (tags - 'source' - 'llm') = '{}'::jsonb
+      AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -94,7 +94,7 @@ _SQL_GET_UNTAGGED_COMMITS = """
            (commit_hash || ' ' || commit_msg)[:500] AS content_preview, created_at
     FROM mem_mrr_commits
     WHERE project_id=%s
-      AND (tags - 'source' - 'llm') = '{}'::jsonb
+      AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -103,7 +103,7 @@ _SQL_GET_UNTAGGED_ITEMS = """
     SELECT id::text, 'item' AS source_type, raw_text[:500] AS content_preview, created_at
     FROM mem_mrr_items
     WHERE project_id=%s
-      AND (tags - 'source' - 'llm') = '{}'::jsonb
+      AND tags = '{}'::jsonb
     ORDER BY created_at ASC
     LIMIT %s
 """
@@ -148,7 +148,9 @@ class MemoryMirroring:
         # llm_source is kept for backward compat; source takes precedence
         effective_source = source or llm_source or "claude_cli"
         tags_dict = tags_to_dict(tags)
-        tags_dict["source"] = effective_source
+        # source goes into dedicated src column — NOT into user tags
+        tags_dict.pop("source", None)
+        tags_dict.pop("llm", None)
         project_id = db.get_or_create_project_id(project)
         resolved_uid = _resolve_user_id(user_id)
         try:
@@ -158,7 +160,7 @@ class MemoryMirroring:
                         _SQL_INSERT_PROMPT,
                         (project_id, session_id, source_id,
                          (prompt or "")[:4000], (response or "")[:8000],
-                         json.dumps(tags_dict), ts, resolved_uid),
+                         json.dumps(tags_dict), effective_source, ts, resolved_uid),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None
@@ -185,7 +187,9 @@ class MemoryMirroring:
             return None
         from core.auth import _resolve_user_id
         tags_dict = tags_to_dict(tags)
-        tags_dict["source"] = source
+        # source goes into dedicated src column — NOT into user tags
+        tags_dict.pop("source", None)
+        tags_dict.pop("llm", None)
         project_id = db.get_or_create_project_id(project)
         resolved_uid = _resolve_user_id(user_id)
         try:
@@ -194,7 +198,7 @@ class MemoryMirroring:
                     cur.execute(
                         _SQL_INSERT_COMMIT,
                         (project_id, commit_hash, commit_msg, summary,
-                         session_id, committed_at, json.dumps(tags_dict), resolved_uid),
+                         session_id, committed_at, json.dumps(tags_dict), source, resolved_uid),
                     )
                     row = cur.fetchone()
             return str(row[0]) if row else None

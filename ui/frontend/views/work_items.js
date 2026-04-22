@@ -93,6 +93,9 @@ export async function renderWorkItems(container, projectName) {
         <!-- Type filter chips (bug/feature/task/policy/requirement only — use_case not shown as all items are grouped by UC) -->
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
+        <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
+              border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
+              cursor:default" title="No Claude Code prompts received recently — hook may be offline"></span>
       </div>
 
       <!-- ── Stats bar ── -->
@@ -391,6 +394,29 @@ export async function renderWorkItems(container, projectName) {
 
   _setupEvents(container);
   await _loadAll();
+  _checkHookHealth();
+}
+
+async function _checkHookHealth() {
+  if (!_project) return;
+  try {
+    const h = await api.wi.hookHealth(_project);
+    const badge = document.getElementById('wi-hook-badge');
+    if (!badge) return;
+    if (h.warning === 'hook_stale') {
+      const hrs = h.hours_since != null ? `${h.hours_since}h ago` : 'never';
+      badge.textContent = `⚠ Hook offline (last prompt: ${hrs})`;
+      badge.style.display = '';
+      badge.title = 'No Claude Code prompts received recently. Check that the UserPromptSubmit hook is installed and the backend is running on localhost:8000.';
+    } else if (h.warning === 'no_prompts_ever') {
+      badge.textContent = '⚠ Hook: no prompts received yet';
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (_) {
+    // silently ignore — badge stays hidden
+  }
 }
 
 // ── Event wiring ──────────────────────────────────────────────────────────────

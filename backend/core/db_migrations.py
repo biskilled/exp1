@@ -2849,6 +2849,57 @@ def m068_create_wi_versions(conn) -> None:
     log.info("m068: created mem_wi_versions table")
 
 
+def m069_src_column_and_cleanup(conn) -> None:
+    """Add dedicated src column to mirror tables; remove source from JSONB tags; drop llm.
+
+    Previously the source system (claude_cli, git, aicli…) was stored inside
+    the user-facing JSONB tags column, polluting it with system metadata.
+    This migration moves it to a clean TEXT column `src` on each table.
+
+    Also drops the orphaned `llm` column from mem_mrr_commits which was never
+    written to by any current code path.
+    """
+    with conn.cursor() as cur:
+        # mem_mrr_prompts: add src, backfill from tags, strip from tags
+        cur.execute("""
+            ALTER TABLE mem_mrr_prompts
+              ADD COLUMN IF NOT EXISTS src TEXT NOT NULL DEFAULT 'claude_cli';
+        """)
+        cur.execute("""
+            UPDATE mem_mrr_prompts
+               SET src = COALESCE(tags->>'source', 'claude_cli')
+             WHERE src = 'claude_cli';
+        """)
+        cur.execute("""
+            UPDATE mem_mrr_prompts
+               SET tags = tags - 'source' - 'llm'
+             WHERE tags ? 'source' OR tags ? 'llm';
+        """)
+
+        # mem_mrr_commits: add src, backfill from tags, strip from tags, drop llm column
+        cur.execute("""
+            ALTER TABLE mem_mrr_commits
+              ADD COLUMN IF NOT EXISTS src TEXT NOT NULL DEFAULT 'git';
+        """)
+        cur.execute("""
+            UPDATE mem_mrr_commits
+               SET src = COALESCE(tags->>'source', 'git')
+             WHERE src = 'git';
+        """)
+        cur.execute("""
+            UPDATE mem_mrr_commits
+               SET tags = tags - 'source' - 'llm'
+             WHERE tags ? 'source' OR tags ? 'llm';
+        """)
+        cur.execute("ALTER TABLE mem_mrr_commits DROP COLUMN IF EXISTS llm;")
+
+        # Index for fast src-based filtering
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_prompts_src ON mem_mrr_prompts(project_id, src);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_commits_src ON mem_mrr_commits(project_id, src);")
+    conn.commit()
+    log.info("m069: src column added to prompts+commits; source/llm removed from tags; llm column dropped")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2965,4 +3016,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m066_wi_ai_temp_ids", m066_wi_ai_temp_ids),
     ("m067_add_user_importance_status", m067_add_user_importance_status),
     ("m068_create_wi_versions", m068_create_wi_versions),
+    ("m069_src_column_and_cleanup", m069_src_column_and_cleanup),
 ]

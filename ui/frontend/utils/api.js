@@ -521,8 +521,9 @@ api.wi = {
   reset:      (p)           => _post(`/wi/${enc(p)}/reset`, {}),
   create:     (p, b)        => _post(`/wi/${enc(p)}`, b),
   reorder:    (p, items)    => _post(`/wi/${enc(p)}/reorder`, { items }),
-  useCases:  (p)          => _get(`/wi/${enc(p)}/use-cases`),
-  summarise: (p, ucId)    => _post(`/wi/${enc(p)}/${enc(ucId)}/ai-summarise`, {}),
+  useCases:   (p)          => _get(`/wi/${enc(p)}/use-cases`),
+  hookHealth: (p)          => _get(`/chat/${enc(p)}/hook-health`),
+  summarise:  (p, ucId)   => _post(`/wi/${enc(p)}/${enc(ucId)}/ai-summarise`, {}),
   versions: {
     list:  (p, ucId)         => _get(`/wi/${enc(p)}/${enc(ucId)}/versions`),
     create: (p, ucId)        => _post(`/wi/${enc(p)}/${enc(ucId)}/versions`, {}),
