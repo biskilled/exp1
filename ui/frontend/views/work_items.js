@@ -291,7 +291,7 @@ export async function renderWorkItems(container, projectName) {
 
       /* shared popover */
       .wi-wi-pop {
-        position:fixed;z-index:900;min-width:220px;padding:0.65rem;
+        position:fixed;z-index:900;min-width:200px;padding:0.65rem;
         background:var(--surface2);border:1px solid var(--border);
         border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.4);
       }
@@ -301,6 +301,32 @@ export async function renderWorkItems(container, projectName) {
         padding:4px 8px;color:var(--text);font-size:0.8rem;
       }
       .wi-wi-pop input:focus { border-color:var(--accent);outline:none }
+      .wi-wi-pop-label { font-size:0.68rem;color:var(--muted);font-weight:700;margin-bottom:0.4rem }
+
+      /* inline edit controls */
+      .wi-edit-arrow {
+        background:none;border:none;cursor:pointer;color:var(--muted);
+        font-size:0.6rem;padding:0 2px;line-height:1;opacity:.7;
+        vertical-align:middle;flex-shrink:0;
+      }
+      .wi-edit-arrow:hover { color:var(--accent);opacity:1 }
+      .wi-edit-link {
+        background:none;border:none;cursor:pointer;font-size:0.67rem;
+        color:var(--muted);padding:2px 0;text-decoration:underline;display:block;margin-top:0.25rem;
+      }
+      .wi-edit-link:hover { color:var(--accent) }
+      .wi-type-badge.wi-editable, .wi-status-badge.wi-editable {
+        cursor:pointer;
+      }
+      .wi-type-badge.wi-editable:hover, .wi-status-badge.wi-editable:hover {
+        filter:brightness(1.1);outline:1px solid currentColor;
+      }
+      .wi-summary-editor {
+        width:100%;box-sizing:border-box;min-height:70px;resize:vertical;
+        background:var(--surface);border:1px solid var(--accent);border-radius:4px;
+        padding:6px 8px;color:var(--text);font-size:0.8rem;line-height:1.5;outline:none;
+        display:block;margin-bottom:0.35rem;
+      }
     </style>
   `;
 
@@ -428,9 +454,9 @@ function _setupEvents(container) {
       return;
     }
 
-    // Expand/collapse use case body (but not when clicking action buttons)
+    // Expand/collapse use case body (but not when clicking data-action buttons)
     const ucHeader = e.target.closest('.wi-uc-header');
-    if (ucHeader && !e.target.closest('button') && !e.target.closest('.wi-rename-btn')) {
+    if (ucHeader && !e.target.closest('[data-action]') && !e.target.closest('button')) {
       const body = ucHeader.nextElementSibling;
       if (body?.classList.contains('wi-uc-body')) {
         body.classList.toggle('collapsed');
@@ -439,19 +465,20 @@ function _setupEvents(container) {
       }
     }
 
-    // Rename item / UC — show popover
-    const renameBtn = e.target.closest('.wi-rename-btn');
-    if (renameBtn) {
+    // All edit actions via data-action (rename-pop, status-pop, type-pop, edit-summary)
+    const actionEl = e.target.closest('[data-action="rename-pop"],[data-action="status-pop"],[data-action="type-pop"],[data-action="edit-summary"]');
+    if (actionEl) {
       e.stopPropagation();
-      _showRenamePopover(renameBtn, renameBtn.dataset.id, renameBtn.dataset.currentName, renameBtn.dataset.isUc === 'true');
-      return;
-    }
-
-    // Status badge click → show popover
-    const statusBadge = e.target.closest('.wi-status-badge[data-item-id]');
-    if (statusBadge) {
-      e.stopPropagation();
-      _showStatusPopover(statusBadge, statusBadge.dataset.itemId, parseInt(statusBadge.dataset.scoreStatus || '0', 10));
+      const action = actionEl.dataset.action;
+      const id = actionEl.dataset.id;
+      if (action === 'rename-pop')
+        _showRenamePopover(actionEl, id, actionEl.dataset.currentName, actionEl.dataset.isUc === 'true');
+      else if (action === 'status-pop')
+        _showStatusPopover(actionEl, id, parseInt(actionEl.dataset.score || '0', 10));
+      else if (action === 'type-pop')
+        _showTypePopover(actionEl, id, actionEl.dataset.type);
+      else if (action === 'edit-summary')
+        _startSummaryEdit(actionEl, id, actionEl.dataset.summary);
       return;
     }
   });
@@ -632,6 +659,74 @@ function _showStatusPopover(anchorEl, itemId, currentScore) {
   setTimeout(() => {
     document.addEventListener('click', e => { if (!pop.contains(e.target)) pop.remove(); }, { once: true });
   }, 150);
+}
+
+// ── Type popover ─────────────────────────────────────────────────────────────
+
+const _ITEM_TYPES = ['feature', 'bug', 'task', 'policy', 'requirement'];
+
+function _showTypePopover(anchorEl, itemId, currentType) {
+  document.querySelector('.wi-wi-pop')?.remove();
+  const pop = document.createElement('div');
+  pop.className = 'wi-wi-pop';
+  pop.style.width = '165px';
+  pop.innerHTML = `<div class="wi-wi-pop-label">Change type</div>` +
+    _ITEM_TYPES.map(t => {
+      const m = _typeMeta(t);
+      return `<button class="wi-btn ${t === currentType ? 'wi-btn-approve' : 'wi-btn-ghost'}"
+                      data-type="${t}"
+                      style="width:100%;margin-bottom:2px;text-align:left">
+                ${m.icon} ${m.label}
+              </button>`;
+    }).join('');
+  _popupAt(pop, anchorEl);
+  pop.querySelectorAll('[data-type]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const newType = btn.dataset.type;
+      pop.remove();
+      try {
+        await api.wi.update(_project, itemId, { wi_type: newType });
+        toast(`Type → ${newType}`, 'success');
+        await _loadAll();
+      } catch (err) { toast(`Type update failed: ${err.message}`, 'error'); }
+    });
+  });
+  setTimeout(() => {
+    document.addEventListener('click', e => { if (!pop.contains(e.target)) pop.remove(); }, { once: true });
+  }, 150);
+}
+
+// ── Inline summary edit ────────────────────────────────────────────────────────
+
+function _startSummaryEdit(triggerEl, itemId, currentSummary) {
+  // Find the .wi-summary-wrap that contains this trigger
+  const wrap = triggerEl.closest('.wi-summary-wrap');
+  if (!wrap) return;
+
+  const prev = wrap.innerHTML;
+  wrap.innerHTML = `
+    <textarea class="wi-summary-editor">${_esc(currentSummary)}</textarea>
+    <div style="display:flex;gap:0.4rem">
+      <button class="wi-btn wi-btn-approve" id="wi-sum-save">Save</button>
+      <button class="wi-btn wi-btn-ghost"   id="wi-sum-cancel">Cancel</button>
+    </div>
+  `;
+  const ta = wrap.querySelector('.wi-summary-editor');
+  ta.focus();
+  // Move cursor to end
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+
+  wrap.querySelector('#wi-sum-save').addEventListener('click', async () => {
+    const newSummary = ta.value.trim();
+    try {
+      await api.wi.update(_project, itemId, { summary: newSummary });
+      toast('Summary saved', 'success');
+    } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
+    await _loadAll();
+  });
+  wrap.querySelector('#wi-sum-cancel').addEventListener('click', () => {
+    wrap.innerHTML = prev;
+  });
 }
 
 // ── Popover helper ────────────────────────────────────────────────────────────
@@ -848,9 +943,10 @@ function _renderList() {
         <div class="wi-uc-header">
           <span class="wi-uc-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           <span class="wi-uc-label">◻ USE CASE</span>
-          <span class="wi-name" data-item-id="${uc.id}">${_esc(uc.name || uc.id)}</span>
-          <button class="wi-rename-btn" data-id="${uc.id}"
-                  data-current-name="${_esc(uc.name || '')}" data-is-uc="true" title="Rename use case">✎</button>
+          <span class="wi-name">${_esc(uc.name || uc.id)}</span>
+          <button class="wi-edit-arrow" data-action="rename-pop"
+                  data-id="${uc.id}" data-current-name="${_esc(uc.name || '')}" data-is-uc="true"
+                  title="Rename use case">▾</button>
           <span style="font-size:0.7rem;color:var(--muted)">${ucChildren.length} item${ucChildren.length !== 1 ? 's' : ''}</span>
           ${ucMrrChips ? `<div class="wi-uc-mrr">${ucMrrChips}</div>` : ''}
           ${ucIsPending
@@ -874,7 +970,14 @@ function _renderList() {
           `}
         </div>
         <div class="wi-uc-body">
-          ${uc.summary ? `<div class="wi-uc-summary">${_esc(uc.summary)}</div>` : ''}
+          <div class="wi-uc-summary wi-summary-wrap" style="padding:0.55rem 0.9rem;border-bottom:1px solid var(--border)">
+            ${uc.summary
+              ? `<div style="font-size:0.79rem;color:var(--text2);line-height:1.5;border-left:3px solid var(--accent);padding-left:0.5rem">${_esc(uc.summary)}</div>`
+              : `<span style="color:var(--muted);font-style:italic;font-size:0.77rem">No summary yet</span>`
+            }
+            <button class="wi-edit-link" data-action="edit-summary"
+                    data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
+          </div>
           <div class="wi-uc-children wi-drop-zone" data-uc-id="${uc.id}">
             ${ucChildren.length ? ucChildren.map(c => _renderItemCard(c)).join('') : `
               <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem;font-style:italic">
@@ -939,34 +1042,48 @@ function _renderItemCard(item) {
   const st = _itemStatus(item);
   return `
     <div class="wi-card" draggable="true" data-item-id="${item.id}">
-      <div class="wi-card-header" title="Click to expand">
-        <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
-        <span class="wi-name" data-item-id="${item.id}">${_esc(item.name || '(unnamed)')}</span>
-        <button class="wi-rename-btn" data-id="${item.id}"
-                data-current-name="${_esc(item.name || '')}" data-is-uc="false" title="Rename">✎</button>
-        <span class="wi-status-badge ${st.cls}"
-              data-item-id="${item.id}" data-score-status="${item.score_status || 0}"
-              title="Click to cycle status">${st.label}</span>
+      <div class="wi-card-header" title="Click header to expand">
+
+        <!-- Type badge — click ▾ to change type -->
+        <span class="wi-type-badge wi-editable ${meta.cls}"
+              data-action="type-pop" data-id="${item.id}" data-type="${item.wi_type}"
+              title="Change type">${meta.icon} ${meta.label} ▾</span>
+
+        <!-- Name + ▾ to rename -->
+        <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
+        <button class="wi-edit-arrow" data-action="rename-pop"
+                data-id="${item.id}" data-current-name="${_esc(item.name || '')}" data-is-uc="false"
+                title="Rename item">▾</button>
+
+        <!-- Status badge — click ▾ to change status -->
+        <span class="wi-status-badge wi-editable ${st.cls}"
+              data-action="status-pop" data-id="${item.id}" data-score="${item.score_status || 0}"
+              title="Change status">${st.label} ▾</span>
+
+        <!-- ID -->
         ${isPending
           ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
+
         <div class="wi-actions">
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
-          ${isPending ? `
-            <button class="wi-btn wi-btn-reject" data-action="reject" data-id="${item.id}" title="Reject item">✗</button>
-          ` : ''}
+          ${isPending ? `<button class="wi-btn wi-btn-reject" data-action="reject" data-id="${item.id}" title="Reject">✗</button>` : ''}
         </div>
       </div>
+
       <div class="wi-card-body collapsed">
-        ${item.summary ? `<div class="wi-summary">${_esc(item.summary)}</div>` : ''}
-        ${item.deliveries ? `<div class="wi-deliveries">✓ ${_esc(item.deliveries)}</div>` : ''}
-        <div class="wi-scores">
-          <div>Importance: ${_scorePips(item.score_importance, '#f59e0b')}</div>
-          <div>Status: ${_scorePips(item.score_status, '#22c55e')}</div>
-          ${item.delivery_type ? `<div style="color:var(--muted)">${_esc(item.delivery_type)}</div>` : ''}
+        <!-- Summary with inline edit -->
+        <div class="wi-summary-wrap">
+          ${item.summary
+            ? `<div class="wi-summary">${_esc(item.summary)}</div>`
+            : `<span style="color:var(--muted);font-style:italic;font-size:0.77rem">No summary yet</span>`
+          }
+          <button class="wi-edit-link" data-action="edit-summary"
+                  data-id="${item.id}" data-summary="${_esc(item.summary || '')}">✎ Edit summary</button>
         </div>
-        ${mrrChips ? `<div class="wi-mrr-counts">${mrrChips}</div>` : ''}
+        ${item.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(item.deliveries)}</div>` : ''}
+        ${mrrChips ? `<div class="wi-mrr-counts" style="margin-top:0.4rem">${mrrChips}</div>` : ''}
         ${item.wi_parent_wi_id ? `<div style="font-size:0.65rem;color:var(--muted);margin-top:0.3rem">Parent: <code>${_esc(item.wi_parent_wi_id)}</code></div>` : ''}
       </div>
     </div>
