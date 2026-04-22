@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-22 20:30 UTC by aicli /memory_
+_Generated: 2026-04-22 20:31 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -53,28 +53,28 @@ _Generated: 2026-04-22 20:30 UTC by aicli /memory_
 
 - Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files
 - Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects with INT PKs in canonical order (id → client_id → project_id → user_id)
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
 - Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id)
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
+- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework using INT PKs with created_at/updated_at/embedding always at table end
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags with deliverables JSONB (code/document/design/ppt with type specifications)
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
-- Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
+- Session history UI: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; last_session_id from runtime state persists selection on load
+- Dashboard and pipeline UI: new Dashboard tab with Cytoscape.js visualization; pipelines runnable from planner/docs/chat tabs with approval 2-pane panel for negotiation
 
 ## In Progress
 
-- Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables
-- Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed
-- Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
-- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
-- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
-- Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs
+- Database schema m051-m052 complete: user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); created_at/updated_at/embedding standardized at table end
+- Session history UI persistence finalized: Chat and History tabs display sessions with source badge, phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; stale session loading fixed by resetting _sessionId at renderChat() start and loading last_session_id synchronously
+- Hook-log endpoint m050 verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order and session attribution
+- Event table cleanup complete: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained in mem_ai_events
+- Planner_tags refactor m027: removed unused columns (summary, design, embedding, extra); added deliveries JSONB for tracking code/document/design/ppt deliverables with type specifications
+- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing with correct session IDs
 
 ## Active Features / Bugs / Tasks
 
