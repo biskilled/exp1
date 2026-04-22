@@ -1,3 +1,71 @@
+# work_items.yaml — Classification prompt + category config for the work items pipeline.
+#
+# ── TRIGGER ──────────────────────────────────────────────────────────────────
+# Manual only (default mode):
+#   POST /wi/{project}/classify          — run classification now (sync)
+#   POST /wi/{project}/classify?background=true — async, returns immediately
+#
+# Auto-threshold (opt-in via project.yaml → work_items.classification.mode=threshold):
+#   Triggered from route_git.py + route_chat.py after each commit/prompt.
+#   Threshold per source: prompts=2000 tokens, commits=1000, messages=5000, items=500.
+#   Configure in project.yaml:
+#     work_items:
+#       classification:
+#         mode: threshold
+#         thresholds: {prompts: 50, commits: 20}
+#
+# ── FULL FLOW ─────────────────────────────────────────────────────────────────
+# 1. classify() deletes all AI-temp draft rows (wi_id LIKE 'AI%') from mem_work_items
+# 2. Fetches all unprocessed events (wi_id IS NULL) from mem_mrr_* tables (max 200/100/50)
+# 3. Groups events into token-bounded batches (~6000 tokens each)
+# 4. For each batch: calls Claude Haiku with this prompt → returns flat JSON array
+# 5. Saves results as draft rows: use_cases first (wi_id=AI0001), then children
+#    with wi_parent_id → UUID of their parent use_case row (wi_id=AI0002, AI0003 …)
+# 6. User reviews in UI (GET /wi/{project}/pending/grouped → use_cases + children nested)
+# 7. User approves → use_case gets US0001, child gets BU/FE/TA/PO/RE real ID
+#    → approved items: mem_mrr_* rows tagged with real wi_id, embedding computed,
+#      planner_tag upserted, MD file written to documents/use_cases/{slug}.md
+# 8. User rejects → wi_id set to REJxxxxxx (events stay unlinked for next run)
+# 9. POST /wi/{project}/reset — deletes all AI drafts + resets mem_mrr_* wi_id=NULL
+#
+# ── TABLES ───────────────────────────────────────────────────────────────────
+# READ (events to classify):
+#   mem_mrr_prompts       wi_id IS NULL → up to 200 rows
+#   mem_mrr_commits       wi_id IS NULL → up to 100 rows
+#   mem_mrr_messages      wi_id IS NULL → up to 50 rows
+#   mem_mrr_items         wi_id IS NULL → up to 50 rows
+#
+# WRITE (draft classification):
+#   mem_work_items        wi_id=AI0001… (draft), wi_parent_id links children to use_case
+#                         wi_id=US/BU/FE/TA/PO/RE after approval
+#                         wi_id=REJxxxxxx after rejection
+#
+# WRITTEN on approval:
+#   mem_mrr_*             wi_id set to real ID (marks events as processed)
+#   planner_tags          upserted (name, category_id, description, parent_id)
+#   mem_work_items        embedding VECTOR(1536) computed via OpenAI
+#   documents/use_cases/  {slug}.md written/refreshed on use_case approval
+#
+# SEQUENCES (pr_seq_counters per project):
+#   WI_AI → AI0001…  (draft temp IDs, reset each classify run)
+#   WI_US → US0001…  (approved use cases)
+#   WI_FE → FE0001…  (approved features)
+#   WI_BU → BU0001…  (approved bugs)
+#   WI_TA → TA0001…  (approved tasks)
+#   WI_PO → PO0001…  (approved policies)
+#   WI_RE → RE6001…  (approved requirements)
+#
+# ── LLM ──────────────────────────────────────────────────────────────────────
+# Model:  Claude Haiku (claude-haiku-4-5-20251001)
+# Max tokens per call: 4000
+# Cost logged to: mng_usage_logs (source='memory')
+#
+# ── KEY FILES ─────────────────────────────────────────────────────────────────
+# backend/memory/memory_work_items.py  — full pipeline logic
+# backend/routers/route_work_items.py  — API endpoints (prefix: /wi)
+# ui/frontend/views/work_items.js      — Planner UI (approval, stats, MD editor)
+# ui/frontend/utils/api.js             — api.wi.* calls
+
 classification:
   system: |
     You are a senior software architect. Your job is to classify development events
