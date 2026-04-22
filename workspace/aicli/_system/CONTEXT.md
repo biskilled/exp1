@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-22 22:43 UTC — do not edit manually.
+> Auto-generated 2026-04-22 22:50 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 694
-- **Last active**: 2026-04-22T22:42:55Z
+- **Sessions**: 695
+- **Last active**: 2026-04-22T22:49:51Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables
-- Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed
-- Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
-- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
-- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
-- Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs
+- Database schema finalization (m051-m052): user_id migrated to SERIAL INT across all 18 tables; canonical column ordering enforced; updated_at added to all mirror tables; committed_at removed from commits table
+- Session UI improvements: Chat and History tabs now show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed with last_session_id from runtime state
+- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order; session attribution and timestamp display functional
+- Chat tab session persistence: current session highlighted on load using last_session_id; localStorage cache prevents stale session display; full session ID shown in sticky banner with copy button
+- Event table cleanup completed: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
+- Dashboard and pipeline UI added: new Dashboard tab for visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs
 
 ## Key Decisions
 
@@ -80,9 +80,9 @@
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id)
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
+- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
 - Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
 
 ---

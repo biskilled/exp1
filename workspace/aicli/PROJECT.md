@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema m051-m052 complete: user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); created_at/updated_at/embedding standardized at table end
-- Session history UI persistence finalized: Chat and History tabs display sessions with source badge, phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; stale session loading fixed by resetting _sessionId at renderChat() start and loading last_session_id synchronously
-- Hook-log endpoint m050 verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order and session attribution
-- Event table cleanup complete: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained in mem_ai_events
-- Planner_tags refactor m027: removed unused columns (summary, design, embedding, extra); added deliveries JSONB for tracking code/document/design/ppt deliverables with type specifications
-- Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing with correct session IDs
+- Database schema finalization (m051-m052): user_id migrated to SERIAL INT across all 18 tables; canonical column ordering enforced; updated_at added to all mirror tables; committed_at removed from commits table
+- Session UI improvements: Chat and History tabs now show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed with last_session_id from runtime state
+- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order; session attribution and timestamp display functional
+- Chat tab session persistence: current session highlighted on load using last_session_id; localStorage cache prevents stale session display; full session ID shown in sticky banner with copy button
+- Event table cleanup completed: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
+- Dashboard and pipeline UI added: new Dashboard tab for visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs

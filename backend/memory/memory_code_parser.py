@@ -45,12 +45,15 @@ _SQL_UPSERT_CODE_ROW = """
                  COALESCE(class_name,''), COALESCE(method_name,'')) DO NOTHING
 """
 
+# Files larger than this are flagged as large; adds 2 to their hotspot score.
+_LARGE_FILE_LINES = 800
+
 _SQL_UPSERT_FILE_STATS = """
     INSERT INTO mem_file_stats
         (project_id, file_path, change_count, commit_count, author_count,
          bug_commit_count, lines_added, lines_removed, revert_count,
          current_lines, hotspot_score, last_changed_at, updated_at)
-    VALUES (%s, %s, %s, 1, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+    VALUES (%s, %s, %s, 1, 1, %s, %s, %s, %s, %s, 0, NOW(), NOW())
     ON CONFLICT (project_id, file_path) DO UPDATE SET
         change_count     = mem_file_stats.change_count     + EXCLUDED.change_count,
         commit_count     = mem_file_stats.commit_count     + 1,
@@ -60,31 +63,26 @@ _SQL_UPSERT_FILE_STATS = """
         lines_removed    = mem_file_stats.lines_removed    + EXCLUDED.lines_removed,
         revert_count     = mem_file_stats.revert_count     + EXCLUDED.revert_count,
         current_lines    = EXCLUDED.current_lines,
-        hotspot_score    = EXCLUDED.hotspot_score,
         last_changed_at  = NOW(),
         updated_at       = NOW()
+"""
+
+# Recompute hotspot_score from stored cumulative values after the upsert.
+# Score = commit_count (frequency) + 2 if file is large (≥ _LARGE_FILE_LINES lines).
+_SQL_REFRESH_HOTSPOT = """
+    UPDATE mem_file_stats
+       SET hotspot_score = commit_count + CASE WHEN current_lines >= %s THEN 2 ELSE 0 END
+     WHERE project_id = %s AND file_path = %s
 """
 
 _SQL_UPSERT_COUPLING = """
     INSERT INTO mem_file_coupling
         (project_id, file_a, file_b, co_change_count, coupling_score, last_co_change, updated_at)
-    VALUES (%s, %s, %s, 1, %s, NOW(), NOW())
+    VALUES (%s, %s, %s, 1, 0, NOW(), NOW())
     ON CONFLICT (project_id, file_a, file_b) DO UPDATE SET
         co_change_count = mem_file_coupling.co_change_count + 1,
-        coupling_score  = EXCLUDED.coupling_score,
         last_co_change  = NOW(),
         updated_at      = NOW()
-"""
-
-_SQL_GET_AUTHOR_COUNT = """
-    SELECT COUNT(DISTINCT author) FROM mem_mrr_commits c
-    JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
-    WHERE c.project_id=%s AND cc.file_path=%s
-"""
-
-_SQL_GET_FILE_COMMIT_COUNT = """
-    SELECT commit_count FROM mem_file_stats
-    WHERE project_id=%s AND file_path=%s
 """
 
 # Patterns that indicate a bug-fix or revert commit
@@ -399,22 +397,6 @@ async def _haiku(system: str, user: str, max_tokens: int = 120) -> str:
 
 # ── File stats helpers ─────────────────────────────────────────────────────────
 
-def _compute_hotspot_score(
-    bug_commit_count: int,
-    change_count: int,
-    revert_count: int,
-    current_lines: int,
-) -> float:
-    """Compute a hotspot risk score for a file.
-
-    Higher = more risky/complex.  Uses a log-dampened size factor so that
-    a 10 000-line file is not 100× more risky than a 100-line file.
-    """
-    import math
-    size_factor = math.log1p(max(current_lines, 1) / 100.0)
-    raw = (bug_commit_count * 3.0 + change_count * 1.0 + revert_count * 2.0)
-    return round(raw * max(size_factor, 0.5), 4)
-
 
 def _count_file_lines(code_dir: str, commit_hash: str, file_path: str) -> int:
     """Return line count of file_path at commit_hash, or 0 on error."""
@@ -482,18 +464,6 @@ def _update_file_stats(
                 for fp, stats in file_stats.items():
                     current_lines = _count_file_lines(code_dir, commit_hash, fp)
 
-                    # Compute author_count approximation: get distinct count from DB
-                    cur.execute(_SQL_GET_AUTHOR_COUNT, (project_id, fp))
-                    author_count_row = cur.fetchone()
-                    author_count = max(
-                        (author_count_row[0] if author_count_row else 0) + 1,
-                        1
-                    )
-
-                    hotspot = _compute_hotspot_score(
-                        bug_inc, stats["changes"], revert_inc, current_lines
-                    )
-
                     cur.execute(_SQL_UPSERT_FILE_STATS, (
                         project_id, fp,
                         stats["changes"],  # change_count (symbol-level changes)
@@ -502,15 +472,15 @@ def _update_file_stats(
                         stats["removed"],
                         revert_inc,
                         current_lines,
-                        hotspot,
                     ))
+                    # Recompute score from cumulative stored values (not just this delta)
+                    cur.execute(_SQL_REFRESH_HOTSPOT, (_LARGE_FILE_LINES, project_id, fp))
 
-                # Co-change coupling: for every pair of files in this commit
+                # Co-change coupling: every pair of files touched in this commit
                 file_list = sorted(file_stats.keys())
                 for i, fa in enumerate(file_list):
                     for fb in file_list[i + 1:]:
-                        # Coupling score = normalized co_change_count (updated on read)
-                        cur.execute(_SQL_UPSERT_COUPLING, (project_id, fa, fb, 0.0))
+                        cur.execute(_SQL_UPSERT_COUPLING, (project_id, fa, fb))
 
             conn.commit()
     except Exception as e:

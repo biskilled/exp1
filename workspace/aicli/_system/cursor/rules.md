@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-22 22:42 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-22 22:49 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -66,9 +66,9 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id)
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
+- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
 - Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
 
 ## Recent Context (last 5 changes)

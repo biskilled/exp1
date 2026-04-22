@@ -60,9 +60,9 @@
     "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash",
     "Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id \u2192 client_id \u2192 project_id \u2192 user_id)",
     "Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB",
+    "Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column",
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-    "Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column",
     "Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM"
   ],
   "implemented_features": [
@@ -92,12 +92,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables",
-    "Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed",
-    "Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution",
-    "Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing",
-    "Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained",
-    "Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs"
+    "Database schema finalization (m051-m052): user_id migrated to SERIAL INT across all 18 tables; canonical column ordering enforced; updated_at added to all mirror tables; committed_at removed from commits table",
+    "Session UI improvements: Chat and History tabs now show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed with last_session_id from runtime state",
+    "Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order; session attribution and timestamp display functional",
+    "Chat tab session persistence: current session highlighted on load using last_session_id; localStorage cache prevents stale session display; full session ID shown in sticky banner with copy button",
+    "Event table cleanup completed: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained",
+    "Dashboard and pipeline UI added: new Dashboard tab for visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-22T22:43:20Z",
+  "last_memory_run": "2026-04-22T22:50:15Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -143,18 +143,18 @@
       "Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash",
       "Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id \u2192 client_id \u2192 project_id \u2192 user_id)",
       "Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB",
+      "Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column",
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column",
       "Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM"
     ],
     "in_progress": [
-      "Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables",
-      "Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed",
-      "Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution",
-      "Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing",
-      "Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained",
-      "Dashboard and pipeline UI: new Dashboard tab added; Cytoscape.js visualization with 2-pane approval panel; pipelines runnable from planner/docs/chat tabs"
+      "Database schema finalization (m051-m052): user_id migrated to SERIAL INT across all 18 tables; canonical column ordering enforced; updated_at added to all mirror tables; committed_at removed from commits table",
+      "Session UI improvements: Chat and History tabs now show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed with last_session_id from runtime state",
+      "Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order; session attribution and timestamp display functional",
+      "Chat tab session persistence: current session highlighted on load using last_session_id; localStorage cache prevents stale session display; full session ID shown in sticky banner with copy button",
+      "Event table cleanup completed: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained",
+      "Dashboard and pipeline UI added: new Dashboard tab for visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -162,16 +162,19 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database_migrations": "m001-m052 framework with db_schema.sql as source of truth",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment": "Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop",
-      "database": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
-      "build_tooling": "npm 8+ + Electron-builder + Vite dev server",
-      "embeddings": "OpenAI text-embedding-3-small (1536-dim)"
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "embeddings": "OpenAI text-embedding-3-small (1536-dim)",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform that integrates development workflows with multi-layer semantic memory (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 work items/features). It combines a Python 3.12 CLI, FastAPI backend with PostgreSQL/pgvector, and an Electron desktop UI featuring async DAG workflow execution, multi-provider LLM support (Claude/OpenAI/DeepSeek/Gemini/Grok), and intelligent code chunking. Currently in active refinement with database schema standardization complete, session history UI fully functional, and dashboard/pipeline visualization operational.",
-    "memory_digest": "**2026-04-17** `schema` \u2014 Completed m051-m052 database refactor: migrated user_id from UUID to SERIAL INT; standardized all 18 tables to canonical column order (id \u2192 client_id \u2192 project_id \u2192 user_id); added updated_at to mirror tables for audit trail compliance. **2026-04-16** `ui` \u2014 Session history UI now displays sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp; fixed stale session loading in Chat and History tabs. **2026-04-15** `data` \u2014 Hook-log endpoint verified: all 531 prompts (389 from DB + ~142 from JSONL merge) load correctly with proper sort order and session attribution; database consistency confirmed. **2026-04-14** `ui` \u2014 Chat tab session persistence implemented: current session highlighted on load via last_session_id from runtime state; localStorage cache enables offline session viewing. **2026-04-13** `schema` \u2014 Event table cleanup completed: dropped importance column; stripped system metadata tags from 1441 events; retained only user-relevant phase/feature/bug/source tags for cleaner memory layer. **2026-04-12** `dashboard` \u2014 Dashboard and pipeline UI added: new Dashboard tab with Cytoscape.js DAG visualization; 2-pane approval panel for chat-based workflow negotiation; pipelines now runnable from planner, docs, and chat tabs."
+    "project_summary": "aicli is a shared AI memory platform for software development that maintains project context across multiple AI tools and sessions. It consists of a Python backend (FastAPI + PostgreSQL with pgvector), a Python CLI, and an Electron desktop UI, with an async DAG workflow engine for pipeline execution. The system currently focuses on completing database schema standardization (m052 migration), fixing session UI persistence in the Chat/History tabs, and validating that all 531 prompts load correctly with proper metadata attribution.",
+    "memory_digest": "**[2026-04-15]** `database` \u2014 Completed m051-m052 migration refactor: user_id changed from UUID to SERIAL INT, all 18 tables reordered to canonical form (id\u2192client_id\u2192project_id\u2192user_id), created_at/updated_at standardized at table end, committed_at removed from commits table to avoid duplication with created_at.\n\n**[2026-04-15]** `ui` \u2014 Fixed stale session loading on Chat tab startup: last_session_id now read synchronously from runtime state before any network calls; localStorage cache renders with correct session highlighted immediately; full session ID shown in sticky banner with copy button.\n\n**[2026-04-15]** `backend` \u2014 Verified hook-log endpoint functioning correctly after m050 fix: all 531 prompts (389 from DB + ~142 merged from JSONL) loading with proper descending sort; session attribution and timestamp display working.\n\n**[2026-04-15]** `database` \u2014 Cleaned mem_ai_events table: dropped importance column (moved to work_items only), stripped 1441 system metadata tags (llm, event, chunk_type, commit metadata) retaining only phase/feature/bug/source user tags.\n\n**[2026-04-12]** `database` \u2014 Created mem_ai_feature_snapshot table merging user requirements with work items: stores summary, use cases (each with type and delivery type), acceptance criteria, action items, and deliverables (code, document, architecture design, PPT).\n\n**[2026-04-12]** `ui` \u2014 Added Dashboard tab with Cytoscape.js DAG visualization and 2-pane approval panel for pipeline execution; pipelines now runnable from planner tags, docs (feature-based), or chat tabs with approval workflow."
   }
 }
