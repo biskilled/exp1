@@ -510,74 +510,52 @@ class MemoryWorkItems:
     def _group_events(self, events: dict) -> list[dict]:
         """Group events into token-bounded batches for LLM classification.
 
-        Each batch stays under ~6000 tokens to fit in Haiku's context.
-        Linked prompts+commits are kept together in the same group.
+        All event types are interleaved in chronological order so commits
+        appear alongside the prompts from the same time window.
+        Each batch stays under ~3000 tokens so LLM responses fit in 8000 tokens.
         """
         MAX_TOKENS = 3000
+
+        # Flatten all events with their table key and timestamp, sort chronologically
+        flat: list[tuple[str, dict, str]] = []
+        for p in events["prompts"]:
+            flat.append(("prompts",  p,  p.get("created_at") or ""))
+        for c in events["commits"]:
+            flat.append(("commits",  c,  c.get("created_at") or ""))
+        for m in events["messages"]:
+            flat.append(("messages", m,  m.get("created_at") or ""))
+        for it in events["items"]:
+            flat.append(("items",    it, it.get("created_at") or ""))
+        flat.sort(key=lambda x: x[2])
+
         groups: list[dict] = []
-        current: dict = {
-            "prompts": [], "commits": [], "messages": [], "items": [],
-        }
+        current: dict = {"prompts": [], "commits": [], "messages": [], "items": []}
         current_tokens = 0
 
         def _flush():
             nonlocal current, current_tokens
-            total = sum(len(v) for v in current.values())
-            if total:
-                groups.append(dict(current))
-            current = {"prompts": [], "commits": [], "messages": [], "items": []}
+            if any(v for v in current.values()):
+                groups.append({k: list(v) for k, v in current.items()})
+            current["prompts"].clear(); current["commits"].clear()
+            current["messages"].clear(); current["items"].clear()
             current_tokens = 0
 
-        # Track which prompts link to commits (to keep them in same group)
-        prompt_ids_in_current: set[str] = set()
-
-        for p in events["prompts"]:
-            t = _count_tokens(
-                (p.get("prompt") or "") + " " + (p.get("response") or "")
-            )
-            if current_tokens + t > MAX_TOKENS and current_tokens > 0:
-                _flush()
-            current["prompts"].append(p)
-            prompt_ids_in_current.add(p["id"])
-            current_tokens += t
-
-        # Attach commits to the same group as their linked prompt (if any)
-        standalone_commits = []
-        for c in events["commits"]:
-            if c.get("prompt_id") and c["prompt_id"] in prompt_ids_in_current:
-                current["commits"].append(c)
+        for tbl, data, _ in flat:
+            if tbl == "prompts":
+                t = _count_tokens((data.get("prompt") or "") + " " + (data.get("response") or ""))
+            elif tbl == "commits":
+                t = _count_tokens((data.get("commit_msg") or "") + " " + (data.get("summary") or ""))
+            elif tbl == "messages":
+                t = _count_tokens(data.get("messages_text") or "")
             else:
-                standalone_commits.append(c)
+                t = _count_tokens((data.get("title") or "") + " " + (data.get("summary") or ""))
 
-        _flush()
-
-        # Standalone commits in their own groups
-        for c in standalone_commits:
-            t = _count_tokens((c.get("commit_msg") or "") + " " + (c.get("summary") or ""))
             if current_tokens + t > MAX_TOKENS and current_tokens > 0:
                 _flush()
-            current["commits"].append(c)
+            current[tbl].append(data)
             current_tokens += t
 
         _flush()
-
-        # Messages and items appended to their own groups
-        for m in events["messages"]:
-            t = _count_tokens(m.get("messages_text") or "")
-            if current_tokens + t > MAX_TOKENS and current_tokens > 0:
-                _flush()
-            current["messages"].append(m)
-            current_tokens += t
-        _flush()
-
-        for it in events["items"]:
-            t = _count_tokens((it.get("title") or "") + " " + (it.get("summary") or ""))
-            if current_tokens + t > MAX_TOKENS and current_tokens > 0:
-                _flush()
-            current["items"].append(it)
-            current_tokens += t
-        _flush()
-
         return [g for g in groups if any(v for v in g.values())]
 
     # ── Format events for LLM ─────────────────────────────────────────────────
@@ -690,12 +668,18 @@ class MemoryWorkItems:
         """Call Haiku to classify one event group. Returns list of item dicts."""
         cfg = self._prompts_cfg().get("classification", {})
         system = cfg.get("system", "Classify development events into work items.")
-        # Append max-use-cases constraint so the LLM reuses existing UCs aggressively
+        # Append max-use-cases constraint + granularity instruction
         system += (
-            f"\n\nIMPORTANT: The entire project should have at most {max_use_cases} use cases total. "
-            "Existing use cases are listed in the context — STRONGLY prefer assigning new items to "
-            "those existing use cases (set existing_wi_id) rather than creating new ones. "
-            "Only create a new use_case entry when the topic genuinely does not fit any existing one."
+            f"\n\nIMPORTANT CONSTRAINTS:"
+            f"\n1. USE CASES: The entire project should have at most {max_use_cases} use cases total."
+            f"\n   - Check the existing use cases listed in the context first."
+            f"\n   - If the events fit an existing use case, set existing_wi_id to that use case's ID and do NOT emit a new use_case entry."
+            f"\n   - Only create a new use_case entry when events genuinely don't fit any existing one."
+            f"\n2. ITEMS: Every distinct feature, bug, task, or change in the events must become its own item."
+            f"\n   - Each item covers ONE specific piece of work — do NOT bundle unrelated changes into a single item."
+            f"\n   - A use case with 5–15 items is normal and expected."
+            f"\n   - Items must be granular: one commit that fixes a bug → one bug item; one prompt session that designs a feature → one feature/requirement item."
+            f"\n   - EVERY event in this batch must be covered by at least one item."
         )
         template = cfg.get("event_prompt", "{existing_context}\n\n{events_block}")
 
@@ -736,12 +720,6 @@ class MemoryWorkItems:
         if not isinstance(items, list):
             return []
 
-        # Attach source IDs from the group
-        prompt_ids   = [p["id"]           for p in group.get("prompts", [])]
-        commit_hashes= [c["commit_hash"]  for c in group.get("commits", [])]
-        message_ids  = [m["id"]           for m in group.get("messages", [])]
-        item_ids     = [i["id"]           for i in group.get("items", [])]
-
         valid = []
         for raw_item in items:
             if not isinstance(raw_item, dict):
@@ -749,13 +727,15 @@ class MemoryWorkItems:
             wi_type = raw_item.get("wi_type", "task")
             if wi_type not in _TYPE_SEQ:
                 wi_type = "task"
-            # Merge LLM-provided mrr_ids with the full group IDs
+            # Use only the mrr_ids the LLM specifically assigned to this item.
+            # (Previously we merged ALL group IDs into every item, which was wrong —
+            #  it made each item look like it covered every prompt in the group.)
             mrr = raw_item.get("mrr_ids") or {}
             merged_mrr = {
-                "prompts":  list(set((mrr.get("prompts")  or []) + prompt_ids)),
-                "commits":  list(set((mrr.get("commits")  or []) + commit_hashes)),
-                "messages": list(set((mrr.get("messages") or []) + message_ids)),
-                "items":    list(set((mrr.get("items")    or []) + item_ids)),
+                "prompts":  list(set(mrr.get("prompts")  or [])),
+                "commits":  list(set(mrr.get("commits")  or [])),
+                "messages": list(set(mrr.get("messages") or [])),
+                "items":    list(set(mrr.get("items")    or [])),
             }
             valid.append({
                 "wi_type":              wi_type,

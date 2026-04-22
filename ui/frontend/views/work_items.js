@@ -512,9 +512,15 @@ function _setupEvents(container) {
 //   'done'     → pending > 0 again → reload UI
 
 function _startClassifyPoller(btn) {
-  let phase     = 'started';
-  const startMs = Date.now();
-  const MAX_MS  = 15 * 60 * 1000; // 15-minute safety cap
+  // Phase tracking:
+  //  'started'  → waiting for pending to drop to 0 (delete phase completed)
+  //  'deleted'  → pending was 0; now waiting for it to rise (LLM saving items)
+  //  'filling'  → pending is rising; wait for it to STABILISE (no change for 2 polls = 10 s)
+  let phase       = 'started';
+  let lastPending = -1;
+  let stableCount = 0;
+  const startMs   = Date.now();
+  const MAX_MS    = 20 * 60 * 1000; // 20-minute safety cap
 
   _classifyPoller = setInterval(async () => {
     try {
@@ -523,24 +529,52 @@ function _startClassifyPoller(btn) {
       const elapsed = Date.now() - startMs;
 
       if (phase === 'started') {
-        // After at least 5 s, if pending dropped it means delete phase ran
-        if (elapsed > 5_000 && pending === 0) phase = 'deleted';
-        // Also handle: 0 pending from the start means no items existed
-        if (elapsed > 30_000 && pending === 0) phase = 'deleted';
-      }
-
-      if (phase === 'deleted' && pending > 0) {
-        // LLM has started saving items — classification is underway / done
-        // Wait one more tick to let the final group finish, then reload
-        phase = 'done';
+        // Transition to 'deleted' when pending drops to 0 (or after 30 s grace)
+        if ((elapsed > 5_000 && pending === 0) || elapsed > 30_000) {
+          phase = 'deleted';
+          lastPending = pending;
+        }
         return;
       }
 
-      if (phase === 'done') {
+      if (phase === 'deleted') {
+        if (pending > 0) {
+          // LLM has started writing items
+          phase       = 'filling';
+          lastPending = pending;
+          stableCount = 0;
+        }
+        // Safety: if still 0 after 3 min, classification produced nothing
+        if (elapsed > 3 * 60_000 && pending === 0) {
+          phase = 'done_empty';
+        }
+        return;
+      }
+
+      if (phase === 'filling') {
+        if (pending === lastPending) {
+          stableCount++;
+        } else {
+          // Still growing — reset stability counter
+          stableCount = 0;
+          lastPending = pending;
+          // Update button label so user sees progress
+          btn.textContent = `⏳ ${pending} items…`;
+        }
+        // Stable for 2 consecutive polls (10 s) → classify is done
+        if (stableCount >= 2) phase = 'done';
+        return;
+      }
+
+      if (phase === 'done' || phase === 'done_empty') {
         clearInterval(_classifyPoller); _classifyPoller = null;
         btn.disabled = false; btn.textContent = '↻ Classify';
         await _loadAll();
-        toast(`Classification complete — ${pending} items pending review`, 'success');
+        if (phase === 'done_empty') {
+          toast('Classification complete — no new items (all events already covered?)', 'info');
+        } else {
+          toast(`Classification complete — ${pending} items pending review`, 'success');
+        }
         return;
       }
 
