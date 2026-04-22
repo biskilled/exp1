@@ -752,11 +752,21 @@ class MemoryWorkItems:
 
     # ── Save to DB ─────────────────────────────────────────────────────────────
 
-    def _save_classifications(self, items: list[dict], pid: int) -> list[dict]:
-        """Two-phase insert: use_cases first, then children with parent FK."""
+    def _save_classifications(
+        self,
+        items: list[dict],
+        pid: int,
+        existing_uc_map: Optional[dict[str, str]] = None,
+    ) -> tuple[list[dict], dict[str, str]]:
+        """Two-phase insert: use_cases first, then children with parent FK.
+
+        Accepts an existing uc_map (name→UUID) built from previous groups so
+        children in later groups can link to use_cases from earlier groups.
+        Returns (saved_items, updated_uc_map).
+        """
         if not items or not db.is_available():
-            return []
-        uc_map: dict[str, str] = {}  # use_case name → UUID
+            return [], dict(existing_uc_map or {})
+        uc_map: dict[str, str] = dict(existing_uc_map or {})  # copy — don't mutate caller
         saved: list[dict] = []
         try:
             with db.conn() as conn:
@@ -765,7 +775,7 @@ class MemoryWorkItems:
                     for item in items:
                         if item.get("wi_type") != "use_case":
                             continue
-                        existing = item.get("existing_wi_id", "").strip()
+                        existing = (item.get("existing_wi_id") or "").strip()
                         if existing:
                             cur.execute(
                                 "SELECT id::text FROM mem_work_items "
@@ -786,7 +796,7 @@ class MemoryWorkItems:
                     for item in items:
                         if item.get("wi_type") == "use_case":
                             continue
-                        existing = item.get("existing_wi_id", "").strip()
+                        existing = (item.get("existing_wi_id") or "").strip()
                         if existing:
                             cur.execute(
                                 "SELECT id::text FROM mem_work_items "
@@ -804,7 +814,7 @@ class MemoryWorkItems:
                 conn.commit()
         except Exception as e:
             log.warning(f"_save_classifications error: {e}")
-        return saved
+        return saved, uc_map
 
     # ── Main classify entry point ─────────────────────────────────────────────
 
@@ -845,11 +855,12 @@ class MemoryWorkItems:
         existing_ctx = self._load_existing_context(pid)
 
         all_items: list[dict] = []
+        uc_map: dict[str, str] = {}  # accumulated name→UUID across all groups
         for group in groups:
             try:
                 items = await self._classify_group(group, existing_ctx)
                 if items:
-                    saved = self._save_classifications(items, pid)
+                    saved, uc_map = self._save_classifications(items, pid, uc_map)
                     all_items.extend(saved)
             except Exception as e:
                 log.warning(f"classify: group error: {e}")
@@ -927,14 +938,17 @@ class MemoryWorkItems:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"""SELECT id::text, wi_id, wi_type, item_level, name, summary,
-                                   deliveries, delivery_type,
-                                   score_importance, score_status,
-                                   mrr_ids, wi_parent_id::text, tags,
-                                   approved_at, created_at, updated_at
-                            FROM mem_work_items
-                            WHERE project_id=%s AND {where}
-                            ORDER BY created_at DESC
+                        f"""SELECT w.id::text, w.wi_id, w.wi_type, w.item_level, w.name, w.summary,
+                                   w.deliveries, w.delivery_type,
+                                   w.score_importance, w.score_status,
+                                   w.mrr_ids, w.wi_parent_id::text,
+                                   p.wi_id AS wi_parent_wi_id,
+                                   w.tags,
+                                   w.approved_at, w.created_at, w.updated_at
+                            FROM mem_work_items w
+                            LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
+                            WHERE w.project_id=%s AND {where}
+                            ORDER BY w.created_at DESC
                             LIMIT 500""",
                         (pid,),
                     )

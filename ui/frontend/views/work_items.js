@@ -200,16 +200,25 @@ export async function renderWorkItems(container, projectName) {
         display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.9rem;
         background:var(--surface2);border:1px solid var(--border);
         border-radius:var(--radius) var(--radius) 0 0;
+        cursor:pointer;user-select:none;
       }
+      .wi-uc-header:hover { background:var(--surface3) }
       .wi-uc-label {
         font-size:0.75rem;font-weight:800;text-transform:uppercase;
         letter-spacing:.05em;color:var(--accent);
       }
-      .wi-uc-children {
+      .wi-uc-body {
         border:1px solid var(--border);border-top:none;
         border-radius:0 0 var(--radius) var(--radius);
         overflow:hidden;
       }
+      .wi-uc-body.collapsed { display:none }
+      .wi-uc-summary {
+        padding:0.55rem 0.9rem;font-size:0.79rem;color:var(--text2);line-height:1.5;
+        border-bottom:1px solid var(--border);background:var(--surface);
+        border-left:3px solid var(--accent);
+      }
+      .wi-uc-children { overflow:hidden }
 
       .wi-filter-chip {
         font-size:0.67rem;padding:2px 8px;border-radius:10px;cursor:pointer;
@@ -345,6 +354,18 @@ function _setupEvents(container) {
       if (body?.classList.contains('wi-card-body')) {
         body.classList.toggle('collapsed');
         const arrow = header.querySelector('.wi-arrow');
+        if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+      }
+      return;
+    }
+
+    // Expand/collapse use case body (but not when clicking action buttons)
+    const ucHeader = e.target.closest('.wi-uc-header');
+    if (ucHeader && !e.target.closest('button')) {
+      const body = ucHeader.nextElementSibling;
+      if (body?.classList.contains('wi-uc-body')) {
+        body.classList.toggle('collapsed');
+        const arrow = ucHeader.querySelector('.wi-uc-arrow');
         if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
       }
     }
@@ -537,14 +558,20 @@ function _renderList() {
   // Render use_case groups with their children
   for (const uc of useCases) {
     const ucChildren = children.filter(c => c.wi_parent_id === uc.id);
-    const pendingChildren = ucChildren.filter(c => !c.wi_id);
+    const ucIsPending = !uc.wi_id || uc.wi_id.startsWith('AI');
+    const pendingChildren = ucChildren.filter(c => !c.wi_id || c.wi_id.startsWith('AI'));
     html += `
       <div class="wi-uc-group">
         <div class="wi-uc-header">
+          <span class="wi-uc-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           <span class="wi-uc-label">◻ Use Case</span>
           <span style="font-size:0.85rem;font-weight:700;color:var(--text);flex:1">${_esc(uc.name || uc.id)}</span>
-          ${uc.wi_id ? `<span class="wi-id">${_esc(uc.wi_id)}</span>` : '<span class="wi-pending">pending</span>'}
-          ${!uc.wi_id ? `
+          <span style="font-size:0.7rem;color:var(--muted)">${ucChildren.length} item${ucChildren.length !== 1 ? 's' : ''}</span>
+          ${ucIsPending
+            ? `<span class="wi-pending">${_esc(uc.wi_id || 'pending')}</span>`
+            : `<span class="wi-id">${_esc(uc.wi_id)}</span>`
+          }
+          ${ucIsPending ? `
             <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${uc.id}" title="Approve use case">✓</button>
             <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${uc.id}" title="Reject">✗</button>
           ` : `
@@ -554,31 +581,34 @@ function _renderList() {
             <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}" title="Approve all children">✓ All (${pendingChildren.length})</button>
           ` : ''}
         </div>
-        <div class="wi-uc-children">
-          ${ucChildren.length ? ucChildren.map(c => _renderItemCard(c)).join('') : `
-            <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem">No child items</div>
-          `}
-        </div>
-        <!-- Add Item form -->
-        <div class="wi-add-form" id="wi-add-form-${uc.id}">
-          <div style="display:flex;gap:0.5rem;align-items:center">
-            <input  id="wi-add-name-${uc.id}"    placeholder="Item name" style="flex:1">
-            <select id="wi-add-type-${uc.id}">
-              <option value="feature">⚡ Feature</option>
-              <option value="bug">🐛 Bug</option>
-              <option value="task">✓ Task</option>
-              <option value="policy">⚑ Policy</option>
-              <option value="requirement" selected>◎ Requirement</option>
-            </select>
+        <div class="wi-uc-body">
+          ${uc.summary ? `<div class="wi-uc-summary">${_esc(uc.summary)}</div>` : ''}
+          <div class="wi-uc-children">
+            ${ucChildren.length ? ucChildren.map(c => _renderItemCard(c)).join('') : `
+              <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem">No child items</div>
+            `}
           </div>
-          <textarea id="wi-add-summary-${uc.id}" placeholder="Summary (optional)"></textarea>
-          <div style="display:flex;gap:0.5rem">
-            <button class="wi-btn wi-btn-approve" data-action="submit-add" data-uc-id="${uc.id}">Add</button>
-            <button class="wi-btn wi-btn-ghost" onclick="document.getElementById('wi-add-form-${uc.id}').classList.remove('visible')">Cancel</button>
+          <!-- Add Item form -->
+          <div class="wi-add-form" id="wi-add-form-${uc.id}">
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <input  id="wi-add-name-${uc.id}"    placeholder="Item name" style="flex:1">
+              <select id="wi-add-type-${uc.id}">
+                <option value="feature">⚡ Feature</option>
+                <option value="bug">🐛 Bug</option>
+                <option value="task">✓ Task</option>
+                <option value="policy">⚑ Policy</option>
+                <option value="requirement" selected>◎ Requirement</option>
+              </select>
+            </div>
+            <textarea id="wi-add-summary-${uc.id}" placeholder="Summary (optional)"></textarea>
+            <div style="display:flex;gap:0.5rem">
+              <button class="wi-btn wi-btn-approve" data-action="submit-add" data-uc-id="${uc.id}">Add</button>
+              <button class="wi-btn wi-btn-ghost" onclick="document.getElementById('wi-add-form-${uc.id}').classList.remove('visible')">Cancel</button>
+            </div>
           </div>
+          <button class="wi-btn wi-btn-ghost" style="margin:0.4rem 0.9rem;font-size:0.72rem"
+                  data-action="add-item" data-uc-id="${uc.id}">+ Add Item</button>
         </div>
-        <button class="wi-btn wi-btn-ghost" style="margin:0.4rem 0.9rem;font-size:0.72rem"
-                data-action="add-item" data-uc-id="${uc.id}">+ Add Item</button>
       </div>
     `;
   }
@@ -593,7 +623,7 @@ function _renderList() {
 
 function _renderItemCard(item) {
   const meta = _typeMeta(item.wi_type);
-  const isPending = !item.wi_id;
+  const isPending = !item.wi_id || item.wi_id.startsWith('AI');
   const mrr = item.mrr_ids || {};
   const mrrCounts = [
     mrr.prompts?.length  ? `P:${mrr.prompts.length}`   : null,
@@ -609,9 +639,9 @@ function _renderItemCard(item) {
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
         <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
         <span class="wi-status-badge ${st.cls}">${st.label}</span>
-        ${item.wi_id
-          ? `<span class="wi-id">${_esc(item.wi_id)}</span>`
-          : `<span class="wi-pending">pending</span>`
+        ${isPending
+          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
+          : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
         <div class="wi-actions">
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
