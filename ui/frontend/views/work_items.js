@@ -546,7 +546,7 @@ const _STATUS_OPTIONS = [
 // ── Rename popover ────────────────────────────────────────────────────────────
 
 function _showRenamePopover(anchorEl, itemId, currentName, isUC) {
-  document.querySelector('.wi-wi-pop')?.remove();
+  if (_closePop(anchorEl)) return;
 
   // For UC rename: offer all existing UC names as quick picks
   const existingNames = isUC
@@ -617,7 +617,7 @@ function _showRenamePopover(anchorEl, itemId, currentName, isUC) {
 // ── Status popover ────────────────────────────────────────────────────────────
 
 function _showStatusPopover(anchorEl, itemId, currentScore) {
-  document.querySelector('.wi-wi-pop')?.remove();
+  if (_closePop(anchorEl)) return;
 
   const pop = document.createElement('div');
   pop.className = 'wi-wi-pop';
@@ -659,7 +659,7 @@ function _showStatusPopover(anchorEl, itemId, currentScore) {
 const _ITEM_TYPES = ['feature', 'bug', 'task', 'policy', 'requirement'];
 
 function _showTypePopover(anchorEl, itemId, currentType) {
-  document.querySelector('.wi-wi-pop')?.remove();
+  if (_closePop(anchorEl)) return;
   const pop = document.createElement('div');
   pop.className = 'wi-wi-pop';
   pop.style.width = '165px';
@@ -724,7 +724,20 @@ function _startSummaryEdit(triggerEl, itemId, currentSummary) {
 
 // ── Popover helper ────────────────────────────────────────────────────────────
 
+/**
+ * Remove any open popover. If it was anchored to `anchorEl`, returns true
+ * (caller should bail — same button toggled it closed). Otherwise returns false.
+ */
+function _closePop(anchorEl) {
+  const existing = document.querySelector('.wi-wi-pop');
+  if (!existing) return false;
+  const sameAnchor = existing._popAnchor === anchorEl;
+  existing.remove();
+  return sameAnchor;
+}
+
 function _popupAt(el, anchor) {
+  el._popAnchor = anchor; // store so _closePop can detect same-button re-click
   el.style.cssText += ';position:fixed;z-index:900;min-width:220px;padding:0.65rem;' +
     'background:var(--surface2);border:1px solid var(--border);' +
     'border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.4)';
