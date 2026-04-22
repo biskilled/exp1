@@ -24,6 +24,7 @@ let _allItems       = [];    // all loaded items
 let _filter         = '';    // wi_type filter
 let _dragItemId     = null;  // item id being dragged
 let _insertBeforeId = null;  // insert-before card id during within-UC reorder
+let _classifyPoller = null;  // interval polling after background classify
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -55,7 +56,8 @@ function _esc(s) {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 export function destroyWorkItems() {
-  if (_polling) { clearInterval(_polling); _polling = null; }
+  if (_polling)        { clearInterval(_polling);        _polling        = null; }
+  if (_classifyPoller) { clearInterval(_classifyPoller); _classifyPoller = null; }
 }
 
 export async function renderWorkItems(container, projectName) {
@@ -360,20 +362,20 @@ function _setupEvents(container) {
   // Classify button
   container.querySelector('#wi-classify-btn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
+    if (btn.disabled) return;
     const maxUc = parseInt(container.querySelector('#wi-max-uc')?.value || '8', 10);
     btn.disabled = true; btn.textContent = '⏳ Classifying…';
+
+    // Stop any previous poller
+    if (_classifyPoller) { clearInterval(_classifyPoller); _classifyPoller = null; }
+
     try {
-      const r = await api.wi.classify(_project, maxUc);
-      toast(
-        r.classified > 0
-          ? `Classified ${r.classified} items from ${r.events_in || 0} events`
-          : (r.message || 'No pending events to classify'),
-        r.classified > 0 ? 'success' : 'info',
-      );
-      await _loadAll();
-    } catch (e) {
-      toast(`Classify failed: ${e.message}`, 'error');
-    } finally {
+      // Always run as background — classify takes several minutes (N groups × ~35s each)
+      await api.wi.classify(_project, maxUc, /* bg= */ true);
+      toast(`Classification started (max ${maxUc} use cases) — auto-refreshing when done…`, 'info');
+      _startClassifyPoller(btn);
+    } catch (err) {
+      toast(`Classify failed: ${err.message}`, 'error');
       btn.disabled = false; btn.textContent = '↻ Classify';
     }
   });
@@ -500,6 +502,57 @@ function _setupEvents(container) {
       }
     }
   });
+}
+
+// ── Classify poller ───────────────────────────────────────────────────────────
+// Polls /stats every 5 s after background classify is started.
+// Phase logic:
+//   'started'  → waiting for pending to drop to 0 (delete phase)
+//   'deleted'  → pending was 0, waiting for it to rise again (LLM phase)
+//   'done'     → pending > 0 again → reload UI
+
+function _startClassifyPoller(btn) {
+  let phase     = 'started';
+  const startMs = Date.now();
+  const MAX_MS  = 15 * 60 * 1000; // 15-minute safety cap
+
+  _classifyPoller = setInterval(async () => {
+    try {
+      const stats   = await api.wi.stats(_project);
+      const pending = stats.pending ?? 0;
+      const elapsed = Date.now() - startMs;
+
+      if (phase === 'started') {
+        // After at least 5 s, if pending dropped it means delete phase ran
+        if (elapsed > 5_000 && pending === 0) phase = 'deleted';
+        // Also handle: 0 pending from the start means no items existed
+        if (elapsed > 30_000 && pending === 0) phase = 'deleted';
+      }
+
+      if (phase === 'deleted' && pending > 0) {
+        // LLM has started saving items — classification is underway / done
+        // Wait one more tick to let the final group finish, then reload
+        phase = 'done';
+        return;
+      }
+
+      if (phase === 'done') {
+        clearInterval(_classifyPoller); _classifyPoller = null;
+        btn.disabled = false; btn.textContent = '↻ Classify';
+        await _loadAll();
+        toast(`Classification complete — ${pending} items pending review`, 'success');
+        return;
+      }
+
+      // Safety timeout
+      if (elapsed > MAX_MS) {
+        clearInterval(_classifyPoller); _classifyPoller = null;
+        btn.disabled = false; btn.textContent = '↻ Classify';
+        await _loadAll();
+        toast('Classify timed out — check backend logs', 'error');
+      }
+    } catch (_) { /* network blip — keep polling */ }
+  }, 5_000);
 }
 
 // ── MD editor panel ────────────────────────────────────────────────────────
