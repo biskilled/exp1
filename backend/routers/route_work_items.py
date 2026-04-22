@@ -6,6 +6,7 @@ All endpoints are registered at the /wi prefix (set in main.py).
 Endpoints:
     POST  /wi/{project}/classify         — classify pending mirror rows
     GET   /wi/{project}/pending          — pending items
+    GET   /wi/{project}/use-cases        — approved use cases with children + stats
     GET   /wi/{project}                  — all items (type?, level?, status?)
     GET   /wi/{project}/stats            — counts by status and type
     POST  /wi/{project}/{id}/approve     — approve → assign wi_id
@@ -157,6 +158,15 @@ async def get_wi_stats(project: str):
     pid = _pid(project)
     wi  = _wi(project)
     return wi.get_stats(pid)
+
+
+@router.get("/{project}/use-cases")
+async def list_approved_use_cases(project: str):
+    """Return approved use cases with nested children and event stats."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    ucs = wi.get_approved_use_cases(pid)
+    return {"project": project, "use_cases": ucs, "count": len(ucs)}
 
 
 @router.get("/{project}")

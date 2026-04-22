@@ -978,6 +978,70 @@ class MemoryWorkItems:
             log.warning(f"_list_items error: {e}")
             return []
 
+    def get_approved_use_cases(self, pid: int) -> list[dict]:
+        """Return approved use cases with nested children + event/item stats."""
+        if not db.is_available():
+            return []
+        try:
+            ucs = self._list_items(
+                pid,
+                where="w.wi_type='use_case' AND w.wi_id IS NOT NULL "
+                      "AND w.wi_id NOT LIKE 'AI%%' AND w.wi_id NOT LIKE 'REJ%%'",
+            )
+            if not ucs:
+                return []
+
+            uc_id_list = ",".join(f"'{u['id']}'" for u in ucs)
+            all_children = self._list_items(
+                pid,
+                where=f"w.wi_parent_id::text IN ({uc_id_list})",
+            )
+
+            children_by_uc: dict[str, list] = {u["id"]: [] for u in ucs}
+            for c in all_children:
+                pid_str = c.get("wi_parent_id")
+                if pid_str in children_by_uc:
+                    children_by_uc[pid_str].append(c)
+
+            def _mrr_count(item: dict, key: str) -> int:
+                return len((item.get("mrr_ids") or {}).get(key, []))
+
+            result = []
+            for uc in ucs:
+                kids = children_by_uc.get(uc["id"], [])
+                tp = sum(_mrr_count(c, "prompts")  for c in kids) + _mrr_count(uc, "prompts")
+                tc = sum(_mrr_count(c, "commits")  for c in kids) + _mrr_count(uc, "commits")
+                tm = sum(_mrr_count(c, "messages") for c in kids) + _mrr_count(uc, "messages")
+                ti = sum(_mrr_count(c, "items")    for c in kids) + _mrr_count(uc, "items")
+
+                approved_kids = [
+                    c for c in kids
+                    if c.get("wi_id") and
+                    not c["wi_id"].startswith("AI") and
+                    not c["wi_id"].startswith("REJ")
+                ]
+
+                uc["children"] = sorted(kids, key=lambda c: (
+                    int((c.get("user_status") or c.get("score_status") or 0) >= 5),
+                    -(c.get("user_importance") or c.get("score_importance") or 0),
+                ))
+                uc["stats"] = {
+                    "total_prompts":     tp,
+                    "total_commits":     tc,
+                    "total_messages":    tm,
+                    "total_events":      tp + tc + tm + ti,
+                    "total_children":    len(kids),
+                    "approved_children": len(approved_kids),
+                    "pending_children":  len(kids) - len(approved_kids),
+                }
+                result.append(uc)
+
+            result.sort(key=lambda u: u.get("approved_at") or "", reverse=True)
+            return result
+        except Exception as e:
+            log.warning(f"get_approved_use_cases error: {e}")
+            return []
+
     def get_stats(self, pid: int) -> dict:
         """Return counts by status and type."""
         if not db.is_available():

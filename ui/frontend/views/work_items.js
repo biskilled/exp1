@@ -25,6 +25,8 @@ let _filter         = '';    // wi_type filter
 let _dragItemId     = null;  // item id being dragged
 let _insertBeforeId = null;  // insert-before card id during within-UC reorder
 let _classifyPoller = null;  // interval polling after background classify
+let _tab            = 'backlog';  // 'backlog' | 'use_cases'
+let _ucItems        = [];         // loaded by _loadUseCases()
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -63,6 +65,8 @@ export function destroyWorkItems() {
 export async function renderWorkItems(container, projectName) {
   destroyWorkItems();
   _project = projectName || state.currentProject?.name || '';
+  _tab     = 'backlog';
+  _ucItems = [];
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -70,16 +74,21 @@ export async function renderWorkItems(container, projectName) {
       <!-- ── Toolbar ── -->
       <div style="padding:0.65rem 1.25rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.75rem;flex-shrink:0;flex-wrap:wrap">
-        <span style="font-size:0.88rem;font-weight:700;color:var(--text)">Work Items</span>
-        <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
-          ↻ Classify
-        </button>
-        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Target maximum number of use cases the LLM should create">
-          Max UCs:
-          <input id="wi-max-uc" type="number" min="1" max="50" value="8"
-                 style="width:52px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;
-                        background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center">
-        </label>
+        <div style="display:flex;gap:0.3rem">
+          <button id="wi-tab-backlog"    class="wi-tab-btn active">Work Items</button>
+          <button id="wi-tab-use-cases"  class="wi-tab-btn">Use Cases</button>
+        </div>
+        <div id="wi-classify-row" style="display:flex;align-items:center;gap:0.5rem">
+          <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
+            ↻ Classify
+          </button>
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Target maximum number of use cases the LLM should create">
+            Max UCs:
+            <input id="wi-max-uc" type="number" min="1" max="50" value="8"
+                   style="width:52px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;
+                          background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center">
+          </label>
+        </div>
         <span style="flex:1"></span>
         <!-- Type filter chips (bug/feature/task/policy/requirement only — use_case not shown as all items are grouped by UC) -->
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
@@ -349,6 +358,34 @@ export async function renderWorkItems(container, projectName) {
         padding:6px 8px;color:var(--text);font-size:0.8rem;line-height:1.5;outline:none;
         display:block;margin-bottom:0.35rem;
       }
+
+      /* Tab bar */
+      .wi-tab-btn {
+        padding:0.28rem 0.7rem;font-size:0.8rem;font-weight:600;border-radius:6px;
+        border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;
+      }
+      .wi-tab-btn.active { background:var(--accent,#06b6d4);color:#fff;border-color:var(--accent,#06b6d4); }
+      .wi-tab-btn:hover:not(.active) { border-color:var(--accent);color:var(--accent); }
+
+      /* Use Cases tab — UC card */
+      .wi-uc-card { margin-bottom:1.25rem;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden; }
+      .wi-uc-card-header {
+        display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;
+        background:var(--surface2);cursor:pointer;user-select:none;flex-wrap:wrap;
+      }
+      .wi-uc-card-header:hover { background:var(--surface3) }
+      .wi-uc-card-body { border-top:1px solid var(--border) }
+      .wi-uc-card-body.collapsed { display:none }
+      .wi-uc-dates {
+        padding:0.3rem 0.9rem;font-size:0.67rem;color:var(--muted);
+        background:var(--surface);border-bottom:1px solid var(--border);
+        display:flex;gap:1rem;flex-wrap:wrap;align-items:center;
+      }
+      .wi-uc-event-chips { display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center }
+      .wi-uc-event-chip {
+        background:var(--surface3);padding:1px 6px;border-radius:6px;
+        font-size:0.65rem;color:var(--muted);
+      }
     </style>
   `;
 
@@ -359,6 +396,20 @@ export async function renderWorkItems(container, projectName) {
 // ── Event wiring ──────────────────────────────────────────────────────────────
 
 function _setupEvents(container) {
+  // Tab buttons
+  container.querySelector('#wi-tab-backlog').addEventListener('click', () => {
+    if (_tab === 'backlog') return;
+    _tab = 'backlog';
+    _syncTabUI(container);
+    _loadAll();
+  });
+  container.querySelector('#wi-tab-use-cases').addEventListener('click', () => {
+    if (_tab === 'use_cases') return;
+    _tab = 'use_cases';
+    _syncTabUI(container);
+    _loadUseCases();
+  });
+
   // Classify button
   container.querySelector('#wi-classify-btn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -403,7 +454,7 @@ function _setupEvents(container) {
       try {
         const r = await api.wi.approve(_project, id);
         toast(`✓ Approved → ${r.wi_id}`, 'success');
-        await _loadAll();
+        await _reloadCurrent();
       } catch (err) { toast(`Approve failed: ${err.message}`, 'error'); apBtn.disabled = false; }
       return;
     }
@@ -417,7 +468,7 @@ function _setupEvents(container) {
       try {
         const r = await api.wi.reject(_project, id);
         toast(`✗ Rejected (${r.wi_id})`, 'info');
-        await _loadAll();
+        await _reloadCurrent();
       } catch (err) { toast(`Reject failed: ${err.message}`, 'error'); rejBtn.disabled = false; }
       return;
     }
@@ -431,7 +482,7 @@ function _setupEvents(container) {
       try {
         const r = await api.wi.approveAll(_project, parentId);
         toast(`✓ Approved ${r.approved} items`, 'success');
-        await _loadAll();
+        await _reloadCurrent();
       } catch (err) { toast(`Approve all failed: ${err.message}`, 'error'); apAllBtn.disabled = false; }
       return;
     }
@@ -441,8 +492,8 @@ function _setupEvents(container) {
     if (mdBtn) {
       e.stopPropagation();
       const id   = mdBtn.dataset.id;
-      const name = mdBtn.dataset.name;
-      const item = _allItems.find(i => i.id === id);
+      const item = _allItems.find(i => i.id === id)
+                || _ucItems.find(i => i.id === id);
       if (item) _openMdPanel(item);
       return;
     }
@@ -502,6 +553,22 @@ function _setupEvents(container) {
       }
     }
   });
+}
+
+// ── Tab helpers ───────────────────────────────────────────────────────────────
+
+function _syncTabUI(container) {
+  container.querySelector('#wi-tab-backlog').classList.toggle('active',    _tab === 'backlog');
+  container.querySelector('#wi-tab-use-cases').classList.toggle('active',  _tab === 'use_cases');
+  const cr = container.querySelector('#wi-classify-row');
+  if (cr) cr.style.display = _tab === 'backlog' ? '' : 'none';
+  const fc = container.querySelector('#wi-filter-chips');
+  if (fc) fc.style.display = _tab === 'backlog' ? '' : 'none';
+}
+
+async function _reloadCurrent() {
+  if (_tab === 'use_cases') await _loadUseCases();
+  else await _loadAll();
 }
 
 // ── Classify poller ───────────────────────────────────────────────────────────
@@ -662,7 +729,11 @@ function _showRenamePopover(anchorEl, itemId, currentName, isUC) {
 
   // For UC rename: offer all existing UC names as quick picks
   const existingNames = isUC
-    ? [...new Set(_allItems.filter(i => i.wi_type === 'use_case' && i.name).map(i => i.name))]
+    ? [...new Set(
+        [..._allItems, ..._ucItems]
+          .filter(i => i.wi_type === 'use_case' && i.name)
+          .map(i => i.name)
+      )]
     : [];
 
   const pop = document.createElement('div');
@@ -711,7 +782,7 @@ function _showRenamePopover(anchorEl, itemId, currentName, isUC) {
     try {
       await api.wi.update(_project, itemId, { name: newName });
       toast(`Renamed → ${newName}`, 'success');
-      await _loadAll();
+      await _reloadCurrent();
     } catch (err) { toast(`Rename failed: ${err.message}`, 'error'); }
   };
 
@@ -748,11 +819,10 @@ function _showStatusPopover(anchorEl, itemId, currentScore) {
       const newScore = parseInt(btn.dataset.score, 10);
       pop.remove();
       try {
-        // Save to user_status (user-controlled override)
         await api.wi.update(_project, itemId, { user_status: newScore });
         const item = _allItems.find(i => i.id === itemId);
         if (item) item.user_status = newScore;
-        await _loadAll(); // re-render with new sort order
+        await _reloadCurrent();
       } catch (err) { toast(`Status update failed: ${err.message}`, 'error'); }
     });
   });
@@ -787,7 +857,7 @@ function _showTypePopover(anchorEl, itemId, currentType) {
       try {
         await api.wi.update(_project, itemId, { wi_type: newType });
         toast(`Type → ${newType}`, 'success');
-        await _loadAll();
+        await _reloadCurrent();
       } catch (err) { toast(`Type update failed: ${err.message}`, 'error'); }
     });
   });
@@ -822,7 +892,7 @@ function _startSummaryEdit(triggerEl, itemId, currentSummary) {
       await api.wi.update(_project, itemId, { summary: newSummary });
       toast('Summary saved', 'success');
     } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
-    await _loadAll();
+    await _reloadCurrent();
   });
   wrap.querySelector('#wi-sum-cancel').addEventListener('click', () => {
     wrap.innerHTML = prev;
@@ -1000,7 +1070,7 @@ async function _submitAddForm(ucId) {
   try {
     await api.wi.create(_project, { name, wi_type, summary, wi_parent_id: ucId });
     toast(`Added: ${name}`, 'success');
-    await _loadAll();
+    await _reloadCurrent();
   } catch (err) {
     toast(`Add failed: ${err.message}`, 'error');
     if (btn) btn.disabled = false;
@@ -1035,11 +1105,231 @@ function _setStatus(msg) {
   if (el) el.textContent = msg;
 }
 
+// ── Use Cases tab ─────────────────────────────────────────────────────────────
+
+async function _loadUseCases() {
+  if (!_project) return;
+  _setStatus('Loading use cases…');
+  try {
+    const data = await api.wi.useCases(_project);
+    _ucItems = data.use_cases || [];
+    _renderStats();
+    _renderUseCases();
+    _setStatus('');
+  } catch (e) {
+    _setStatus(`Error: ${e.message}`);
+    const el = document.getElementById('wi-list');
+    if (el) el.innerHTML =
+      `<div style="color:var(--muted);text-align:center;padding:2rem">${_esc(e.message)}</div>`;
+  }
+}
+
+function _renderUseCases() {
+  const el = document.getElementById('wi-list');
+  if (!el) return;
+
+  if (!_ucItems.length) {
+    el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
+      No approved use cases yet.<br>Approve use cases in the <strong>Work Items</strong> tab first.
+    </div>`;
+    return;
+  }
+
+  const fmt = (iso) => iso ? iso.slice(0, 10) : '—';
+
+  let html = '';
+  for (const uc of _ucItems) {
+    const s = uc.stats;
+    const evChips = [
+      s.total_prompts  ? `${s.total_prompts} prompts`   : '',
+      s.total_commits  ? `${s.total_commits} commits`   : '',
+      s.total_messages ? `${s.total_messages} messages` : '',
+    ].filter(Boolean).join(' · ');
+
+    const pendingDot = s.pending_children > 0
+      ? `<span style="color:#f59e0b;font-weight:700">●</span> ${s.pending_children} pending` : '';
+
+    const ucId = `uc-card-${uc.id.replace(/-/g, '')}`;
+
+    html += `
+      <div class="wi-uc-card" id="${ucId}">
+        <div class="wi-uc-card-header" data-uc-expand="${uc.id}">
+          <span class="wi-uc-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
+          <span class="wi-uc-label">◻ USE CASE</span>
+          <span class="wi-id">${_esc(uc.wi_id)}</span>
+          <span class="wi-name">${_esc(uc.name || uc.id)}</span>
+          <span style="flex:1"></span>
+          <button class="wi-btn wi-btn-ghost" data-action="edit-md"
+                  data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Edit Markdown file">✎ MD</button>
+          <button class="wi-edit-arrow" data-action="rename-pop"
+                  data-id="${uc.id}" data-current-name="${_esc(uc.name || '')}" data-is-uc="true"
+                  title="Rename use case">▾</button>
+        </div>
+        <div class="wi-uc-card-body" id="body-${uc.id}">
+          <div class="wi-uc-dates">
+            <span>Created: ${fmt(uc.created_at)}</span>
+            <span>Approved: ${fmt(uc.approved_at)}</span>
+            <span>Updated: ${fmt(uc.updated_at)}</span>
+            <span style="flex:1"></span>
+            ${evChips ? `<div class="wi-uc-event-chips">
+              ${evChips.split(' · ').map(c => `<span class="wi-uc-event-chip">${c}</span>`).join('')}
+            </div>` : ''}
+            <span style="font-size:0.67rem;color:var(--muted)">
+              ${s.total_children} item${s.total_children !== 1 ? 's' : ''}
+              (${s.approved_children} approved${s.pending_children ? `, ${pendingDot}` : ''})
+            </span>
+          </div>
+
+          <!-- Summary -->
+          <div class="wi-uc-summary wi-summary-wrap" style="padding:0.55rem 0.9rem;border-bottom:1px solid var(--border)">
+            ${uc.summary
+              ? `<div style="font-size:0.79rem;color:var(--text2);line-height:1.5;border-left:3px solid var(--accent);padding-left:0.5rem">${_esc(uc.summary)}</div>`
+              : `<span style="color:var(--muted);font-style:italic;font-size:0.77rem">No summary</span>`
+            }
+            <button class="wi-edit-link" data-action="edit-summary"
+                    data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
+          </div>
+
+          <!-- Children -->
+          <div class="wi-uc-children" style="padding:0.4rem 0.9rem 0.3rem;border-bottom:1px solid var(--border)">
+            ${uc.children.length ? uc.children.map((c, idx) => _renderUcChildRow(c, idx + 1)).join('') : `
+              <div style="padding:0.4rem 0;color:var(--muted);font-size:0.78rem;font-style:italic">No items yet</div>
+            `}
+          </div>
+
+          <!-- Approve pending children shortcut -->
+          ${s.pending_children > 0 ? `
+            <div style="padding:0.4rem 0.9rem">
+              <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}"
+                      style="font-size:0.72rem">
+                ✓ Approve ${s.pending_children} pending item${s.pending_children !== 1 ? 's' : ''}
+              </button>
+            </div>
+          ` : ''}
+
+          <!-- Add Item form -->
+          <div class="wi-add-form" id="wi-add-form-${uc.id}">
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <input  id="wi-add-name-${uc.id}"    placeholder="Item name" style="flex:1">
+              <select id="wi-add-type-${uc.id}">
+                <option value="feature">⚡ Feature</option>
+                <option value="bug">🐛 Bug</option>
+                <option value="task">✓ Task</option>
+                <option value="policy">⚑ Policy</option>
+                <option value="requirement" selected>◎ Requirement</option>
+              </select>
+            </div>
+            <textarea id="wi-add-summary-${uc.id}" placeholder="Summary (optional)"></textarea>
+            <div style="display:flex;gap:0.5rem">
+              <button class="wi-btn wi-btn-approve" data-action="submit-add" data-uc-id="${uc.id}">Add</button>
+              <button class="wi-btn wi-btn-ghost"
+                      onclick="document.getElementById('wi-add-form-${uc.id}').classList.remove('visible')">Cancel</button>
+            </div>
+          </div>
+          <button class="wi-btn wi-btn-ghost" style="margin:0.4rem 0.9rem;font-size:0.72rem"
+                  data-action="add-item" data-uc-id="${uc.id}">+ Add Item</button>
+        </div>
+      </div>
+    `;
+  }
+
+  el.innerHTML = html;
+
+  // Wire collapse for UC card headers
+  el.querySelectorAll('[data-uc-expand]').forEach(hdr => {
+    hdr.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action]') || e.target.closest('button')) return;
+      const ucId = hdr.dataset.ucExpand;
+      const body = document.getElementById(`body-${ucId}`);
+      if (!body) return;
+      body.classList.toggle('collapsed');
+      const arrow = hdr.querySelector('.wi-uc-arrow');
+      if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+    });
+  });
+}
+
+function _renderUcChildRow(c, rank) {
+  const meta      = _typeMeta(c.wi_type);
+  const isPending = !c.wi_id || c.wi_id.startsWith('AI');
+  const st        = _itemStatus(c);
+  const isDone    = st.cls === 'wi-s-done';
+
+  return `
+    <div class="wi-card${isDone ? ' wi-card-done' : ''}" style="margin-bottom:0.4rem" data-item-id="${c.id}">
+      <div class="wi-card-header" title="Click to expand">
+        ${rank != null ? `<span class="wi-rank-badge${isDone ? ' wi-rank-done' : ''}">#${rank}</span>` : ''}
+        <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
+        <button class="wi-edit-arrow" data-action="type-pop"
+                data-id="${c.id}" data-type="${c.wi_type}" title="Change type">▾</button>
+        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${isDone ? '✓ ' : ''}${_esc(c.name || '(unnamed)')}</span>
+        <button class="wi-edit-arrow" data-action="rename-pop"
+                data-id="${c.id}" data-current-name="${_esc(c.name || '')}" data-is-uc="false"
+                title="Rename">▾</button>
+        <span class="wi-status-badge ${st.cls}">${st.label}</span>
+        <button class="wi-edit-arrow" data-action="status-pop"
+                data-id="${c.id}" data-score="${c.user_status ?? c.score_status ?? 0}"
+                title="Change status">▾</button>
+        ${isPending
+          ? `<span class="wi-pending">${_esc(c.wi_id || 'pending')}</span>`
+          : `<span class="wi-id">${_esc(c.wi_id)}</span>`
+        }
+        <div class="wi-actions">
+          <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
+          ${isPending ? `
+            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${c.id}" title="Approve">✓</button>
+            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${c.id}" title="Reject">✗</button>
+          ` : ''}
+        </div>
+      </div>
+      <div class="wi-card-body collapsed">
+        <div class="wi-summary-wrap">
+          ${c.summary
+            ? `<div class="wi-summary">${_esc(c.summary)}</div>`
+            : `<span style="color:var(--muted);font-style:italic;font-size:0.77rem">No summary yet</span>`
+          }
+          <button class="wi-edit-link" data-action="edit-summary"
+                  data-id="${c.id}" data-summary="${_esc(c.summary || '')}">✎ Edit summary</button>
+        </div>
+        <div class="wi-scores" style="margin-top:0.35rem">
+          <span>Importance: ${_scorePips(c.score_importance, '#3b82f6')}</span>
+          <span>Completion: ${_scorePips(c.score_status, '#22c55e')}</span>
+        </div>
+        ${c.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(c.deliveries)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 // ── Stats bar ─────────────────────────────────────────────────────────────────
 
 function _renderStats() {
   const el = document.getElementById('wi-stats-bar');
   if (!el) return;
+
+  if (_tab === 'use_cases') {
+    const totalUcs      = _ucItems.length;
+    const totalItems    = _ucItems.reduce((s, u) => s + u.stats.total_children, 0);
+    const approvedItems = _ucItems.reduce((s, u) => s + u.stats.approved_children, 0);
+    const pendingItems  = _ucItems.reduce((s, u) => s + u.stats.pending_children, 0);
+    const totalEvents   = _ucItems.reduce((s, u) => s + u.stats.total_events, 0);
+    const pills = [
+      { label: 'Use Cases', val: totalUcs,      color: '#06b6d4' },
+      { label: 'Items',     val: totalItems,    color: '#22c55e' },
+      { label: 'Approved',  val: approvedItems, color: '#22c55e' },
+      { label: 'Pending',   val: pendingItems,  color: '#f59e0b' },
+      { label: 'Events',    val: totalEvents,   color: '#8b5cf6' },
+    ];
+    el.innerHTML = pills.map(p => `
+      <div class="wi-stats-pill">
+        <div class="wi-stats-dot" style="background:${p.color}"></div>
+        <span style="color:var(--muted)">${p.label}:</span>
+        <strong style="color:var(--text)">${p.val}</strong>
+      </div>
+    `).join('');
+    return;
+  }
+
   const s = _stats;
   const pills = [
     { label: 'Pending',      val: s.pending      || 0, color: '#f59e0b' },
@@ -1082,9 +1372,12 @@ function _renderList() {
   const el = document.getElementById('wi-list');
   if (!el) return;
 
-  // Always start from full item list — use_case items never filtered out
+  // Work Items tab: show only pending (AI*) use cases — approved ones moved to Use Cases tab
   const allUcIds = new Set(_allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3).map(u => u.id));
-  const useCases = _allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3);
+  const useCases = _allItems.filter(i =>
+    (i.wi_type === 'use_case' || i.item_level === 3) &&
+    (!i.wi_id || i.wi_id.startsWith('AI'))
+  );
 
   // Apply type filter to children only; UC headers are always preserved
   const allChildren = _allItems.filter(i => i.wi_parent_id && allUcIds.has(i.wi_parent_id));
