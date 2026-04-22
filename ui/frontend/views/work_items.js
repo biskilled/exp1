@@ -261,12 +261,11 @@ export async function renderWorkItems(container, projectName) {
       }
       .wi-rename-btn:hover { opacity:1;color:var(--accent) }
 
-      /* status badge clickable */
+      /* status badge — display only, ▾ button is the trigger */
       .wi-status-badge {
         font-size:0.62rem;font-weight:700;padding:1px 6px;border-radius:6px;
-        white-space:nowrap;cursor:pointer;user-select:none;
+        white-space:nowrap;cursor:default;user-select:none;
       }
-      .wi-status-badge:hover { filter:brightness(1.1);outline:1px solid currentColor }
 
       /* UC MRR totals */
       .wi-uc-mrr {
@@ -305,22 +304,19 @@ export async function renderWorkItems(container, projectName) {
 
       /* inline edit controls */
       .wi-edit-arrow {
-        background:none;border:none;cursor:pointer;color:var(--muted);
-        font-size:0.6rem;padding:0 2px;line-height:1;opacity:.7;
-        vertical-align:middle;flex-shrink:0;
+        background:var(--surface3);border:1px solid var(--border);border-radius:3px;
+        cursor:pointer;color:var(--text2);
+        font-size:0.7rem;padding:1px 5px;line-height:1.4;
+        flex-shrink:0;font-weight:700;
       }
-      .wi-edit-arrow:hover { color:var(--accent);opacity:1 }
+      .wi-edit-arrow:hover {
+        background:var(--accent,#06b6d4);color:#fff;border-color:var(--accent,#06b6d4);
+      }
       .wi-edit-link {
         background:none;border:none;cursor:pointer;font-size:0.67rem;
         color:var(--muted);padding:2px 0;text-decoration:underline;display:block;margin-top:0.25rem;
       }
       .wi-edit-link:hover { color:var(--accent) }
-      .wi-type-badge.wi-editable, .wi-status-badge.wi-editable {
-        cursor:pointer;
-      }
-      .wi-type-badge.wi-editable:hover, .wi-status-badge.wi-editable:hover {
-        filter:brightness(1.1);outline:1px solid currentColor;
-      }
       .wi-summary-editor {
         width:100%;box-sizing:border-box;min-height:70px;resize:vertical;
         background:var(--surface);border:1px solid var(--accent);border-radius:4px;
@@ -442,9 +438,23 @@ function _setupEvents(container) {
       return;
     }
 
-    // Expand/collapse card body
+    // ── Edit actions MUST be checked before expand/collapse ──────────────────
+    // (edit buttons live inside card/uc headers, so they'd trigger expand otherwise)
+    const actionEl = e.target.closest('[data-action="rename-pop"],[data-action="status-pop"],[data-action="type-pop"],[data-action="edit-summary"]');
+    if (actionEl) {
+      e.stopPropagation();
+      const action = actionEl.dataset.action;
+      const id     = actionEl.dataset.id;
+      if      (action === 'rename-pop')   _showRenamePopover(actionEl, id, actionEl.dataset.currentName, actionEl.dataset.isUc === 'true');
+      else if (action === 'status-pop')   _showStatusPopover(actionEl, id, parseInt(actionEl.dataset.score || '0', 10));
+      else if (action === 'type-pop')     _showTypePopover(actionEl, id, actionEl.dataset.type);
+      else if (action === 'edit-summary') _startSummaryEdit(actionEl, id, actionEl.dataset.summary);
+      return;
+    }
+
+    // Expand/collapse card body — only when clicking the header itself (not edit buttons)
     const header = e.target.closest('.wi-card-header');
-    if (header) {
+    if (header && !e.target.closest('[data-action]') && !e.target.closest('button')) {
       const body = header.nextElementSibling;
       if (body?.classList.contains('wi-card-body')) {
         body.classList.toggle('collapsed');
@@ -454,7 +464,7 @@ function _setupEvents(container) {
       return;
     }
 
-    // Expand/collapse use case body (but not when clicking data-action buttons)
+    // Expand/collapse use case body
     const ucHeader = e.target.closest('.wi-uc-header');
     if (ucHeader && !e.target.closest('[data-action]') && !e.target.closest('button')) {
       const body = ucHeader.nextElementSibling;
@@ -463,23 +473,6 @@ function _setupEvents(container) {
         const arrow = ucHeader.querySelector('.wi-uc-arrow');
         if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
       }
-    }
-
-    // All edit actions via data-action (rename-pop, status-pop, type-pop, edit-summary)
-    const actionEl = e.target.closest('[data-action="rename-pop"],[data-action="status-pop"],[data-action="type-pop"],[data-action="edit-summary"]');
-    if (actionEl) {
-      e.stopPropagation();
-      const action = actionEl.dataset.action;
-      const id = actionEl.dataset.id;
-      if (action === 'rename-pop')
-        _showRenamePopover(actionEl, id, actionEl.dataset.currentName, actionEl.dataset.isUc === 'true');
-      else if (action === 'status-pop')
-        _showStatusPopover(actionEl, id, parseInt(actionEl.dataset.score || '0', 10));
-      else if (action === 'type-pop')
-        _showTypePopover(actionEl, id, actionEl.dataset.type);
-      else if (action === 'edit-summary')
-        _startSummaryEdit(actionEl, id, actionEl.dataset.summary);
-      return;
     }
   });
 }
@@ -1044,10 +1037,11 @@ function _renderItemCard(item) {
     <div class="wi-card" draggable="true" data-item-id="${item.id}">
       <div class="wi-card-header" title="Click header to expand">
 
-        <!-- Type badge — click ▾ to change type -->
-        <span class="wi-type-badge wi-editable ${meta.cls}"
-              data-action="type-pop" data-id="${item.id}" data-type="${item.wi_type}"
-              title="Change type">${meta.icon} ${meta.label} ▾</span>
+        <!-- Type badge + ▾ button to change type -->
+        <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
+        <button class="wi-edit-arrow" data-action="type-pop"
+                data-id="${item.id}" data-type="${item.wi_type}"
+                title="Change type">▾</button>
 
         <!-- Name + ▾ to rename -->
         <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
@@ -1055,10 +1049,11 @@ function _renderItemCard(item) {
                 data-id="${item.id}" data-current-name="${_esc(item.name || '')}" data-is-uc="false"
                 title="Rename item">▾</button>
 
-        <!-- Status badge — click ▾ to change status -->
-        <span class="wi-status-badge wi-editable ${st.cls}"
-              data-action="status-pop" data-id="${item.id}" data-score="${item.score_status || 0}"
-              title="Change status">${st.label} ▾</span>
+        <!-- Status badge + ▾ button to change status -->
+        <span class="wi-status-badge ${st.cls}">${st.label}</span>
+        <button class="wi-edit-arrow" data-action="status-pop"
+                data-id="${item.id}" data-score="${item.score_status || 0}"
+                title="Change status">▾</button>
 
         <!-- ID -->
         ${isPending
