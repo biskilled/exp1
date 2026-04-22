@@ -230,10 +230,9 @@ export async function renderWorkItems(container, projectName) {
       .wi-uc-children .wi-card { margin-bottom:0.5rem }
       .wi-uc-children .wi-card:last-child { margin-bottom:0 }
 
-      /* done card — subtle dimming */
-      .wi-card-done { opacity:.72 }
-      .wi-card-done:hover { opacity:1 }
-      .wi-name-done { text-decoration:line-through;color:var(--muted) }
+      /* done card — subtle green tint, no strikethrough */
+      .wi-card-done { border-left:3px solid #22c55e !important }
+      .wi-name-done { color:var(--text2) }
 
       /* priority rank badge */
       .wi-rank-badge {
@@ -1156,7 +1155,7 @@ function _renderItemCard(item, rank) {
                 title="Change type">▾</button>
 
         <!-- Name + ▾ to rename -->
-        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${_esc(item.name || '(unnamed)')}</span>
+        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${isDone ? '✓ ' : ''}${_esc(item.name || '(unnamed)')}</span>
         <button class="wi-edit-arrow" data-action="rename-pop"
                 data-id="${item.id}" data-current-name="${_esc(item.name || '')}" data-is-uc="false"
                 title="Rename item">▾</button>
@@ -1188,6 +1187,11 @@ function _renderItemCard(item, rank) {
           }
           <button class="wi-edit-link" data-action="edit-summary"
                   data-id="${item.id}" data-summary="${_esc(item.summary || '')}">✎ Edit summary</button>
+        </div>
+        <!-- AI scores (read-only indicators from classification) -->
+        <div class="wi-scores" style="margin-top:0.35rem">
+          <span title="AI importance score (0–5)">Importance: ${_scorePips(item.score_importance, '#3b82f6')}</span>
+          <span title="AI completion score (0–5)">Completion: ${_scorePips(item.score_status, '#22c55e')}</span>
         </div>
         ${item.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(item.deliveries)}</div>` : ''}
         ${mrrChips ? `<div class="wi-mrr-counts" style="margin-top:0.4rem">${mrrChips}</div>` : ''}
