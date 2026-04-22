@@ -175,15 +175,13 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
     temp_wi_id = f"AI{temp_val:04d}"
     score_imp = min(5, max(0, int(item.get("score_importance", 0))))
     score_st  = min(5, max(0, int(item.get("score_status", 0))))
-    score_tag = item.get("score_tag")
-    score_tag_val = min(5, max(0, int(score_tag))) if score_tag is not None else None
     cur.execute(
         """INSERT INTO mem_work_items
            (client_id, project_id, wi_type, item_level, name, summary,
             deliveries, delivery_type, score_importance, score_status,
-            score_tag, user_importance, user_status,
+            user_importance, user_status,
             mrr_ids, wi_parent_id, wi_id)
-           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
+           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
            RETURNING id::text""",
         (
             pid,
@@ -195,7 +193,6 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
             item.get("delivery_type") or "",
             score_imp,
             score_st,
-            score_tag_val,
             score_imp,  # user_importance defaults to AI score
             score_st,   # user_status defaults to AI score
             json.dumps(item.get("mrr_ids") or {}),
@@ -205,6 +202,10 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
     )
     row = cur.fetchone()
     return row[0] if row else ""
+
+
+# Only these keys are user-intent tags — everything else (source, llm, …) is system metadata
+_USER_TAG_KEYS = {"phase", "feature", "bug", "work-item"}
 
 
 def _merge_tags(existing: dict, incoming: dict) -> dict:
@@ -242,8 +243,10 @@ def _update_item_tags(saved_items: list[dict], tag_lookup: dict[str, dict]) -> N
                     merged: dict = {}
                     for ref_list in mrr.values():
                         for ref_id in (ref_list or []):
-                            event_tags = tag_lookup.get(ref_id) or {}
-                            merged = _merge_tags(merged, event_tags)
+                            raw_tags = tag_lookup.get(ref_id) or {}
+                            # Strip system keys — only keep user-intent tags
+                            user_tags = {k: v for k, v in raw_tags.items() if k in _USER_TAG_KEYS}
+                            merged = _merge_tags(merged, user_tags)
                     if merged:
                         cur.execute(
                             "UPDATE mem_work_items SET tags=%s WHERE id=%s::uuid",
@@ -857,7 +860,6 @@ class MemoryWorkItems:
                 "messages": list(set(mrr.get("messages") or [])),
                 "items":    list(set(mrr.get("items")    or [])),
             }
-            score_tag_raw = raw_item.get("score_tag")
             valid.append({
                 "wi_type":              wi_type,
                 "item_level":           int(raw_item.get("item_level", 2)),
@@ -868,7 +870,6 @@ class MemoryWorkItems:
                 "delivery_type":        raw_item.get("delivery_type") or "",
                 "score_importance":     min(5, max(0, int(raw_item.get("score_importance", 0)))),
                 "score_status":         min(5, max(0, int(raw_item.get("score_status", 0)))),
-                "score_tag":            min(5, max(0, int(score_tag_raw))) if score_tag_raw is not None else None,
                 "mrr_ids":              merged_mrr,
                 "suggested_parent_name": raw_item.get("suggested_parent_name"),
             })
@@ -1091,7 +1092,7 @@ class MemoryWorkItems:
                     cur.execute(
                         f"""SELECT w.id::text, w.wi_id, w.wi_type, w.item_level, w.name, w.summary,
                                    w.deliveries, w.delivery_type,
-                                   w.score_importance, w.score_status, w.score_tag,
+                                   w.score_importance, w.score_status,
                                    w.user_importance, w.user_status,
                                    w.mrr_ids, w.wi_parent_id::text,
                                    p.wi_id AS wi_parent_wi_id,
@@ -1152,7 +1153,7 @@ class MemoryWorkItems:
                         )
                         SELECT w.id::text, w.wi_id, w.wi_type, w.item_level,
                                w.name, w.summary, w.deliveries, w.delivery_type,
-                               w.score_importance, w.score_status, w.score_tag,
+                               w.score_importance, w.score_status,
                                w.user_importance, w.user_status,
                                w.mrr_ids, w.wi_parent_id::text,
                                p.wi_id AS wi_parent_wi_id, w.tags,

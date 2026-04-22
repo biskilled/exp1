@@ -120,14 +120,6 @@ classification:
         0 = trivial / cosmetic  1 = nice-to-have  2-3 = normal  4 = important  5 = critical / blocking
     - score_status (0-5): how complete is it?
         0 = not started / requirement only  1-2 = early  3-4 = in progress  5 = done
-    - score_tag (0-5): how relevant are the event's user tags to this use case / item?
-        Look at the "tags:" field in each event (phase, feature, bug, work-item keys).
-        0 = tags mention completely different topics (e.g. tag says "billing" but event is about auth)
-        1-3 = loosely related or no tags present
-        4 = tags clearly relate to this use case / item
-        5 = tags exactly match (feature tag matches use case name or existing wi_id)
-        Use this to flag misclassified events — score_tag < 4 is a signal the item
-        may need to be moved to a different use case.
 
     USER TAG PRIORITY:
     When an event has a "feature" tag (e.g. feature:"auth-refactor") or "bug" tag,
@@ -156,7 +148,6 @@ classification:
         "name": "<use case name>",
         "existing_wi_id": "<WI_ID of existing approved use case, or null>",
         "summary": "<one paragraph: what this use case covers>",
-        "score_tag": 0,
         "mrr_ids": {"prompts":[],"commits":[],"messages":[],"items":[]}
       },
       {
@@ -170,7 +161,6 @@ classification:
         "delivery_type": "backend|frontend|fullstack|documents|config|tests|",
         "score_importance": 0,
         "score_status": 0,
-        "score_tag": 0,
         "mrr_ids": {"prompts":[],"commits":[],"messages":[],"items":[]}
       }
     ]
