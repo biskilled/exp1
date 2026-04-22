@@ -1081,8 +1081,12 @@ class MemoryWorkItems:
                 "deliveries": deliveries or "", "delivery_type": delivery_type or "",
             })
 
-            # For use_cases: write/refresh the MD file
+            # For use_cases: cascade-approve all pending children, then refresh MD
             if wi_type == "use_case":
+                try:
+                    self.approve_all_under(item_id, pid)
+                except Exception as cascade_err:
+                    log.debug(f"approve: cascade to children skipped: {cascade_err}")
                 try:
                     self.refresh_md(item_id, pid)
                 except Exception as md_err:

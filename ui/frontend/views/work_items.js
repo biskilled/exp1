@@ -37,9 +37,9 @@ const _TYPE = {
 
 function _itemStatus(item) {
   const s = item.score_status || 0;
-  if (s === 0) return { label: 'requirement', cls: 'wi-s-req'  };
-  if (s >= 5)  return { label: 'done',        cls: 'wi-s-done' };
-  return              { label: 'in_progress', cls: 'wi-s-wip'  };
+  if (s === 0) return { label: 'Not Started', cls: 'wi-s-req'  };
+  if (s >= 5)  return { label: 'Done',        cls: 'wi-s-done' };
+  return              { label: 'In Progress', cls: 'wi-s-wip'  };
 }
 
 function _typeMeta(t) {
@@ -288,6 +288,19 @@ export async function renderWorkItems(container, projectName) {
         font-size:0.71rem;display:flex;align-items:center;gap:0.3rem;
       }
       .wi-stats-dot { width:8px;height:8px;border-radius:50% }
+
+      /* shared popover */
+      .wi-wi-pop {
+        position:fixed;z-index:900;min-width:220px;padding:0.65rem;
+        background:var(--surface2);border:1px solid var(--border);
+        border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.4);
+      }
+      .wi-wi-pop select, .wi-wi-pop input {
+        width:100%;box-sizing:border-box;background:var(--surface);
+        border:1px solid var(--border);border-radius:4px;
+        padding:4px 8px;color:var(--text);font-size:0.8rem;
+      }
+      .wi-wi-pop input:focus { border-color:var(--accent);outline:none }
     </style>
   `;
 
@@ -426,73 +439,21 @@ function _setupEvents(container) {
       }
     }
 
-    // Rename item / UC
+    // Rename item / UC — show popover
     const renameBtn = e.target.closest('.wi-rename-btn');
     if (renameBtn) {
       e.stopPropagation();
-      _startRename(renameBtn.dataset.id, renameBtn.dataset.currentName, renameBtn.dataset.isUc === 'true');
+      _showRenamePopover(renameBtn, renameBtn.dataset.id, renameBtn.dataset.currentName, renameBtn.dataset.isUc === 'true');
       return;
     }
 
-    // Status badge click → cycle status
+    // Status badge click → show popover
     const statusBadge = e.target.closest('.wi-status-badge[data-item-id]');
     if (statusBadge) {
       e.stopPropagation();
-      _cycleStatus(statusBadge.dataset.itemId, parseInt(statusBadge.dataset.scoreStatus || '0', 10));
+      _showStatusPopover(statusBadge, statusBadge.dataset.itemId, parseInt(statusBadge.dataset.scoreStatus || '0', 10));
       return;
     }
-  });
-
-  // ── Drag-and-drop ──────────────────────────────────────────────────────────
-  const list = container.querySelector('#wi-list');
-
-  list.addEventListener('dragstart', (e) => {
-    const card = e.target.closest('.wi-card[draggable="true"]');
-    if (!card) return;
-    _dragItemId = card.dataset.itemId;
-    card.classList.add('wi-dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', _dragItemId);
-  });
-
-  list.addEventListener('dragend', (e) => {
-    document.querySelectorAll('.wi-dragging').forEach(el => el.classList.remove('wi-dragging'));
-    document.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
-    _dragItemId = null;
-  });
-
-  list.addEventListener('dragover', (e) => {
-    const zone = e.target.closest('.wi-drop-zone');
-    if (!zone || !_dragItemId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    document.querySelectorAll('.wi-drag-over').forEach(el => {
-      if (el !== zone) el.classList.remove('wi-drag-over');
-    });
-    zone.classList.add('wi-drag-over');
-  });
-
-  list.addEventListener('dragleave', (e) => {
-    const zone = e.target.closest('.wi-drop-zone');
-    if (!zone) return;
-    // Only remove if leaving the zone itself (not a child)
-    if (!zone.contains(e.relatedTarget)) zone.classList.remove('wi-drag-over');
-  });
-
-  list.addEventListener('drop', async (e) => {
-    const zone = e.target.closest('.wi-drop-zone');
-    if (!zone || !_dragItemId) return;
-    e.preventDefault();
-    zone.classList.remove('wi-drag-over');
-    const targetUcId = zone.dataset.ucId;
-    const itemId     = _dragItemId;
-    _dragItemId = null;
-    if (!targetUcId || !itemId) return;
-    try {
-      await api.wi.update(_project, itemId, { wi_parent_id: targetUcId === '__none__' ? null : targetUcId });
-      toast('Moved to use case', 'success');
-      await _loadAll();
-    } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
   });
 }
 
@@ -554,75 +515,185 @@ function _openMdPanel(item) {
   });
 }
 
-// ── Rename ────────────────────────────────────────────────────────────────────
+// ── Status options ────────────────────────────────────────────────────────────
 
-function _startRename(itemId, currentName, isUC) {
-  // Replace the name span with an inline input + datalist
-  const nameSpan = document.querySelector(`.wi-name[data-item-id="${itemId}"]`);
-  if (!nameSpan) return;
-
-  // Build datalist options: UCs → all UC names; items → free text
-  const suggestions = isUC
-    ? _allItems.filter(i => i.wi_type === 'use_case').map(i => i.name)
-    : [];
-  const listId = `wi-rename-list-${itemId}`;
-
-  const orig = nameSpan.outerHTML;
-  nameSpan.outerHTML = `
-    ${suggestions.length ? `<datalist id="${listId}">${suggestions.map(s => `<option value="${_esc(s)}">`).join('')}</datalist>` : ''}
-    <input class="wi-rename-input" id="wi-rename-${itemId}"
-           value="${_esc(currentName)}"
-           ${suggestions.length ? `list="${listId}"` : ''}
-           data-item-id="${itemId}" data-orig="${_esc(currentName)}"
-           title="Enter to confirm, Escape to cancel" />
-  `;
-
-  const input = document.getElementById(`wi-rename-${itemId}`);
-  if (!input) return;
-  input.focus(); input.select();
-
-  const _confirm = async () => {
-    const newName = input.value.trim();
-    if (!newName || newName === currentName) { await _loadAll(); return; }
-    try {
-      await api.wi.update(_project, itemId, { name: newName });
-      toast(`Renamed: ${newName}`, 'success');
-    } catch (err) { toast(`Rename failed: ${err.message}`, 'error'); }
-    await _loadAll();
-  };
-
-  input.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter')  { e.preventDefault(); await _confirm(); }
-    if (e.key === 'Escape') { await _loadAll(); }
-  });
-  input.addEventListener('blur', _confirm);
-}
-
-// ── Status cycle ──────────────────────────────────────────────────────────────
-
-const _STATUS_CYCLE = [
-  { score: 0, label: 'not started', cls: 'wi-s-req'  },
-  { score: 2, label: 'in progress', cls: 'wi-s-wip'  },
-  { score: 5, label: 'done',        cls: 'wi-s-done' },
+const _STATUS_OPTIONS = [
+  { score: 0, label: 'Not Started', cls: 'wi-s-req'  },
+  { score: 2, label: 'In Progress', cls: 'wi-s-wip'  },
+  { score: 5, label: 'Done',        cls: 'wi-s-done' },
 ];
 
-async function _cycleStatus(itemId, currentScore) {
-  // Find next status in cycle
-  const idx  = _STATUS_CYCLE.findIndex(s => s.score === currentScore);
-  const next = _STATUS_CYCLE[(idx + 1) % _STATUS_CYCLE.length];
-  try {
-    await api.wi.update(_project, itemId, { score_status: next.score });
-    // Optimistically update the badge without full reload
-    const badge = document.querySelector(`.wi-status-badge[data-item-id="${itemId}"]`);
-    if (badge) {
-      badge.textContent = next.label;
-      badge.className = `wi-status-badge ${next.cls}`;
-      badge.dataset.scoreStatus = String(next.score);
-    }
-    // Update in-memory item too
-    const item = _allItems.find(i => i.id === itemId);
-    if (item) item.score_status = next.score;
-  } catch (err) { toast(`Status update failed: ${err.message}`, 'error'); }
+// ── Rename popover ────────────────────────────────────────────────────────────
+
+function _showRenamePopover(anchorEl, itemId, currentName, isUC) {
+  document.querySelector('.wi-wi-pop')?.remove();
+
+  // For UC rename: offer all existing UC names as quick picks
+  const existingNames = isUC
+    ? [...new Set(_allItems.filter(i => i.wi_type === 'use_case' && i.name).map(i => i.name))]
+    : [];
+
+  const pop = document.createElement('div');
+  pop.className = 'wi-wi-pop';
+  pop.innerHTML = `
+    <div style="font-size:0.7rem;color:var(--muted);font-weight:700;margin-bottom:0.45rem">
+      ${isUC ? 'Rename use case' : 'Rename item'}
+    </div>
+    ${existingNames.length ? `
+      <select id="wi-rpop-sel"
+              style="width:100%;margin-bottom:0.4rem;background:var(--surface);border:1px solid var(--border);
+                     border-radius:4px;padding:4px 6px;color:var(--text);font-size:0.8rem">
+        <option value="">── pick existing ──</option>
+        ${existingNames.map(n => `<option value="${_esc(n)}"${n===currentName?' selected':''}>${_esc(n)}</option>`).join('')}
+        <option value="__new__">+ New name…</option>
+      </select>
+    ` : ''}
+    <input id="wi-rpop-inp" value="${_esc(currentName)}"
+           placeholder="${isUC ? 'Use case name…' : 'Item name…'}"
+           style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--accent);
+                  border-radius:4px;padding:4px 8px;color:var(--text);font-size:0.82rem;outline:none">
+    <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+      <button id="wi-rpop-ok" class="wi-btn wi-btn-approve" style="flex:1">Rename</button>
+      <button id="wi-rpop-cancel" class="wi-btn wi-btn-ghost">✕</button>
+    </div>
+  `;
+  _popupAt(pop, anchorEl);
+
+  const inp = pop.querySelector('#wi-rpop-inp');
+  const sel = pop.querySelector('#wi-rpop-sel');
+  inp.focus(); inp.select();
+
+  if (sel) {
+    sel.addEventListener('change', () => {
+      if (sel.value && sel.value !== '__new__') inp.value = sel.value;
+      if (sel.value === '__new__') inp.value = '';
+      inp.focus();
+    });
+  }
+
+  const _close = () => pop.remove();
+  const _confirm = async () => {
+    const newName = inp.value.trim();
+    _close();
+    if (!newName || newName === currentName) return;
+    try {
+      await api.wi.update(_project, itemId, { name: newName });
+      toast(`Renamed → ${newName}`, 'success');
+      await _loadAll();
+    } catch (err) { toast(`Rename failed: ${err.message}`, 'error'); }
+  };
+
+  pop.querySelector('#wi-rpop-ok').addEventListener('click', _confirm);
+  pop.querySelector('#wi-rpop-cancel').addEventListener('click', _close);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); _confirm(); }
+    if (e.key === 'Escape') _close();
+  });
+  setTimeout(() => {
+    document.addEventListener('click', e => { if (!pop.contains(e.target)) pop.remove(); }, { once: true });
+  }, 150);
+}
+
+// ── Status popover ────────────────────────────────────────────────────────────
+
+function _showStatusPopover(anchorEl, itemId, currentScore) {
+  document.querySelector('.wi-wi-pop')?.remove();
+
+  const pop = document.createElement('div');
+  pop.className = 'wi-wi-pop';
+  pop.style.width = '140px';
+  pop.innerHTML = _STATUS_OPTIONS.map(s => `
+    <button class="wi-btn ${s.score === currentScore ? 'wi-btn-approve' : 'wi-btn-ghost'}"
+            data-score="${s.score}"
+            style="width:100%;margin-bottom:2px;text-align:left;justify-content:flex-start">
+      ${s.label}
+    </button>
+  `).join('');
+  _popupAt(pop, anchorEl);
+
+  pop.querySelectorAll('[data-score]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const newScore = parseInt(btn.dataset.score, 10);
+      pop.remove();
+      try {
+        await api.wi.update(_project, itemId, { score_status: newScore });
+        const opt = _STATUS_OPTIONS.find(s => s.score === newScore) || _STATUS_OPTIONS[0];
+        const badge = document.querySelector(`.wi-status-badge[data-item-id="${itemId}"]`);
+        if (badge) {
+          badge.textContent = opt.label;
+          badge.className   = `wi-status-badge ${opt.cls}`;
+          badge.dataset.scoreStatus = String(newScore);
+        }
+        const item = _allItems.find(i => i.id === itemId);
+        if (item) item.score_status = newScore;
+      } catch (err) { toast(`Status update failed: ${err.message}`, 'error'); }
+    });
+  });
+  setTimeout(() => {
+    document.addEventListener('click', e => { if (!pop.contains(e.target)) pop.remove(); }, { once: true });
+  }, 150);
+}
+
+// ── Popover helper ────────────────────────────────────────────────────────────
+
+function _popupAt(el, anchor) {
+  el.style.cssText += ';position:fixed;z-index:900;min-width:220px;padding:0.65rem;' +
+    'background:var(--surface2);border:1px solid var(--border);' +
+    'border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.4)';
+  const rect = anchor.getBoundingClientRect();
+  el.style.top  = (rect.bottom + 6) + 'px';
+  el.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+  document.body.appendChild(el);
+}
+
+// ── Drag-and-drop ─────────────────────────────────────────────────────────────
+
+function _attachDragListeners() {
+  const listEl = document.getElementById('wi-list');
+  if (!listEl) return;
+
+  listEl.querySelectorAll('.wi-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      _dragItemId = card.dataset.itemId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', _dragItemId);
+      // Delay to let the drag image render before hiding
+      setTimeout(() => card.classList.add('wi-dragging'), 0);
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('wi-dragging');
+      listEl.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
+      _dragItemId = null;
+    });
+  });
+
+  listEl.querySelectorAll('.wi-drop-zone').forEach(zone => {
+    zone.addEventListener('dragover', (e) => {
+      if (!_dragItemId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      listEl.querySelectorAll('.wi-drag-over').forEach(el => { if (el !== zone) el.classList.remove('wi-drag-over'); });
+      zone.classList.add('wi-drag-over');
+    });
+    zone.addEventListener('dragleave', (e) => {
+      if (!zone.contains(e.relatedTarget)) zone.classList.remove('wi-drag-over');
+    });
+    zone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zone.classList.remove('wi-drag-over');
+      const targetUcId = zone.dataset.ucId;
+      const itemId     = _dragItemId;
+      _dragItemId = null;
+      if (!targetUcId || !itemId || targetUcId === '__none__') return;
+      try {
+        await api.wi.update(_project, itemId, { wi_parent_id: targetUcId });
+        toast('Moved to use case', 'success');
+        await _loadAll();
+      } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
+    });
+  });
 }
 
 // ── Add-item form ──────────────────────────────────────────────────────────
@@ -787,14 +858,20 @@ function _renderList() {
             : `<span class="wi-id">${_esc(uc.wi_id)}</span>`
           }
           ${ucIsPending ? `
-            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${uc.id}" title="Approve use case">✓</button>
-            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${uc.id}" title="Reject">✗</button>
+            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${uc.id}"
+                    title="Approve use case and all its items (${pendingChildren.length})">
+              ✓ Approve + ${pendingChildren.length} item${pendingChildren.length !== 1 ? 's' : ''}
+            </button>
+            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${uc.id}" title="Reject use case">✗</button>
           ` : `
             <button class="wi-btn wi-btn-ghost" data-action="edit-md" data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Edit MD file">✎ MD</button>
+            ${pendingChildren.length > 0 ? `
+              <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}"
+                      title="Approve remaining ${pendingChildren.length} items">
+                ✓ ${pendingChildren.length} pending
+              </button>
+            ` : ''}
           `}
-          ${pendingChildren.length > 0 ? `
-            <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}" title="Approve all children">✓ All (${pendingChildren.length})</button>
-          ` : ''}
         </div>
         <div class="wi-uc-body">
           ${uc.summary ? `<div class="wi-uc-summary">${_esc(uc.summary)}</div>` : ''}
@@ -845,6 +922,7 @@ function _renderList() {
   }
 
   el.innerHTML = html || `<div style="color:var(--muted);text-align:center;padding:3rem">No items match the current filter.</div>`;
+  _attachDragListeners();
 }
 
 function _renderItemCard(item) {
@@ -876,8 +954,7 @@ function _renderItemCard(item) {
         <div class="wi-actions">
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           ${isPending ? `
-            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${item.id}" title="Approve">✓</button>
-            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${item.id}" title="Reject">✗</button>
+            <button class="wi-btn wi-btn-reject" data-action="reject" data-id="${item.id}" title="Reject item">✗</button>
           ` : ''}
         </div>
       </div>
