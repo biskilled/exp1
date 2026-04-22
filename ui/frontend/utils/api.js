@@ -517,6 +517,7 @@ api.wi = {
   moveEvent:  (p, id, b)    => _post(`/wi/${enc(p)}/${enc(id)}/move`, b),
   reset:      (p)           => _post(`/wi/${enc(p)}/reset`, {}),
   create:     (p, b)        => _post(`/wi/${enc(p)}`, b),
+  reorder:    (p, items)    => _post(`/wi/${enc(p)}/reorder`, { items }),
   md: {
     get:     (p, id)      => _get(`/wi/${enc(p)}/${enc(id)}/md`),
     save:    (p, id, txt) => _post(`/wi/${enc(p)}/${enc(id)}/md`, { content: txt }),

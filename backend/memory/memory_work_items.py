@@ -168,12 +168,15 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
     from data.dl_seq import next_seq
     temp_val = next_seq(cur, pid, "WI_AI")
     temp_wi_id = f"AI{temp_val:04d}"
+    score_imp = min(5, max(0, int(item.get("score_importance", 0))))
+    score_st  = min(5, max(0, int(item.get("score_status", 0))))
     cur.execute(
         """INSERT INTO mem_work_items
            (client_id, project_id, wi_type, item_level, name, summary,
             deliveries, delivery_type, score_importance, score_status,
+            user_importance, user_status,
             mrr_ids, wi_parent_id, wi_id)
-           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
+           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
            RETURNING id::text""",
         (
             pid,
@@ -183,8 +186,10 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
             item.get("summary") or "",
             item.get("deliveries") or "",
             item.get("delivery_type") or "",
-            min(5, max(0, int(item.get("score_importance", 0)))),
-            min(5, max(0, int(item.get("score_status", 0)))),
+            score_imp,
+            score_st,
+            score_imp,  # user_importance defaults to AI score
+            score_st,   # user_status defaults to AI score
             json.dumps(item.get("mrr_ids") or {}),
             parent_id if parent_id else None,
             temp_wi_id,
@@ -941,6 +946,7 @@ class MemoryWorkItems:
                         f"""SELECT w.id::text, w.wi_id, w.wi_type, w.item_level, w.name, w.summary,
                                    w.deliveries, w.delivery_type,
                                    w.score_importance, w.score_status,
+                                   w.user_importance, w.user_status,
                                    w.mrr_ids, w.wi_parent_id::text,
                                    p.wi_id AS wi_parent_wi_id,
                                    w.tags,
@@ -948,7 +954,8 @@ class MemoryWorkItems:
                             FROM mem_work_items w
                             LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
                             WHERE w.project_id=%s AND {where}
-                            ORDER BY w.created_at DESC
+                            ORDER BY COALESCE(w.user_importance, w.score_importance, 0) DESC,
+                                     w.created_at DESC
                             LIMIT 500""",
                         (pid,),
                     )
@@ -1158,7 +1165,9 @@ class MemoryWorkItems:
         """Update editable fields on a work item."""
         allowed = {
             "name", "summary", "deliveries", "delivery_type",
-            "score_importance", "score_status", "wi_type", "wi_parent_id",
+            "score_importance", "score_status",
+            "user_importance", "user_status",
+            "wi_type", "wi_parent_id",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -1179,6 +1188,34 @@ class MemoryWorkItems:
             return {"updated": True, "fields": list(updates.keys())}
         except Exception as e:
             log.warning(f"update({item_id}) error: {e}")
+            return {"error": str(e)}
+
+    def reorder_items(self, pid: int, items: list[dict]) -> dict:
+        """Bulk-update user_importance for a list of items (drag-to-reorder).
+
+        Each dict in items must have {id: str, user_importance: int}.
+        """
+        if not items:
+            return {"updated": 0}
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    for entry in items:
+                        iid = entry.get("id", "")
+                        imp = int(entry.get("user_importance", 0))
+                        if not iid:
+                            continue
+                        cur.execute(
+                            "UPDATE mem_work_items SET user_importance=%s, updated_at=NOW() "
+                            "WHERE id=%s::uuid AND project_id=%s",
+                            (imp, iid, pid),
+                        )
+                conn.commit()
+            return {"updated": len(items)}
+        except Exception as e:
+            log.warning(f"reorder_items error: {e}")
             return {"error": str(e)}
 
     def delete(self, item_id: str, pid: int) -> dict:

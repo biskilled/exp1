@@ -17,12 +17,13 @@ import { api }  from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { state } from '../stores/state.js';
 
-let _project   = '';
-let _polling   = null;
-let _stats     = {};
-let _allItems  = [];    // all loaded items
-let _filter    = '';    // wi_type filter
-let _dragItemId = null; // item id being dragged
+let _project        = '';
+let _polling        = null;
+let _stats          = {};
+let _allItems       = [];    // all loaded items
+let _filter         = '';    // wi_type filter
+let _dragItemId     = null;  // item id being dragged
+let _insertBeforeId = null;  // insert-before card id during within-UC reorder
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -36,7 +37,8 @@ const _TYPE = {
 };
 
 function _itemStatus(item) {
-  const s = item.score_status || 0;
+  // user_status takes priority; fall back to score_status if column not yet populated
+  const s = item.user_status ?? item.score_status ?? 0;
   if (s === 0) return { label: 'Not Started', cls: 'wi-s-req'  };
   if (s >= 5)  return { label: 'Done',        cls: 'wi-s-done' };
   return              { label: 'In Progress', cls: 'wi-s-wip'  };
@@ -228,6 +230,19 @@ export async function renderWorkItems(container, projectName) {
       .wi-uc-children .wi-card { margin-bottom:0.5rem }
       .wi-uc-children .wi-card:last-child { margin-bottom:0 }
 
+      /* done card — subtle dimming */
+      .wi-card-done { opacity:.72 }
+      .wi-card-done:hover { opacity:1 }
+      .wi-name-done { text-decoration:line-through;color:var(--muted) }
+
+      /* priority rank badge */
+      .wi-rank-badge {
+        font-size:0.6rem;font-weight:800;color:var(--muted);font-family:monospace;
+        background:var(--surface3);padding:1px 5px;border-radius:4px;
+        min-width:22px;text-align:center;flex-shrink:0;
+      }
+      .wi-rank-done { color:#16a34a;background:#dcfce7 }
+
       /* drag-and-drop */
       .wi-card[draggable="true"] { cursor:grab }
       .wi-card[draggable="true"]:active { cursor:grabbing }
@@ -238,6 +253,10 @@ export async function renderWorkItems(container, projectName) {
       .wi-drop-zone.wi-drag-over {
         background:rgba(var(--accent-rgb,6,182,212),.08);
         outline:2px dashed var(--accent);outline-offset:-2px;
+      }
+      /* insert-position indicator when reordering within a UC */
+      .wi-card.wi-insert-above {
+        border-top:2px solid var(--accent) !important;
       }
       .wi-orphan-zone {
         margin-bottom:1.25rem;padding:0.65rem 0.9rem;
@@ -636,16 +655,11 @@ function _showStatusPopover(anchorEl, itemId, currentScore) {
       const newScore = parseInt(btn.dataset.score, 10);
       pop.remove();
       try {
-        await api.wi.update(_project, itemId, { score_status: newScore });
-        const opt = _STATUS_OPTIONS.find(s => s.score === newScore) || _STATUS_OPTIONS[0];
-        const badge = document.querySelector(`.wi-status-badge[data-item-id="${itemId}"]`);
-        if (badge) {
-          badge.textContent = opt.label;
-          badge.className   = `wi-status-badge ${opt.cls}`;
-          badge.dataset.scoreStatus = String(newScore);
-        }
+        // Save to user_status (user-controlled override)
+        await api.wi.update(_project, itemId, { user_status: newScore });
         const item = _allItems.find(i => i.id === itemId);
-        if (item) item.score_status = newScore;
+        if (item) item.user_status = newScore;
+        await _loadAll(); // re-render with new sort order
       } catch (err) { toast(`Status update failed: ${err.message}`, 'error'); }
     });
   });
@@ -749,50 +763,122 @@ function _popupAt(el, anchor) {
 
 // ── Drag-and-drop ─────────────────────────────────────────────────────────────
 
+function _clearDragIndicators(listEl) {
+  listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+  listEl.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
+}
+
 function _attachDragListeners() {
   const listEl = document.getElementById('wi-list');
   if (!listEl) return;
 
+  // ── Card drag start/end ───────────────────────────────────────────────────
   listEl.querySelectorAll('.wi-card[draggable="true"]').forEach(card => {
     card.addEventListener('dragstart', (e) => {
       _dragItemId = card.dataset.itemId;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', _dragItemId);
-      // Delay to let the drag image render before hiding
       setTimeout(() => card.classList.add('wi-dragging'), 0);
     });
     card.addEventListener('dragend', () => {
       card.classList.remove('wi-dragging');
-      listEl.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
-      _dragItemId = null;
+      _clearDragIndicators(listEl);
+      _dragItemId     = null;
+      _insertBeforeId = null;
     });
   });
 
+  // ── Drop zone: dragover tracks insert position, drop performs action ──────
   listEl.querySelectorAll('.wi-drop-zone').forEach(zone => {
     zone.addEventListener('dragover', (e) => {
       if (!_dragItemId) return;
       e.preventDefault();
-      e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
+
+      // Highlight only this zone
       listEl.querySelectorAll('.wi-drag-over').forEach(el => { if (el !== zone) el.classList.remove('wi-drag-over'); });
       zone.classList.add('wi-drag-over');
+
+      // Compute insert position within zone for same-UC reorder
+      const cards = [...zone.querySelectorAll('.wi-card')].filter(c => c.dataset.itemId !== _dragItemId);
+      listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+      _insertBeforeId = null;
+      for (const c of cards) {
+        const rect = c.getBoundingClientRect();
+        if (e.clientY < rect.top + rect.height / 2) {
+          c.classList.add('wi-insert-above');
+          _insertBeforeId = c.dataset.itemId;
+          break;
+        }
+      }
     });
+
     zone.addEventListener('dragleave', (e) => {
-      if (!zone.contains(e.relatedTarget)) zone.classList.remove('wi-drag-over');
+      if (!zone.contains(e.relatedTarget)) {
+        zone.classList.remove('wi-drag-over');
+        zone.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+      }
     });
+
     zone.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      zone.classList.remove('wi-drag-over');
-      const targetUcId = zone.dataset.ucId;
-      const itemId     = _dragItemId;
-      _dragItemId = null;
+      _clearDragIndicators(listEl);
+
+      const targetUcId  = zone.dataset.ucId;
+      const itemId      = _dragItemId;
+      const insertBefore = _insertBeforeId;
+      _dragItemId     = null;
+      _insertBeforeId = null;
+
       if (!targetUcId || !itemId || targetUcId === '__none__') return;
+
+      const draggedItem = _allItems.find(i => i.id === itemId);
+      if (!draggedItem) return;
+
+      const isSameUC = draggedItem.wi_parent_id === targetUcId;
+
+      if (!isSameUC) {
+        // Cross-UC move
+        try {
+          await api.wi.update(_project, itemId, { wi_parent_id: targetUcId });
+          toast('Moved to use case', 'success');
+          await _loadAll();
+        } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
+        return;
+      }
+
+      // ── Same UC: reorder ──────────────────────────────────────────────────
+      // Get current display order (same sort as _renderList)
+      const siblings = _allItems
+        .filter(i => i.wi_parent_id === targetUcId)
+        .sort((a, b) => {
+          const aDone = (a.user_status ?? a.score_status ?? 0) >= 5 ? 1 : 0;
+          const bDone = (b.user_status ?? b.score_status ?? 0) >= 5 ? 1 : 0;
+          if (aDone !== bDone) return aDone - bDone;
+          return (b.user_importance ?? b.score_importance ?? 0) -
+                 (a.user_importance ?? a.score_importance ?? 0);
+        });
+
+      const withoutDragged = siblings.filter(s => s.id !== itemId);
+      const insertIdx = insertBefore
+        ? withoutDragged.findIndex(s => s.id === insertBefore)
+        : withoutDragged.length;
+
+      if (insertIdx < 0) return;
+
+      // Build new order with dragged item inserted
+      const newOrder = [...withoutDragged];
+      newOrder.splice(insertIdx, 0, draggedItem);
+
+      // Assign user_importance: top item = N (highest), bottom item = 1
+      const N = newOrder.length;
+      const updates = newOrder.map((s, idx) => ({ id: s.id, user_importance: N - idx }));
+
       try {
-        await api.wi.update(_project, itemId, { wi_parent_id: targetUcId });
-        toast('Moved to use case', 'success');
+        await api.wi.reorder(_project, updates);
         await _loadAll();
-      } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
+      } catch (err) { toast(`Reorder failed: ${err.message}`, 'error'); }
     });
   });
 }
@@ -924,7 +1010,16 @@ function _renderList() {
 
   // Render use_case groups with their children
   for (const uc of useCases) {
-    const ucChildren = children.filter(c => c.wi_parent_id === uc.id);
+    // Sort: done items last, then by user_importance DESC
+    const ucChildren = children
+      .filter(c => c.wi_parent_id === uc.id)
+      .sort((a, b) => {
+        const aDone = (a.user_status ?? a.score_status ?? 0) >= 5 ? 1 : 0;
+        const bDone = (b.user_status ?? b.score_status ?? 0) >= 5 ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone; // done items last
+        return (b.user_importance ?? b.score_importance ?? 0) -
+               (a.user_importance ?? a.score_importance ?? 0); // higher importance first
+      });
     const ucIsPending = !uc.wi_id || uc.wi_id.startsWith('AI');
     const pendingChildren = ucChildren.filter(c => !c.wi_id || c.wi_id.startsWith('AI'));
 
@@ -985,7 +1080,7 @@ function _renderList() {
                     data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
           </div>
           <div class="wi-uc-children wi-drop-zone" data-uc-id="${uc.id}">
-            ${ucChildren.length ? ucChildren.map(c => _renderItemCard(c)).join('') : `
+            ${ucChildren.length ? ucChildren.map((c, idx) => _renderItemCard(c, idx + 1)).join('') : `
               <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem;font-style:italic">
                 Drop items here or use + Add Item
               </div>
@@ -1034,9 +1129,11 @@ function _renderList() {
   _attachDragListeners();
 }
 
-function _renderItemCard(item) {
+function _renderItemCard(item, rank) {
   const meta = _typeMeta(item.wi_type);
   const isPending = !item.wi_id || item.wi_id.startsWith('AI');
+  const st = _itemStatus(item);
+  const isDone = st.cls === 'wi-s-done';
   const mrr = item.mrr_ids || {};
   const mrrChips = [
     mrr.prompts?.length  ? `<span class="wi-mrr-chip">Prompts: ${mrr.prompts.length}</span>`   : '',
@@ -1045,10 +1142,12 @@ function _renderItemCard(item) {
     mrr.items?.length    ? `<span class="wi-mrr-chip">Items: ${mrr.items.length}</span>`        : '',
   ].filter(Boolean).join('');
 
-  const st = _itemStatus(item);
   return `
-    <div class="wi-card" draggable="true" data-item-id="${item.id}">
+    <div class="wi-card${isDone ? ' wi-card-done' : ''}" draggable="true" data-item-id="${item.id}">
       <div class="wi-card-header" title="Click header to expand">
+
+        <!-- Priority rank -->
+        ${rank != null ? `<span class="wi-rank-badge${isDone ? ' wi-rank-done' : ''}" title="Priority #${rank}">#${rank}</span>` : ''}
 
         <!-- Type badge + ▾ button to change type -->
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
@@ -1057,7 +1156,7 @@ function _renderItemCard(item) {
                 title="Change type">▾</button>
 
         <!-- Name + ▾ to rename -->
-        <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
+        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${_esc(item.name || '(unnamed)')}</span>
         <button class="wi-edit-arrow" data-action="rename-pop"
                 data-id="${item.id}" data-current-name="${_esc(item.name || '')}" data-is-uc="false"
                 title="Rename item">▾</button>
@@ -1065,7 +1164,7 @@ function _renderItemCard(item) {
         <!-- Status badge + ▾ button to change status -->
         <span class="wi-status-badge ${st.cls}">${st.label}</span>
         <button class="wi-edit-arrow" data-action="status-pop"
-                data-id="${item.id}" data-score="${item.score_status || 0}"
+                data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
                 title="Change status">▾</button>
 
         <!-- ID -->

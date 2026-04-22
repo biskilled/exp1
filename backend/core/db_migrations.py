@@ -2800,6 +2800,27 @@ def m066_wi_ai_temp_ids(conn) -> None:
     log.info("m066: cleared %d pending wi_id=NULL work items (re-classify to get AI temp IDs)", deleted)
 
 
+def m067_add_user_importance_status(conn) -> None:
+    """Add user_importance and user_status to mem_work_items for user-controlled ordering.
+
+    By default they mirror the AI score columns, but users can override them
+    independently (drag-to-reorder updates user_importance; status popover updates
+    user_status). All UI sorting and display is based on these user columns.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ADD COLUMN IF NOT EXISTS user_importance SMALLINT,
+              ADD COLUMN IF NOT EXISTS user_status     SMALLINT;
+            UPDATE mem_work_items
+               SET user_importance = COALESCE(score_importance, 0),
+                   user_status     = COALESCE(score_status, 0)
+             WHERE user_importance IS NULL OR user_status IS NULL;
+        """)
+    conn.commit()
+    log.info("m067: added user_importance/user_status to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2914,4 +2935,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m064_add_policy_category", m064_add_policy_category),
     ("m065_add_requirement_type", m065_add_requirement_type),
     ("m066_wi_ai_temp_ids", m066_wi_ai_temp_ids),
+    ("m067_add_user_importance_status", m067_add_user_importance_status),
 ]

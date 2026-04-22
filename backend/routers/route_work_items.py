@@ -43,6 +43,8 @@ class WiUpdateRequest(BaseModel):
     delivery_type:    Optional[str]   = None
     score_importance: Optional[int]   = None
     score_status:     Optional[int]   = None
+    user_importance:  Optional[int]   = None
+    user_status:      Optional[int]   = None
     wi_type:          Optional[str]   = None
     wi_parent_id:     Optional[str]   = None
 
@@ -65,6 +67,15 @@ class WiCreateRequest(BaseModel):
     score_importance: int   = 2
     score_status:     int   = 0
     delivery_type:    str   = ""
+
+
+class WiReorderItem(BaseModel):
+    id:               str
+    user_importance:  int
+
+
+class WiReorderRequest(BaseModel):
+    items: list[WiReorderItem]
 
 
 class WiMdSaveRequest(BaseModel):
@@ -188,6 +199,17 @@ async def update_work_item(project: str, item_id: str, body: WiUpdateRequest):
     wi     = _wi(project)
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     result = wi.update(item_id, pid, fields)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/reorder")
+async def reorder_work_items(project: str, body: WiReorderRequest):
+    """Bulk-update user_importance for a list of items (drag-to-reorder within UC)."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.reorder_items(pid, [i.model_dump() for i in body.items])
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
