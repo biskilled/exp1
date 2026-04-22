@@ -115,16 +115,19 @@ async def _call_haiku(system: str, user: str, model: str = "claude-haiku-4-5-202
     """Call Claude Haiku and return raw text. Returns '' on failure."""
     key = _claude_key()
     if not key:
+        log.warning("_call_haiku: no Claude API key found")
         return ""
     try:
         import anthropic
-        client = anthropic.AsyncAnthropic(api_key=key)
-        resp = await client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
+        # Use async context manager to ensure the httpx client is properly closed,
+        # which prevents 'RuntimeError: Event loop is closed' on GC cleanup.
+        async with anthropic.AsyncAnthropic(api_key=key) as client:
+            resp = await client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
         if hasattr(resp, "usage"):
             _log_usage(
                 model,
@@ -133,7 +136,7 @@ async def _call_haiku(system: str, user: str, model: str = "claude-haiku-4-5-202
             )
         return (resp.content[0].text if resp.content else "").strip()
     except Exception as e:
-        log.debug(f"_call_haiku error: {e}")
+        log.warning(f"_call_haiku error: {e}")
         return ""
 
 
@@ -510,7 +513,7 @@ class MemoryWorkItems:
         Each batch stays under ~6000 tokens to fit in Haiku's context.
         Linked prompts+commits are kept together in the same group.
         """
-        MAX_TOKENS = 6000
+        MAX_TOKENS = 3000
         groups: list[dict] = []
         current: dict = {
             "prompts": [], "commits": [], "messages": [], "items": [],
@@ -693,10 +696,12 @@ class MemoryWorkItems:
             .replace("{events_block}", events_block)
         )
 
-        raw = await _call_haiku(system, user_prompt, max_tokens=4000)
+        raw = await _call_haiku(system, user_prompt, max_tokens=8000)
         if not raw:
+            log.warning("_classify_group: _call_haiku returned empty string")
             return []
 
+        log.info(f"_classify_group: raw response preview (first 300): {raw[:300]!r}")
         # Extract JSON array from response
         text = raw.strip()
         if "```" in text:
@@ -707,13 +712,13 @@ class MemoryWorkItems:
         start = text.find("[")
         end   = text.rfind("]") + 1
         if start == -1 or end == 0:
-            log.debug(f"_classify_group: no JSON array in response: {text[:200]}")
+            log.warning(f"_classify_group: no JSON array in response (len={len(text)}): {text[:400]}")
             return []
 
         try:
             items = json.loads(text[start:end])
         except json.JSONDecodeError as e:
-            log.debug(f"_classify_group: JSON parse error: {e} — {text[start:end][:300]}")
+            log.warning(f"_classify_group: JSON parse error: {e} — {text[start:end][:400]}")
             return []
 
         if not isinstance(items, list):
@@ -858,17 +863,20 @@ class MemoryWorkItems:
 
         groups = self._group_events(events)
         existing_ctx = self._load_existing_context(pid)
+        log.info(f"classify: {total_events} events → {len(groups)} groups for project {pid}")
 
         all_items: list[dict] = []
         uc_map: dict[str, str] = {}  # accumulated name→UUID across all groups
-        for group in groups:
+        for idx, group in enumerate(groups, 1):
             try:
+                log.info(f"classify: processing group {idx}/{len(groups)}")
                 items = await self._classify_group(group, existing_ctx)
                 if items:
                     saved, uc_map = self._save_classifications(items, pid, uc_map)
                     all_items.extend(saved)
+                    log.info(f"classify: group {idx} → {len(saved)} items saved")
             except Exception as e:
-                log.warning(f"classify: group error: {e}")
+                log.warning(f"classify: group {idx} error: {e}")
 
         return {
             "classified": len(all_items),
