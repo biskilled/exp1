@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-22 17:53 UTC by aicli /memory_
+_Generated: 2026-04-22 20:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -93,6 +93,10 @@ _Generated: 2026-04-22 17:53 UTC by aicli /memory_
 - **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
 - **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
 - **discovery** `[open]` — Greeting and project context refresh
+
+### Use_case
+
+- **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
 ## Recent Work (last 10 exchanges)
 
