@@ -20,6 +20,7 @@ import { state } from '../stores/state.js';
 let _project        = '';
 let _polling        = null;
 let _stats          = {};
+let _mrrCounts      = {};    // pending mrr event counts from /classify-status
 let _allItems       = [];    // all loaded items
 let _filter         = '';    // wi_type filter
 let _dragItemId     = null;  // item id being dragged
@@ -82,12 +83,14 @@ export async function renderWorkItems(container, projectName) {
           <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
             ↻ Classify
           </button>
-          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Target maximum number of use cases the LLM should create">
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Override max use cases (0 = use YAML default)">
             Max UCs:
-            <input id="wi-max-uc" type="number" min="1" max="50" value="8"
+            <input id="wi-max-uc" type="number" min="0" max="50" value="0"
                    style="width:52px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;
-                          background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center">
+                          background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center"
+                   title="0 = use default from config (work_items.yaml)">
           </label>
+          <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh current view">⟳</button>
         </div>
         <span style="flex:1"></span>
         <!-- Type filter chips (bug/feature/task/policy/requirement only — use_case not shown as all items are grouped by UC) -->
@@ -442,6 +445,12 @@ function _setupEvents(container) {
     _loadUseCases();
   });
 
+  // Refresh button
+  container.querySelector('#wi-refresh-btn').addEventListener('click', async () => {
+    await _reloadCurrent();
+    toast('Refreshed', 'info');
+  });
+
   // Classify button
   container.querySelector('#wi-classify-btn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
@@ -657,88 +666,56 @@ async function _reloadCurrent() {
 }
 
 // ── Classify poller ───────────────────────────────────────────────────────────
-// Polls /stats every 5 s after background classify is started.
-// Phase logic:
-//   'started'  → waiting for pending to drop to 0 (delete phase)
-//   'deleted'  → pending was 0, waiting for it to rise again (LLM phase)
-//   'done'     → pending > 0 again → reload UI
+// Polls /classify-status every 4 s (server-authoritative running flag).
+// Done when running=false AND we have already seen it running at least once.
 
 function _startClassifyPoller(btn) {
-  // Phase tracking:
-  //  'started'  → waiting for pending to drop to 0 (delete phase completed)
-  //  'deleted'  → pending was 0; now waiting for it to rise (LLM saving items)
-  //  'filling'  → pending is rising; wait for it to STABILISE (no change for 2 polls = 10 s)
-  let phase       = 'started';
-  let lastPending = -1;
-  let stableCount = 0;
+  let seenRunning = false;
   const startMs   = Date.now();
-  const MAX_MS    = 20 * 60 * 1000; // 20-minute safety cap
+  const MAX_MS    = 25 * 60 * 1000; // 25-minute safety cap
+
+  async function _finish(timedOut = false) {
+    clearInterval(_classifyPoller); _classifyPoller = null;
+    btn.disabled = false; btn.textContent = '↻ Classify';
+    await _loadAll();
+    if (timedOut) {
+      toast('Classify timed out — check backend logs', 'error');
+    } else {
+      const pending = (await api.wi.stats(_project)).pending ?? 0;
+      if (pending === 0 && seenRunning) {
+        toast('Classification complete — no new items (all events already classified?)', 'info');
+      } else if (pending > 0) {
+        toast(`Classification complete — ${pending} items pending review`, 'success');
+      } else {
+        toast('Classification finished', 'info');
+      }
+    }
+  }
 
   _classifyPoller = setInterval(async () => {
     try {
-      const stats   = await api.wi.stats(_project);
-      const pending = stats.pending ?? 0;
       const elapsed = Date.now() - startMs;
+      if (elapsed > MAX_MS) { await _finish(true); return; }
 
-      if (phase === 'started') {
-        // Transition to 'deleted' when pending drops to 0 (or after 30 s grace)
-        if ((elapsed > 5_000 && pending === 0) || elapsed > 30_000) {
-          phase = 'deleted';
-          lastPending = pending;
-        }
+      const status  = await api.wi.classifyStatus(_project);
+      const running = status.running ?? false;
+
+      if (running) {
+        seenRunning = true;
+        // Show pending mrr count so user sees progress
+        const total = status.pending_total ?? 0;
+        if (total > 0) btn.textContent = `⏳ ${total} unclassified…`;
         return;
       }
 
-      if (phase === 'deleted') {
-        if (pending > 0) {
-          // LLM has started writing items
-          phase       = 'filling';
-          lastPending = pending;
-          stableCount = 0;
-        }
-        // Safety: if still 0 after 3 min, classification produced nothing
-        if (elapsed > 3 * 60_000 && pending === 0) {
-          phase = 'done_empty';
-        }
-        return;
-      }
+      // running=false:
+      // Wait up to 15 s in case we started polling before the backend set the flag.
+      if (!seenRunning && elapsed < 15_000) return;
 
-      if (phase === 'filling') {
-        if (pending === lastPending) {
-          stableCount++;
-        } else {
-          // Still growing — reset stability counter
-          stableCount = 0;
-          lastPending = pending;
-          // Update button label so user sees progress
-          btn.textContent = `⏳ ${pending} items…`;
-        }
-        // Stable for 2 consecutive polls (10 s) → classify is done
-        if (stableCount >= 2) phase = 'done';
-        return;
-      }
-
-      if (phase === 'done' || phase === 'done_empty') {
-        clearInterval(_classifyPoller); _classifyPoller = null;
-        btn.disabled = false; btn.textContent = '↻ Classify';
-        await _loadAll();
-        if (phase === 'done_empty') {
-          toast('Classification complete — no new items (all events already covered?)', 'info');
-        } else {
-          toast(`Classification complete — ${pending} items pending review`, 'success');
-        }
-        return;
-      }
-
-      // Safety timeout
-      if (elapsed > MAX_MS) {
-        clearInterval(_classifyPoller); _classifyPoller = null;
-        btn.disabled = false; btn.textContent = '↻ Classify';
-        await _loadAll();
-        toast('Classify timed out — check backend logs', 'error');
-      }
+      // Done (or never ran — e.g. no pending events)
+      await _finish();
     } catch (_) { /* network blip — keep polling */ }
-  }, 5_000);
+  }, 4_000);
 }
 
 // ── MD editor panel ────────────────────────────────────────────────────────
@@ -1168,11 +1145,13 @@ async function _loadAll() {
   if (!_project) return;
   _setStatus('Loading…');
   try {
-    const [statsData, listData] = await Promise.all([
+    const [statsData, listData, mrrData] = await Promise.all([
       api.wi.stats(_project),
       api.wi.list(_project),
+      api.wi.classifyStatus(_project).catch(() => ({})),
     ]);
     _stats    = statsData || {};
+    _mrrCounts = mrrData || {};
     _allItems = (listData.items || []);
     _renderStats();
     _renderFilterChips();
@@ -1196,8 +1175,12 @@ async function _loadUseCases() {
   if (!_project) return;
   _setStatus('Loading use cases…');
   try {
-    const data = await api.wi.useCases(_project);
-    _ucItems = data.use_cases || [];
+    const [data, mrrData] = await Promise.all([
+      api.wi.useCases(_project),
+      api.wi.classifyStatus(_project).catch(() => ({})),
+    ]);
+    _ucItems   = data.use_cases || [];
+    _mrrCounts = mrrData || {};
     _renderStats();
     _renderUseCases();
     _setStatus('');
@@ -1485,6 +1468,15 @@ function _renderStats() {
   const el = document.getElementById('wi-stats-bar');
   if (!el) return;
 
+  // Pending mrr counts (unclassified events in mirror tables)
+  const mrr = _mrrCounts || {};
+  const mrrPills = mrr.pending_total > 0 ? [
+    { label: 'Unclassified',
+      val: `${mrr.pending_total} (${mrr.pending_prompts || 0}P / ${mrr.pending_commits || 0}C / ${mrr.pending_messages || 0}M / ${mrr.pending_items || 0}I)`,
+      color: '#f97316',
+      title: `${mrr.pending_prompts || 0} prompts, ${mrr.pending_commits || 0} commits, ${mrr.pending_messages || 0} messages, ${mrr.pending_items || 0} items not yet classified` },
+  ] : [];
+
   if (_tab === 'use_cases') {
     const totalUcs      = _ucItems.length;
     const totalItems    = _ucItems.reduce((s, u) => s + u.stats.total_children, 0);
@@ -1492,6 +1484,7 @@ function _renderStats() {
     const pendingItems  = _ucItems.reduce((s, u) => s + u.stats.pending_children, 0);
     const totalEvents   = _ucItems.reduce((s, u) => s + u.stats.total_events, 0);
     const pills = [
+      ...mrrPills,
       { label: 'Use Cases', val: totalUcs,      color: '#06b6d4' },
       { label: 'Items',     val: totalItems,    color: '#22c55e' },
       { label: 'Approved',  val: approvedItems, color: '#22c55e' },
@@ -1499,7 +1492,7 @@ function _renderStats() {
       { label: 'Events',    val: totalEvents,   color: '#8b5cf6' },
     ];
     el.innerHTML = pills.map(p => `
-      <div class="wi-stats-pill">
+      <div class="wi-stats-pill"${p.title ? ` title="${_esc(p.title)}"` : ''}>
         <div class="wi-stats-dot" style="background:${p.color}"></div>
         <span style="color:var(--muted)">${p.label}:</span>
         <strong style="color:var(--text)">${p.val}</strong>
@@ -1510,6 +1503,7 @@ function _renderStats() {
 
   const s = _stats;
   const pills = [
+    ...mrrPills,
     { label: 'Pending',      val: s.pending      || 0, color: '#f59e0b' },
     { label: 'Approved',     val: s.approved     || 0, color: '#22c55e' },
     { label: 'Rejected',     val: s.rejected     || 0, color: '#6b7280' },
@@ -1520,7 +1514,7 @@ function _renderStats() {
     { label: 'Requirements', val: s.requirements || 0, color: '#f59e0b' },
   ];
   el.innerHTML = pills.map(p => `
-    <div class="wi-stats-pill">
+    <div class="wi-stats-pill"${p.title ? ` title="${_esc(p.title)}"` : ''}>
       <div class="wi-stats-dot" style="background:${p.color}"></div>
       <span style="color:var(--muted)">${p.label}:</span>
       <strong style="color:var(--text)">${p.val}</strong>

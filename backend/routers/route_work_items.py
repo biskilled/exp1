@@ -5,6 +5,7 @@ All endpoints are registered at the /wi prefix (set in main.py).
 
 Endpoints:
     POST  /wi/{project}/classify         — classify pending mirror rows
+    GET   /wi/{project}/classify-status  — is classify running? + pending mrr counts
     GET   /wi/{project}/pending          — pending items
     GET   /wi/{project}/use-cases        — approved use cases with children + stats
     GET   /wi/{project}/file-hotspots   — file-level code hotspot metrics
@@ -34,6 +35,10 @@ from core.database import db
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+# ── Process-level classify state ──────────────────────────────────────────────
+# Keyed by project name → True while classify() is running in this process.
+_classify_running: dict[str, bool] = {}
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -107,31 +112,54 @@ async def classify_work_items(
     project: str,
     background_tasks: BackgroundTasks,
     background: bool = Query(False, description="Run as background task"),
-    max_use_cases: int = Query(8, description="Target max use cases across all groups"),
+    max_use_cases: int = Query(0, description="Target max use cases (0 = read from work_items.yaml)"),
 ):
     """Classify all pending mirror rows into mem_work_items via LLM.
 
     ?background=true returns immediately; classification runs in background.
-    ?max_use_cases=N   target number of use cases (default 8).
+    ?max_use_cases=N   override max use cases (0 = use YAML default).
     Default: synchronous, returns classified items immediately.
     """
+    if _classify_running.get(project):
+        return {"status": "already_running", "project": project}
+
     wi = _wi(project)
 
     if background:
         async def _run():
+            _classify_running[project] = True
             try:
-                result = await wi.classify(max_use_cases=max_use_cases)
+                result = await wi.classify(max_use_cases=max_use_cases or None)
                 log.info(f"wi.classify background: {project} — {result.get('classified',0)} items")
             except Exception as e:
                 log.warning(f"wi.classify background error: {e}")
+            finally:
+                _classify_running.pop(project, None)
         background_tasks.add_task(_run)
         return {"status": "started", "project": project}
 
+    _classify_running[project] = True
     try:
-        result = await wi.classify(max_use_cases=max_use_cases)
+        result = await wi.classify(max_use_cases=max_use_cases or None)
         return {"project": project, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _classify_running.pop(project, None)
+
+
+@router.get("/{project}/classify-status")
+async def classify_status(project: str):
+    """Return whether a classify job is currently running for this project."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    # Also return pending mrr counts so the UI can show them without a separate stats call
+    pending_mrr = wi.get_pending_mrr_counts(pid)
+    return {
+        "running":  _classify_running.get(project, False),
+        "project":  project,
+        **pending_mrr,
+    }
 
 
 @router.get("/{project}/pending")

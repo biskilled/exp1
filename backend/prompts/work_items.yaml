@@ -96,6 +96,7 @@
 # ui/frontend/utils/api.js             — api.wi.* calls
 
 classification:
+  max_use_cases: 8   # default target use case limit; overridable via ?max_use_cases=N query param
   system: |
     You are a senior software architect. Your job is to classify development events
     (prompts, commits, messages) into structured work items grouped by use case.

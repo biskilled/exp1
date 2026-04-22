@@ -943,7 +943,7 @@ class MemoryWorkItems:
 
     # ── Main classify entry point ─────────────────────────────────────────────
 
-    async def classify(self, max_use_cases: int = 8) -> dict:
+    async def classify(self, max_use_cases: Optional[int] = None) -> dict:
         """Classify all pending mirror events into mem_work_items.
 
         Each run first deletes all existing AI-temp rows (unapproved draft
@@ -951,9 +951,15 @@ class MemoryWorkItems:
         Approved rows (real IDs like US/BU/FE) are never touched.
 
         max_use_cases: hint passed to LLM to consolidate into N use cases.
+                       None = read from work_items.yaml classification.max_use_cases (default 8).
 
         Returns {"classified": N, "groups": M, "items": [...]}
         """
+        # Read max_use_cases from YAML config when not explicitly provided
+        if max_use_cases is None or max_use_cases <= 0:
+            max_use_cases = int(
+                self._prompts_cfg().get("classification", {}).get("max_use_cases", 8)
+            )
         pid = self._get_project_id()
         if not pid:
             return {"classified": 0, "groups": 0, "items": [], "error": "project not found"}
@@ -1512,6 +1518,34 @@ class MemoryWorkItems:
         except Exception as e:
             log.warning(f"get_stats error: {e}")
         return {}
+
+    def get_pending_mrr_counts(self, pid: int) -> dict:
+        """Return unclassified (wi_id IS NULL) counts from each mem_mrr_* table."""
+        if not db.is_available():
+            return {"pending_prompts": 0, "pending_commits": 0,
+                    "pending_messages": 0, "pending_items": 0, "pending_total": 0}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT
+                             (SELECT COUNT(*) FROM mem_mrr_prompts  WHERE project_id=%s AND wi_id IS NULL) AS pending_prompts,
+                             (SELECT COUNT(*) FROM mem_mrr_commits  WHERE project_id=%s AND wi_id IS NULL) AS pending_commits,
+                             (SELECT COUNT(*) FROM mem_mrr_messages WHERE project_id=%s AND wi_id IS NULL) AS pending_messages,
+                             (SELECT COUNT(*) FROM mem_mrr_items    WHERE project_id=%s AND wi_id IS NULL) AS pending_items
+                        """,
+                        (pid, pid, pid, pid),
+                    )
+                    row = cur.fetchone()
+                    cols = [d[0] for d in cur.description]
+                    if row:
+                        d = dict(zip(cols, row))
+                        d["pending_total"] = sum(d.values())
+                        return d
+        except Exception as e:
+            log.warning(f"get_pending_mrr_counts error: {e}")
+        return {"pending_prompts": 0, "pending_commits": 0,
+                "pending_messages": 0, "pending_items": 0, "pending_total": 0}
 
     # ── Approval ──────────────────────────────────────────────────────────────
 
