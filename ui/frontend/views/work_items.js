@@ -145,6 +145,22 @@ export async function renderWorkItems(container, projectName) {
       .wi-s-wip  { background:#dbeafe;color:#1d4ed8 }
       .wi-s-done { background:#dcfce7;color:#16a34a }
 
+      /* score_tag relevance indicator — coloured dot with tooltip */
+      .wi-tag-score {
+        display:inline-flex;align-items:center;gap:3px;
+        font-size:0.62rem;font-weight:700;padding:1px 5px;
+        border-radius:6px;white-space:nowrap;cursor:default;
+      }
+      .wi-tag-ok   { background:#dcfce7;color:#16a34a }   /* 4-5 relevant */
+      .wi-tag-warn { background:#fef3c7;color:#b45309 }   /* 2-3 loosely related */
+      .wi-tag-bad  { background:#fee2e2;color:#dc2626 }   /* 0-1 not relevant */
+
+      /* file hotspot badge */
+      .wi-hotspot-badge {
+        font-size:0.6rem;font-weight:700;padding:1px 5px;border-radius:6px;
+        background:#fde68a;color:#92400e;white-space:nowrap;cursor:default;
+      }
+
       .wi-md-panel {
         position:fixed;top:0;right:0;width:520px;height:100vh;z-index:900;
         background:var(--surface);border-left:1px solid var(--border);
@@ -1432,6 +1448,8 @@ function _renderUcItem(item, depth = 0) {
           ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
+        ${_tagScoreBadge(item.score_tag)}
+        ${_hotspotBadge(item._hotspot_files)}
         <div class="wi-actions">
           <button class="wi-edit-arrow" data-action="parent-pop"
                   data-id="${item.id}" data-uc-id="${item._uc_id || ''}"
@@ -1457,7 +1475,18 @@ function _renderUcItem(item, depth = 0) {
         <div class="wi-scores" style="margin-top:0.35rem">
           <span>Importance: ${_scorePips(item.score_importance, '#3b82f6')}</span>
           <span>Completion: ${_scorePips(item.score_status, '#22c55e')}</span>
+          ${item.score_tag !== null && item.score_tag !== undefined
+            ? `<span>Tag relevance: ${_scorePips(item.score_tag, item.score_tag >= 4 ? '#22c55e' : item.score_tag >= 2 ? '#f59e0b' : '#ef4444')}</span>`
+            : ''}
         </div>
+        ${item._hotspot_files && item._hotspot_files.length ? `
+          <div style="margin-top:0.4rem;font-size:0.72rem;color:#92400e;background:#fef3c7;border-radius:4px;padding:0.3rem 0.5rem">
+            🔥 <strong>Code alerts:</strong>
+            ${item._hotspot_files.map(h =>
+              `<span title="commits:${h.commit_count} bugs:${h.bug_commit_count} lines:${h.current_lines} score:${h.hotspot_score}">${_esc(h.file_path)}</span>`
+            ).join(', ')}
+          </div>
+        ` : ''}
         ${item.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(item.deliveries)}</div>` : ''}
       </div>
     </div>
@@ -1975,4 +2004,26 @@ function _scorePips(score, color) {
       `<span class="wi-score-pip${i < n ? ' filled' : ''}" style="${i < n ? `background:${color}` : ''}"></span>`
     ).join('') +
     `</span> <span style="font-size:0.65rem;color:var(--muted)">${n}/5</span>`;
+}
+
+function _tagScoreBadge(score) {
+  if (score === null || score === undefined) return '';
+  const n = Math.min(5, Math.max(0, score));
+  const cls  = n >= 4 ? 'wi-tag-ok' : n >= 2 ? 'wi-tag-warn' : 'wi-tag-bad';
+  const label = n >= 4 ? '✓ tag' : n >= 2 ? '~ tag' : '✗ tag';
+  const tip   = n >= 4
+    ? `Tag relevance ${n}/5 — event matches use case well`
+    : n >= 2
+    ? `Tag relevance ${n}/5 — loosely related; consider moving`
+    : `Tag relevance ${n}/5 — event may belong to a different use case`;
+  return `<span class="wi-tag-score ${cls}" title="${tip}">${label} ${n}</span>`;
+}
+
+function _hotspotBadge(hotspots) {
+  if (!hotspots || !hotspots.length) return '';
+  const top = hotspots[0];
+  const tip = hotspots.map(h =>
+    `${h.file_path} (commits:${h.commit_count} bugs:${h.bug_commit_count} lines:${h.current_lines})`
+  ).join('\n');
+  return `<span class="wi-hotspot-badge" title="${tip}">🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}</span>`;
 }

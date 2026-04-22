@@ -168,19 +168,22 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
 
     wi_id is set to AI{n:04d} (e.g. AI0001) at classification time.
     It is replaced by the real ID (US/BU/FE/…) when the user approves.
+    tags are populated later by _update_item_tags() after all items are saved.
     """
     from data.dl_seq import next_seq
     temp_val = next_seq(cur, pid, "WI_AI")
     temp_wi_id = f"AI{temp_val:04d}"
     score_imp = min(5, max(0, int(item.get("score_importance", 0))))
     score_st  = min(5, max(0, int(item.get("score_status", 0))))
+    score_tag = item.get("score_tag")
+    score_tag_val = min(5, max(0, int(score_tag))) if score_tag is not None else None
     cur.execute(
         """INSERT INTO mem_work_items
            (client_id, project_id, wi_type, item_level, name, summary,
             deliveries, delivery_type, score_importance, score_status,
-            user_importance, user_status,
+            score_tag, user_importance, user_status,
             mrr_ids, wi_parent_id, wi_id)
-           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
+           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
            RETURNING id::text""",
         (
             pid,
@@ -192,6 +195,7 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
             item.get("delivery_type") or "",
             score_imp,
             score_st,
+            score_tag_val,
             score_imp,  # user_importance defaults to AI score
             score_st,   # user_status defaults to AI score
             json.dumps(item.get("mrr_ids") or {}),
@@ -201,6 +205,81 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
     )
     row = cur.fetchone()
     return row[0] if row else ""
+
+
+def _merge_tags(existing: dict, incoming: dict) -> dict:
+    """Merge two tag dicts — for each key keep all values as a set if multiple."""
+    result = dict(existing)
+    for k, v in incoming.items():
+        if not v:
+            continue
+        if k not in result:
+            result[k] = v
+        elif result[k] != v:
+            # Store as comma-joined string when multiple values for same key
+            existing_vals = set(str(result[k]).split(","))
+            existing_vals.add(str(v))
+            result[k] = ",".join(sorted(existing_vals))
+    return result
+
+
+def _update_item_tags(saved_items: list[dict], tag_lookup: dict[str, dict]) -> None:
+    """Populate mem_work_items.tags by merging tags from all referenced events.
+
+    tag_lookup: mrr_id → tags dict (built from all fetched events before classification).
+    For use cases: also merges tags from all children after children are saved.
+    """
+    if not db.is_available() or not saved_items:
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for item in saved_items:
+                    item_id = item.get("id")
+                    if not item_id:
+                        continue
+                    mrr = item.get("mrr_ids") or {}
+                    merged: dict = {}
+                    for ref_list in mrr.values():
+                        for ref_id in (ref_list or []):
+                            event_tags = tag_lookup.get(ref_id) or {}
+                            merged = _merge_tags(merged, event_tags)
+                    if merged:
+                        cur.execute(
+                            "UPDATE mem_work_items SET tags=%s WHERE id=%s::uuid",
+                            (json.dumps(merged), item_id),
+                        )
+            conn.commit()
+    except Exception as e:
+        log.debug(f"_update_item_tags error: {e}")
+
+
+def _rollup_uc_tags(pid: int, uc_ids: list[str]) -> None:
+    """Aggregate all children tags up into each use case row."""
+    if not db.is_available() or not uc_ids:
+        return
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for uc_id in uc_ids:
+                    cur.execute(
+                        """SELECT tags FROM mem_work_items
+                           WHERE project_id=%s AND wi_parent_id=%s::uuid""",
+                        (pid, uc_id),
+                    )
+                    merged: dict = {}
+                    for (child_tags,) in cur.fetchall():
+                        merged = _merge_tags(merged, child_tags or {})
+                    if merged:
+                        cur.execute(
+                            """UPDATE mem_work_items
+                               SET tags = tags || %s::jsonb
+                               WHERE id=%s::uuid""",
+                            (json.dumps(merged), uc_id),
+                        )
+            conn.commit()
+    except Exception as e:
+        log.debug(f"_rollup_uc_tags error: {e}")
 
 
 def _embed_work_item(item_id: str, fields: dict) -> None:
@@ -648,7 +727,7 @@ class MemoryWorkItems:
                 with conn.cursor() as cur:
                     # Fetch approved + AI-draft use cases (exclude rejected)
                     cur.execute(
-                        """SELECT id::text, wi_id, name, LEFT(summary, 300) AS summary
+                        """SELECT id::text, wi_id, name, LEFT(summary, 300) AS summary, tags
                            FROM mem_work_items
                            WHERE project_id=%s AND wi_type='use_case'
                              AND wi_id IS NOT NULL
@@ -685,9 +764,13 @@ class MemoryWorkItems:
 
             lines = ["## Approved Use Cases"]
             for r in uc_rows:
-                uid, wi_id, name, summary = r
+                uid, wi_id, name, summary, uc_tags = r
                 lines.append(f"### {wi_id} · {name}")
                 lines.append(summary or "")
+                if uc_tags:
+                    tag_str = " ".join(f"{k}:{v}" for k, v in (uc_tags or {}).items() if v)
+                    if tag_str:
+                        lines.append(f"Tags: {tag_str}")
                 ch = children_map.get(uid, [])
                 if ch:
                     lines.append(f"Children: {', '.join(ch)}")
@@ -774,6 +857,7 @@ class MemoryWorkItems:
                 "messages": list(set(mrr.get("messages") or [])),
                 "items":    list(set(mrr.get("items")    or [])),
             }
+            score_tag_raw = raw_item.get("score_tag")
             valid.append({
                 "wi_type":              wi_type,
                 "item_level":           int(raw_item.get("item_level", 2)),
@@ -784,6 +868,7 @@ class MemoryWorkItems:
                 "delivery_type":        raw_item.get("delivery_type") or "",
                 "score_importance":     min(5, max(0, int(raw_item.get("score_importance", 0)))),
                 "score_status":         min(5, max(0, int(raw_item.get("score_status", 0)))),
+                "score_tag":            min(5, max(0, int(score_tag_raw))) if score_tag_raw is not None else None,
                 "mrr_ids":              merged_mrr,
                 "suggested_parent_name": raw_item.get("suggested_parent_name"),
             })
@@ -892,6 +977,18 @@ class MemoryWorkItems:
         if total_events == 0:
             return {"classified": 0, "groups": 0, "items": [], "message": "no pending events"}
 
+        # Build a flat id→tags lookup for post-save tag merging.
+        # Keyed by the ID used in mrr_ids (UUID for prompts/messages/items, hash for commits).
+        tag_lookup: dict[str, dict] = {}
+        for p in events.get("prompts", []):
+            tag_lookup[p["id"]] = p.get("tags") or {}
+        for c in events.get("commits", []):
+            tag_lookup[c["commit_hash"]] = c.get("tags") or {}
+        for m in events.get("messages", []):
+            tag_lookup[m["id"]] = m.get("tags") or {}
+        for it in events.get("items", []):
+            tag_lookup[it["id"]] = it.get("tags") or {}
+
         groups = self._group_events(events)
         log.info(f"classify: {total_events} events → {len(groups)} groups for project {pid} (max_use_cases={max_use_cases})")
 
@@ -906,10 +1003,17 @@ class MemoryWorkItems:
                 items = await self._classify_group(group, existing_ctx, max_use_cases)
                 if items:
                     saved, uc_map = self._save_classifications(items, pid, uc_map)
+                    # Merge event tags into each saved item's tags column
+                    _update_item_tags(saved, tag_lookup)
                     all_items.extend(saved)
                     log.info(f"classify: group {idx} → {len(saved)} items saved")
             except Exception as e:
                 log.warning(f"classify: group {idx} error: {e}")
+
+        # Roll up children tags into their parent use cases
+        uc_ids = [item["id"] for item in all_items if item.get("wi_type") == "use_case" and item.get("id")]
+        if uc_ids:
+            _rollup_uc_tags(pid, uc_ids)
 
         return {
             "classified":     len(all_items),
@@ -987,7 +1091,7 @@ class MemoryWorkItems:
                     cur.execute(
                         f"""SELECT w.id::text, w.wi_id, w.wi_type, w.item_level, w.name, w.summary,
                                    w.deliveries, w.delivery_type,
-                                   w.score_importance, w.score_status,
+                                   w.score_importance, w.score_status, w.score_tag,
                                    w.user_importance, w.user_status,
                                    w.mrr_ids, w.wi_parent_id::text,
                                    p.wi_id AS wi_parent_wi_id,
@@ -1048,7 +1152,7 @@ class MemoryWorkItems:
                         )
                         SELECT w.id::text, w.wi_id, w.wi_type, w.item_level,
                                w.name, w.summary, w.deliveries, w.delivery_type,
-                               w.score_importance, w.score_status,
+                               w.score_importance, w.score_status, w.score_tag,
                                w.user_importance, w.user_status,
                                w.mrr_ids, w.wi_parent_id::text,
                                p.wi_id AS wi_parent_wi_id, w.tags,
@@ -1075,6 +1179,41 @@ class MemoryWorkItems:
                 uc_key = d.get("uc_id")
                 if uc_key and uc_key in desc_by_uc:
                     desc_by_uc[uc_key].append(d)
+
+            # Attach file hotspot data to items whose commits touched risky files
+            all_commit_ids: list[str] = []
+            for d in all_desc:
+                mrr = d.get("mrr_ids") or {}
+                all_commit_ids.extend(mrr.get("commits") or [])
+            if all_commit_ids:
+                try:
+                    from memory.memory_code_parser import get_file_hotspots
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """SELECT DISTINCT commit_hash, file_path
+                                   FROM mem_mrr_commits_code
+                                   WHERE commit_hash = ANY(%s)""",
+                                (all_commit_ids,),
+                            )
+                            hash_to_files: dict[str, list[str]] = {}
+                            for chash, fpath in cur.fetchall():
+                                hash_to_files.setdefault(chash, []).append(fpath)
+                    all_files = list({fp for fps in hash_to_files.values() for fp in fps})
+                    if all_files:
+                        hotspot_map = {
+                            h["file_path"]: h
+                            for h in get_file_hotspots(pid, file_paths=all_files)
+                            if h["hotspot_score"] >= 1.0
+                        }
+                        for d in all_desc:
+                            commits = (d.get("mrr_ids") or {}).get("commits") or []
+                            files = [fp for ch in commits for fp in hash_to_files.get(ch, [])]
+                            hs = [hotspot_map[fp] for fp in files if fp in hotspot_map]
+                            if hs:
+                                d["_hotspot_files"] = hs
+                except Exception as e:
+                    log.debug(f"get_approved_use_cases hotspot attach error: {e}")
 
             def _mrr_count(item: dict, key: str) -> int:
                 return len((item.get("mrr_ids") or {}).get(key, []))

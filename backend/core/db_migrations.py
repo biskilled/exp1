@@ -2956,6 +2956,24 @@ def m070_file_stats(conn) -> None:
     log.info("m070: mem_file_stats + mem_file_coupling created")
 
 
+def m071_score_tag(conn) -> None:
+    """Add score_tag to mem_work_items — relevance of event to its user tag (0-5).
+
+    0-3 = event content is not relevant to the tag it was classified under.
+    4-5 = event content matches the tag well.
+    NULL = not yet scored.
+    Computed by Haiku during classification; displayed as a colour indicator in UI.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ADD COLUMN IF NOT EXISTS score_tag SMALLINT DEFAULT NULL
+              CHECK (score_tag BETWEEN 0 AND 5)
+        """)
+    conn.commit()
+    log.info("m071: score_tag column added to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3074,4 +3092,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m068_create_wi_versions", m068_create_wi_versions),
     ("m069_src_column_and_cleanup", m069_src_column_and_cleanup),
     ("m070_file_stats", m070_file_stats),
+    ("m071_score_tag", m071_score_tag),
 ]
