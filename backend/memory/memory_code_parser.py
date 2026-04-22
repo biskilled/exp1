@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # ── SQL ────────────────────────────────────────────────────────────────────────
 
 _SQL_GET_COMMIT_META = """
-    SELECT tags, project_id FROM mem_mrr_commits
+    SELECT tags, project_id, author, commit_msg FROM mem_mrr_commits
     WHERE commit_hash=%s AND project_id=%s
 """
 
@@ -44,6 +44,54 @@ _SQL_UPSERT_CODE_ROW = """
     ON CONFLICT (commit_hash, file_path, symbol_type,
                  COALESCE(class_name,''), COALESCE(method_name,'')) DO NOTHING
 """
+
+_SQL_UPSERT_FILE_STATS = """
+    INSERT INTO mem_file_stats
+        (project_id, file_path, change_count, commit_count, author_count,
+         bug_commit_count, lines_added, lines_removed, revert_count,
+         current_lines, hotspot_score, last_changed_at, updated_at)
+    VALUES (%s, %s, %s, 1, 1, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+    ON CONFLICT (project_id, file_path) DO UPDATE SET
+        change_count     = mem_file_stats.change_count     + EXCLUDED.change_count,
+        commit_count     = mem_file_stats.commit_count     + 1,
+        author_count     = GREATEST(mem_file_stats.author_count, EXCLUDED.author_count),
+        bug_commit_count = mem_file_stats.bug_commit_count + EXCLUDED.bug_commit_count,
+        lines_added      = mem_file_stats.lines_added      + EXCLUDED.lines_added,
+        lines_removed    = mem_file_stats.lines_removed    + EXCLUDED.lines_removed,
+        revert_count     = mem_file_stats.revert_count     + EXCLUDED.revert_count,
+        current_lines    = EXCLUDED.current_lines,
+        hotspot_score    = EXCLUDED.hotspot_score,
+        last_changed_at  = NOW(),
+        updated_at       = NOW()
+"""
+
+_SQL_UPSERT_COUPLING = """
+    INSERT INTO mem_file_coupling
+        (project_id, file_a, file_b, co_change_count, coupling_score, last_co_change, updated_at)
+    VALUES (%s, %s, %s, 1, %s, NOW(), NOW())
+    ON CONFLICT (project_id, file_a, file_b) DO UPDATE SET
+        co_change_count = mem_file_coupling.co_change_count + 1,
+        coupling_score  = EXCLUDED.coupling_score,
+        last_co_change  = NOW(),
+        updated_at      = NOW()
+"""
+
+_SQL_GET_AUTHOR_COUNT = """
+    SELECT COUNT(DISTINCT author) FROM mem_mrr_commits c
+    JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
+    WHERE c.project_id=%s AND cc.file_path=%s
+"""
+
+_SQL_GET_FILE_COMMIT_COUNT = """
+    SELECT commit_count FROM mem_file_stats
+    WHERE project_id=%s AND file_path=%s
+"""
+
+# Patterns that indicate a bug-fix or revert commit
+_BUG_FIX_RE = re.compile(
+    r"\b(fix|bug|error|crash|hotfix|patch|revert|rollback|issue|defect)\b",
+    re.IGNORECASE,
+)
 
 # ── Language detection ─────────────────────────────────────────────────────────
 
@@ -349,6 +397,126 @@ async def _haiku(system: str, user: str, max_tokens: int = 120) -> str:
         return ""
 
 
+# ── File stats helpers ─────────────────────────────────────────────────────────
+
+def _compute_hotspot_score(
+    bug_commit_count: int,
+    change_count: int,
+    revert_count: int,
+    current_lines: int,
+) -> float:
+    """Compute a hotspot risk score for a file.
+
+    Higher = more risky/complex.  Uses a log-dampened size factor so that
+    a 10 000-line file is not 100× more risky than a 100-line file.
+    """
+    import math
+    size_factor = math.log1p(max(current_lines, 1) / 100.0)
+    raw = (bug_commit_count * 3.0 + change_count * 1.0 + revert_count * 2.0)
+    return round(raw * max(size_factor, 0.5), 4)
+
+
+def _count_file_lines(code_dir: str, commit_hash: str, file_path: str) -> int:
+    """Return line count of file_path at commit_hash, or 0 on error."""
+    try:
+        r = subprocess.run(
+            ["git", "show", f"{commit_hash}:{file_path}"],
+            cwd=code_dir, capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0:
+            return r.stdout.count("\n") + (1 if r.stdout and not r.stdout.endswith("\n") else 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _update_file_stats(
+    project_id: int,
+    commit_hash: str,
+    commit_msg: str,
+    commit_tags: dict,
+    author: str,
+    rows_to_insert: list[tuple],
+    code_dir: str,
+) -> None:
+    """Upsert per-file stats and co-change coupling after a commit is parsed.
+
+    Called once per commit after all symbol rows have been inserted.
+    """
+    if not db.is_available():
+        return
+
+    # Determine if this is a bug-fix or revert commit
+    is_bug = bool(_BUG_FIX_RE.search(commit_msg or "")) or bool(
+        commit_tags.get("bug") or commit_tags.get("fix")
+    )
+    is_revert = bool(re.search(r"\brevert\b", commit_msg or "", re.IGNORECASE))
+    bug_inc = 1 if is_bug else 0
+    revert_inc = 1 if is_revert else 0
+
+    # Aggregate per-file stats from rows_to_insert
+    # rows: (client_id, project_id, commit_hash, file_path, file_ext, file_language,
+    #        file_change, symbol_type, class_name, method_name, symbol_change,
+    #        rows_added, rows_removed, diff_snippet, llm_summary)
+    file_stats: dict[str, dict] = {}
+    for row in rows_to_insert:
+        fp = row[3]
+        added = row[11] or 0
+        removed = row[12] or 0
+        if fp not in file_stats:
+            file_stats[fp] = {"added": 0, "removed": 0, "changes": 0}
+        file_stats[fp]["added"] += added
+        file_stats[fp]["removed"] += removed
+        file_stats[fp]["changes"] += (added + removed)
+
+    if not file_stats:
+        return
+
+    # Get author count for each file from DB (approximate — use existing count)
+    # We simplify: pass author_count=1 at insert time; the ON CONFLICT uses GREATEST
+    # so it will only increase if a new distinct author touches this file later.
+    # A separate backfill query handles the real count.
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for fp, stats in file_stats.items():
+                    current_lines = _count_file_lines(code_dir, commit_hash, fp)
+
+                    # Compute author_count approximation: get distinct count from DB
+                    cur.execute(_SQL_GET_AUTHOR_COUNT, (project_id, fp))
+                    author_count_row = cur.fetchone()
+                    author_count = max(
+                        (author_count_row[0] if author_count_row else 0) + 1,
+                        1
+                    )
+
+                    hotspot = _compute_hotspot_score(
+                        bug_inc, stats["changes"], revert_inc, current_lines
+                    )
+
+                    cur.execute(_SQL_UPSERT_FILE_STATS, (
+                        project_id, fp,
+                        stats["changes"],  # change_count (symbol-level changes)
+                        bug_inc,
+                        stats["added"],
+                        stats["removed"],
+                        revert_inc,
+                        current_lines,
+                        hotspot,
+                    ))
+
+                # Co-change coupling: for every pair of files in this commit
+                file_list = sorted(file_stats.keys())
+                for i, fa in enumerate(file_list):
+                    for fb in file_list[i + 1:]:
+                        # Coupling score = normalized co_change_count (updated on read)
+                        cur.execute(_SQL_UPSERT_COUPLING, (project_id, fa, fb, 0.0))
+
+            conn.commit()
+    except Exception as e:
+        log.debug(f"_update_file_stats error: {e}")
+
+
 # ── YAML guards ────────────────────────────────────────────────────────────────
 
 def _read_yaml_guards(project: str) -> dict:
@@ -365,6 +533,91 @@ def _read_yaml_guards(project: str) -> dict:
     except Exception as e:
         log.debug(f"_read_yaml_guards error: {e}")
     return defaults
+
+
+# ── Public query helpers ───────────────────────────────────────────────────────
+
+_SQL_HOTSPOTS = """
+    SELECT file_path, change_count, commit_count, author_count,
+           bug_commit_count, lines_added, lines_removed, revert_count,
+           current_lines, hotspot_score, last_changed_at
+    FROM mem_file_stats
+    WHERE project_id = %s
+      AND hotspot_score >= %s
+    ORDER BY hotspot_score DESC
+    LIMIT %s
+"""
+
+_SQL_HOTSPOTS_FOR_FILES = """
+    SELECT file_path, change_count, commit_count, author_count,
+           bug_commit_count, lines_added, lines_removed, revert_count,
+           current_lines, hotspot_score, last_changed_at
+    FROM mem_file_stats
+    WHERE project_id = %s
+      AND file_path = ANY(%s)
+    ORDER BY hotspot_score DESC
+"""
+
+_SQL_COUPLING_FOR_FILE = """
+    SELECT file_b AS coupled_file, co_change_count, coupling_score
+    FROM mem_file_coupling
+    WHERE project_id = %s AND file_a = %s
+    UNION ALL
+    SELECT file_a AS coupled_file, co_change_count, coupling_score
+    FROM mem_file_coupling
+    WHERE project_id = %s AND file_b = %s
+    ORDER BY co_change_count DESC
+    LIMIT 10
+"""
+
+
+def get_file_hotspots(
+    project_id: int,
+    min_score: float = 1.0,
+    limit: int = 20,
+    file_paths: Optional[list[str]] = None,
+) -> list[dict]:
+    """Return file hotspot records for a project.
+
+    If file_paths is provided, returns stats only for those specific files
+    (ignores min_score and limit).  Used to inject context into the
+    classification prompt for commits that touch known hotspot files.
+    """
+    if not db.is_available():
+        return []
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if file_paths:
+                    cur.execute(_SQL_HOTSPOTS_FOR_FILES, (project_id, file_paths))
+                else:
+                    cur.execute(_SQL_HOTSPOTS, (project_id, min_score, limit))
+                cols = [d[0] for d in cur.description]
+                rows = []
+                for row in cur.fetchall():
+                    d = dict(zip(cols, row))
+                    if d.get("last_changed_at"):
+                        d["last_changed_at"] = d["last_changed_at"].isoformat()
+                    rows.append(d)
+        return rows
+    except Exception as e:
+        log.debug(f"get_file_hotspots error: {e}")
+        return []
+
+
+def get_coupled_files(project_id: int, file_path: str) -> list[dict]:
+    """Return co-change partners for a file."""
+    if not db.is_available():
+        return []
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_COUPLING_FOR_FILE, (project_id, file_path, project_id, file_path))
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, row)) for row in cur.fetchall()]
+    except Exception as e:
+        log.debug(f"get_coupled_files error: {e}")
+        return []
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -388,8 +641,10 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
                 row = cur.fetchone()
         if not row:
             return 0
-        commit_tags, _ = row
+        commit_tags, _, commit_author, commit_msg = row
         commit_tags = commit_tags or {}
+        commit_author = commit_author or ""
+        commit_msg = commit_msg or ""
     except Exception as e:
         log.debug(f"extract_commit_code DB error: {e}")
         return 0
@@ -553,5 +808,11 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
         log.info(f"extract_commit_code: {inserted} symbols for {commit_hash[:8]} ({project})")
     except Exception as e:
         log.debug(f"extract_commit_code bulk insert error: {e}")
+
+    # Update per-file hotspot metrics (fire-and-forget; errors logged internally)
+    _update_file_stats(
+        project_id, commit_hash, commit_msg, commit_tags,
+        commit_author, rows_to_insert, code_dir,
+    )
 
     return inserted

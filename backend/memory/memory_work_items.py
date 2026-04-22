@@ -41,6 +41,7 @@ import yaml
 
 from core.config import settings
 from core.database import db
+from memory.memory_code_parser import get_file_hotspots
 
 log = logging.getLogger(__name__)
 
@@ -463,10 +464,37 @@ class MemoryWorkItems:
                         (pid,),
                     )
                     cols = [d[0] for d in cur.description]
+                    commit_hashes: list[str] = []
                     for row in cur.fetchall():
                         d = dict(zip(cols, row))
                         d["created_at"] = d["created_at"].isoformat() if d["created_at"] else None
                         result["commits"].append(d)
+                        commit_hashes.append(d["commit_hash"])
+
+                    # Attach hotspot file data to commits that touch risky files
+                    if commit_hashes:
+                        cur.execute(
+                            """SELECT DISTINCT commit_hash, file_path
+                               FROM mem_mrr_commits_code
+                               WHERE commit_hash = ANY(%s)""",
+                            (commit_hashes,),
+                        )
+                        hash_to_files: dict[str, list[str]] = {}
+                        for chash, fpath in cur.fetchall():
+                            hash_to_files.setdefault(chash, []).append(fpath)
+
+                        all_files = [fp for fps in hash_to_files.values() for fp in fps]
+                        if all_files:
+                            hotspot_map = {
+                                h["file_path"]: h
+                                for h in get_file_hotspots(pid, file_paths=all_files)
+                                if h["hotspot_score"] >= 1.0
+                            }
+                            for commit in result["commits"]:
+                                files = hash_to_files.get(commit["commit_hash"], [])
+                                hs = [hotspot_map[f] for f in files if f in hotspot_map]
+                                if hs:
+                                    commit["_hotspot_files"] = hs
 
                     # Messages
                     cur.execute(
@@ -579,6 +607,15 @@ class MemoryWorkItems:
             lines.append(f"  {c.get('commit_msg', '')}")
             if c.get("summary"):
                 lines.append(f"  Summary: {c['summary'][:400]}")
+            hotspots = c.get("_hotspot_files") or []
+            if hotspots:
+                lines.append("  [FILE HOTSPOTS — high-risk files touched by this commit]")
+                for h in hotspots[:5]:
+                    lines.append(
+                        f"    {h['file_path']}: score={h['hotspot_score']:.1f} "
+                        f"changes={h['change_count']} bug_commits={h['bug_commit_count']} "
+                        f"lines={h['current_lines']} reverts={h['revert_count']}"
+                    )
             lines.append("")
 
         for m in group.get("messages", []):

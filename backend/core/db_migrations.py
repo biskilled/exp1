@@ -2900,6 +2900,62 @@ def m069_src_column_and_cleanup(conn) -> None:
     log.info("m069: src column added to prompts+commits; source/llm removed from tags; llm column dropped")
 
 
+def m070_file_stats(conn) -> None:
+    """Create mem_file_stats and mem_file_coupling for code hotspot tracking.
+
+    mem_file_stats: per-project, per-file aggregated metrics updated after each commit.
+    mem_file_coupling: co-change pairs (files committed together frequently).
+    hotspot_score: computed from bug fixes, change frequency, and file size.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_file_stats (
+              id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id       INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+              file_path        TEXT        NOT NULL,
+              change_count     INT         NOT NULL DEFAULT 0,
+              commit_count     INT         NOT NULL DEFAULT 0,
+              author_count     INT         NOT NULL DEFAULT 0,
+              bug_commit_count INT         NOT NULL DEFAULT 0,
+              lines_added      INT         NOT NULL DEFAULT 0,
+              lines_removed    INT         NOT NULL DEFAULT 0,
+              revert_count     INT         NOT NULL DEFAULT 0,
+              current_lines    INT         NOT NULL DEFAULT 0,
+              hotspot_score    FLOAT       NOT NULL DEFAULT 0.0,
+              last_changed_at  TIMESTAMPTZ,
+              created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              UNIQUE (project_id, file_path)
+            );
+            CREATE INDEX IF NOT EXISTS idx_file_stats_proj
+              ON mem_file_stats (project_id);
+            CREATE INDEX IF NOT EXISTS idx_file_stats_score
+              ON mem_file_stats (project_id, hotspot_score DESC);
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_file_coupling (
+              id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id      INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+              file_a          TEXT        NOT NULL,
+              file_b          TEXT        NOT NULL,
+              co_change_count INT         NOT NULL DEFAULT 1,
+              coupling_score  FLOAT       NOT NULL DEFAULT 0.0,
+              last_co_change  TIMESTAMPTZ,
+              created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              UNIQUE (project_id, file_a, file_b)
+            );
+            CREATE INDEX IF NOT EXISTS idx_file_coupling_proj
+              ON mem_file_coupling (project_id);
+            CREATE INDEX IF NOT EXISTS idx_file_coupling_a
+              ON mem_file_coupling (project_id, file_a);
+            CREATE INDEX IF NOT EXISTS idx_file_coupling_b
+              ON mem_file_coupling (project_id, file_b);
+        """)
+    conn.commit()
+    log.info("m070: mem_file_stats + mem_file_coupling created")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3017,4 +3073,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m067_add_user_importance_status", m067_add_user_importance_status),
     ("m068_create_wi_versions", m068_create_wi_versions),
     ("m069_src_column_and_cleanup", m069_src_column_and_cleanup),
+    ("m070_file_stats", m070_file_stats),
 ]

@@ -7,6 +7,7 @@ Endpoints:
     POST  /wi/{project}/classify         — classify pending mirror rows
     GET   /wi/{project}/pending          — pending items
     GET   /wi/{project}/use-cases        — approved use cases with children + stats
+    GET   /wi/{project}/file-hotspots   — file-level code hotspot metrics
     GET   /wi/{project}                  — all items (type?, level?, status?)
     GET   /wi/{project}/stats            — counts by status and type
     POST  /wi/{project}/{id}/approve     — approve → assign wi_id
@@ -167,6 +168,28 @@ async def list_approved_use_cases(project: str):
     wi  = _wi(project)
     ucs = wi.get_approved_use_cases(pid)
     return {"project": project, "use_cases": ucs, "count": len(ucs)}
+
+
+@router.get("/{project}/file-hotspots")
+async def list_file_hotspots(
+    project: str,
+    min_score: float = Query(1.0, description="Minimum hotspot score"),
+    limit: int = Query(30, description="Max results"),
+    file_path: Optional[str] = Query(None, description="Filter to specific file path"),
+):
+    """Return file-level code hotspot metrics for project planning insight."""
+    from memory.memory_code_parser import get_file_hotspots, get_coupled_files
+    pid = _pid(project)
+    if file_path:
+        hotspots = get_file_hotspots(pid, file_paths=[file_path])
+        coupled = get_coupled_files(pid, file_path) if hotspots else []
+        return {
+            "project": project,
+            "file": hotspots[0] if hotspots else None,
+            "coupled_files": coupled,
+        }
+    hotspots = get_file_hotspots(pid, min_score=min_score, limit=limit)
+    return {"project": project, "hotspots": hotspots, "count": len(hotspots)}
 
 
 @router.get("/{project}")
