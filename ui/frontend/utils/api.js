@@ -508,7 +508,10 @@ api.wi = {
   pending:        (p)       => _get(`/wi/${enc(p)}/pending`),
   pendingGrouped: (p)       => _get(`/wi/${enc(p)}/pending/grouped`),
   list:           (p, params) => _get(`/wi/${enc(p)}${params ? `?${params}` : ''}`),
-  classify:   (p, bg)       => _post(`/wi/${enc(p)}/classify${bg ? '?background=true' : ''}`, {}),
+  classify:   (p, maxUc, bg) => {
+    const qs = [bg && 'background=true', maxUc && `max_use_cases=${maxUc}`].filter(Boolean).join('&');
+    return _post(`/wi/${enc(p)}/classify${qs ? `?${qs}` : ''}`, {});
+  },
   approve:    (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/approve`, {}),
   reject:     (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/reject`, {}),
   approveAll: (p, parentId) => _post(`/wi/${enc(p)}/approve-all`, { parent_id: parentId }),

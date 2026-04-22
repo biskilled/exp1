@@ -620,22 +620,26 @@ class MemoryWorkItems:
     # ── Existing context ───────────────────────────────────────────────────────
 
     def _load_existing_context(self, pid: int) -> str:
-        """Load recently approved use cases with children as LLM context."""
+        """Load recently approved AND draft use cases with children as LLM context.
+
+        Including AI-draft use cases allows subsequent groups in the same classify
+        run to attach children to use cases already created by earlier groups,
+        instead of creating duplicate/similar use cases.
+        """
         if not db.is_available():
             return "(no existing work items)"
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Fetch approved use cases (real IDs only — exclude drafts and rejected)
+                    # Fetch approved + AI-draft use cases (exclude rejected)
                     cur.execute(
                         """SELECT id::text, wi_id, name, LEFT(summary, 300) AS summary
                            FROM mem_work_items
                            WHERE project_id=%s AND wi_type='use_case'
                              AND wi_id IS NOT NULL
                              AND wi_id NOT LIKE 'REJ%%'
-                             AND wi_id NOT LIKE 'AI%%'
-                           ORDER BY approved_at DESC NULLS LAST
-                           LIMIT 15""",
+                           ORDER BY approved_at DESC NULLS LAST, created_at DESC
+                           LIMIT 20""",
                         (pid,),
                     )
                     uc_rows = cur.fetchall()
@@ -681,10 +685,18 @@ class MemoryWorkItems:
 
     # ── LLM classification call ────────────────────────────────────────────────
 
-    async def _classify_group(self, group: dict, existing_ctx: str) -> list[dict]:
+    async def _classify_group(self, group: dict, existing_ctx: str,
+                               max_use_cases: int = 8) -> list[dict]:
         """Call Haiku to classify one event group. Returns list of item dicts."""
         cfg = self._prompts_cfg().get("classification", {})
         system = cfg.get("system", "Classify development events into work items.")
+        # Append max-use-cases constraint so the LLM reuses existing UCs aggressively
+        system += (
+            f"\n\nIMPORTANT: The entire project should have at most {max_use_cases} use cases total. "
+            "Existing use cases are listed in the context — STRONGLY prefer assigning new items to "
+            "those existing use cases (set existing_wi_id) rather than creating new ones. "
+            "Only create a new use_case entry when the topic genuinely does not fit any existing one."
+        )
         template = cfg.get("event_prompt", "{existing_context}\n\n{events_block}")
 
         events_block = self._format_group_for_prompt(group)
@@ -828,12 +840,14 @@ class MemoryWorkItems:
 
     # ── Main classify entry point ─────────────────────────────────────────────
 
-    async def classify(self) -> dict:
+    async def classify(self, max_use_cases: int = 8) -> dict:
         """Classify all pending mirror events into mem_work_items.
 
         Each run first deletes all existing AI-temp rows (unapproved draft
         classification), then re-classifies all unprocessed events from scratch.
         Approved rows (real IDs like US/BU/FE) are never touched.
+
+        max_use_cases: hint passed to LLM to consolidate into N use cases.
 
         Returns {"classified": N, "groups": M, "items": [...]}
         """
@@ -862,15 +876,17 @@ class MemoryWorkItems:
             return {"classified": 0, "groups": 0, "items": [], "message": "no pending events"}
 
         groups = self._group_events(events)
-        existing_ctx = self._load_existing_context(pid)
-        log.info(f"classify: {total_events} events → {len(groups)} groups for project {pid}")
+        log.info(f"classify: {total_events} events → {len(groups)} groups for project {pid} (max_use_cases={max_use_cases})")
 
         all_items: list[dict] = []
         uc_map: dict[str, str] = {}  # accumulated name→UUID across all groups
         for idx, group in enumerate(groups, 1):
             try:
                 log.info(f"classify: processing group {idx}/{len(groups)}")
-                items = await self._classify_group(group, existing_ctx)
+                # Reload context before each group so the LLM sees use cases
+                # created by earlier groups in this run and can reuse them.
+                existing_ctx = self._load_existing_context(pid)
+                items = await self._classify_group(group, existing_ctx, max_use_cases)
                 if items:
                     saved, uc_map = self._save_classifications(items, pid, uc_map)
                     all_items.extend(saved)
@@ -879,10 +895,11 @@ class MemoryWorkItems:
                 log.warning(f"classify: group {idx} error: {e}")
 
         return {
-            "classified": len(all_items),
-            "groups":     len(groups),
-            "items":      all_items,
-            "events_in":  total_events,
+            "classified":     len(all_items),
+            "groups":         len(groups),
+            "items":          all_items,
+            "events_in":      total_events,
+            "max_use_cases":  max_use_cases,
         }
 
     # ── CRUD ──────────────────────────────────────────────────────────────────

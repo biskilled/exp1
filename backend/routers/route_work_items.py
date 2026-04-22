@@ -105,10 +105,12 @@ async def classify_work_items(
     project: str,
     background_tasks: BackgroundTasks,
     background: bool = Query(False, description="Run as background task"),
+    max_use_cases: int = Query(8, description="Target max use cases across all groups"),
 ):
     """Classify all pending mirror rows into mem_work_items via LLM.
 
     ?background=true returns immediately; classification runs in background.
+    ?max_use_cases=N   target number of use cases (default 8).
     Default: synchronous, returns classified items immediately.
     """
     wi = _wi(project)
@@ -116,7 +118,7 @@ async def classify_work_items(
     if background:
         async def _run():
             try:
-                result = await wi.classify()
+                result = await wi.classify(max_use_cases=max_use_cases)
                 log.info(f"wi.classify background: {project} — {result.get('classified',0)} items")
             except Exception as e:
                 log.warning(f"wi.classify background error: {e}")
@@ -124,7 +126,7 @@ async def classify_work_items(
         return {"status": "started", "project": project}
 
     try:
-        result = await wi.classify()
+        result = await wi.classify(max_use_cases=max_use_cases)
         return {"project": project, **result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

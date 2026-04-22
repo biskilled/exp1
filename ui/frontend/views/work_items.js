@@ -72,8 +72,14 @@ export async function renderWorkItems(container, projectName) {
         <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
           ↻ Classify
         </button>
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Target maximum number of use cases the LLM should create">
+          Max UCs:
+          <input id="wi-max-uc" type="number" min="1" max="50" value="8"
+                 style="width:52px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;
+                        background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center">
+        </label>
         <span style="flex:1"></span>
-        <!-- Type filter chips -->
+        <!-- Type filter chips (bug/feature/task/policy/requirement only — use_case not shown as all items are grouped by UC) -->
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
       </div>
@@ -354,9 +360,10 @@ function _setupEvents(container) {
   // Classify button
   container.querySelector('#wi-classify-btn').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
+    const maxUc = parseInt(container.querySelector('#wi-max-uc')?.value || '8', 10);
     btn.disabled = true; btn.textContent = '⏳ Classifying…';
     try {
-      const r = await api.wi.classify(_project);
+      const r = await api.wi.classify(_project, maxUc);
       toast(
         r.classified > 0
           ? `Classified ${r.classified} items from ${r.events_in || 0} events`
@@ -971,7 +978,8 @@ function _renderStats() {
 function _renderFilterChips() {
   const el = document.getElementById('wi-filter-chips');
   if (!el) return;
-  const types = ['bug', 'feature', 'task', 'policy', 'requirement', 'use_case'];
+  // use_case is excluded — items are always shown grouped under UCs
+  const types = ['bug', 'feature', 'task', 'policy', 'requirement'];
   el.innerHTML = types.map(t => {
     const m = _typeMeta(t);
     return `<button class="wi-filter-chip${_filter === t ? ' active' : ''}" data-type="${t}"
@@ -987,10 +995,23 @@ function _renderList() {
   const el = document.getElementById('wi-list');
   if (!el) return;
 
-  let items = _allItems;
-  if (_filter) items = items.filter(i => i.wi_type === _filter);
+  // Always start from full item list — use_case items never filtered out
+  const allUcIds = new Set(_allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3).map(u => u.id));
+  const useCases = _allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3);
 
-  if (!items.length) {
+  // Apply type filter to children only; UC headers are always preserved
+  const allChildren = _allItems.filter(i => i.wi_parent_id && allUcIds.has(i.wi_parent_id));
+  const children    = _filter ? allChildren.filter(c => c.wi_type === _filter) : allChildren;
+  // When filter active, only show UCs that have at least one matching child
+  const visibleUcIds = _filter ? new Set(children.map(c => c.wi_parent_id).filter(Boolean)) : allUcIds;
+  const visibleUCs  = _filter ? useCases.filter(u => visibleUcIds.has(u.id)) : useCases;
+
+  // Orphans: items not in any UC and not use_case themselves
+  const childIds  = new Set(allChildren.map(c => c.id));
+  const orphans   = _allItems.filter(i => !allUcIds.has(i.id) && !childIds.has(i.id));
+  const visibleOrphans = _filter ? orphans.filter(o => o.wi_type === _filter) : orphans;
+
+  if (!visibleUCs.length && !visibleOrphans.length) {
     el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
       No work items${_filter ? ` of type "${_filter}"` : ''}.
       ${!_allItems.length ? '<br>Run <strong>Classify</strong> to process pending events.' : ''}
@@ -998,17 +1019,10 @@ function _renderList() {
     return;
   }
 
-  // Separate use_case groups (level=3) from standalone items
-  const useCases  = items.filter(i => i.wi_type === 'use_case' || i.item_level === 3);
-  const ucIds     = new Set(useCases.map(u => u.id));
-  const children  = items.filter(i => i.wi_parent_id && ucIds.has(i.wi_parent_id));
-  const childIds  = new Set(children.map(c => c.id));
-  const orphans   = items.filter(i => !ucIds.has(i.id) && !childIds.has(i.id));
-
   let html = '';
 
-  // Render use_case groups with their children
-  for (const uc of useCases) {
+  // Render use_case groups with their (filtered) children
+  for (const uc of visibleUCs) {
     // Sort: done items last, then by user_importance DESC
     const ucChildren = children
       .filter(c => c.wi_parent_id === uc.id)
@@ -1111,14 +1125,14 @@ function _renderList() {
   }
 
   // Render orphaned items — shown in a warning zone; must be dragged to a UC
-  if (orphans.length) {
+  if (visibleOrphans.length) {
     html += `
       <div class="wi-orphan-zone">
         <div class="wi-orphan-zone-label">
-          ⚠ ${orphans.length} unlinked item${orphans.length !== 1 ? 's' : ''} — drag to a use case above
+          ⚠ ${visibleOrphans.length} unlinked item${visibleOrphans.length !== 1 ? 's' : ''} — drag to a use case above
         </div>
         <div class="wi-drop-zone" data-uc-id="__none__" style="min-height:0">
-          ${orphans.map(i => _renderItemCard(i)).join('')}
+          ${visibleOrphans.map(i => _renderItemCard(i)).join('')}
         </div>
       </div>
     `;
