@@ -516,6 +516,59 @@ function _setupEvents(container) {
       return;
     }
 
+    // Copy item
+    const copyBtn = e.target.closest('[data-action="copy-item"]');
+    if (copyBtn) {
+      e.stopPropagation();
+      const id   = copyBtn.dataset.id;
+      const item = _findInUcItems(id);
+      if (!item) return;
+      try {
+        await api.wi.create(_project, {
+          name:        item.name + ' (copy)',
+          wi_type:     item.wi_type,
+          summary:     item.summary || '',
+          wi_parent_id: item.wi_parent_id,
+        });
+        toast('Copied — pending approval', 'success');
+        await _loadUseCases();
+      } catch (err) { toast(`Copy failed: ${err.message}`, 'error'); }
+      return;
+    }
+
+    // AI Summarise
+    const sumBtn = e.target.closest('[data-action="summarise"]');
+    if (sumBtn) {
+      e.stopPropagation();
+      sumBtn.disabled = true; sumBtn.textContent = '⏳…';
+      const ucId = sumBtn.dataset.ucId;
+      try {
+        const result = await api.wi.summarise(_project, ucId);
+        _openSummarisePanel(ucId, result);
+        toast('AI draft ready', 'info');
+      } catch (err) { toast(`Summarise failed: ${err.message}`, 'error'); }
+      finally { sumBtn.disabled = false; sumBtn.textContent = '⟳ Summarise'; }
+      return;
+    }
+
+    // View versions
+    const verBtn = e.target.closest('[data-action="view-versions"]');
+    if (verBtn) {
+      e.stopPropagation();
+      const ucId = verBtn.dataset.ucId;
+      const uc   = _ucItems.find(u => u.id === ucId);
+      if (uc) _openVersionPanel(uc);
+      return;
+    }
+
+    // Re-parent item
+    const parentBtn = e.target.closest('[data-action="parent-pop"]');
+    if (parentBtn) {
+      e.stopPropagation();
+      _showParentPopover(parentBtn, parentBtn.dataset.id, parentBtn.dataset.ucId);
+      return;
+    }
+
     // ── Edit actions MUST be checked before expand/collapse ──────────────────
     // (edit buttons live inside card/uc headers, so they'd trigger expand otherwise)
     const actionEl = e.target.closest('[data-action="rename-pop"],[data-action="status-pop"],[data-action="type-pop"],[data-action="edit-summary"]');
@@ -1124,6 +1177,24 @@ async function _loadUseCases() {
   }
 }
 
+function _groupUcItems(children) {
+  const TYPE_ORDER = ['bug', 'feature', 'task', 'policy', 'requirement', 'use_case'];
+  const inProgress = children.filter(c => (c.user_status ?? c.score_status ?? 0) < 5);
+  const completed  = children.filter(c => (c.user_status ?? c.score_status ?? 0) >= 5);
+  function sortByTypeThenPriority(items) {
+    return [...items].sort((a, b) => {
+      const ta = TYPE_ORDER.indexOf(a.wi_type), tb = TYPE_ORDER.indexOf(b.wi_type);
+      if (ta !== tb) return ta - tb;
+      return (b.user_importance ?? b.score_importance ?? 0) -
+             (a.user_importance ?? a.score_importance ?? 0);
+    });
+  }
+  return {
+    inProgress: sortByTypeThenPriority(inProgress),
+    completed:  sortByTypeThenPriority(completed),
+  };
+}
+
 function _renderUseCases() {
   const el = document.getElementById('wi-list');
   if (!el) return;
@@ -1150,6 +1221,60 @@ function _renderUseCases() {
       ? `<span style="color:#f59e0b;font-weight:700">●</span> ${s.pending_children} pending` : '';
 
     const ucId = `uc-card-${uc.id.replace(/-/g, '')}`;
+
+    // Group children by in-progress vs completed
+    const { inProgress, completed } = _groupUcItems(uc.children || []);
+
+    // Render grouped sections
+    let childrenHtml = '';
+    if (!uc.children.length) {
+      childrenHtml = `<div style="padding:0.4rem 0;color:var(--muted);font-size:0.78rem;font-style:italic">No items yet</div>`;
+    } else {
+      // Group in-progress by type
+      const ipTypes = ['bug', 'feature', 'task', 'policy', 'requirement'];
+      const ipByType = {};
+      for (const t of ipTypes) ipByType[t] = inProgress.filter(c => c.wi_type === t && (c.depth ?? 0) === 0);
+
+      let ipHtml = '';
+      for (const t of ipTypes) {
+        const group = ipByType[t];
+        if (!group.length) continue;
+        const meta = _typeMeta(t);
+        ipHtml += `<div style="font-size:0.69rem;font-weight:600;color:var(--muted);text-transform:uppercase;
+                               letter-spacing:0.05em;margin:0.45rem 0 0.2rem">${meta.icon} ${meta.label}s (${group.length})</div>`;
+        for (const c of group) {
+          ipHtml += _renderUcItem(c, c.depth ?? 0);
+          // Render sub-items (depth > 0) that have this item as parent
+          const subs = inProgress.filter(s => s.wi_parent_id === c.id && (s.depth ?? 0) > 0);
+          for (const sub of subs) ipHtml += _renderUcItem(sub, sub.depth ?? 1);
+        }
+      }
+
+      let doneHtml = '';
+      for (const c of completed.filter(c => (c.depth ?? 0) === 0)) {
+        doneHtml += _renderUcItem(c, 0);
+        const subs = completed.filter(s => s.wi_parent_id === c.id && (s.depth ?? 0) > 0);
+        for (const sub of subs) doneHtml += _renderUcItem(sub, sub.depth ?? 1);
+      }
+
+      childrenHtml = `
+        ${inProgress.length ? `
+          <div style="font-size:0.72rem;font-weight:700;color:var(--text);
+                      border-bottom:1px solid var(--border);padding-bottom:0.25rem;margin-bottom:0.4rem">
+            ── In Progress (${inProgress.length}) ──────────────────
+          </div>
+          ${ipHtml}
+        ` : ''}
+        ${completed.length ? `
+          <div style="font-size:0.72rem;font-weight:700;color:var(--muted);
+                      border-bottom:1px solid var(--border);padding-bottom:0.25rem;
+                      margin:0.6rem 0 0.4rem">
+            ── Completed (${completed.length}) ──────────────────
+          </div>
+          ${doneHtml}
+        ` : ''}
+      `;
+    }
 
     html += `
       <div class="wi-uc-card" id="${ucId}">
@@ -1190,22 +1315,24 @@ function _renderUseCases() {
                     data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
           </div>
 
-          <!-- Children -->
-          <div class="wi-uc-children" style="padding:0.4rem 0.9rem 0.3rem;border-bottom:1px solid var(--border)">
-            ${uc.children.length ? uc.children.map((c, idx) => _renderUcChildRow(c, idx + 1)).join('') : `
-              <div style="padding:0.4rem 0;color:var(--muted);font-size:0.78rem;font-style:italic">No items yet</div>
-            `}
-          </div>
-
-          <!-- Approve pending children shortcut -->
-          ${s.pending_children > 0 ? `
-            <div style="padding:0.4rem 0.9rem">
+          <!-- Toolbar: Summarise + Versions -->
+          <div style="display:flex;gap:0.5rem;padding:0.4rem 0.9rem;border-bottom:1px solid var(--border);align-items:center">
+            <button class="wi-btn wi-btn-ghost" data-action="summarise" data-uc-id="${uc.id}"
+                    style="font-size:0.72rem" title="AI rewrite summary + reorder items">⟳ Summarise</button>
+            <button class="wi-btn wi-btn-ghost" data-action="view-versions" data-uc-id="${uc.id}"
+                    style="font-size:0.72rem" title="View version history">📋 Versions</button>
+            ${s.pending_children > 0 ? `
               <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}"
                       style="font-size:0.72rem">
-                ✓ Approve ${s.pending_children} pending item${s.pending_children !== 1 ? 's' : ''}
+                ✓ Approve ${s.pending_children} pending
               </button>
-            </div>
-          ` : ''}
+            ` : ''}
+          </div>
+
+          <!-- Children grouped -->
+          <div class="wi-uc-children" style="padding:0.4rem 0.9rem 0.3rem;border-bottom:1px solid var(--border)">
+            ${childrenHtml}
+          </div>
 
           <!-- Add Item form -->
           <div class="wi-add-form" id="wi-add-form-${uc.id}">
@@ -1250,52 +1377,62 @@ function _renderUseCases() {
 }
 
 function _renderUcChildRow(c, rank) {
-  const meta      = _typeMeta(c.wi_type);
-  const isPending = !c.wi_id || c.wi_id.startsWith('AI');
-  const st        = _itemStatus(c);
+  return _renderUcItem(c, 0);
+}
+
+function _renderUcItem(item, depth = 0) {
+  const meta      = _typeMeta(item.wi_type);
+  const isPending = !item.wi_id || item.wi_id.startsWith('AI');
+  const st        = _itemStatus(item);
   const isDone    = st.cls === 'wi-s-done';
+  const indent    = depth > 0 ? `margin-left:${depth * 1.5}rem;` : '';
 
   return `
-    <div class="wi-card${isDone ? ' wi-card-done' : ''}" style="margin-bottom:0.4rem" data-item-id="${c.id}">
+    <div class="wi-card${isDone ? ' wi-card-done' : ''}"
+         style="${indent}margin-bottom:0.35rem" data-item-id="${item.id}">
       <div class="wi-card-header" title="Click to expand">
-        ${rank != null ? `<span class="wi-rank-badge${isDone ? ' wi-rank-done' : ''}">#${rank}</span>` : ''}
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
         <button class="wi-edit-arrow" data-action="type-pop"
-                data-id="${c.id}" data-type="${c.wi_type}" title="Change type">▾</button>
-        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${isDone ? '✓ ' : ''}${_esc(c.name || '(unnamed)')}</span>
+                data-id="${item.id}" data-type="${item.wi_type}" title="Change type">▾</button>
+        <span class="wi-name${isDone ? ' wi-name-done' : ''}">${isDone ? '✓ ' : ''}${_esc(item.name || '(unnamed)')}</span>
         <button class="wi-edit-arrow" data-action="rename-pop"
-                data-id="${c.id}" data-current-name="${_esc(c.name || '')}" data-is-uc="false"
+                data-id="${item.id}" data-current-name="${_esc(item.name || '')}" data-is-uc="false"
                 title="Rename">▾</button>
         <span class="wi-status-badge ${st.cls}">${st.label}</span>
         <button class="wi-edit-arrow" data-action="status-pop"
-                data-id="${c.id}" data-score="${c.user_status ?? c.score_status ?? 0}"
+                data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
                 title="Change status">▾</button>
         ${isPending
-          ? `<span class="wi-pending">${_esc(c.wi_id || 'pending')}</span>`
-          : `<span class="wi-id">${_esc(c.wi_id)}</span>`
+          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
+          : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
         <div class="wi-actions">
+          <button class="wi-edit-arrow" data-action="parent-pop"
+                  data-id="${item.id}" data-uc-id="${item._uc_id || ''}"
+                  title="Change parent">⇑</button>
+          <button class="wi-btn wi-btn-ghost" data-action="copy-item"
+                  data-id="${item.id}" title="Copy item" style="font-size:0.75rem;padding:0.1rem 0.35rem">⎘</button>
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           ${isPending ? `
-            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${c.id}" title="Approve">✓</button>
-            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${c.id}" title="Reject">✗</button>
+            <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${item.id}" title="Approve">✓</button>
+            <button class="wi-btn wi-btn-reject"  data-action="reject"  data-id="${item.id}" title="Reject">✗</button>
           ` : ''}
         </div>
       </div>
       <div class="wi-card-body collapsed">
         <div class="wi-summary-wrap">
-          ${c.summary
-            ? `<div class="wi-summary">${_esc(c.summary)}</div>`
+          ${item.summary
+            ? `<div class="wi-summary">${_esc(item.summary)}</div>`
             : `<span style="color:var(--muted);font-style:italic;font-size:0.77rem">No summary yet</span>`
           }
           <button class="wi-edit-link" data-action="edit-summary"
-                  data-id="${c.id}" data-summary="${_esc(c.summary || '')}">✎ Edit summary</button>
+                  data-id="${item.id}" data-summary="${_esc(item.summary || '')}">✎ Edit summary</button>
         </div>
         <div class="wi-scores" style="margin-top:0.35rem">
-          <span>Importance: ${_scorePips(c.score_importance, '#3b82f6')}</span>
-          <span>Completion: ${_scorePips(c.score_status, '#22c55e')}</span>
+          <span>Importance: ${_scorePips(item.score_importance, '#3b82f6')}</span>
+          <span>Completion: ${_scorePips(item.score_status, '#22c55e')}</span>
         </div>
-        ${c.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(c.deliveries)}</div>` : ''}
+        ${item.deliveries ? `<div class="wi-deliveries" style="margin-top:0.4rem">✓ ${_esc(item.deliveries)}</div>` : ''}
       </div>
     </div>
   `;
@@ -1348,6 +1485,216 @@ function _renderStats() {
       <strong style="color:var(--text)">${p.val}</strong>
     </div>
   `).join('');
+}
+
+// ── Use Case helpers ──────────────────────────────────────────────────────────
+
+function _findInUcItems(id) {
+  for (const uc of _ucItems) {
+    if (uc.id === id) return uc;
+    const found = (uc.children || []).find(c => c.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function _getDescendants(itemId, allItems) {
+  const result = new Set();
+  const queue  = [itemId];
+  while (queue.length) {
+    const cur = queue.shift();
+    const children = allItems.filter(i => i.wi_parent_id === cur);
+    for (const c of children) {
+      if (!result.has(c.id)) { result.add(c.id); queue.push(c.id); }
+    }
+  }
+  return result;
+}
+
+function _openSummarisePanel(ucId, draftResult) {
+  document.getElementById('wi-md-panel')?.remove();
+  const panel = document.createElement('div');
+  panel.id = 'wi-md-panel';
+  panel.style.cssText = `position:fixed;top:0;right:0;width:420px;height:100vh;
+    background:var(--bg2);border-left:1px solid var(--border);z-index:200;
+    display:flex;flex-direction:column;overflow:hidden;box-shadow:-4px 0 20px rgba(0,0,0,0.3)`;
+
+  const { new_summary, in_progress_count, completed_count, snapshot } = draftResult;
+
+  const ipItems = snapshot.slice(0, in_progress_count);
+  const doneItems = snapshot.slice(in_progress_count);
+
+  function itemLine(s) {
+    const meta = _typeMeta(s.wi_type || 'task');
+    return `<div style="padding:0.2rem 0;font-size:0.77rem">
+      ${meta.icon} ${_esc(s.name || '(unnamed)')}
+      ${s.wi_id ? `<span style="color:var(--muted);font-size:0.7rem"> ${s.wi_id}</span>` : ''}
+    </div>`;
+  }
+
+  panel.innerHTML = `
+    <div style="padding:0.7rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem">
+      <strong style="font-size:0.85rem;flex:1">AI Draft Summary</strong>
+      <button id="wi-sum-apply" class="wi-btn wi-btn-approve" style="font-size:0.75rem">✓ Apply</button>
+      <button id="wi-sum-discard" class="wi-btn wi-btn-ghost" style="font-size:0.75rem">✗ Discard</button>
+      <button id="wi-md-close" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:0.8rem 1rem">
+      <div style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:0.3rem">New Summary</div>
+      <div style="font-size:0.8rem;color:var(--text2);line-height:1.5;border-left:3px solid var(--accent);
+                  padding-left:0.5rem;margin-bottom:1rem">${_esc(new_summary)}</div>
+      ${ipItems.length ? `
+        <div style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:0.3rem">
+          In Progress (${ipItems.length})
+        </div>
+        <div style="margin-bottom:0.8rem">${ipItems.map(itemLine).join('')}</div>
+      ` : ''}
+      ${doneItems.length ? `
+        <div style="font-size:0.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:0.3rem">
+          Completed (${doneItems.length})
+        </div>
+        <div>${doneItems.map(itemLine).join('')}</div>
+      ` : ''}
+    </div>
+  `;
+
+  document.body.appendChild(panel);
+
+  panel.querySelector('#wi-md-close').onclick    = () => panel.remove();
+  panel.querySelector('#wi-sum-discard').onclick  = () => panel.remove();
+  panel.querySelector('#wi-sum-apply').onclick    = async () => {
+    try {
+      await api.wi.versions.apply(_project, ucId, draftResult.version_id);
+      toast('Version applied', 'success');
+      panel.remove();
+      await _loadUseCases();
+    } catch (err) { toast(`Apply failed: ${err.message}`, 'error'); }
+  };
+}
+
+function _openVersionPanel(uc) {
+  document.getElementById('wi-md-panel')?.remove();
+  const panel = document.createElement('div');
+  panel.id = 'wi-md-panel';
+  panel.style.cssText = `position:fixed;top:0;right:0;width:420px;height:100vh;
+    background:var(--bg2);border-left:1px solid var(--border);z-index:200;
+    display:flex;flex-direction:column;overflow:hidden;box-shadow:-4px 0 20px rgba(0,0,0,0.3)`;
+
+  panel.innerHTML = `
+    <div style="padding:0.7rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem">
+      <strong style="font-size:0.85rem;flex:1">Versions — ${_esc(uc.name)}</strong>
+      <button id="wi-ver-save" class="wi-btn wi-btn-ghost" style="font-size:0.75rem">+ Save current</button>
+      <button id="wi-md-close" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem">✕</button>
+    </div>
+    <div id="wi-ver-list" style="flex:1;overflow-y:auto;padding:0.6rem 1rem">
+      <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
+    </div>
+  `;
+  document.body.appendChild(panel);
+
+  panel.querySelector('#wi-md-close').onclick = () => panel.remove();
+
+  async function loadVersions() {
+    const listEl = panel.querySelector('#wi-ver-list');
+    try {
+      const data = await api.wi.versions.list(_project, uc.id);
+      const versions = data.versions || [];
+      if (!versions.length) {
+        listEl.innerHTML = `<div style="color:var(--muted);font-size:0.8rem">No versions yet.</div>`;
+        return;
+      }
+      listEl.innerHTML = versions.map(v => {
+        const statusColor = v.status === 'draft' ? '#f59e0b' : v.status === 'active' ? '#22c55e' : '#6b7280';
+        const dt = v.created_at ? v.created_at.slice(0, 16).replace('T', ' ') : '';
+        return `
+          <div style="border:1px solid var(--border);border-radius:6px;padding:0.6rem 0.8rem;margin-bottom:0.5rem">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
+              <strong style="font-size:0.82rem">v${v.version_num}</strong>
+              <span style="font-size:0.68rem;color:${statusColor};font-weight:600;text-transform:uppercase">${v.status}</span>
+              <span style="font-size:0.7rem;color:var(--muted);flex:1">by ${_esc(v.created_by)}</span>
+              <span style="font-size:0.7rem;color:var(--muted)">${dt}</span>
+            </div>
+            <div style="font-size:0.75rem;color:var(--text2);margin-bottom:0.35rem">
+              ${v.item_count} items${v.summary ? ' · ' + _esc(v.summary.slice(0, 80)) + (v.summary.length > 80 ? '…' : '') : ''}
+            </div>
+            <button class="wi-btn wi-btn-ghost wi-ver-apply" data-vid="${v.id}"
+                    style="font-size:0.72rem">Apply</button>
+          </div>
+        `;
+      }).join('');
+
+      listEl.querySelectorAll('.wi-ver-apply').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true; btn.textContent = '…';
+          try {
+            await api.wi.versions.apply(_project, uc.id, btn.dataset.vid);
+            toast('Version applied', 'success');
+            panel.remove();
+            await _loadUseCases();
+          } catch (err) { toast(`Apply failed: ${err.message}`, 'error'); btn.disabled = false; btn.textContent = 'Apply'; }
+        };
+      });
+    } catch (err) {
+      listEl.innerHTML = `<div style="color:#ef4444;font-size:0.8rem">Error: ${_esc(err.message)}</div>`;
+    }
+  }
+
+  panel.querySelector('#wi-ver-save').onclick = async () => {
+    try {
+      await api.wi.versions.create(_project, uc.id);
+      toast('Version saved', 'success');
+      await loadVersions();
+    } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
+  };
+
+  loadVersions();
+}
+
+function _showParentPopover(anchorEl, itemId, ucId) {
+  document.querySelectorAll('.wi-popover').forEach(p => p.remove());
+
+  const uc       = _ucItems.find(u => u.id === ucId);
+  const allItems = uc ? (uc.children || []) : [];
+  const desc     = _getDescendants(itemId, allItems);
+  const candidates = allItems.filter(i => i.id !== itemId && !desc.has(i.id));
+
+  const pop = document.createElement('div');
+  pop.className = 'wi-popover';
+  pop.style.cssText = `position:fixed;background:var(--bg2);border:1px solid var(--border);
+    border-radius:8px;padding:0.5rem;min-width:220px;z-index:300;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4);max-height:260px;overflow-y:auto`;
+
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.top  = `${rect.bottom + 4}px`;
+  pop.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
+
+  function optionEl(label, value) {
+    const d = document.createElement('div');
+    d.style.cssText = 'padding:0.3rem 0.5rem;cursor:pointer;border-radius:4px;font-size:0.79rem';
+    d.textContent = label;
+    d.onmouseenter = () => d.style.background = 'var(--border)';
+    d.onmouseleave = () => d.style.background = '';
+    d.onclick = async () => {
+      pop.remove();
+      try {
+        await api.wi.update(_project, itemId, { wi_parent_id: value });
+        await _loadUseCases();
+      } catch (err) { toast(`Re-parent failed: ${err.message}`, 'error'); }
+    };
+    return d;
+  }
+
+  if (ucId) pop.appendChild(optionEl('↑ Direct child of use case', ucId));
+  for (const c of candidates) {
+    const depth  = c.depth ?? 0;
+    const indent = '  '.repeat(depth);
+    const meta   = _typeMeta(c.wi_type);
+    pop.appendChild(optionEl(`${indent}${meta.icon} ${c.name}${c.wi_id ? ' [' + c.wi_id + ']' : ''}`, c.id));
+  }
+
+  document.body.appendChild(pop);
+  const close = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('mousedown', close); } };
+  setTimeout(() => document.addEventListener('mousedown', close), 0);
 }
 
 // ── Filter chips ──────────────────────────────────────────────────────────────

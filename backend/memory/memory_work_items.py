@@ -979,7 +979,7 @@ class MemoryWorkItems:
             return []
 
     def get_approved_use_cases(self, pid: int) -> list[dict]:
-        """Return approved use cases with nested children + event/item stats."""
+        """Return approved use cases with recursive descendants + event/item stats."""
         if not db.is_available():
             return []
         try:
@@ -991,24 +991,60 @@ class MemoryWorkItems:
             if not ucs:
                 return []
 
-            uc_id_list = ",".join(f"'{u['id']}'" for u in ucs)
-            all_children = self._list_items(
-                pid,
-                where=f"w.wi_parent_id::text IN ({uc_id_list})",
-            )
+            uc_ids = [u["id"] for u in ucs]
 
-            children_by_uc: dict[str, list] = {u["id"]: [] for u in ucs}
-            for c in all_children:
-                pid_str = c.get("wi_parent_id")
-                if pid_str in children_by_uc:
-                    children_by_uc[pid_str].append(c)
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        WITH RECURSIVE desc_tree AS (
+                          SELECT id, wi_parent_id, 0 AS depth,
+                                 wi_parent_id AS uc_id
+                          FROM mem_work_items
+                          WHERE wi_parent_id = ANY(%s::uuid[]) AND project_id = %s
+                            AND wi_type != 'use_case'
+                          UNION ALL
+                          SELECT c.id, c.wi_parent_id, dt.depth + 1, dt.uc_id
+                          FROM mem_work_items c
+                          JOIN desc_tree dt ON c.wi_parent_id = dt.id
+                          WHERE c.project_id = %s AND c.wi_type != 'use_case'
+                            AND dt.depth < 10
+                        )
+                        SELECT w.id::text, w.wi_id, w.wi_type, w.item_level,
+                               w.name, w.summary, w.deliveries, w.delivery_type,
+                               w.score_importance, w.score_status,
+                               w.user_importance, w.user_status,
+                               w.mrr_ids, w.wi_parent_id::text,
+                               p.wi_id AS wi_parent_wi_id, w.tags,
+                               w.approved_at, w.created_at, w.updated_at,
+                               dt.depth, dt.uc_id::text AS uc_id
+                        FROM desc_tree dt
+                        JOIN mem_work_items w ON w.id = dt.id
+                        LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
+                        ORDER BY dt.depth ASC,
+                                 COALESCE(w.user_importance, w.score_importance, 0) DESC
+                    """, (uc_ids, pid, pid))
+                    cols = [d[0] for d in cur.description]
+                    all_desc: list[dict] = []
+                    for row in cur.fetchall():
+                        d = dict(zip(cols, row))
+                        for k in ("approved_at", "created_at", "updated_at"):
+                            if d.get(k):
+                                d[k] = d[k].isoformat()
+                        all_desc.append(d)
+
+            # Group descendants by their ancestor UC id
+            desc_by_uc: dict[str, list[dict]] = {uid: [] for uid in uc_ids}
+            for d in all_desc:
+                uc_key = d.get("uc_id")
+                if uc_key and uc_key in desc_by_uc:
+                    desc_by_uc[uc_key].append(d)
 
             def _mrr_count(item: dict, key: str) -> int:
                 return len((item.get("mrr_ids") or {}).get(key, []))
 
             result = []
             for uc in ucs:
-                kids = children_by_uc.get(uc["id"], [])
+                kids = desc_by_uc.get(uc["id"], [])
                 tp = sum(_mrr_count(c, "prompts")  for c in kids) + _mrr_count(uc, "prompts")
                 tc = sum(_mrr_count(c, "commits")  for c in kids) + _mrr_count(uc, "commits")
                 tm = sum(_mrr_count(c, "messages") for c in kids) + _mrr_count(uc, "messages")
@@ -1021,10 +1057,11 @@ class MemoryWorkItems:
                     not c["wi_id"].startswith("REJ")
                 ]
 
-                uc["children"] = sorted(kids, key=lambda c: (
-                    int((c.get("user_status") or c.get("score_status") or 0) >= 5),
-                    -(c.get("user_importance") or c.get("score_importance") or 0),
-                ))
+                # Tag each child with its UC id for frontend convenience
+                for c in kids:
+                    c["_uc_id"] = uc["id"]
+
+                uc["children"] = kids  # flat list, depth included
                 uc["stats"] = {
                     "total_prompts":     tp,
                     "total_commits":     tc,
@@ -1041,6 +1078,231 @@ class MemoryWorkItems:
         except Exception as e:
             log.warning(f"get_approved_use_cases error: {e}")
             return []
+
+    # ── Versioning helpers ─────────────────────────────────────────────────────
+
+    def _snapshot_uc(self, uc_id: str, pid: int) -> tuple[dict, list[dict]]:
+        """Return (uc_row, ordered_descendants) for versioning."""
+        uc_items = self._list_items(pid, where=f"w.id='{uc_id}'::uuid")
+        uc = uc_items[0] if uc_items else {}
+        if not uc:
+            return {}, []
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    WITH RECURSIVE desc_tree AS (
+                      SELECT id, wi_parent_id, 0 AS depth
+                      FROM mem_work_items
+                      WHERE wi_parent_id = %s::uuid AND project_id = %s
+                        AND wi_type != 'use_case'
+                      UNION ALL
+                      SELECT c.id, c.wi_parent_id, dt.depth + 1
+                      FROM mem_work_items c
+                      JOIN desc_tree dt ON c.wi_parent_id = dt.id
+                      WHERE c.project_id = %s AND c.wi_type != 'use_case'
+                        AND dt.depth < 10
+                    )
+                    SELECT w.id::text, w.wi_id, w.wi_type, w.name, w.summary,
+                           w.user_status, w.score_status,
+                           w.user_importance, w.score_importance,
+                           w.wi_parent_id::text, dt.depth
+                    FROM desc_tree dt
+                    JOIN mem_work_items w ON w.id = dt.id
+                    ORDER BY dt.depth ASC,
+                             COALESCE(w.user_importance, w.score_importance, 0) DESC
+                """, (uc_id, pid, pid))
+                cols = [d[0] for d in cur.description]
+                desc = [dict(zip(cols, row)) for row in cur.fetchall()]
+        return uc, desc
+
+    def create_version(self, uc_id: str, pid: int, created_by: str = "user",
+                       status: str = "active",
+                       override_name: Optional[str] = None,
+                       override_summary: Optional[str] = None,
+                       override_snapshot: Optional[list] = None) -> dict:
+        """Snapshot current UC state into mem_wi_versions. Returns {id, version_num}."""
+        uc, desc = self._snapshot_uc(uc_id, pid)
+        if not uc and override_name is None:
+            return {"error": "Use case not found"}
+        name    = override_name    or uc.get("name", "")
+        summary = override_summary or uc.get("summary", "")
+        snapshot = override_snapshot or [
+            {k: item.get(k) for k in
+             ("id", "wi_id", "wi_type", "name", "summary", "user_status",
+              "score_status", "user_importance", "score_importance",
+              "wi_parent_id", "depth")}
+            for item in desc
+        ]
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(MAX(version_num),0)+1 FROM mem_wi_versions WHERE uc_id=%s::uuid",
+                    (uc_id,)
+                )
+                next_num = cur.fetchone()[0]
+                cur.execute("""
+                    INSERT INTO mem_wi_versions
+                      (project_id, uc_id, version_num, name, summary, snapshot, created_by, status)
+                    VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s)
+                    RETURNING id::text, version_num
+                """, (pid, uc_id, next_num, name, summary,
+                      json.dumps(snapshot), created_by, status))
+                row = cur.fetchone()
+            conn.commit()
+        return {"id": row[0], "version_num": row[1], "status": status}
+
+    def get_versions(self, uc_id: str, pid: int) -> list[dict]:
+        """List versions for a UC, newest first."""
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id::text, version_num, name, summary, created_by, status,
+                           jsonb_array_length(snapshot) AS item_count,
+                           created_at
+                    FROM mem_wi_versions
+                    WHERE uc_id=%s::uuid AND project_id=%s
+                    ORDER BY version_num DESC
+                """, (uc_id, pid))
+                cols = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+        result = []
+        for r in rows:
+            d = dict(zip(cols, r))
+            if d.get("created_at"):
+                d["created_at"] = d["created_at"].isoformat()
+            result.append(d)
+        return result
+
+    def apply_version(self, version_id: str, uc_id: str, pid: int) -> dict:
+        """Apply a version snapshot to live data.
+
+        1. Archive current state as a new version
+        2. Update UC name+summary from snapshot
+        3. Bulk-update user_importance on items from snapshot order
+        4. Mark the applied version as archived
+        """
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT name, summary, snapshot FROM mem_wi_versions "
+                    "WHERE id=%s::uuid AND uc_id=%s::uuid",
+                    (version_id, uc_id)
+                )
+                row = cur.fetchone()
+        if not row:
+            return {"error": "Version not found"}
+        name, summary, snapshot = row
+
+        # 1. Archive current state
+        self.create_version(uc_id, pid, created_by="user", status="archived")
+
+        # 2–4. Apply snapshot
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE mem_work_items SET name=%s, summary=%s, updated_at=NOW() "
+                    "WHERE id=%s::uuid AND project_id=%s",
+                    (name, summary, uc_id, pid)
+                )
+                updated = 0
+                for idx, item in enumerate(snapshot):
+                    priority = len(snapshot) - idx
+                    cur.execute(
+                        "UPDATE mem_work_items SET user_importance=%s, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (priority, item["id"], pid)
+                    )
+                    updated += cur.rowcount
+                cur.execute(
+                    "UPDATE mem_wi_versions SET status='archived' WHERE id=%s::uuid",
+                    (version_id,)
+                )
+            conn.commit()
+        return {"applied": True, "items_updated": updated}
+
+    async def ai_summarise_uc(self, uc_id: str, pid: int) -> dict:
+        """Call Haiku → rewrite summary + reorder items → save as draft version."""
+        uc, desc = self._snapshot_uc(uc_id, pid)
+        if not uc:
+            return {"error": "Use case not found"}
+
+        items_for_prompt = [
+            {
+                "id":         d["id"],
+                "wi_id":      d.get("wi_id", ""),
+                "wi_type":    d["wi_type"],
+                "name":       d["name"],
+                "summary":    (d.get("summary") or "")[:200],
+                "status":     d.get("user_status") or d.get("score_status") or 0,
+                "importance": d.get("user_importance") or d.get("score_importance") or 0,
+            }
+            for d in desc
+        ]
+
+        cfg      = self._prompts_cfg().get("summarise", {})
+        system   = cfg.get("system", "")
+        user_tmpl = cfg.get("user_prompt", "")
+        user_msg = user_tmpl.format(
+            name=uc.get("name", ""),
+            summary=uc.get("summary", ""),
+            items_json=json.dumps(items_for_prompt, indent=2),
+        )
+
+        raw = await _call_haiku(system, user_msg, max_tokens=2000)
+        if not raw:
+            return {"error": "AI returned empty response"}
+        try:
+            cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip(), flags=re.MULTILINE)
+            parsed = json.loads(cleaned)
+        except Exception:
+            return {"error": f"AI returned invalid JSON: {raw[:200]}"}
+
+        new_summary = parsed.get("new_summary", uc.get("summary", ""))
+        in_progress = parsed.get("in_progress", [])
+        completed   = parsed.get("completed", [])
+
+        all_ordered = in_progress + completed
+        id_to_item  = {d["id"]: d for d in desc}
+        snapshot: list[dict] = []
+        for entry in all_ordered:
+            item = id_to_item.get(entry["id"])
+            if item:
+                snapshot.append({k: item.get(k) for k in
+                                  ("id", "wi_id", "wi_type", "name", "summary",
+                                   "user_status", "score_status", "user_importance",
+                                   "score_importance", "wi_parent_id", "depth")})
+        ai_ids = {e["id"] for e in all_ordered}
+        for d in desc:
+            if d["id"] not in ai_ids:
+                snapshot.append({k: d.get(k) for k in
+                                  ("id", "wi_id", "wi_type", "name", "summary",
+                                   "user_status", "score_status", "user_importance",
+                                   "score_importance", "wi_parent_id", "depth")})
+
+        # Delete previous drafts then save new draft
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM mem_wi_versions WHERE uc_id=%s::uuid AND status='draft'",
+                    (uc_id,)
+                )
+            conn.commit()
+
+        ver = self.create_version(
+            uc_id, pid, created_by="ai", status="draft",
+            override_name=uc.get("name", ""),
+            override_summary=new_summary,
+            override_snapshot=snapshot,
+        )
+
+        return {
+            "version_id":       ver["id"],
+            "version_num":      ver["version_num"],
+            "new_summary":      new_summary,
+            "in_progress_count": len(in_progress),
+            "completed_count":   len(completed),
+            "snapshot":          snapshot,
+        }
 
     def get_stats(self, pid: int) -> dict:
         """Return counts by status and type."""

@@ -521,7 +521,13 @@ api.wi = {
   reset:      (p)           => _post(`/wi/${enc(p)}/reset`, {}),
   create:     (p, b)        => _post(`/wi/${enc(p)}`, b),
   reorder:    (p, items)    => _post(`/wi/${enc(p)}/reorder`, { items }),
-  useCases: (p)       => _get(`/wi/${enc(p)}/use-cases`),
+  useCases:  (p)          => _get(`/wi/${enc(p)}/use-cases`),
+  summarise: (p, ucId)    => _post(`/wi/${enc(p)}/${enc(ucId)}/ai-summarise`, {}),
+  versions: {
+    list:  (p, ucId)         => _get(`/wi/${enc(p)}/${enc(ucId)}/versions`),
+    create: (p, ucId)        => _post(`/wi/${enc(p)}/${enc(ucId)}/versions`, {}),
+    apply:  (p, ucId, vid)   => _post(`/wi/${enc(p)}/${enc(ucId)}/versions/${enc(vid)}/apply`, {}),
+  },
   md: {
     get:     (p, id)      => _get(`/wi/${enc(p)}/${enc(id)}/md`),
     save:    (p, id, txt) => _post(`/wi/${enc(p)}/${enc(id)}/md`, { content: txt }),

@@ -125,3 +125,28 @@ categories:
   task:        {color: "#3b82f6", icon: "✓",  seq_prefix: "TA", seq_key: "WI_TA"}
   policy:      {color: "#8b5cf6", icon: "⚑", seq_prefix: "PO", seq_key: "WI_PO"}
   requirement: {color: "#f59e0b", icon: "◎",  seq_prefix: "RE", seq_key: "WI_RE"}
+
+summarise:
+  active: true
+  system: |
+    You are a technical product manager reorganising a use case's work items.
+    Given the use case name, current summary, and all work items (open and closed):
+
+    1. Write an updated summary (2-4 sentences) that reflects both completed and open work
+    2. Return ALL items split into two groups:
+       - "in_progress": items with status < 5 (not done), sorted by urgency:
+         bugs first (most critical), then features, then tasks/policies/requirements.
+         Within each type, sort by inferred importance (most critical first).
+       - "completed": items with status >= 5 (done), sorted by type (bugs, features, tasks)
+    Each list entry is just: {"id": "...", "priority": N} (1-based rank within the group).
+    Include ALL item IDs from the input — do not omit any.
+
+    Return ONLY valid JSON with no markdown fences:
+    {"new_summary": "...", "in_progress": [...], "completed": [...]}
+
+  user_prompt: |
+    Use Case: {name}
+    Current Summary: {summary}
+
+    Items:
+    {items_json}

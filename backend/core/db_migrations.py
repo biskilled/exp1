@@ -2821,6 +2821,34 @@ def m067_add_user_importance_status(conn) -> None:
     log.info("m067: added user_importance/user_status to mem_work_items")
 
 
+def m068_create_wi_versions(conn) -> None:
+    """Create mem_wi_versions table for use-case snapshot versioning.
+
+    Each version stores an ordered snapshot of a use case's items
+    at a point in time. Status: active (current), draft (AI-generated
+    pending review), archived (older approved snapshots).
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mem_wi_versions (
+              id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+              project_id  INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+              uc_id       UUID        NOT NULL REFERENCES mem_work_items(id) ON DELETE CASCADE,
+              version_num SMALLINT    NOT NULL DEFAULT 1,
+              name        TEXT        NOT NULL,
+              summary     TEXT,
+              snapshot    JSONB       NOT NULL DEFAULT '[]',
+              created_by  TEXT        NOT NULL DEFAULT 'user',
+              status      TEXT        NOT NULL DEFAULT 'active',
+              created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              UNIQUE (uc_id, version_num)
+            );
+            CREATE INDEX IF NOT EXISTS idx_wi_versions_uc ON mem_wi_versions (uc_id);
+        """)
+    conn.commit()
+    log.info("m068: created mem_wi_versions table")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2936,4 +2964,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m065_add_requirement_type", m065_add_requirement_type),
     ("m066_wi_ai_temp_ids", m066_wi_ai_temp_ids),
     ("m067_add_user_importance_status", m067_add_user_importance_status),
+    ("m068_create_wi_versions", m068_create_wi_versions),
 ]

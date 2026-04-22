@@ -284,6 +284,47 @@ async def create_wi(project: str, body: WiCreateRequest):
     return result
 
 
+@router.get("/{project}/{uc_id}/versions")
+async def list_uc_versions(project: str, uc_id: str):
+    """List snapshot versions for a use case, newest first."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    return {"versions": wi.get_versions(uc_id, pid)}
+
+
+@router.post("/{project}/{uc_id}/versions")
+async def create_uc_version(project: str, uc_id: str):
+    """Snapshot the current UC state as a new version."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.create_version(uc_id, pid, created_by="user")
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/{uc_id}/ai-summarise")
+async def ai_summarise_uc(project: str, uc_id: str):
+    """Call Haiku to rewrite the UC summary and reorder items; saves as draft version."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = await wi.ai_summarise_uc(uc_id, pid)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/{uc_id}/versions/{version_id}/apply")
+async def apply_uc_version(project: str, uc_id: str, version_id: str):
+    """Apply a version snapshot to live data (archives current state first)."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.apply_version(version_id, uc_id, pid)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
 @router.get("/{project}/{item_id}/md")
 async def get_wi_md(project: str, item_id: str):
     """Return Markdown content for a use_case work item."""
