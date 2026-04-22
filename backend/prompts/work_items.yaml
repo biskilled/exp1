@@ -60,8 +60,37 @@
 # Max tokens per call: 4000
 # Cost logged to: mng_usage_logs (source='memory')
 #
+# ── FILE HOTSPOT CONTEXT ──────────────────────────────────────────────────────
+# When a commit touches files with a high hotspot score, a [FILE HOTSPOTS] block
+# is injected into the classification prompt for that commit. This helps the LLM
+# flag commits as bugs or high-importance tasks when they touch risky files.
+#
+# Tables (populated by memory_code_parser.py after each commit):
+#
+#   mem_file_stats  — one row per (project, file_path), updated after every commit:
+#     commit_count      how many commits have touched this file
+#     change_count      total symbol-level line changes (added + removed) across all commits
+#     bug_commit_count  commits whose message matched: fix|bug|error|crash|hotfix|revert|…
+#     revert_count      commits whose message matched: revert|rollback
+#     current_lines     line count of the file at the last seen commit
+#     author_count      distinct authors who committed this file (approximated)
+#     lines_added/removed  cumulative totals
+#     hotspot_score     = commit_count + 2 if current_lines ≥ 800 else 0
+#                         (frequency + large-file bonus; recomputed from stored totals
+#                          after every upsert — not a per-commit delta)
+#
+#   mem_file_coupling — one row per sorted (file_a, file_b) pair per project:
+#     co_change_count   how many commits touched both files at the same time
+#     (files that always change together are likely tightly coupled)
+#
+# API:
+#   GET /wi/{project}/file-hotspots                    — top N by score
+#   GET /wi/{project}/file-hotspots?file_path=auth.py  — single file + coupled files
+#   Python: get_file_hotspots(pid, min_score, limit, file_paths)  in memory_code_parser.py
+#
 # ── KEY FILES ─────────────────────────────────────────────────────────────────
 # backend/memory/memory_work_items.py  — full pipeline logic
+# backend/memory/memory_code_parser.py — tree-sitter parser + file hotspot tracking
 # backend/routers/route_work_items.py  — API endpoints (prefix: /wi)
 # ui/frontend/views/work_items.js      — Planner UI (approval, stats, MD editor)
 # ui/frontend/utils/api.js             — api.wi.* calls
