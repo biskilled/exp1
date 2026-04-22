@@ -160,13 +160,20 @@ def _generate_wi_id(cur, project_id: int, wi_type: str) -> str:
 
 
 def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
-    """Insert a single work item row and return the new UUID string."""
+    """Insert a single work item row with a temp AI-prefixed wi_id. Returns new UUID string.
+
+    wi_id is set to AI{n:04d} (e.g. AI0001) at classification time.
+    It is replaced by the real ID (US/BU/FE/…) when the user approves.
+    """
+    from data.dl_seq import next_seq
+    temp_val = next_seq(cur, pid, "WI_AI")
+    temp_wi_id = f"AI{temp_val:04d}"
     cur.execute(
         """INSERT INTO mem_work_items
            (client_id, project_id, wi_type, item_level, name, summary,
             deliveries, delivery_type, score_importance, score_status,
-            mrr_ids, wi_parent_id)
-           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid)
+            mrr_ids, wi_parent_id, wi_id)
+           VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s)
            RETURNING id::text""",
         (
             pid,
@@ -180,6 +187,7 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
             min(5, max(0, int(item.get("score_status", 0)))),
             json.dumps(item.get("mrr_ids") or {}),
             parent_id if parent_id else None,
+            temp_wi_id,
         ),
     )
     row = cur.fetchone()
@@ -610,12 +618,14 @@ class MemoryWorkItems:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Fetch approved use cases
+                    # Fetch approved use cases (real IDs only — exclude drafts and rejected)
                     cur.execute(
                         """SELECT id::text, wi_id, name, LEFT(summary, 300) AS summary
                            FROM mem_work_items
                            WHERE project_id=%s AND wi_type='use_case'
-                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id IS NOT NULL
+                             AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id NOT LIKE 'AI%%'
                            ORDER BY approved_at DESC NULLS LAST
                            LIMIT 15""",
                         (pid,),
@@ -630,7 +640,9 @@ class MemoryWorkItems:
                         """SELECT wi_id, wi_type, name, wi_parent_id::text, score_status
                            FROM mem_work_items
                            WHERE project_id=%s AND wi_parent_id = ANY(%s::uuid[])
-                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id IS NOT NULL
+                             AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id NOT LIKE 'AI%%'
                            ORDER BY created_at ASC""",
                         (pid, uc_ids),
                     )
@@ -796,11 +808,30 @@ class MemoryWorkItems:
     async def classify(self) -> dict:
         """Classify all pending mirror events into mem_work_items.
 
+        Each run first deletes all existing AI-temp rows (unapproved draft
+        classification), then re-classifies all unprocessed events from scratch.
+        Approved rows (real IDs like US/BU/FE) are never touched.
+
         Returns {"classified": N, "groups": M, "items": [...]}
         """
         pid = self._get_project_id()
         if not pid:
             return {"classified": 0, "groups": 0, "items": [], "error": "project not found"}
+
+        # Delete all unapproved draft rows from previous classification run
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM mem_work_items WHERE project_id=%s AND wi_id LIKE 'AI%%'",
+                        (pid,),
+                    )
+                    deleted = cur.rowcount
+                conn.commit()
+            if deleted:
+                log.info(f"classify: cleared {deleted} draft AI rows for project {pid}")
+        except Exception as e:
+            log.warning(f"classify: failed to clear draft rows: {e}")
 
         events = self._fetch_pending_events(pid)
         total_events = sum(len(v) for v in events.values())
@@ -830,8 +861,50 @@ class MemoryWorkItems:
     # ── CRUD ──────────────────────────────────────────────────────────────────
 
     def get_pending(self, pid: int) -> list[dict]:
-        """Return all work items pending approval (wi_id IS NULL)."""
-        return self._list_items(pid, where="wi_id IS NULL")
+        """Return all work items pending approval (wi_id LIKE 'AI%')."""
+        return self._list_items(pid, where="wi_id LIKE 'AI%%'")
+
+    def get_pending_grouped(self, pid: int) -> list[dict]:
+        """Return pending items grouped as use_cases with their children nested.
+
+        Each entry in the returned list is a use_case dict with an extra
+        'children' key containing its pending child items.
+        Items with no parent use_case are returned under a synthetic
+        '__unlinked__' group at the end.
+        """
+        all_pending = self._list_items(pid, where="wi_id LIKE 'AI%%'")
+
+        use_cases: list[dict] = []
+        children_map: dict[str, list[dict]] = {}  # uc UUID → child list
+        unlinked: list[dict] = []
+
+        for item in all_pending:
+            if item.get("wi_type") == "use_case":
+                item["children"] = []
+                use_cases.append(item)
+                children_map[item["id"]] = item["children"]
+            # children handled in second pass
+
+        for item in all_pending:
+            if item.get("wi_type") == "use_case":
+                continue
+            parent_id = item.get("wi_parent_id")
+            if parent_id and parent_id in children_map:
+                children_map[parent_id].append(item)
+            else:
+                unlinked.append(item)
+
+        result = use_cases
+        if unlinked:
+            result.append({
+                "id": "__unlinked__",
+                "wi_id": "__unlinked__",
+                "wi_type": "use_case",
+                "name": "Unlinked Items",
+                "summary": "Items not matched to any use case",
+                "children": unlinked,
+            })
+        return result
 
     def get_all(self, pid: int, wi_type: Optional[str] = None,
                 item_level: Optional[int] = None) -> list[dict]:
@@ -885,9 +958,10 @@ class MemoryWorkItems:
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT
-                             COUNT(*) FILTER (WHERE wi_id IS NULL) AS pending,
+                             COUNT(*) FILTER (WHERE wi_id LIKE 'AI%%') AS pending,
                              COUNT(*) FILTER (WHERE wi_id IS NOT NULL
-                                               AND wi_id NOT LIKE 'REJ%%') AS approved,
+                                               AND wi_id NOT LIKE 'REJ%%'
+                                               AND wi_id NOT LIKE 'AI%%') AS approved,
                              COUNT(*) FILTER (WHERE wi_id LIKE 'REJ%%') AS rejected,
                              COUNT(*) FILTER (WHERE wi_type='bug') AS bugs,
                              COUNT(*) FILTER (WHERE wi_type='feature') AS features,
@@ -916,17 +990,17 @@ class MemoryWorkItems:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Load the item
+                    # Load the item (must still be a draft AI row)
                     cur.execute(
                         """SELECT wi_type, name, summary, mrr_ids, wi_parent_id::text,
                                   deliveries, delivery_type
                            FROM mem_work_items
-                           WHERE id=%s::uuid AND project_id=%s AND wi_id IS NULL""",
+                           WHERE id=%s::uuid AND project_id=%s AND wi_id LIKE 'AI%%'""",
                         (item_id, pid),
                     )
                     row = cur.fetchone()
                     if not row:
-                        return {"error": "item not found or already processed"}
+                        return {"error": "item not found or already approved/rejected"}
                     wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type = row
 
                     # Generate ID
@@ -1013,12 +1087,12 @@ class MemoryWorkItems:
                 with conn.cursor() as cur:
                     cur.execute(
                         "SELECT mrr_ids FROM mem_work_items "
-                        "WHERE id=%s::uuid AND project_id=%s AND wi_id IS NULL",
+                        "WHERE id=%s::uuid AND project_id=%s AND wi_id LIKE 'AI%%'",
                         (item_id, pid),
                     )
                     row = cur.fetchone()
                     if not row:
-                        return {"error": "item not found or already processed"}
+                        return {"error": "item not found or already approved/rejected"}
                     mrr_ids = row[0] or {}
 
                     cur.execute(
@@ -1095,7 +1169,7 @@ class MemoryWorkItems:
                 with conn.cursor() as cur:
                     cur.execute(
                         "DELETE FROM mem_work_items "
-                        "WHERE id=%s::uuid AND project_id=%s AND wi_id IS NULL",
+                        "WHERE id=%s::uuid AND project_id=%s AND wi_id LIKE 'AI%%'",
                         (item_id, pid),
                     )
                     deleted = cur.rowcount
@@ -1150,7 +1224,7 @@ class MemoryWorkItems:
         """Approve all pending items under a parent work item."""
         items = self._list_items(
             pid,
-            where=f"wi_parent_id='{parent_id}'::uuid AND wi_id IS NULL",
+            where=f"wi_parent_id='{parent_id}'::uuid AND wi_id LIKE 'AI%%'",
         )
         approved = []
         errors   = []
@@ -1191,24 +1265,26 @@ class MemoryWorkItems:
                     wi_id, name, summary, score_status, updated_at = row
                     updated_str = (updated_at.strftime("%Y-%m-%d") if updated_at else "")
 
-                    # Fetch approved children
+                    # Fetch approved children (real IDs only)
                     cur.execute(
                         """SELECT id::text, wi_id, wi_type, name, summary,
                                   deliveries, delivery_type, score_status, mrr_ids
                            FROM mem_work_items
                            WHERE wi_parent_id=%s::uuid AND project_id=%s
-                             AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id IS NOT NULL
+                             AND wi_id NOT LIKE 'REJ%%'
+                             AND wi_id NOT LIKE 'AI%%'
                            ORDER BY created_at ASC""",
                         (item_id, pid),
                     )
                     cols = [d[0] for d in cur.description]
                     approved_children = [dict(zip(cols, r)) for r in cur.fetchall()]
 
-                    # Fetch pending children
+                    # Fetch pending children (AI draft rows)
                     cur.execute(
                         """SELECT wi_type, name FROM mem_work_items
                            WHERE wi_parent_id=%s::uuid AND project_id=%s
-                             AND wi_id IS NULL
+                             AND wi_id LIKE 'AI%%'
                            ORDER BY created_at ASC""",
                         (item_id, pid),
                     )
@@ -1421,22 +1497,37 @@ class MemoryWorkItems:
             return {"error": str(e)}
 
     def reset_pending(self, pid: int) -> dict:
-        """Reset all pending mir rows by setting wi_id=NULL on non-SKIP, non-approved rows."""
+        """Delete all AI-temp draft rows and reset mirror-table wi_id references.
+
+        Clears all unapproved classification work (wi_id LIKE 'AI%') from
+        mem_work_items and resets mem_mrr_* wi_id fields so events can be
+        re-classified from scratch on the next classify run.
+        """
         if not db.is_available():
             return {"error": "db not available"}
         try:
-            counts = {}
+            deleted_wi = 0
+            reset_counts: dict = {}
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Delete draft work items
+                    cur.execute(
+                        "DELETE FROM mem_work_items WHERE project_id=%s AND wi_id LIKE 'AI%%'",
+                        (pid,),
+                    )
+                    deleted_wi = cur.rowcount
+
+                    # Reset mem_mrr_* so all non-approved events are re-classified
                     for src, tbl in _TABLE.items():
                         cur.execute(
                             f"UPDATE {tbl} SET wi_id=NULL "
-                            f"WHERE project_id=%s AND wi_id IS NOT NULL AND wi_id!='SKIP'",
+                            f"WHERE project_id=%s AND wi_id IS NOT NULL AND wi_id != 'SKIP' "
+                            f"AND wi_id NOT LIKE 'REJ%%'",
                             (pid,),
                         )
-                        counts[src] = cur.rowcount
+                        reset_counts[src] = cur.rowcount
                 conn.commit()
-            return {"reset": counts}
+            return {"deleted_work_items": deleted_wi, "reset_mrr": reset_counts}
         except Exception as e:
             log.warning(f"reset_pending error: {e}")
             return {"error": str(e)}

@@ -504,9 +504,10 @@ api.documents = {
 // ── Work Items (mem_work_items) API ───────────────────────────────────────────
 
 api.wi = {
-  stats:      (p)           => _get(`/wi/${enc(p)}/stats`),
-  pending:    (p)           => _get(`/wi/${enc(p)}/pending`),
-  list:       (p, params)   => _get(`/wi/${enc(p)}${params ? `?${params}` : ''}`),
+  stats:          (p)       => _get(`/wi/${enc(p)}/stats`),
+  pending:        (p)       => _get(`/wi/${enc(p)}/pending`),
+  pendingGrouped: (p)       => _get(`/wi/${enc(p)}/pending/grouped`),
+  list:           (p, params) => _get(`/wi/${enc(p)}${params ? `?${params}` : ''}`),
   classify:   (p, bg)       => _post(`/wi/${enc(p)}/classify${bg ? '?background=true' : ''}`, {}),
   approve:    (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/approve`, {}),
   reject:     (p, id)       => _post(`/wi/${enc(p)}/${enc(id)}/reject`, {}),

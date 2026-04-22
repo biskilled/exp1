@@ -121,11 +121,21 @@ async def classify_work_items(
 
 @router.get("/{project}/pending")
 async def get_pending(project: str):
-    """Return all work items pending approval (wi_id IS NULL)."""
+    """Return all work items pending approval (wi_id LIKE 'AI%')."""
     pid = _pid(project)
     wi  = _wi(project)
     items = wi.get_pending(pid)
     return {"project": project, "items": items, "count": len(items)}
+
+
+@router.get("/{project}/pending/grouped")
+async def get_pending_grouped(project: str):
+    """Return pending items as use_case groups with nested children."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    groups = wi.get_pending_grouped(pid)
+    total  = sum(1 + len(g.get("children", [])) for g in groups)
+    return {"project": project, "groups": groups, "count": total}
 
 
 @router.get("/{project}/stats")

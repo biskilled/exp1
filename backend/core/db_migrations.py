@@ -2786,6 +2786,20 @@ def m065_add_requirement_type(conn) -> None:
     log.info("m065: WI_RE seq counter seeded (6001) + requirement tag category added")
 
 
+def m066_wi_ai_temp_ids(conn) -> None:
+    """Switch pending work items to AI-temp-ID scheme.
+
+    Deletes all wi_id=NULL rows (old pending style) from mem_work_items so
+    they get re-classified as AI0001/AI0002/… on the next classify run.
+    mem_mrr_* rows keep wi_id=NULL and will be re-picked up automatically.
+    """
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM mem_work_items WHERE wi_id IS NULL")
+        deleted = cur.rowcount
+    conn.commit()
+    log.info("m066: cleared %d pending wi_id=NULL work items (re-classify to get AI temp IDs)", deleted)
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -2899,4 +2913,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m063_create_mem_work_items", m063_create_mem_work_items),
     ("m064_add_policy_category", m064_add_policy_category),
     ("m065_add_requirement_type", m065_add_requirement_type),
+    ("m066_wi_ai_temp_ids", m066_wi_ai_temp_ids),
 ]

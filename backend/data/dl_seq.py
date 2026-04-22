@@ -35,6 +35,8 @@ SEQ_STARTS: dict[str, int] = {
     "uc":        10000,    # use_case planner tags
     "feat":      20000,    # feature  planner tags
     "bug":       30000,    # bug      planner tags
+    # Work-item temp IDs assigned during classification (before user approval)
+    "wi_ai":     1,        # AI0001, AI0002 … → replaced by real IDs on approve
 }
 
 _DEFAULT_START = 10000
