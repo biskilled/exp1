@@ -22,6 +22,7 @@ let _polling   = null;
 let _stats     = {};
 let _allItems  = [];    // all loaded items
 let _filter    = '';    // wi_type filter
+let _dragItemId = null; // item id being dragged
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -218,7 +219,62 @@ export async function renderWorkItems(container, projectName) {
         border-bottom:1px solid var(--border);background:var(--surface);
         border-left:3px solid var(--accent);
       }
-      .wi-uc-children { overflow:hidden }
+      .wi-uc-children {
+        overflow:hidden;
+        padding-left:1rem;
+        border-left:3px solid var(--border);
+        margin-left:0.5rem;
+      }
+      .wi-uc-children .wi-card { margin-bottom:0.5rem }
+      .wi-uc-children .wi-card:last-child { margin-bottom:0 }
+
+      /* drag-and-drop */
+      .wi-card[draggable="true"] { cursor:grab }
+      .wi-card[draggable="true"]:active { cursor:grabbing }
+      .wi-card.wi-dragging { opacity:.4;pointer-events:none }
+      .wi-drop-zone {
+        min-height:2.5rem;transition:background .15s,border .15s;
+      }
+      .wi-drop-zone.wi-drag-over {
+        background:rgba(var(--accent-rgb,6,182,212),.08);
+        outline:2px dashed var(--accent);outline-offset:-2px;
+      }
+      .wi-orphan-zone {
+        margin-bottom:1.25rem;padding:0.65rem 0.9rem;
+        border:2px dashed #f59e0b;border-radius:var(--radius);
+        background:rgba(245,158,11,.05);
+      }
+      .wi-orphan-zone-label {
+        font-size:0.72rem;font-weight:700;color:#f59e0b;margin-bottom:0.5rem;
+        display:flex;align-items:center;gap:0.4rem;
+      }
+
+      /* inline rename */
+      .wi-rename-input {
+        background:var(--surface);border:1px solid var(--accent);border-radius:4px;
+        padding:2px 6px;color:var(--text);font-size:0.88rem;font-weight:700;
+        min-width:140px;max-width:300px;flex:1;outline:none;
+      }
+      .wi-rename-btn {
+        background:none;border:none;cursor:pointer;font-size:0.75rem;
+        color:var(--muted);padding:1px 3px;opacity:.6;line-height:1;
+      }
+      .wi-rename-btn:hover { opacity:1;color:var(--accent) }
+
+      /* status badge clickable */
+      .wi-status-badge {
+        font-size:0.62rem;font-weight:700;padding:1px 6px;border-radius:6px;
+        white-space:nowrap;cursor:pointer;user-select:none;
+      }
+      .wi-status-badge:hover { filter:brightness(1.1);outline:1px solid currentColor }
+
+      /* UC MRR totals */
+      .wi-uc-mrr {
+        font-size:0.65rem;color:var(--muted);display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;
+      }
+      .wi-uc-mrr-chip {
+        background:var(--surface3);padding:1px 5px;border-radius:5px;
+      }
 
       .wi-filter-chip {
         font-size:0.67rem;padding:2px 8px;border-radius:10px;cursor:pointer;
@@ -361,7 +417,7 @@ function _setupEvents(container) {
 
     // Expand/collapse use case body (but not when clicking action buttons)
     const ucHeader = e.target.closest('.wi-uc-header');
-    if (ucHeader && !e.target.closest('button')) {
+    if (ucHeader && !e.target.closest('button') && !e.target.closest('.wi-rename-btn')) {
       const body = ucHeader.nextElementSibling;
       if (body?.classList.contains('wi-uc-body')) {
         body.classList.toggle('collapsed');
@@ -369,6 +425,74 @@ function _setupEvents(container) {
         if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
       }
     }
+
+    // Rename item / UC
+    const renameBtn = e.target.closest('.wi-rename-btn');
+    if (renameBtn) {
+      e.stopPropagation();
+      _startRename(renameBtn.dataset.id, renameBtn.dataset.currentName, renameBtn.dataset.isUc === 'true');
+      return;
+    }
+
+    // Status badge click → cycle status
+    const statusBadge = e.target.closest('.wi-status-badge[data-item-id]');
+    if (statusBadge) {
+      e.stopPropagation();
+      _cycleStatus(statusBadge.dataset.itemId, parseInt(statusBadge.dataset.scoreStatus || '0', 10));
+      return;
+    }
+  });
+
+  // ── Drag-and-drop ──────────────────────────────────────────────────────────
+  const list = container.querySelector('#wi-list');
+
+  list.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.wi-card[draggable="true"]');
+    if (!card) return;
+    _dragItemId = card.dataset.itemId;
+    card.classList.add('wi-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _dragItemId);
+  });
+
+  list.addEventListener('dragend', (e) => {
+    document.querySelectorAll('.wi-dragging').forEach(el => el.classList.remove('wi-dragging'));
+    document.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
+    _dragItemId = null;
+  });
+
+  list.addEventListener('dragover', (e) => {
+    const zone = e.target.closest('.wi-drop-zone');
+    if (!zone || !_dragItemId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.wi-drag-over').forEach(el => {
+      if (el !== zone) el.classList.remove('wi-drag-over');
+    });
+    zone.classList.add('wi-drag-over');
+  });
+
+  list.addEventListener('dragleave', (e) => {
+    const zone = e.target.closest('.wi-drop-zone');
+    if (!zone) return;
+    // Only remove if leaving the zone itself (not a child)
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove('wi-drag-over');
+  });
+
+  list.addEventListener('drop', async (e) => {
+    const zone = e.target.closest('.wi-drop-zone');
+    if (!zone || !_dragItemId) return;
+    e.preventDefault();
+    zone.classList.remove('wi-drag-over');
+    const targetUcId = zone.dataset.ucId;
+    const itemId     = _dragItemId;
+    _dragItemId = null;
+    if (!targetUcId || !itemId) return;
+    try {
+      await api.wi.update(_project, itemId, { wi_parent_id: targetUcId === '__none__' ? null : targetUcId });
+      toast('Moved to use case', 'success');
+      await _loadAll();
+    } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
   });
 }
 
@@ -428,6 +552,77 @@ function _openMdPanel(item) {
     } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
     finally { e.currentTarget.disabled = false; }
   });
+}
+
+// ── Rename ────────────────────────────────────────────────────────────────────
+
+function _startRename(itemId, currentName, isUC) {
+  // Replace the name span with an inline input + datalist
+  const nameSpan = document.querySelector(`.wi-name[data-item-id="${itemId}"]`);
+  if (!nameSpan) return;
+
+  // Build datalist options: UCs → all UC names; items → free text
+  const suggestions = isUC
+    ? _allItems.filter(i => i.wi_type === 'use_case').map(i => i.name)
+    : [];
+  const listId = `wi-rename-list-${itemId}`;
+
+  const orig = nameSpan.outerHTML;
+  nameSpan.outerHTML = `
+    ${suggestions.length ? `<datalist id="${listId}">${suggestions.map(s => `<option value="${_esc(s)}">`).join('')}</datalist>` : ''}
+    <input class="wi-rename-input" id="wi-rename-${itemId}"
+           value="${_esc(currentName)}"
+           ${suggestions.length ? `list="${listId}"` : ''}
+           data-item-id="${itemId}" data-orig="${_esc(currentName)}"
+           title="Enter to confirm, Escape to cancel" />
+  `;
+
+  const input = document.getElementById(`wi-rename-${itemId}`);
+  if (!input) return;
+  input.focus(); input.select();
+
+  const _confirm = async () => {
+    const newName = input.value.trim();
+    if (!newName || newName === currentName) { await _loadAll(); return; }
+    try {
+      await api.wi.update(_project, itemId, { name: newName });
+      toast(`Renamed: ${newName}`, 'success');
+    } catch (err) { toast(`Rename failed: ${err.message}`, 'error'); }
+    await _loadAll();
+  };
+
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); await _confirm(); }
+    if (e.key === 'Escape') { await _loadAll(); }
+  });
+  input.addEventListener('blur', _confirm);
+}
+
+// ── Status cycle ──────────────────────────────────────────────────────────────
+
+const _STATUS_CYCLE = [
+  { score: 0, label: 'not started', cls: 'wi-s-req'  },
+  { score: 2, label: 'in progress', cls: 'wi-s-wip'  },
+  { score: 5, label: 'done',        cls: 'wi-s-done' },
+];
+
+async function _cycleStatus(itemId, currentScore) {
+  // Find next status in cycle
+  const idx  = _STATUS_CYCLE.findIndex(s => s.score === currentScore);
+  const next = _STATUS_CYCLE[(idx + 1) % _STATUS_CYCLE.length];
+  try {
+    await api.wi.update(_project, itemId, { score_status: next.score });
+    // Optimistically update the badge without full reload
+    const badge = document.querySelector(`.wi-status-badge[data-item-id="${itemId}"]`);
+    if (badge) {
+      badge.textContent = next.label;
+      badge.className = `wi-status-badge ${next.cls}`;
+      badge.dataset.scoreStatus = String(next.score);
+    }
+    // Update in-memory item too
+    const item = _allItems.find(i => i.id === itemId);
+    if (item) item.score_status = next.score;
+  } catch (err) { toast(`Status update failed: ${err.message}`, 'error'); }
 }
 
 // ── Add-item form ──────────────────────────────────────────────────────────
@@ -560,13 +755,33 @@ function _renderList() {
     const ucChildren = children.filter(c => c.wi_parent_id === uc.id);
     const ucIsPending = !uc.wi_id || uc.wi_id.startsWith('AI');
     const pendingChildren = ucChildren.filter(c => !c.wi_id || c.wi_id.startsWith('AI'));
+
+    // Compute UC-level MRR totals (sum across all children)
+    let totalPrompts = 0, totalCommits = 0, totalMessages = 0, totalItems = 0;
+    for (const c of ucChildren) {
+      const m = c.mrr_ids || {};
+      totalPrompts  += (m.prompts?.length  || 0);
+      totalCommits  += (m.commits?.length  || 0);
+      totalMessages += (m.messages?.length || 0);
+      totalItems    += (m.items?.length    || 0);
+    }
+    const ucMrrChips = [
+      totalPrompts  ? `<span class="wi-uc-mrr-chip">Prompts: ${totalPrompts}</span>`   : '',
+      totalCommits  ? `<span class="wi-uc-mrr-chip">Commits: ${totalCommits}</span>`   : '',
+      totalMessages ? `<span class="wi-uc-mrr-chip">Messages: ${totalMessages}</span>` : '',
+      totalItems    ? `<span class="wi-uc-mrr-chip">Items: ${totalItems}</span>`        : '',
+    ].filter(Boolean).join('');
+
     html += `
       <div class="wi-uc-group">
         <div class="wi-uc-header">
           <span class="wi-uc-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
-          <span class="wi-uc-label">◻ Use Case</span>
-          <span style="font-size:0.85rem;font-weight:700;color:var(--text);flex:1">${_esc(uc.name || uc.id)}</span>
+          <span class="wi-uc-label">◻ USE CASE</span>
+          <span class="wi-name" data-item-id="${uc.id}">${_esc(uc.name || uc.id)}</span>
+          <button class="wi-rename-btn" data-id="${uc.id}"
+                  data-current-name="${_esc(uc.name || '')}" data-is-uc="true" title="Rename use case">✎</button>
           <span style="font-size:0.7rem;color:var(--muted)">${ucChildren.length} item${ucChildren.length !== 1 ? 's' : ''}</span>
+          ${ucMrrChips ? `<div class="wi-uc-mrr">${ucMrrChips}</div>` : ''}
           ${ucIsPending
             ? `<span class="wi-pending">${_esc(uc.wi_id || 'pending')}</span>`
             : `<span class="wi-id">${_esc(uc.wi_id)}</span>`
@@ -583,9 +798,11 @@ function _renderList() {
         </div>
         <div class="wi-uc-body">
           ${uc.summary ? `<div class="wi-uc-summary">${_esc(uc.summary)}</div>` : ''}
-          <div class="wi-uc-children">
+          <div class="wi-uc-children wi-drop-zone" data-uc-id="${uc.id}">
             ${ucChildren.length ? ucChildren.map(c => _renderItemCard(c)).join('') : `
-              <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem">No child items</div>
+              <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem;font-style:italic">
+                Drop items here or use + Add Item
+              </div>
             `}
           </div>
           <!-- Add Item form -->
@@ -613,9 +830,18 @@ function _renderList() {
     `;
   }
 
-  // Render orphaned items (no parent use_case)
+  // Render orphaned items — shown in a warning zone; must be dragged to a UC
   if (orphans.length) {
-    html += orphans.map(i => _renderItemCard(i)).join('');
+    html += `
+      <div class="wi-orphan-zone">
+        <div class="wi-orphan-zone-label">
+          ⚠ ${orphans.length} unlinked item${orphans.length !== 1 ? 's' : ''} — drag to a use case above
+        </div>
+        <div class="wi-drop-zone" data-uc-id="__none__" style="min-height:0">
+          ${orphans.map(i => _renderItemCard(i)).join('')}
+        </div>
+      </div>
+    `;
   }
 
   el.innerHTML = html || `<div style="color:var(--muted);text-align:center;padding:3rem">No items match the current filter.</div>`;
@@ -625,20 +851,24 @@ function _renderItemCard(item) {
   const meta = _typeMeta(item.wi_type);
   const isPending = !item.wi_id || item.wi_id.startsWith('AI');
   const mrr = item.mrr_ids || {};
-  const mrrCounts = [
-    mrr.prompts?.length  ? `P:${mrr.prompts.length}`   : null,
-    mrr.commits?.length  ? `C:${mrr.commits.length}`   : null,
-    mrr.messages?.length ? `M:${mrr.messages.length}`  : null,
-    mrr.items?.length    ? `I:${mrr.items.length}`      : null,
-  ].filter(Boolean);
+  const mrrChips = [
+    mrr.prompts?.length  ? `<span class="wi-mrr-chip">Prompts: ${mrr.prompts.length}</span>`   : '',
+    mrr.commits?.length  ? `<span class="wi-mrr-chip">Commits: ${mrr.commits.length}</span>`   : '',
+    mrr.messages?.length ? `<span class="wi-mrr-chip">Messages: ${mrr.messages.length}</span>` : '',
+    mrr.items?.length    ? `<span class="wi-mrr-chip">Items: ${mrr.items.length}</span>`        : '',
+  ].filter(Boolean).join('');
 
   const st = _itemStatus(item);
   return `
-    <div class="wi-card">
+    <div class="wi-card" draggable="true" data-item-id="${item.id}">
       <div class="wi-card-header" title="Click to expand">
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
-        <span class="wi-name">${_esc(item.name || '(unnamed)')}</span>
-        <span class="wi-status-badge ${st.cls}">${st.label}</span>
+        <span class="wi-name" data-item-id="${item.id}">${_esc(item.name || '(unnamed)')}</span>
+        <button class="wi-rename-btn" data-id="${item.id}"
+                data-current-name="${_esc(item.name || '')}" data-is-uc="false" title="Rename">✎</button>
+        <span class="wi-status-badge ${st.cls}"
+              data-item-id="${item.id}" data-score-status="${item.score_status || 0}"
+              title="Click to cycle status">${st.label}</span>
         ${isPending
           ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
@@ -659,11 +889,8 @@ function _renderItemCard(item) {
           <div>Status: ${_scorePips(item.score_status, '#22c55e')}</div>
           ${item.delivery_type ? `<div style="color:var(--muted)">${_esc(item.delivery_type)}</div>` : ''}
         </div>
-        ${mrrCounts.length ? `
-          <div class="wi-mrr-counts">
-            ${mrrCounts.map(c => `<span class="wi-mrr-chip">${c}</span>`).join('')}
-          </div>
-        ` : ''}
+        ${mrrChips ? `<div class="wi-mrr-counts">${mrrChips}</div>` : ''}
+        ${item.wi_parent_wi_id ? `<div style="font-size:0.65rem;color:var(--muted);margin-top:0.3rem">Parent: <code>${_esc(item.wi_parent_wi_id)}</code></div>` : ''}
       </div>
     </div>
   `;
