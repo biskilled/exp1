@@ -680,9 +680,12 @@ class MemoryWorkItems:
         template = cfg.get("event_prompt", "{existing_context}\n\n{events_block}")
 
         events_block = self._format_group_for_prompt(group)
-        user_prompt = template.format(
-            existing_context=existing_ctx,
-            events_block=events_block,
+        # Use plain replacement — template contains literal { } in JSON examples
+        # so str.format() would raise KeyError on them.
+        user_prompt = (
+            template
+            .replace("{existing_context}", existing_ctx)
+            .replace("{events_block}", events_block)
         )
 
         raw = await _call_haiku(system, user_prompt, max_tokens=4000)

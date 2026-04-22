@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-22 12:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-22 12:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,13 +68,5 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end; embedding as final column
-- Session history UI persistence: Chat tab shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
-
-## Recent Context (last 5 changes)
-
-- [2026-04-15] The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is
-- [2026-04-15] The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the curre
-- [2026-04-15] it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the rig
-- [2026-04-15] I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) no
-- [2026-04-15] I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppos
+- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
+- Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM

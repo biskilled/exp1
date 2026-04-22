@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-22 12:17 UTC — do not edit manually.
+> Auto-generated 2026-04-22 12:20 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 668
-- **Last active**: 2026-04-22T12:17:14Z
+- **Sessions**: 669
+- **Last active**: 2026-04-22T12:20:32Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -60,8 +60,8 @@
 
 ## In Progress
 
-- Database schema refactor complete (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); updated_at added to all mirror tables; committed_at removed from mem_mrr_commits
-- Session history UI improvements: Chat and History tabs now display sessions with source badge, phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp; stale session loading fixed
+- Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables
+- Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed
 - Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
 - Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
 - Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
@@ -82,8 +82,8 @@
 - Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags unified with deliverables JSONB
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
-- Column standardization: INT primary keys in order (id → client_id → project_id → user_id); created_at/updated_at at table end; embedding as final column
-- Session history UI persistence: Chat tab shows sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
+- Column standardization: INT primary keys in canonical order; created_at/updated_at at table end; embedding as final column
+- Session history UI persistence: Chat/History tabs display sessions with source badge, phase chip, session ID (last 5 chars), and timestamp YY/MM/DD-HH:MM
 
 ---
 

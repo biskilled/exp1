@@ -273,8 +273,8 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema refactor complete (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form (id → client_id → project_id → user_id); updated_at added to all mirror tables; committed_at removed from mem_mrr_commits
-- Session history UI improvements: Chat and History tabs now display sessions with source badge, phase chip, session ID (last 5 chars), and YY/MM/DD-HH:MM timestamp; stale session loading fixed
+- Database schema refactor (m051-m052): user_id migrated from UUID to SERIAL INT; all 18 tables reordered to canonical form; updated_at added to mirror tables
+- Session history UI improvements: Chat and History tabs display sessions with source badge, phase chip, session ID, and timestamp; stale session loading fixed
 - Hook-log endpoint verification: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper sort order and session attribution
 - Chat tab session persistence: current session highlighted on load using last_session_id from runtime state; localStorage cache supports offline viewing
 - Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained
