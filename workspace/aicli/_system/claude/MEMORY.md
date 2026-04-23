@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 09:13 UTC by aicli /memory_
+_Generated: 2026-04-23 09:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,6 +100,10 @@ _Generated: 2026-04-23 09:13 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-23 09:20]** `ui/`
+Q: it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the top. can you make another tab ob the right. first one  is for Work items  and the 
+A: The empty state message will say "Click Classify to generate AI-suggested use cases from **199 prompts** + **667 commits**." — clear and actionable.  Here's what changed and what you should see now:  **Tab layout**: The two tab buttons are now on the **right side** of the toolbar, grouped as a borde
+
 **[2026-04-23 09:06]** `ui/`
 Q: I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook offline(last promt 8.3H) - which makes sense  as it was the lat prompt
 A: Good. The hook is now healthy (0.1h). Here's a summary of what was done and what to expect:  **What I fixed:**  1. **Work Items tab now shows all items** — changed `_renderList()` to display ALL use cases (not just pending AI* ones). Previously, once a UC was approved, it disappeared from Work Items
@@ -134,6 +138,3 @@ A: Only the definition, no calls. All changes are clean. Here's what was done:  
 **[2026-04-15 20:37]** `ui/`
 Q: I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session suppose to be on the left. user can access into a chat and continue. I would like 
 A: All changes are in place. Here's a summary of everything that now works in the **Chat view**:  ---  **Left sidebar — each session item now shows:** - `CLI · development · (ab3f9)` — source badge, phase chip, last 5 chars of session ID in monospace - Hovering shows full session ID as tooltip  **When 
-
-**[2026-04-15 19:31]** `ui/`
-Q: test: is hook-log working now after m050?

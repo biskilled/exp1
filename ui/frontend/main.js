@@ -15,7 +15,8 @@ import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
 import { renderEntities } from './views/entities.js';
 import { renderPipeline, destroyPipeline } from './views/pipeline.js';
-import { renderWorkItems as renderBacklog, destroyWorkItems as destroyBacklog } from './views/work_items.js';
+import { renderWorkItems as renderBacklog, destroyWorkItems as destroyBacklog,
+         renderUseCases, destroyUseCases } from './views/work_items.js';
 import { loadTagCache } from './utils/tagCache.js';
 import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 
@@ -76,8 +77,9 @@ const PROJECT_TABS = [
   { id: 'documents', icon: '📋', label: 'Documents' },
   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
   { id: 'pipeline',  icon: '◫',  label: 'Dashboard' },
-  { id: 'backlog',  icon: '📥', label: 'Work Items' },
-  { id: 'history',  icon: '⏱',  label: 'History'  },
+  { id: 'backlog',    icon: '📥', label: 'Work Items' },
+  { id: 'use_cases',  icon: '◻',  label: 'Use Cases'  },
+  { id: 'history',    icon: '⏱',  label: 'History'    },
   { id: 'settings', icon: '⚙',  label: 'Settings' },
 ];
 
@@ -536,6 +538,7 @@ export function navigateTo(viewId, opts = {}) {
   destroyGraphWorkflow();
   destroyPipeline();
   destroyBacklog();
+  destroyUseCases();
 
   const container = document.getElementById('views-container');
   if (!container) return;
@@ -568,8 +571,9 @@ export function navigateTo(viewId, opts = {}) {
     case 'documents': renderDocuments(view, proj?.name);            break;
     case 'workflow':  renderGraphWorkflow(view);                     break;
     case 'pipeline':  renderPipeline(view, proj?.name);              break;
-    case 'backlog':  renderBacklog(view, proj?.name);          break;
-    case 'history':  renderHistory(view);                     break;
+    case 'backlog':    renderBacklog(view, proj?.name);          break;
+    case 'use_cases':  renderUseCases(view, proj?.name);        break;
+    case 'history':    renderHistory(view);                     break;
     case 'settings': renderSettings(view);                    break;
     case 'admin':    _renderAdminView(view);                  break;
     default:

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-23 09:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-23 09:24 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-15] it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the rig
 - [2026-04-15] I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) no
 - [2026-04-15] I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppos
 - [2026-04-23] test prompt after m073 fix
 - [2026-04-23] I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook of
+- [2026-04-23] it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the to

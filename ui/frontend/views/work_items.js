@@ -79,27 +79,21 @@ export async function renderWorkItems(container, projectName) {
           <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
             ↻ Classify
           </button>
-          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Override max use cases (0 = use YAML default)">
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:var(--muted)" title="Max use cases to generate (8 = default)">
             Max UCs:
-            <input id="wi-max-uc" type="number" min="0" max="50" value="0"
+            <input id="wi-max-uc" type="number" min="1" max="50" value="8"
                    style="width:52px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;
                           background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center"
-                   title="0 = use default from config (work_items.yaml)">
+                   title="Max use cases for classification (default: 8)">
           </label>
-          <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh current view">⟳</button>
+          <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh">⟳</button>
         </div>
-        <!-- Type filter chips — only shown on Work Items tab -->
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
         <span style="flex:1"></span>
         <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
               border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
               cursor:default" title="No Claude Code prompts received recently — hook may be offline"></span>
-        <!-- Tabs on the right -->
-        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0">
-          <button id="wi-tab-backlog"   class="wi-tab-btn active">Work Items</button>
-          <button id="wi-tab-use-cases" class="wi-tab-btn" style="border-left:1px solid var(--border)">Use Cases</button>
-        </div>
       </div>
 
       <!-- ── Stats bar ── -->
@@ -117,7 +111,16 @@ export async function renderWorkItems(container, projectName) {
       </div>
     </div>
 
-    <style>
+    ${_sharedStyles()}
+  `;
+
+  _setupEvents(container);
+  await _loadAll();
+  _checkHookHealth();
+}
+
+// ── Shared CSS (injected by both Work Items and Use Cases views) ───────────────
+function _sharedStyles() { return `<style>
       .wi-card {
         border:1px solid var(--border);border-radius:var(--radius);
         background:var(--surface);margin-bottom:0.75rem;overflow:hidden;
@@ -400,13 +403,7 @@ export async function renderWorkItems(container, projectName) {
         background:var(--surface3);padding:1px 6px;border-radius:6px;
         font-size:0.65rem;color:var(--muted);
       }
-    </style>
-  `;
-
-  _setupEvents(container);
-  await _loadAll();
-  _checkHookHealth();
-}
+    </style>`; }
 
 async function _checkHookHealth() {
   if (!_project) return;
@@ -433,28 +430,14 @@ async function _checkHookHealth() {
 // ── Event wiring ──────────────────────────────────────────────────────────────
 
 function _setupEvents(container) {
-  // Tab buttons
-  container.querySelector('#wi-tab-backlog').addEventListener('click', () => {
-    if (_tab === 'backlog') return;
-    _tab = 'backlog';
-    _syncTabUI(container);
-    _loadAll();
-  });
-  container.querySelector('#wi-tab-use-cases').addEventListener('click', () => {
-    if (_tab === 'use_cases') return;
-    _tab = 'use_cases';
-    _syncTabUI(container);
-    _loadUseCases();
-  });
-
   // Refresh button
-  container.querySelector('#wi-refresh-btn').addEventListener('click', async () => {
+  container.querySelector('#wi-refresh-btn')?.addEventListener('click', async () => {
     await _reloadCurrent();
     toast('Refreshed', 'info');
   });
 
-  // Classify button
-  container.querySelector('#wi-classify-btn').addEventListener('click', async (e) => {
+  // Classify button (Work Items view only)
+  container.querySelector('#wi-classify-btn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     if (btn.disabled) return;
     const maxUc = parseInt(container.querySelector('#wi-max-uc')?.value || '8', 10);
@@ -474,8 +457,8 @@ function _setupEvents(container) {
     }
   });
 
-  // Filter chips
-  container.querySelector('#wi-filter-chips').addEventListener('click', (e) => {
+  // Filter chips (Work Items view only)
+  container.querySelector('#wi-filter-chips')?.addEventListener('click', (e) => {
     const chip = e.target.closest('.wi-filter-chip');
     if (!chip) return;
     const type = chip.dataset.type;
@@ -664,16 +647,7 @@ function _setupEvents(container) {
   });
 }
 
-// ── Tab helpers ───────────────────────────────────────────────────────────────
-
-function _syncTabUI(container) {
-  container.querySelector('#wi-tab-backlog').classList.toggle('active',    _tab === 'backlog');
-  container.querySelector('#wi-tab-use-cases').classList.toggle('active',  _tab === 'use_cases');
-  const cr = container.querySelector('#wi-classify-row');
-  if (cr) cr.style.display = _tab === 'backlog' ? '' : 'none';
-  const fc = container.querySelector('#wi-filter-chips');
-  if (fc) fc.style.display = _tab === 'backlog' ? '' : 'none';
-}
+// ── Reload helpers ────────────────────────────────────────────────────────────
 
 async function _reloadCurrent() {
   if (_tab === 'use_cases') await _loadUseCases();
@@ -2134,4 +2108,56 @@ function _hotspotBadge(hotspots) {
     `${h.file_path} (commits:${h.commit_count} bugs:${h.bug_commit_count} lines:${h.current_lines})`
   ).join('\n');
   return `<span class="wi-hotspot-badge" title="${tip}">🔥 ${hotspots.length} hotspot${hotspots.length > 1 ? 's' : ''}</span>`;
+}
+
+// ── Use Cases standalone view (separate sidebar entry) ────────────────────────
+
+export function destroyUseCases() {
+  if (_classifyPoller) { clearInterval(_classifyPoller); _classifyPoller = null; }
+  if (_mdPanel)        { _mdPanel.remove(); _mdPanel = null; }
+}
+
+export async function renderUseCases(container, projectName) {
+  destroyUseCases();
+  _project = projectName || state.currentProject?.name || '';
+  _tab     = 'use_cases';
+  _ucItems = [];
+
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+
+      <!-- ── Toolbar ── -->
+      <div style="padding:0.65rem 1.25rem;border-bottom:1px solid var(--border);
+                  display:flex;align-items:center;gap:0.75rem;flex-shrink:0">
+        <strong style="font-size:0.9rem;color:var(--text)">◻ Use Cases</strong>
+        <span style="color:var(--muted);font-size:0.78rem">Approved use cases and their items</span>
+        <span style="flex:1"></span>
+        <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
+        <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh">⟳</button>
+        <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
+              border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
+              cursor:default" title="No prompts received recently"></span>
+      </div>
+
+      <!-- ── Stats bar ── -->
+      <div id="wi-stats-bar" style="padding:0.55rem 1.25rem;background:var(--surface);
+                border-bottom:1px solid var(--border);flex-shrink:0;
+                display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
+        <span style="color:var(--muted);font-size:0.72rem">Loading…</span>
+      </div>
+
+      <!-- ── List ── -->
+      <div id="wi-list" style="flex:1;overflow-y:auto;padding:1rem 1.25rem">
+        <div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
+          Loading use cases…
+        </div>
+      </div>
+    </div>
+
+    ${_sharedStyles()}
+  `;
+
+  _setupEvents(container);
+  await _loadUseCases();
+  _checkHookHealth();
 }
