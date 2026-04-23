@@ -75,10 +75,6 @@ export async function renderWorkItems(container, projectName) {
       <!-- ── Toolbar ── -->
       <div style="padding:0.65rem 1.25rem;border-bottom:1px solid var(--border);
                   display:flex;align-items:center;gap:0.75rem;flex-shrink:0;flex-wrap:wrap">
-        <div style="display:flex;gap:0.3rem">
-          <button id="wi-tab-backlog"    class="wi-tab-btn active">Work Items</button>
-          <button id="wi-tab-use-cases"  class="wi-tab-btn">Use Cases</button>
-        </div>
         <div id="wi-classify-row" style="display:flex;align-items:center;gap:0.5rem">
           <button id="wi-classify-btn" class="btn btn-ghost btn-sm" title="Classify pending mirror rows via LLM">
             ↻ Classify
@@ -92,13 +88,18 @@ export async function renderWorkItems(container, projectName) {
           </label>
           <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh current view">⟳</button>
         </div>
-        <span style="flex:1"></span>
-        <!-- Type filter chips (bug/feature/task/policy/requirement only — use_case not shown as all items are grouped by UC) -->
+        <!-- Type filter chips — only shown on Work Items tab -->
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
+        <span style="flex:1"></span>
         <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
               border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
               cursor:default" title="No Claude Code prompts received recently — hook may be offline"></span>
+        <!-- Tabs on the right -->
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0">
+          <button id="wi-tab-backlog"   class="wi-tab-btn active">Work Items</button>
+          <button id="wi-tab-use-cases" class="wi-tab-btn" style="border-left:1px solid var(--border)">Use Cases</button>
+        </div>
       </div>
 
       <!-- ── Stats bar ── -->
@@ -371,13 +372,14 @@ export async function renderWorkItems(container, projectName) {
         display:block;margin-bottom:0.35rem;
       }
 
-      /* Tab bar */
+      /* Tab buttons — pill group on the right */
       .wi-tab-btn {
-        padding:0.28rem 0.7rem;font-size:0.8rem;font-weight:600;border-radius:6px;
-        border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;
+        padding:0.3rem 0.85rem;font-size:0.8rem;font-weight:600;
+        border:none;background:var(--surface2);color:var(--muted);cursor:pointer;
+        transition:background 0.15s,color 0.15s;
       }
-      .wi-tab-btn.active { background:var(--accent,#06b6d4);color:#fff;border-color:var(--accent,#06b6d4); }
-      .wi-tab-btn:hover:not(.active) { border-color:var(--accent);color:var(--accent); }
+      .wi-tab-btn.active { background:var(--accent,#06b6d4);color:#fff; }
+      .wi-tab-btn:hover:not(.active) { background:var(--surface3);color:var(--text); }
 
       /* Use Cases tab — UC card */
       .wi-uc-card { margin-bottom:1.25rem;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden; }
@@ -1875,9 +1877,12 @@ function _renderList() {
   const el = document.getElementById('wi-list');
   if (!el) return;
 
-  // Work Items tab: show ALL use cases (pending and approved) with their children
+  // Work Items tab: show only pending (AI*) use cases — approved ones live in Use Cases tab
   const allUcIds = new Set(_allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3).map(u => u.id));
-  const useCases = _allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3);
+  const useCases = _allItems.filter(i =>
+    (i.wi_type === 'use_case' || i.item_level === 3) &&
+    (!i.wi_id || i.wi_id.startsWith('AI'))
+  );
 
   // Apply type filter to children only; UC headers are always preserved
   const allChildren = _allItems.filter(i => i.wi_parent_id && allUcIds.has(i.wi_parent_id));
@@ -1892,10 +1897,28 @@ function _renderList() {
   const visibleOrphans = _filter ? orphans.filter(o => o.wi_type === _filter) : orphans;
 
   if (!visibleUCs.length && !visibleOrphans.length) {
-    el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
-      No work items${_filter ? ` of type "${_filter}"` : ''}.
-      ${!_allItems.length ? '<br>Run <strong>Classify</strong> to process pending events.' : ''}
-    </div>`;
+    const mrrTotal = (_mrrCounts.pending_prompts || 0) + (_mrrCounts.pending_commits || 0);
+    el.innerHTML = `
+      <div style="color:var(--muted);text-align:center;padding:3rem 2rem;font-size:0.85rem;max-width:480px;margin:0 auto">
+        ${_filter
+          ? `<div>No <strong>${_filter}</strong> items pending approval.</div>`
+          : `<div style="font-size:1.1rem;margin-bottom:0.75rem">No pending items</div>
+             <div style="font-size:0.82rem;line-height:1.6">
+               Approved use cases are in the <strong>Use Cases</strong> tab →<br><br>
+               ${mrrTotal > 0
+                 ? `Click <button onclick="document.getElementById('wi-classify-btn').click()"
+                          style="padding:4px 12px;border:1px solid var(--accent);border-radius:5px;
+                                 background:var(--accent);color:#fff;cursor:pointer;font-size:0.82rem">
+                      ↻ Classify
+                    </button>
+                    to generate AI-suggested use cases from
+                    <strong>${_mrrCounts.pending_prompts||0} prompts</strong> +
+                    <strong>${_mrrCounts.pending_commits||0} commits</strong>.`
+                 : 'All events have been classified.'
+               }
+             </div>`
+        }
+      </div>`;
     return;
   }
 

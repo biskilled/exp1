@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 00:45 UTC by aicli /memory_
+_Generated: 2026-04-23 09:13 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,6 +100,10 @@ _Generated: 2026-04-23 00:45 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-23 09:06]** `ui/`
+Q: I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook offline(last promt 8.3H) - which makes sense  as it was the lat prompt
+A: Good. The hook is now healthy (0.1h). Here's a summary of what was done and what to expect:  **What I fixed:**  1. **Work Items tab now shows all items** — changed `_renderList()` to display ALL use cases (not just pending AI* ones). Previously, once a UC was approved, it disappeared from Work Items
+
 **[2026-04-23 00:45]** `ui/`
 Q: test prompt after m073 fix
 
@@ -133,7 +137,3 @@ A: All changes are in place. Here's a summary of everything that now works in th
 
 **[2026-04-15 19:31]** `ui/`
 Q: test: is hook-log working now after m050?
-
-**[2026-04-15 19:02]** `ui/`
-Q: I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be at the header CLI <pahse> (session number). I would like to see all the session i
-A: All changes look correct. Here's a summary of everything that changed:  ---  **Session header** now shows: `▼ CLI · development · (ab3f9) · 3 prompts · 26/04/15-19:31` - Source label: `claude_cli` → `CLI`, `ui` → `UI`, `workflow` → `Workflow` - Phase chip (blue) extracted from entries' tags - Sessio
