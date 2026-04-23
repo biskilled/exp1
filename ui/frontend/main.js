@@ -568,7 +568,7 @@ export function navigateTo(viewId, opts = {}) {
     case 'planner':  renderEntities(view);                    break;
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':      renderCode(view, proj?.name, proj);           break;
-    case 'documents': renderDocuments(view, proj?.name);            break;
+    case 'documents': renderDocuments(view, proj?.name, opts);       break;
     case 'workflow':  renderGraphWorkflow(view);                     break;
     case 'pipeline':  renderPipeline(view, proj?.name);              break;
     case 'backlog':    renderBacklog(view, proj?.name);          break;

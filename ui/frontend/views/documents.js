@@ -16,7 +16,7 @@ const TREE_W_KEY = 'aicli_docs_tree_w';
 let _project = '';
 let _selectedPath = '';
 
-export async function renderDocuments(container, projectName) {
+export async function renderDocuments(container, projectName, opts = {}) {
   _project = projectName || '';
   _selectedPath = '';
 
@@ -60,6 +60,29 @@ export async function renderDocuments(container, projectName) {
   _initResizeHandle();
   document.getElementById('doc-new-btn').addEventListener('click', _newDoc);
   await _loadDocs();
+
+  // Auto-open a file if requested (e.g. navigating from Use Cases → MD file)
+  if (opts.openFile) {
+    _autoOpenFile(opts.openFile);
+  }
+}
+
+// Expand folder path in tree and select the given file
+function _autoOpenFile(filePath) {
+  const parts = filePath.split('/');
+  // Expand each intermediate directory
+  for (let i = 0; i < parts.length - 1; i++) {
+    const dirPath = parts.slice(0, i + 1).join('/');
+    const id = `ddir-${dirPath.replace(/[^a-z0-9]/gi, '_')}`;
+    const children = document.getElementById(`${id}-children`);
+    const arrow    = document.getElementById(`${id}-arrow`);
+    if (children && children.style.display === 'none') {
+      children.style.display = '';
+      if (arrow) arrow.textContent = '▼';
+    }
+  }
+  // Select the file (loads + renders it in viewer)
+  _docSelect(filePath);
 }
 
 // ── Resize handle ──────────────────────────────────────────────────────────────

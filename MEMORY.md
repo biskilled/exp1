@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 10:17 UTC by aicli /memory_
+_Generated: 2026-04-23 16:59 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,6 +100,10 @@ _Generated: 2026-04-23 10:17 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-23 16:58]** `ui/`
+Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
+A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
+
 **[2026-04-23 10:05]** `ui/`
 Q: I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a new section Use cases that managin the  use  cases. Also I do see now that the def
 A: Everything is in place. Here's what changed:  **Navigation (main.js):** - "Work Items" remains in the left sidebar (📥 icon) — shows pending items + classify flow - New "Use Cases" entry added below it (◻ icon) — completely separate page showing approved use cases  **Work Items page** — now clean, no
@@ -134,7 +138,3 @@ A: Here's what was fixed:  **Stale session ID on load** — Two root causes: 1. 
 **[2026-04-15 21:12]** `ui/`
 Q: The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is it loading from _system/session files ? why there are so many files over there 
 A: The sort is now correct with `limit=500` (April at top, March at bottom). The previous test with `limit=10` only showed the first 10 of all 389 entries which happened to be DB-only from the old code run. The total is now **531** (389 DB + ~142 merged from JSONL).  The fix is working correctly: - Apr
-
-**[2026-04-15 21:04]** `ui/`
-Q: lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where there is feature list box on the left and tag on the right? Also phase is alrea
-A: Only the definition, no calls. All changes are clean. Here's what was done:  ---  **1. Session ID in tag bar** (not in messages): - Added a monospace `(ab3f9)` badge between the entity chips and `+ Tag` button - Badge is hidden when no session is active; shows last 5 chars when a session loads - Cli

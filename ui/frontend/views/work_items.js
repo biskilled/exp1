@@ -28,6 +28,7 @@ let _insertBeforeId = null;  // insert-before card id during within-UC reorder
 let _classifyPoller = null;  // interval polling after background classify
 let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
+let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -570,28 +571,36 @@ function _setupEvents(container) {
       return;
     }
 
-    // AI Summarise
+    // AI Summarise — auto-apply, save old summary to MD log
     const sumBtn = e.target.closest('[data-action="summarise"]');
     if (sumBtn) {
       e.stopPropagation();
       sumBtn.disabled = true; sumBtn.textContent = '⏳…';
       const ucId = sumBtn.dataset.ucId;
       try {
+        const uc = _ucItems.find(u => u.id === ucId);
         const result = await api.wi.summarise(_project, ucId);
-        _openSummarisePanel(ucId, result);
-        toast('AI draft ready', 'info');
+        // Save old summary to MD log (best-effort, don't block apply)
+        if (uc?.summary) {
+          _appendSummaryToMdLog(ucId, uc.summary).catch(() => {});
+        }
+        // Auto-apply the generated version
+        await api.wi.versions.apply(_project, ucId, result.version_id);
+        toast(`Summary updated (${result.in_progress_count} open, ${result.completed_count} done)`, 'success');
+        await _loadUseCases();
       } catch (err) { toast(`Summarise failed: ${err.message}`, 'error'); }
       finally { sumBtn.disabled = false; sumBtn.textContent = '⟳ Summarise'; }
       return;
     }
 
-    // View versions
-    const verBtn = e.target.closest('[data-action="view-versions"]');
-    if (verBtn) {
+    // Toggle done/completed items visibility per UC
+    const toggleDone = e.target.closest('[data-action="toggle-done"]');
+    if (toggleDone) {
       e.stopPropagation();
-      const ucId = verBtn.dataset.ucId;
-      const uc   = _ucItems.find(u => u.id === ucId);
-      if (uc) _openVersionPanel(uc);
+      const ucId = toggleDone.dataset.ucId;
+      if (_ucHideDone.has(ucId)) _ucHideDone.delete(ucId);
+      else _ucHideDone.add(ucId);
+      _renderUseCases();
       return;
     }
 
@@ -720,57 +729,44 @@ function _startClassifyPoller(btn) {
 let _mdPanel = null;
 
 function _openMdPanel(item) {
-  // Close existing
-  if (_mdPanel) _mdPanel.remove();
+  // Navigate to Documents section and open the file there
+  // Get the file path from the MD endpoint (documents/use_cases/{slug}.md)
+  const filePath = `documents/use_cases/${(item.name || item.id).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.md`;
+  if (window._nav) {
+    toast(`Opening in Documents…`, 'info');
+    window._nav('documents', { openFile: filePath, project: _project, itemId: item.id });
+  }
+}
 
-  const meta = _typeMeta(item.wi_type);
-  const panel = document.createElement('div');
-  panel.className = 'wi-md-panel';
-  panel.innerHTML = `
-    <div class="wi-md-panel-header">
-      <span>${meta.icon} ${_esc(item.name)}</span>
-      ${item.wi_id ? `<span class="wi-id">${_esc(item.wi_id)}</span>` : ''}
-      <span style="flex:1"></span>
-      <button class="wi-btn wi-btn-ghost" id="wi-md-refresh" style="margin-right:0.25rem">↻ Refresh</button>
-      <button class="wi-btn wi-btn-approve" id="wi-md-save" style="margin-right:0.25rem">Save</button>
-      <button class="wi-btn wi-btn-ghost" id="wi-md-close">✕</button>
-    </div>
-    <textarea class="wi-md-textarea" id="wi-md-content" placeholder="Loading…"></textarea>
-  `;
-  document.body.appendChild(panel);
-  _mdPanel = panel;
+// ── Summary log helper ────────────────────────────────────────────────────────
 
-  const textarea = panel.querySelector('#wi-md-content');
+async function _appendSummaryToMdLog(ucId, oldSummary) {
+  if (!oldSummary) return;
+  const mdData = await api.wi.md.get(_project, ucId).catch(() => null);
+  if (!mdData?.content || !mdData?.path) return;
 
-  // Load content
-  api.wi.md.get(_project, item.id).then(r => {
-    textarea.value = r.content || '';
-  }).catch(err => {
-    textarea.value = `Error: ${err.message}`;
-  });
+  const now = new Date();
+  const ts = `${String(now.getFullYear()).slice(2)}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const logEntry = `${ts} summary: ${oldSummary.replace(/\n/g, ' ')}`;
 
-  panel.querySelector('#wi-md-close').addEventListener('click', () => {
-    panel.remove(); _mdPanel = null;
-  });
+  let content = mdData.content;
+  const LOG_HEADER = '## Summary Log';
+  const logIdx = content.indexOf(LOG_HEADER);
 
-  panel.querySelector('#wi-md-refresh').addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
-    try {
-      const r = await api.wi.md.refresh(_project, item.id);
-      textarea.value = r.content || '';
-      toast('Refreshed from DB', 'info');
-    } catch (err) { toast(`Refresh failed: ${err.message}`, 'error'); }
-    finally { e.currentTarget.disabled = false; }
-  });
+  if (logIdx === -1) {
+    content = content.trimEnd() + `\n\n${LOG_HEADER}\n${logEntry}\n`;
+  } else {
+    const afterHeader = content.slice(logIdx + LOG_HEADER.length);
+    const nextSection = afterHeader.search(/\n##\s/);
+    const newLogContent = `\n${logEntry}\n`;
+    if (nextSection === -1) {
+      content = content.slice(0, logIdx + LOG_HEADER.length) + newLogContent;
+    } else {
+      content = content.slice(0, logIdx + LOG_HEADER.length) + newLogContent + afterHeader.slice(nextSection);
+    }
+  }
 
-  panel.querySelector('#wi-md-save').addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
-    try {
-      const r = await api.wi.md.save(_project, item.id, textarea.value);
-      toast(`Saved (${r.updated || 0} updated, ${r.embedded || 0} embedded)`, 'success');
-    } catch (err) { toast(`Save failed: ${err.message}`, 'error'); }
-    finally { e.currentTarget.disabled = false; }
-  });
+  await api.documents.save(mdData.path, content, _project);
 }
 
 // ── Status options ────────────────────────────────────────────────────────────
@@ -1271,6 +1267,7 @@ function _renderUseCases() {
         for (const sub of subs) doneHtml += _renderUcItem(sub, sub.depth ?? 1);
       }
 
+      const hideDone = _ucHideDone.has(uc.id);
       childrenHtml = `
         ${inProgress.length ? `
           <div style="font-size:0.72rem;font-weight:700;color:var(--text);
@@ -1280,12 +1277,14 @@ function _renderUseCases() {
           ${ipHtml}
         ` : ''}
         ${completed.length ? `
-          <div style="font-size:0.72rem;font-weight:700;color:var(--muted);
-                      border-bottom:1px solid var(--border);padding-bottom:0.25rem;
-                      margin:0.6rem 0 0.4rem">
-            ── Completed (${completed.length}) ──────────────────
+          <div id="done-section-${uc.id}" style="${hideDone ? 'display:none' : ''}">
+            <div style="font-size:0.72rem;font-weight:700;color:var(--muted);
+                        border-bottom:1px solid var(--border);padding-bottom:0.25rem;
+                        margin:0.6rem 0 0.4rem">
+              ── Completed (${completed.length}) ──────────────────
+            </div>
+            ${doneHtml}
           </div>
-          ${doneHtml}
         ` : ''}
       `;
     }
@@ -1330,12 +1329,16 @@ function _renderUseCases() {
                     data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
           </div>
 
-          <!-- Toolbar: Summarise + Versions -->
+          <!-- Toolbar: Summarise + toggle done -->
           <div style="display:flex;gap:0.5rem;padding:0.4rem 0.9rem;border-bottom:1px solid var(--border);align-items:center">
             <button class="wi-btn wi-btn-ghost" data-action="summarise" data-uc-id="${uc.id}"
-                    style="font-size:0.72rem" title="AI rewrite summary + reorder items">⟳ Summarise</button>
-            <button class="wi-btn wi-btn-ghost" data-action="view-versions" data-uc-id="${uc.id}"
-                    style="font-size:0.72rem" title="View version history">📋 Versions</button>
+                    style="font-size:0.72rem" title="AI rewrite summary based on current items (auto-applies)">⟳ Summarise</button>
+            ${completed.length ? `
+              <button class="wi-btn wi-btn-ghost" data-action="toggle-done" data-uc-id="${uc.id}"
+                      style="font-size:0.72rem" title="Toggle completed items">
+                ${_ucHideDone.has(uc.id) ? '👁 Show Done' : '🙈 Hide Done'}
+              </button>
+            ` : ''}
             ${s.pending_children > 0 ? `
               <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}"
                       style="font-size:0.72rem">
@@ -1798,22 +1801,35 @@ function _showParentPopover(anchorEl, itemId, ucId) {
   const desc     = _getDescendants(itemId, allItems);
   const candidates = allItems.filter(i => i.id !== itemId && !desc.has(i.id));
 
+  const TYPE_COLORS = {
+    bug:         { bg: '#fee2e2', text: '#dc2626' },
+    feature:     { bg: '#dcfce7', text: '#16a34a' },
+    task:        { bg: '#dbeafe', text: '#1d4ed8' },
+    policy:      { bg: '#ede9fe', text: '#7c3aed' },
+    requirement: { bg: '#fef3c7', text: '#b45309' },
+    use_case:    { bg: '#cffafe', text: '#0e7490' },
+  };
+
   const pop = document.createElement('div');
   pop.className = 'wi-popover';
-  pop.style.cssText = `position:fixed;background:var(--bg2);border:1px solid var(--border);
-    border-radius:8px;padding:0.5rem;min-width:220px;z-index:300;
-    box-shadow:0 4px 20px rgba(0,0,0,0.4);max-height:260px;overflow-y:auto`;
+  pop.style.cssText = `position:fixed;background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;padding:0.4rem;min-width:240px;z-index:300;
+    box-shadow:0 6px 24px rgba(0,0,0,0.35);max-height:300px;overflow-y:auto`;
 
   const rect = anchorEl.getBoundingClientRect();
   pop.style.top  = `${rect.bottom + 4}px`;
-  pop.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
+  pop.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`;
 
-  function optionEl(label, value) {
+  function optionEl(label, value, type) {
+    const col = type ? TYPE_COLORS[type] : null;
     const d = document.createElement('div');
-    d.style.cssText = 'padding:0.3rem 0.5rem;cursor:pointer;border-radius:4px;font-size:0.79rem';
-    d.textContent = label;
-    d.onmouseenter = () => d.style.background = 'var(--border)';
-    d.onmouseleave = () => d.style.background = '';
+    d.style.cssText = `padding:0.32rem 0.6rem;cursor:pointer;border-radius:5px;font-size:0.79rem;
+      margin-bottom:2px;
+      background:${col ? col.bg : 'var(--surface2)'};
+      color:${col ? col.text : 'var(--text)'}`;
+    d.innerHTML = label;
+    d.onmouseenter = () => d.style.opacity = '0.75';
+    d.onmouseleave = () => d.style.opacity = '1';
     d.onclick = async () => {
       pop.remove();
       try {
@@ -1824,12 +1840,19 @@ function _showParentPopover(anchorEl, itemId, ucId) {
     return d;
   }
 
-  if (ucId) pop.appendChild(optionEl('↑ Direct child of use case', ucId));
+  // Header label
+  const lbl = document.createElement('div');
+  lbl.style.cssText = 'font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;padding:0.2rem 0.5rem 0.4rem;letter-spacing:0.04em';
+  lbl.textContent = 'Move item under…';
+  pop.appendChild(lbl);
+
+  if (ucId) pop.appendChild(optionEl('↑ &nbsp;Direct child of use case', ucId, 'use_case'));
   for (const c of candidates) {
     const depth  = c.depth ?? 0;
-    const indent = '  '.repeat(depth);
+    const indent = depth > 0 ? `<span style="opacity:0.4">${'&nbsp;&nbsp;'.repeat(depth)}└ </span>` : '';
     const meta   = _typeMeta(c.wi_type);
-    pop.appendChild(optionEl(`${indent}${meta.icon} ${c.name}${c.wi_id ? ' [' + c.wi_id + ']' : ''}`, c.id));
+    const idBadge = c.wi_id ? `<span style="opacity:0.5;font-size:0.68rem;margin-left:0.3rem">${c.wi_id}</span>` : '';
+    pop.appendChild(optionEl(`${indent}${meta.icon} ${_esc(c.name)}${idBadge}`, c.id, c.wi_type));
   }
 
   document.body.appendChild(pop);
