@@ -610,6 +610,19 @@ function _setupEvents(container) {
       return;
     }
 
+    // Due date popover
+    const duePop = e.target.closest('[data-action="due-pop"]');
+    if (duePop) {
+      e.stopPropagation();
+      const card   = duePop.closest('[data-item-id]');
+      const itemId = card?.dataset.itemId || duePop.dataset.itemId;
+      const item   = _findInUcItems(itemId)
+                  || _ucItems.find(u => u.id === itemId)
+                  || _allItems.find(i => i.id === itemId);
+      if (item) _showDueDatePopover(duePop, item);
+      return;
+    }
+
     // ── Edit actions MUST be checked before expand/collapse ──────────────────
     // (edit buttons live inside card/uc headers, so they'd trigger expand otherwise)
     const actionEl = e.target.closest('[data-action="rename-pop"],[data-action="status-pop"],[data-action="type-pop"],[data-action="edit-summary"]');
@@ -1175,12 +1188,14 @@ async function _loadUseCases() {
   if (!_project) return;
   _setStatus('Loading use cases…');
   try {
-    const [data, mrrData] = await Promise.all([
+    const [data, mrrData, statsData] = await Promise.all([
       api.wi.useCases(_project),
       api.wi.classifyStatus(_project).catch(() => ({})),
+      api.wi.stats(_project).catch(() => ({})),
     ]);
     _ucItems   = data.use_cases || [];
     _mrrCounts = mrrData || {};
+    _stats     = statsData || {};
     _renderStats();
     _renderUseCases();
     _setStatus('');
@@ -1299,6 +1314,7 @@ function _renderUseCases() {
           <span class="wi-id">${_esc(uc.wi_id)}</span>
           <span class="wi-name">${_esc(uc.name || uc.id)}</span>
           <span style="flex:1"></span>
+          ${_dueBadge(uc.due_date, uc.start_date)}
           <button class="wi-btn wi-btn-ghost" data-action="edit-md"
                   data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Edit Markdown file">✎ MD</button>
           <button class="wi-edit-arrow" data-action="rename-pop"
@@ -1422,6 +1438,7 @@ function _renderUcItem(item, depth = 0) {
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
         ${_hotspotBadge(item._hotspot_files)}
+        ${_dueBadge(item.due_date, item.start_date)}
         <div class="wi-actions">
           <button class="wi-edit-arrow" data-action="parent-pop"
                   data-id="${item.id}" data-uc-id="${item._uc_id || ''}"
@@ -1448,6 +1465,13 @@ function _renderUcItem(item, depth = 0) {
           <span>Importance: ${_scorePips(item.score_importance, '#3b82f6')}</span>
           <span>Completion: ${_scorePips(item.score_status, '#22c55e')}</span>
         </div>
+        <div style="margin-top:0.4rem;font-size:0.75rem;display:flex;align-items:center;gap:0.5rem">
+          ${item.due_date
+            ? `<span style="color:var(--muted)">📅 ${item.start_date || '—'} → ${item.due_date}</span>
+               <button class="wi-edit-link" data-action="due-pop" data-item-id="${item.id}">✎</button>`
+            : `<button class="wi-edit-link" data-action="due-pop" data-item-id="${item.id}">📅 Set due date</button>`
+          }
+        </div>
         ${item._hotspot_files && item._hotspot_files.length ? `
           <div style="margin-top:0.4rem;font-size:0.72rem;color:#92400e;background:#fef3c7;border-radius:4px;padding:0.3rem 0.5rem">
             🔥 <strong>Code alerts:</strong>
@@ -1460,6 +1484,101 @@ function _renderUcItem(item, depth = 0) {
       </div>
     </div>
   `;
+}
+
+// ── Due date helpers ──────────────────────────────────────────────────────────
+
+function _dueBadge(dueDate, startDate) {
+  if (!dueDate) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due   = new Date(dueDate + 'T00:00:00');
+  const days  = Math.round((due - today) / 86400000);
+  let color, label;
+  if (days < 0)      { color = '#ef4444'; label = `${Math.abs(days)}d overdue`; }
+  else if (days === 0){ color = '#f97316'; label = 'due today'; }
+  else if (days <= 3) { color = '#f59e0b'; label = `${days}d left`; }
+  else                { color = '#22c55e'; label = dueDate.slice(5); }
+  const title = `Due: ${dueDate}${startDate ? ' | Start: ' + startDate : ''}`;
+  return `<span class="wi-due-badge"
+    style="background:${color}22;color:${color};border:1px solid ${color}44;
+    border-radius:4px;padding:1px 6px;font-size:0.67rem;cursor:pointer;white-space:nowrap"
+    data-action="due-pop" title="${_esc(title)}">📅 ${label}</span>`;
+}
+
+function _showDueDatePopover(anchorEl, item) {
+  if (_closePop(anchorEl)) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const isUC  = item.wi_type === 'use_case';
+  const kids  = isUC ? (item.children || []).filter(c => (c.user_status ?? c.score_status ?? 0) < 5) : [];
+  const pop = document.createElement('div');
+  pop.className = 'wi-wi-pop';
+  pop.style.width = '260px';
+  pop.innerHTML = `
+    <div class="wi-wi-pop-label">Set due date${kids.length ? ` · ${kids.length} children will be capped` : ''}</div>
+    <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.45rem">
+      <input id="wi-due-days" type="number" min="1" max="730" placeholder="days"
+             style="width:64px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;
+                    background:var(--surface);color:var(--text);font-size:0.8rem">
+      <span style="color:var(--muted);font-size:0.72rem">days from today, or pick:</span>
+    </div>
+    <input id="wi-due-date" type="date" value="${item.due_date || ''}"
+           style="width:100%;box-sizing:border-box;padding:4px 8px;
+                  border:1px solid var(--accent);border-radius:4px;
+                  background:var(--surface);color:var(--text);font-size:0.82rem">
+    ${item.start_date ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.3rem">
+      ⚑ Start: ${item.start_date} — will reset to today on save</div>` : ''}
+    <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+      <button id="wi-due-ok" class="wi-btn wi-btn-approve" style="flex:1">Set</button>
+      ${item.due_date ? `<button id="wi-due-clear" class="wi-btn wi-btn-ghost" title="Remove due date">✕ Clear</button>` : ''}
+      <button id="wi-due-cancel" class="wi-btn wi-btn-ghost">Cancel</button>
+    </div>
+  `;
+  _popupAt(pop, anchorEl);
+
+  const daysInp = pop.querySelector('#wi-due-days');
+  const dateInp = pop.querySelector('#wi-due-date');
+
+  daysInp.addEventListener('input', () => {
+    const d = parseInt(daysInp.value, 10);
+    if (d > 0) {
+      const t = new Date(); t.setDate(t.getDate() + d);
+      dateInp.value = t.toISOString().slice(0, 10);
+    }
+  });
+  dateInp.addEventListener('input', () => {
+    if (dateInp.value) {
+      const diff = Math.round((new Date(dateInp.value + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
+      daysInp.value = diff > 0 ? diff : '';
+    }
+  });
+
+  const _close = () => pop.remove();
+
+  const _apply = async (newDue) => {
+    _close();
+    if (item.start_date && newDue) {
+      if (!confirm(`Setting due date will reset start date to today (${today}).\nContinue?`)) return;
+    }
+    try {
+      const r = await api.wi.update(_project, item.id, { due_date: newDue || null });
+      if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
+      toast(r.cascaded_children
+        ? `Due date set — ${r.cascaded_children} children updated`
+        : 'Due date updated', 'success');
+      await _reloadCurrent();
+    } catch (err) { toast(`Failed: ${err.message}`, 'error'); }
+  };
+
+  pop.querySelector('#wi-due-ok').addEventListener('click', () => _apply(dateInp.value));
+  pop.querySelector('#wi-due-clear')?.addEventListener('click', () => _apply(null));
+  pop.querySelector('#wi-due-cancel').addEventListener('click', _close);
+  dateInp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') _apply(dateInp.value);
+    if (e.key === 'Escape') _close();
+  });
+  setTimeout(() => {
+    document.addEventListener('click', e => { if (!pop.contains(e.target)) pop.remove(); }, { once: true });
+  }, 150);
 }
 
 // ── Stats bar ─────────────────────────────────────────────────────────────────
@@ -1490,6 +1609,7 @@ function _renderStats() {
       { label: 'Approved',  val: approvedItems, color: '#22c55e' },
       { label: 'Pending',   val: pendingItems,  color: '#f59e0b' },
       { label: 'Events',    val: totalEvents,   color: '#8b5cf6' },
+      ...(_stats.overdue > 0 ? [{ label: 'Overdue', val: _stats.overdue, color: '#ef4444' }] : []),
     ];
     el.innerHTML = pills.map(p => `
       <div class="wi-stats-pill"${p.title ? ` title="${_esc(p.title)}"` : ''}>
@@ -1512,6 +1632,7 @@ function _renderStats() {
     { label: 'Tasks',        val: s.tasks        || 0, color: '#3b82f6' },
     { label: 'Policies',     val: s.policies     || 0, color: '#8b5cf6' },
     { label: 'Requirements', val: s.requirements || 0, color: '#f59e0b' },
+    ...(s.overdue > 0 ? [{ label: 'Overdue', val: s.overdue, color: '#ef4444' }] : []),
   ];
   el.innerHTML = pills.map(p => `
     <div class="wi-stats-pill"${p.title ? ` title="${_esc(p.title)}"` : ''}>

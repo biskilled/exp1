@@ -54,6 +54,8 @@ class WiUpdateRequest(BaseModel):
     user_status:      Optional[int]   = None
     wi_type:          Optional[str]   = None
     wi_parent_id:     Optional[str]   = None
+    due_date:         Optional[str]   = None   # ISO date "YYYY-MM-DD" or null to clear
+    start_date:       Optional[str]   = None   # set by server; rarely passed directly
 
 
 class WiMoveRequest(BaseModel):
@@ -260,7 +262,11 @@ async def update_work_item(project: str, item_id: str, body: WiUpdateRequest):
     """Update editable fields on a work item."""
     pid    = _pid(project)
     wi     = _wi(project)
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # Use exclude_unset so we can distinguish "not provided" from explicit null.
+    # Allow explicit null for date fields (to clear them); filter None for everything else.
+    _nullable = {"due_date", "start_date"}
+    dumped = body.model_dump(exclude_unset=True)
+    fields = {k: v for k, v in dumped.items() if v is not None or k in _nullable}
     result = wi.update(item_id, pid, fields)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])

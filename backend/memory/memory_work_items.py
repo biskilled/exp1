@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -1103,7 +1103,8 @@ class MemoryWorkItems:
                                    w.mrr_ids, w.wi_parent_id::text,
                                    p.wi_id AS wi_parent_wi_id,
                                    w.tags,
-                                   w.approved_at, w.created_at, w.updated_at
+                                   w.approved_at, w.created_at, w.updated_at,
+                                   w.start_date, w.due_date
                             FROM mem_work_items w
                             LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
                             WHERE w.project_id=%s AND {where}
@@ -1117,9 +1118,9 @@ class MemoryWorkItems:
             result = []
             for row in rows:
                 d = dict(zip(cols, row))
-                for key in ("approved_at", "created_at", "updated_at"):
+                for key in ("approved_at", "created_at", "updated_at", "start_date", "due_date"):
                     if d.get(key):
-                        d[key] = d[key].isoformat()
+                        d[key] = d[key].isoformat() if hasattr(d[key], 'isoformat') else str(d[key])
                 result.append(d)
             return result
         except Exception as e:
@@ -1164,6 +1165,7 @@ class MemoryWorkItems:
                                w.mrr_ids, w.wi_parent_id::text,
                                p.wi_id AS wi_parent_wi_id, w.tags,
                                w.approved_at, w.created_at, w.updated_at,
+                               w.start_date, w.due_date,
                                dt.depth, dt.uc_id::text AS uc_id
                         FROM desc_tree dt
                         JOIN mem_work_items w ON w.id = dt.id
@@ -1175,9 +1177,9 @@ class MemoryWorkItems:
                     all_desc: list[dict] = []
                     for row in cur.fetchall():
                         d = dict(zip(cols, row))
-                        for k in ("approved_at", "created_at", "updated_at"):
+                        for k in ("approved_at", "created_at", "updated_at", "start_date", "due_date"):
                             if d.get(k):
-                                d[k] = d[k].isoformat()
+                                d[k] = d[k].isoformat() if hasattr(d[k], 'isoformat') else str(d[k])
                         all_desc.append(d)
 
             # Group descendants by their ancestor UC id
@@ -1506,7 +1508,12 @@ class MemoryWorkItems:
                              COUNT(*) FILTER (WHERE wi_type='task') AS tasks,
                              COUNT(*) FILTER (WHERE wi_type='policy') AS policies,
                              COUNT(*) FILTER (WHERE wi_type='use_case') AS use_cases,
-                             COUNT(*) FILTER (WHERE wi_type='requirement') AS requirements
+                             COUNT(*) FILTER (WHERE wi_type='requirement') AS requirements,
+                             COUNT(*) FILTER (
+                               WHERE due_date < CURRENT_DATE
+                               AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                               AND COALESCE(user_status, score_status, 0) < 5
+                             ) AS overdue
                            FROM mem_work_items
                            WHERE project_id=%s""",
                         (pid,),
@@ -1704,12 +1711,20 @@ class MemoryWorkItems:
             return {"error": str(e)}
 
     def update(self, item_id: str, pid: int, fields: dict) -> dict:
-        """Update editable fields on a work item."""
+        """Update editable fields on a work item.
+
+        Date cascade rules:
+        - Setting due_date also auto-sets start_date=today (unless start_date provided).
+        - Child due_date cannot exceed parent UC due_date.
+        - Re-parenting to a non-UC item sets child start_date = parent's due_date.
+        - Setting UC due_date caps all active children whose due_date exceeds the new value.
+        """
         allowed = {
             "name", "summary", "deliveries", "delivery_type",
             "score_importance", "score_status",
             "user_importance", "user_status",
             "wi_type", "wi_parent_id",
+            "due_date", "start_date",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:
@@ -1717,17 +1732,72 @@ class MemoryWorkItems:
         if not db.is_available():
             return {"error": "db not available"}
         try:
-            set_clause = ", ".join(f"{k}=%s" for k in updates)
-            vals = list(updates.values()) + [item_id, pid]
             with db.conn() as conn:
                 with conn.cursor() as cur:
+                    # Load current row
+                    cur.execute(
+                        "SELECT wi_type, wi_parent_id::text FROM mem_work_items "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid)
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return {"error": "item not found"}
+                    wi_type, parent_id = row
+
+                    # When due_date is set (not cleared) → also set start_date = today
+                    if "due_date" in updates and updates["due_date"]:
+                        updates.setdefault("start_date", str(date.today()))
+
+                    # Validate child due_date <= parent UC due_date
+                    if "due_date" in updates and updates["due_date"] and wi_type != "use_case" and parent_id:
+                        cur.execute(
+                            "SELECT due_date FROM mem_work_items WHERE id=%s::uuid",
+                            (parent_id,)
+                        )
+                        parent_row = cur.fetchone()
+                        if parent_row and parent_row[0]:
+                            new_due = date.fromisoformat(updates["due_date"])
+                            if new_due > parent_row[0]:
+                                return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
+
+                    # Re-parent to a non-UC item → set child start_date = parent's due_date
+                    if "wi_parent_id" in updates and updates["wi_parent_id"]:
+                        cur.execute(
+                            "SELECT wi_type, due_date FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                            (updates["wi_parent_id"], pid)
+                        )
+                        np = cur.fetchone()
+                        if np and np[0] != "use_case" and np[1]:
+                            updates["start_date"] = str(np[1])
+
+                    # Apply main UPDATE
+                    set_clause = ", ".join(f"{k}=%s" for k in updates)
+                    vals = list(updates.values()) + [item_id, pid]
                     cur.execute(
                         f"UPDATE mem_work_items SET {set_clause}, updated_at=NOW() "
                         f"WHERE id=%s::uuid AND project_id=%s",
                         vals,
                     )
+
+                    # UC due_date cascade: cap children's due_date to the new UC value
+                    cascade_count = 0
+                    if "due_date" in updates and wi_type == "use_case" and updates["due_date"]:
+                        cur.execute(
+                            """UPDATE mem_work_items
+                               SET due_date=%s, updated_at=NOW()
+                               WHERE project_id=%s AND wi_parent_id=%s::uuid
+                                 AND wi_type != 'use_case'
+                                 AND (due_date IS NULL OR due_date > %s)
+                                 AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'""",
+                            (updates["due_date"], pid, item_id, updates["due_date"])
+                        )
+                        cascade_count = cur.rowcount
                 conn.commit()
-            return {"updated": True, "fields": list(updates.keys())}
+            result: dict = {"updated": True, "fields": list(updates.keys())}
+            if cascade_count:
+                result["cascaded_children"] = cascade_count
+            return result
         except Exception as e:
             log.warning(f"update({item_id}) error: {e}")
             return {"error": str(e)}

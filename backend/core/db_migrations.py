@@ -2964,6 +2964,20 @@ def m071_drop_score_tag(conn) -> None:
     log.info("m071: score_tag dropped from mem_work_items")
 
 
+def m072_wi_dates(conn) -> None:
+    """Add start_date and due_date to mem_work_items for timeline planning."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ADD COLUMN IF NOT EXISTS start_date DATE,
+              ADD COLUMN IF NOT EXISTS due_date   DATE;
+            CREATE INDEX IF NOT EXISTS idx_wi_due_date ON mem_work_items (project_id, due_date)
+              WHERE due_date IS NOT NULL;
+        """)
+    conn.commit()
+    log.info("m072: start_date, due_date added to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3083,4 +3097,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m069_src_column_and_cleanup", m069_src_column_and_cleanup),
     ("m070_file_stats", m070_file_stats),
     ("m071_drop_score_tag", m071_drop_score_tag),
+    ("m072_wi_dates", m072_wi_dates),
 ]
