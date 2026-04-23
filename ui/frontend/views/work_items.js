@@ -1875,12 +1875,9 @@ function _renderList() {
   const el = document.getElementById('wi-list');
   if (!el) return;
 
-  // Work Items tab: show only pending (AI*) use cases — approved ones moved to Use Cases tab
+  // Work Items tab: show ALL use cases (pending and approved) with their children
   const allUcIds = new Set(_allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3).map(u => u.id));
-  const useCases = _allItems.filter(i =>
-    (i.wi_type === 'use_case' || i.item_level === 3) &&
-    (!i.wi_id || i.wi_id.startsWith('AI'))
-  );
+  const useCases = _allItems.filter(i => i.wi_type === 'use_case' || i.item_level === 3);
 
   // Apply type filter to children only; UC headers are always preserved
   const allChildren = _allItems.filter(i => i.wi_parent_id && allUcIds.has(i.wi_parent_id));

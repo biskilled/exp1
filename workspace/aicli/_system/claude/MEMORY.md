@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 00:38 UTC by aicli /memory_
+_Generated: 2026-04-23 00:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,6 +100,9 @@ _Generated: 2026-04-23 00:38 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-23 00:45]** `ui/`
+Q: test prompt after m073 fix
+
 **[2026-04-15 23:03]** `ui/`
 Q: I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppose to be after project_id. not need for cimmited_at as there is updated_at and cr
 A: All tables are correctly ordered. Here's a summary of everything done:  **Migration m052 — done (18 tables rebuilt):**  | Rule | Result | |------|--------| | `id → client_id → project_id → user_id` order | ✅ All tables | | `created_at → updated_at → embedding` always at end | ✅ All tables | | `commi
@@ -134,7 +137,3 @@ Q: test: is hook-log working now after m050?
 **[2026-04-15 19:02]** `ui/`
 Q: I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be at the header CLI <pahse> (session number). I would like to see all the session i
 A: All changes look correct. Here's a summary of everything that changed:  ---  **Session header** now shows: `▼ CLI · development · (ab3f9) · 3 prompts · 26/04/15-19:31` - Source label: `claude_cli` → `CLI`, `ui` → `UI`, `workflow` → `Workflow` - Phase chip (blue) extracted from entries' tags - Sessio
-
-**[2026-04-15 18:51]** `ui/`
-Q: I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do not see the session id anywhere. it suppose to be one the left panet (5 last charc
-A: All changes look correct. Here's a summary of what was changed in `history.js`:  1. **Session ID badge**: `sid.slice(-4)` → `sid.slice(-5)` — shows last **5** chars as `…xxxxx` in the left panel header  2. **Session ID in body (right pane)**: Replaced the plain monospace text with a styled banner:  
