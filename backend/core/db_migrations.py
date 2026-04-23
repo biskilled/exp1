@@ -2978,6 +2978,23 @@ def m072_wi_dates(conn) -> None:
     log.info("m072: start_date, due_date added to mem_work_items")
 
 
+def m073_prompts_source_id_unique(conn) -> None:
+    """Add unique partial index on mem_mrr_prompts(project_id, source_id) to fix ON CONFLICT.
+
+    The hook-log endpoint uses ON CONFLICT (project_id, source_id) WHERE source_id IS NOT NULL
+    but the matching index was never created, causing every hook call to fail with a constraint
+    error and silently discard all prompts since April 15.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_prompts_project_source
+            ON mem_mrr_prompts (project_id, source_id)
+            WHERE source_id IS NOT NULL;
+        """)
+    conn.commit()
+    log.info("m073: unique index idx_prompts_project_source created on mem_mrr_prompts")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3098,4 +3115,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m070_file_stats", m070_file_stats),
     ("m071_drop_score_tag", m071_drop_score_tag),
     ("m072_wi_dates", m072_wi_dates),
+    ("m073_prompts_source_id_unique", m073_prompts_source_id_unique),
 ]

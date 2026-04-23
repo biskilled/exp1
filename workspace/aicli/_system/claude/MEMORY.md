@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 00:18 UTC by aicli /memory_
+_Generated: 2026-04-23 00:38 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform for software development that maintains persistent context across multiple AI tools and sessions. It uses a 4-layer memory architecture (ephemeral → raw capture → LLM digests → synthesized work items), PostgreSQL with pgvector for semantic search, and an async DAG workflow executor. The project has recently completed database schema standardization (m001-m052), fixed session persistence in the UI, and implemented a Dashboard tab with visual pipeline execution.
 
 ## Tech Stack
 
@@ -102,6 +98,43 @@ aicli is a shared AI memory platform for software development that maintains per
 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## AI Synthesis
+## Recent Work (last 10 exchanges)
 
-**[2026-04-15]** `db_migrations` — Migration m050 fixed silent DB error in hook-log endpoint; all 531 prompts now load correctly (389 DB + ~142 JSONL merged) with proper descending sort order. **[2026-04-15]** `ui` — Session persistence fixed: Chat tab now loads current session synchronously from runtime state instead of stale cached session; last_session_id read before network fetch prevents 15-second delay. **[2026-04-15]** `ui` — Session UI enhanced: History and Chat tabs display source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars in header, full ID copyable in body), and timestamp YY/MM/DD-HH:MM on each prompt. **[2026-04-14]** `db_migrations` — Migration m052 standardized all 18 tables: canonical INT PK order (id → client_id → project_id → user_id), created_at/updated_at at table end before embedding, committed_at removed from commits. **[2026-04-13]** `db_migrations` — Migration m037 dropped importance column from mem_ai_events; m038 dropped code_summary from mem_ai_project_facts; event tags cleaned to only user-facing tags (phase/feature/bug/source) after stripping 1441 system metadata entries. **[2026-04-12]** `schema` — Planner_tags audit completed (m027): dropped seq_num/summary/design/embedding/extra; added deliveries JSONB for code/document/design/ppt outputs; standardized creator/updater fields; mem_ai_feature_snapshot table created to merge user requirements with work items.
+**[2026-04-15 23:03]** `ui/`
+Q: I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppose to be after project_id. not need for cimmited_at as there is updated_at and cr
+A: All tables are correctly ordered. Here's a summary of everything done:  **Migration m052 — done (18 tables rebuilt):**  | Rule | Result | |------|--------| | `id → client_id → project_id → user_id` order | ✅ All tables | | `created_at → updated_at → embedding` always at end | ✅ All tables | | `commi
+
+**[2026-04-15 22:38]** `ui/`
+Q: I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) not string. I would like also to add updated_at for each mirror table. for all mir
+A: Clean startup, no errors. Migration m051 is complete and the backend is running correctly. Here's what was accomplished:  **Migration m051 — done:** - `mng_users.id`: now `SERIAL INT` PK; old UUID preserved as `uuid_id VARCHAR(36)` - `updated_at` added to: `mng_users`, `mng_clients`, all `mem_mrr_*`
+
+**[2026-04-15 21:42]** `ui/`
+Q: it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the right session (current one) . I would like to load the current session on start
+A: The flow is now:  1. `renderChat()` → `_sessionId = null` (clears stale session) 2. `_loadSessions()` starts → **immediately** reads `state.currentProject.dev_runtime_state.last_session_id` and sets `_sessionId = "f6648726..."` — **synchronous, no network call** 3. Cache renders from localStorage → 
+
+**[2026-04-15 21:25]** `ui/`
+Q: The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the current session is f6648726-1e7f-48bf-b604-4c74bf7c8154. it is update the the current
+A: Here's what was fixed:  **Stale session ID on load** — Two root causes: 1. `_sessionId` was a module-level var that persisted across tab navigations. Fixed by resetting it to `null` at the start of `renderChat()` (along with `_appliedEntities`/`_pendingEntities`). 2. The localStorage cache rendered 
+
+**[2026-04-15 21:12]** `ui/`
+Q: The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is it loading from _system/session files ? why there are so many files over there 
+A: The sort is now correct with `limit=500` (April at top, March at bottom). The previous test with `limit=10` only showed the first 10 of all 389 entries which happened to be DB-only from the old code run. The total is now **531** (389 DB + ~142 merged from JSONL).  The fix is working correctly: - Apr
+
+**[2026-04-15 21:04]** `ui/`
+Q: lloks better . the session_id on the right panel is shown not on the top. (can you show just session_id at the tab where there is feature list box on the left and tag on the right? Also phase is alrea
+A: Only the definition, no calls. All changes are clean. Here's what was done:  ---  **1. Session ID in tag bar** (not in messages): - Added a monospace `(ab3f9)` badge between the entity chips and `+ Tag` button - Badge is hidden when no session is active; shows last 5 chars when a session loads - Cli
+
+**[2026-04-15 20:37]** `ui/`
+Q: I understand the issue. you have worked on Tab prompts in history and I am reffering to chat . in chat - each session suppose to be on the left. user can access into a chat and continue. I would like 
+A: All changes are in place. Here's a summary of everything that now works in the **Chat view**:  ---  **Left sidebar — each session item now shows:** - `CLI · development · (ab3f9)` — source badge, phase chip, last 5 chars of session ID in monospace - Hovering shows full session ID as tooltip  **When 
+
+**[2026-04-15 19:31]** `ui/`
+Q: test: is hook-log working now after m050?
+
+**[2026-04-15 19:02]** `ui/`
+Q: I still do not see the change in the chat tab. I do see the 5 last digit in the test prompts . I would like that to be at the header CLI <pahse> (session number). I would like to see all the session i
+A: All changes look correct. Here's a summary of everything that changed:  ---  **Session header** now shows: `▼ CLI · development · (ab3f9) · 3 prompts · 26/04/15-19:31` - Source label: `claude_cli` → `CLI`, `ui` → `UI`, `workflow` → `Workflow` - Phase chip (blue) extracted from entries' tags - Sessio
+
+**[2026-04-15 18:51]** `ui/`
+Q: I startrd to see the latest prompts which is good. I do not see on each promot the time stamp next to YOU . also I do not see the session id anywhere. it suppose to be one the left panet (5 last charc
+A: All changes look correct. Here's a summary of what was changed in `history.js`:  1. **Session ID badge**: `sid.slice(-4)` → `sid.slice(-5)` — shows last **5** chars as `…xxxxx` in the left panel header  2. **Session ID in body (right pane)**: Replaced the plain monospace text with a styled banner:  
