@@ -547,18 +547,26 @@ function _setupEvents(container) {
     if (copyBtn) {
       e.stopPropagation();
       const id   = copyBtn.dataset.id;
-      const item = _findInUcItems(id);
+      const item = _findInUcItems(id) || _allItems.find(i => i.id === id);
       if (!item) return;
+      const lines = [
+        `## ${item.name}`,
+        `Type: ${item.wi_type}  |  ID: ${item.wi_id || 'pending'}`,
+      ];
+      if (item.summary)   lines.push(`\n### Summary\n${item.summary}`);
+      if (item.deliveries) lines.push(`\n### Deliveries\n${item.deliveries}`);
+      const text = lines.join('\n');
       try {
-        await api.wi.create(_project, {
-          name:        item.name + ' (copy)',
-          wi_type:     item.wi_type,
-          summary:     item.summary || '',
-          wi_parent_id: item.wi_parent_id,
-        });
-        toast('Copied — pending approval', 'success');
-        await _loadUseCases();
-      } catch (err) { toast(`Copy failed: ${err.message}`, 'error'); }
+        await navigator.clipboard.writeText(text);
+        toast('Copied to clipboard', 'success');
+      } catch (_) {
+        // Fallback for environments without clipboard API
+        const ta = Object.assign(document.createElement('textarea'),
+          { value: text, style: 'position:fixed;opacity:0' });
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+        toast('Copied to clipboard', 'success');
+      }
       return;
     }
 
@@ -1420,7 +1428,7 @@ function _renderUcItem(item, depth = 0) {
                   data-id="${item.id}" data-uc-id="${item._uc_id || ''}"
                   title="Change parent">⇑</button>
           <button class="wi-btn wi-btn-ghost" data-action="copy-item"
-                  data-id="${item.id}" title="Copy item" style="font-size:0.75rem;padding:0.1rem 0.35rem">⎘</button>
+                  data-id="${item.id}" title="Copy text to clipboard" style="font-size:0.75rem;padding:0.1rem 0.35rem">⎘</button>
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           ${isPending ? `
             <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${item.id}" title="Approve">✓</button>
