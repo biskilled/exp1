@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema finalization (m051-m052): user_id migrated to SERIAL INT across all 18 tables; canonical column ordering enforced (id → client_id → project_id → user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits table
-- Session UI improvements complete: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id from runtime state synchronously on tab open
-- Chat tab session persistence: current session highlighted on load; localStorage cache prevents stale session display; full session ID shown in sticky banner with copy button; timestamp YY/MM/DD-HH:MM added next to user prompts
-- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading correctly with proper descending sort order; m050 migration fixed silent DB error in prompt storage
-- Event table cleanup completed: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained; tags consolidated from mirror tables
-- Dashboard and pipeline UI added: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs; feature_snapshot table created to merge requirements with work items
+- Database schema standardization complete (m052): all 18 tables rebuilt with canonical INT PK order (id → client_id → project_id → user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits
+- Session UI improvements: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id synchronously from runtime state on tab open
+- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading with correct descending sort; m050 migration fixed silent DB error in prompt storage
+- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained from mirror tables
+- Dashboard and pipeline UI implemented: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs
+- Planner_tags schema audit completed (m027): dropped unused columns (seq_num, summary, design, embedding, extra); added deliveries JSONB for code/document/design/ppt outputs; creator/updater fields standardized

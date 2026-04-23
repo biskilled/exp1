@@ -1159,8 +1159,8 @@ async function _loadAll() {
   _setStatus('Loading…');
   try {
     const [statsData, listData, mrrData] = await Promise.all([
-      api.wi.stats(_project),
-      api.wi.list(_project),
+      api.wi.stats(_project).catch(() => ({})),
+      api.wi.list(_project).catch(() => ({ items: [] })),
       api.wi.classifyStatus(_project).catch(() => ({})),
     ]);
     _stats    = statsData || {};
@@ -1189,7 +1189,7 @@ async function _loadUseCases() {
   _setStatus('Loading use cases…');
   try {
     const [data, mrrData, statsData] = await Promise.all([
-      api.wi.useCases(_project),
+      api.wi.useCases(_project).catch(() => ({ use_cases: [] })),
       api.wi.classifyStatus(_project).catch(() => ({})),
       api.wi.stats(_project).catch(() => ({})),
     ]);
@@ -1602,8 +1602,8 @@ function _renderStats() {
     const approvedItems = _ucItems.reduce((s, u) => s + u.stats.approved_children, 0);
     const pendingItems  = _ucItems.reduce((s, u) => s + u.stats.pending_children, 0);
     const totalEvents   = _ucItems.reduce((s, u) => s + u.stats.total_events, 0);
+    // No mrrPills in use_cases tab — all items here are classified
     const pills = [
-      ...mrrPills,
       { label: 'Use Cases', val: totalUcs,      color: '#06b6d4' },
       { label: 'Items',     val: totalItems,    color: '#22c55e' },
       { label: 'Approved',  val: approvedItems, color: '#22c55e' },
