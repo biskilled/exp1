@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-24 19:21 UTC — do not edit manually.
+> Auto-generated 2026-04-24 20:57 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 718
-- **Last active**: 2026-04-24T19:20:50Z
+- **Sessions**: 719
+- **Last active**: 2026-04-24T19:40:28Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m074 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections
-- Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts
-- Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts
-- Copy item functionality stability: ⎘ button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action
-- Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab
-- Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list
+- MD file generation refinement: Removed HTML comment tags; created/updated dates now plain text; item counts computed from recursive CTEs; status badges (bugs/features/tasks/completed/in-progress/open) derived from database state, not comments
+- Use Case due date management: Due dates support calendar (MM/DD/YY) and day offsets; re-parent conflict auto-resolution when items exceed parent due date; completion validation ensures all descendants finished
+- Work Items to Use Cases migration: Pending AI-classified items (AI* prefix) require approval in Work Items tab before moving to real IDs (FE/BU/TA); Use Cases tab shows only approved, completed, or in-progress items
+- Session ID and timestamp visibility: Chat/History tabs display last 5 chars of session ID in header with full UUID on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts; session selection loads correct session on startup (no 15s delay)
+- Completed section and Planning grouping: Left sidebar reorganized as 'Planning' group (Work Items/Use Cases/Documents/Completed); completed_at column tracks UC completion; MD files auto-move to documents/completed/ folder on completion
+- Hook-log stability and prompt loading: m050-m074 migrations fixed DB errors; 531 total prompts load correctly (389 DB + ~142 JSONL); hook shows 0.1h health with proper sorted session list and correct current session on startup
 
 ## Key Decisions
 
@@ -78,12 +78,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id); created_at/updated_at at table end before embedding
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags cleaned with deliverables JSONB
+- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id); timestamps + embedding at table end
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; markdown generation with recursive CTEs for all descendants
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
-- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant tracking
 - Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant item tracking
+- Use Case lifecycle: due dates (calendar or day offsets), completion validation (all descendants must finish by parent due date), completion tracking with completed_at timestamp, markdown file generation with type-based item categorization
 
 ---
 

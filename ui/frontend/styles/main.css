@@ -49,18 +49,19 @@ body {
   font-size: 13px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  user-select: none;
 }
 
-/* Allow text selection in content areas */
-#chat-messages, #chat-messages *,
-.prompt-editor, .prompt-editor *,
-pre, code,
-textarea, input[type="text"],
-.field-input,
-.view-scrollable {
-  user-select: text;
-  -webkit-user-select: text;
+/* Disable selection only on UI chrome (nav, buttons, tab headers) */
+.sidebar, .sidebar *,
+.tab-bar, .tab-bar *,
+.toolbar, .toolbar *,
+button, .btn,
+.wi-btn,
+.nav-item, .nav-group-label,
+.wi-type-badge,
+.wi-status-badge {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Scrollbars */

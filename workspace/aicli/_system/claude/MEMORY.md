@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 19:20 UTC by aicli /memory_
+_Generated: 2026-04-24 19:40 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform for software development that solves zero-context AI sessions by maintaining a unified knowledge base across multiple AI tools (Claude, Cursor, web UI, CLI). The current state includes a fully functional Work Items/Use Cases lifecycle management system with markdown generation, due date tracking, completion validation, and a 4-layer memory architecture (ephemeral → raw capture → digested events → work items/project facts) backed by PostgreSQL + pgvector semantic search.
 
 ## Tech Stack
 
@@ -29,7 +33,7 @@ _Generated: 2026-04-24 19:20 UTC by aicli /memory_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m074 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -60,21 +64,21 @@ _Generated: 2026-04-24 19:20 UTC by aicli /memory_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m052 migration framework; INT PKs in canonical order (id → client_id → project_id → user_id); created_at/updated_at at table end before embedding
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; planner_tags cleaned with deliverables JSONB
+- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id); timestamps + embedding at table end
+- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; markdown generation with recursive CTEs for all descendants
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
-- Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant tracking
 - Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant item tracking
+- Use Case lifecycle: due dates (calendar or day offsets), completion validation (all descendants must finish by parent due date), completion tracking with completed_at timestamp, markdown file generation with type-based item categorization
 
 ## In Progress
 
-- MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections
-- Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts
-- Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts
-- Copy item functionality stability: ⎘ button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action
-- Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab
-- Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list
+- MD file generation refinement: Removed HTML comment tags; created/updated dates now plain text; item counts computed from recursive CTEs; status badges (bugs/features/tasks/completed/in-progress/open) derived from database state, not comments
+- Use Case due date management: Due dates support calendar (MM/DD/YY) and day offsets; re-parent conflict auto-resolution when items exceed parent due date; completion validation ensures all descendants finished
+- Work Items to Use Cases migration: Pending AI-classified items (AI* prefix) require approval in Work Items tab before moving to real IDs (FE/BU/TA); Use Cases tab shows only approved, completed, or in-progress items
+- Session ID and timestamp visibility: Chat/History tabs display last 5 chars of session ID in header with full UUID on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts; session selection loads correct session on startup (no 15s delay)
+- Completed section and Planning grouping: Left sidebar reorganized as 'Planning' group (Work Items/Use Cases/Documents/Completed); completed_at column tracks UC completion; MD files auto-move to documents/completed/ folder on completion
+- Hook-log stability and prompt loading: m050-m074 migrations fixed DB errors; 531 total prompts load correctly (389 DB + ~142 JSONL); hook shows 0.1h health with proper sorted session list and correct current session on startup
 
 ## Active Features / Bugs / Tasks
 
@@ -99,43 +103,6 @@ _Generated: 2026-04-24 19:20 UTC by aicli /memory_
 - **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## Recent Work (last 10 exchanges)
+## AI Synthesis
 
-**[2026-04-24 19:05]** `ui/`
-Q: I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use Cases, Documents and Complated. group named planning as all sections related to p
-A: All working. Here's a summary of what was implemented and is now live:  **Completed** - all features are fully implemented and working:  **Backend:** - Migration m074 applied — `completed_at TIMESTAMPTZ` column added to `mem_work_items` - `complete_use_case()` — validates all descendants are done (r
-
-**[2026-04-24 18:54]** `ui/`
-Q: the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complated feature - 6, complated tasks - 7. there is one requiremet that I dont see at t
-A: Good — all stale MD files cleared. Now the "✎ MD" button in Use Cases will generate fresh files with the new format. Here's a summary of all fixes:  ---  **MD file fixes:**  1. **Missing items (21 → 0 bug)**: `get_md()` now uses a **recursive CTE** to get all descendants (not just direct children). 
-
-**[2026-04-24 18:31]** `ui/`
-Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
-A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
-
-**[2026-04-24 18:21]** `ui/`
-Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
-A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
-
-**[2026-04-24 17:56]** `ui/`
-Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
-
-**[2026-04-24 17:52]** `ui/`
-Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
-A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio
-
-**[2026-04-24 17:44]** `ui/`
-Q: Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already approved.
-A: Done. The "Approve X pending" button is removed from the Use Cases toolbar — it only exists in Work Items now.
-
-**[2026-04-24 10:59]** `ui/`
-Q: when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  used for in the use case ?
-A: Both fixes done. Now for your second question:  **"Approve X pending" button in Use Cases** — this approves child items under that UC that have been AI-classified but not yet manually approved. Items with IDs starting with `AI...` are "pending" — they've been created by the classify pipeline but nee
-
-**[2026-04-23 18:04]** `ui/`
-Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
-A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
-
-**[2026-04-23 16:58]** `ui/`
-Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
-A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
+**[2026-04-24]** `ui` — MD file format cleaned: removed HTML comment tags, moved created/updated dates to plain text, type-based item categorization (bugs/features/tasks) computed via recursive CTEs for all descendants, status counts derived from DB state. **[2026-04-24]** `ui` — Use Case due date system: supports calendar (MM/DD/YY) and day offsets (e.g., 8 days); auto re-parenting conflict resolution when items exceed parent deadline; completion validation ensures all descendants finished before marking UC complete. **[2026-04-24]** `ui` — Work Items/Use Cases separation complete: pending AI-classified items (AI* prefix) live in Work Items tab awaiting approval; once approved they receive real IDs (FE/BU/TA) and move to Use Cases tab. **[2026-04-24]** `ui` — Completed section added to left sidebar Planning group (Work Items/Use Cases/Documents/Completed); Use Case completion tracks completed_at timestamp and auto-moves markdown files to documents/completed/ folder. **[2026-04-15]** `ui` — Session loading fixed: eliminated 15s delay by reading last_session_id synchronously from dev_runtime_state before cache render, avoiding stale session display on startup. **[2026-04-15]** `ui` — m050-m052 migrations completed: fixed silent DB errors in hook-log prompt storage (m050), consolidated user_id to INT with proper column ordering (m051-m052), 531 total prompts now load correctly (389 DB + ~142 JSONL).
