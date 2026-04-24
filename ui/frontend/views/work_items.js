@@ -31,6 +31,7 @@ let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
 let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
 let _ucDragAbort    = null;       // AbortController for UC drag delegation listeners
+let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _setUndoAction
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -89,7 +90,6 @@ export async function renderWorkItems(container, projectName) {
                           background:var(--surface);color:var(--text);font-size:0.75rem;text-align:center"
                    title="Max use cases for classification (default: 8)">
           </label>
-          <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh">⟳</button>
         </div>
         <div id="wi-filter-chips" style="display:flex;gap:0.3rem;flex-wrap:wrap"></div>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
@@ -97,6 +97,9 @@ export async function renderWorkItems(container, projectName) {
         <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
               border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
               cursor:default" title="No Claude Code prompts received recently — hook may be offline"></span>
+        <button id="wi-undo-btn" class="btn btn-ghost btn-sm" disabled
+                style="opacity:0.4" title="Nothing to undo">↩ Undo</button>
+        <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Reload work items">⟳ Refresh</button>
       </div>
 
       <!-- ── Stats bar ── -->
@@ -118,6 +121,7 @@ export async function renderWorkItems(container, projectName) {
   `;
 
   _setupEvents(container);
+  _updateUndoBtn();
   await _loadAll();
   _checkHookHealth();
 }
@@ -449,6 +453,19 @@ function _setupEvents(container) {
   container.querySelector('#wi-refresh-btn')?.addEventListener('click', async () => {
     await _reloadCurrent();
     toast('Refreshed', 'info');
+  });
+
+  // Undo button
+  container.querySelector('#wi-undo-btn')?.addEventListener('click', async () => {
+    if (!_lastUndo) return;
+    const { undoFn, reloadFn } = _lastUndo;
+    _clearUndo();
+    try {
+      const r = await undoFn();
+      if (r && r.error) { toast(`Undo failed: ${r.error}`, 'error'); return; }
+      toast('Action undone', 'success');
+      await reloadFn();
+    } catch (err) { toast(`Undo failed: ${err.message}`, 'error'); }
   });
 
   // Classify button (Work Items view only)
@@ -1042,40 +1059,31 @@ function _clearDragIndicators(listEl) {
 }
 
 /**
- * Show an 8-second undo toast at the bottom of the screen.
+ * Register an undoable action and enable the toolbar Undo button.
  * undoFn must return a promise resolving to { error? } or truthy on success.
  */
-function _showUndoToast(label, undoFn, reloadFn) {
-  document.querySelectorAll('.wi-undo-toast').forEach(t => t.remove());
-  const el = document.createElement('div');
-  el.className = 'wi-undo-toast';
-  el.style.cssText = [
-    'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%)',
-    'background:var(--surface2);border:1px solid var(--accent)',
-    'border-radius:8px;padding:0.45rem 0.9rem;z-index:9999',
-    'display:flex;gap:0.75rem;align-items:center',
-    'box-shadow:0 4px 16px rgba(0,0,0,.45);font-size:0.82rem;color:var(--text)',
-  ].join(';');
-  el.innerHTML = `
-    <span>${_esc(label)}</span>
-    <button id="wi-undo-btn" style="background:var(--accent);color:#fff;border:none;
-      border-radius:4px;padding:0.2rem 0.65rem;cursor:pointer;font-size:0.78rem">Undo</button>
-    <button id="wi-undo-dismiss" style="background:transparent;border:none;
-      color:var(--muted);cursor:pointer;font-size:0.9rem;line-height:1" title="Dismiss">✕</button>
-  `;
-  document.body.appendChild(el);
-  const timer = setTimeout(() => el.remove(), 8000);
-  const _rm   = () => { clearTimeout(timer); el.remove(); };
-  el.querySelector('#wi-undo-btn').addEventListener('click', async () => {
-    _rm();
-    try {
-      const r = await undoFn();
-      if (r && r.error) { toast(`Undo failed: ${r.error}`, 'error'); return; }
-      toast('Action undone', 'success');
-      await reloadFn();
-    } catch (err) { toast(`Undo failed: ${err.message}`, 'error'); }
-  });
-  el.querySelector('#wi-undo-dismiss').addEventListener('click', _rm);
+function _setUndoAction(label, undoFn, reloadFn) {
+  _lastUndo = { label, undoFn, reloadFn };
+  _updateUndoBtn();
+}
+
+function _clearUndo() {
+  _lastUndo = null;
+  _updateUndoBtn();
+}
+
+function _updateUndoBtn() {
+  const btn = document.getElementById('wi-undo-btn');
+  if (!btn) return;
+  if (_lastUndo) {
+    btn.disabled = false;
+    btn.title    = `Undo: ${_lastUndo.label}`;
+    btn.style.opacity = '1';
+  } else {
+    btn.disabled = true;
+    btn.title    = 'Nothing to undo';
+    btn.style.opacity = '0.4';
+  }
 }
 
 /**
@@ -1134,7 +1142,7 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
       const r = await api.wi.update(_project, draggedId, { wi_parent_id: targetId });
       if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
       await reloadFn();
-      _showUndoToast('Item linked as child', () =>
+      _setUndoAction('Item linked as child', () =>
         api.wi.update(_project, draggedId, { wi_parent_id: originalParentId || null }),
         reloadFn
       );
@@ -1148,7 +1156,7 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
       const r = await api.wi.merge(_project, targetId, draggedId);
       if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
       await reloadFn();
-      _showUndoToast('Items merged', () => api.wi.unmerge(_project, draggedId), reloadFn);
+      _setUndoAction('Items merged', () => api.wi.unmerge(_project, draggedId), reloadFn);
     } catch (err) { toast(`Merge failed: ${err.message}`, 'error'); }
   });
 
@@ -1643,7 +1651,7 @@ function _attachUcDragListeners() {
   // Works regardless of which child element the cursor is hovering over.
   listEl.addEventListener('dragover', (e) => {
     if (!_ucDragId) return;
-    const card = e.target.closest('.wi-uc-children .wi-card[data-item-id]');
+    const card = e.target.closest('.wi-card[data-item-id]');
     if (!card || card.dataset.itemId === _ucDragId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'link';
@@ -1660,7 +1668,7 @@ function _attachUcDragListeners() {
 
   listEl.addEventListener('drop', (e) => {
     if (!_ucDragId) return;
-    const card = e.target.closest('.wi-uc-children .wi-card[data-item-id]');
+    const card = e.target.closest('.wi-card[data-item-id]');
     if (!card) return;
     const targetId = card.dataset.itemId;
     const itemId   = _ucDragId;
@@ -2453,10 +2461,12 @@ export async function renderUseCases(container, projectName) {
         <span style="color:var(--muted);font-size:0.78rem">Approved use cases and their items</span>
         <span style="flex:1"></span>
         <span id="wi-status" style="font-size:0.72rem;color:var(--muted)"></span>
-        <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Refresh">⟳</button>
         <span id="wi-hook-badge" style="display:none;font-size:0.72rem;padding:0.2rem 0.55rem;
               border-radius:10px;background:#7c3aed22;color:#c084fc;border:1px solid #7c3aed44;
               cursor:default" title="No prompts received recently"></span>
+        <button id="wi-undo-btn" class="btn btn-ghost btn-sm" disabled
+                style="opacity:0.4" title="Nothing to undo">↩ Undo</button>
+        <button id="wi-refresh-btn" class="btn btn-ghost btn-sm" title="Reload use cases">⟳ Refresh</button>
       </div>
 
       <!-- ── Stats bar ── -->
@@ -2478,6 +2488,7 @@ export async function renderUseCases(container, projectName) {
   `;
 
   _setupEvents(container);
+  _updateUndoBtn();
   await _loadUseCases();
   _checkHookHealth();
 }

@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- MD file format refinement: Removed HTML comment tags; created/updated dates now plain text; item counts (bugs/features/tasks) computed from recursive CTEs; status badges derived from database state; recursive CTE ensures all descendants included
-- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation ensures all descendants finished by parent due date
-- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts; correct current session loads on startup
-- Work Items to Use Cases UI separation: Two-tab system (Work Items | Use Cases) with different functionality; pending AI-classified items require approval before getting real IDs; approved items show in Use Cases only
-- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion and auto-moves MD to documents/completed/
-- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content in Electron UI
+- MD file format refinement: Removed HTML comment tags; created/updated dates plain text; item counts computed from recursive CTEs; status badges derived from database state
+- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation
+- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts
+- Work Items to Use Cases UI separation: Two-tab system with different functionality; pending AI-classified items require approval before getting real IDs
+- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion
+- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content

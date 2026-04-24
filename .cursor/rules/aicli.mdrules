@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:06 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:22 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -50,8 +50,9 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/ with pr_ prefix
-- **database_migrations**: m001-m052 framework with db_schema.sql as source of truth
+- **database_migrations**: m001-m074 framework with db_schema.sql as source of truth
 - **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
+- **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 
 ## Key Decisions
 
@@ -64,17 +65,9 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id); timestamps + embedding at table end
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards, due dates, and recursive descendant tracking
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with type-based categorization
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; proper session loading on startup without 15s delay
-- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); completed_at column + auto-move MD to documents/completed/
-- Text selection enabled across UI: removed `user-select: none` from body to allow clipboard copy-paste in history, work items, and markdown content
-
-## Recent Context (last 5 changes)
-
-- [2026-04-24] I do see duplicates title at the md file - for example Features (6) or Tasks (7) .. Also there is title Requirements (1)
-- [2026-04-24] I can see that I can move items in use case and in work item - but they are not linked as prent-child. I would like to b
-- [2026-04-24] it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted
-- [2026-04-24] I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that 
-- [2026-04-24] It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is 
+- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards and due dates
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
+- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); auto-move MD to documents/completed/
+- Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history, work items, and markdown content
