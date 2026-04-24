@@ -1815,6 +1815,63 @@ class MemoryWorkItems:
             log.warning(f"update({item_id}) error: {e}")
             return {"error": str(e)}
 
+    def merge(self, source_id: str, target_id: str, pid: int) -> dict:
+        """Merge source item into target: append source summary, soft-delete source.
+
+        - Target summary += source name + source summary (as italic footnote)
+        - Source gets deleted_at=NOW() and merged_into=target_id
+        """
+        if source_id == target_id:
+            return {"error": "cannot merge item with itself"}
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id::text, name, summary FROM mem_work_items "
+                        "WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
+                        (source_id, pid),
+                    )
+                    src = cur.fetchone()
+                    cur.execute(
+                        "SELECT id::text, name, summary FROM mem_work_items "
+                        "WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
+                        (target_id, pid),
+                    )
+                    tgt = cur.fetchone()
+                    if not src:
+                        return {"error": "source item not found"}
+                    if not tgt:
+                        return {"error": "target item not found"}
+
+                    src_name, src_summary = src[1] or "", src[2] or ""
+                    tgt_summary          = tgt[2] or ""
+
+                    # Append source content as italic footnote to target summary
+                    appendix = f"_Merged from **{src_name}**"
+                    if src_summary.strip():
+                        appendix += f": {src_summary.strip()}"
+                    appendix += "_"
+                    merged_summary = (tgt_summary + "\n\n" + appendix).strip()
+
+                    cur.execute(
+                        "UPDATE mem_work_items SET summary=%s, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (merged_summary, target_id, pid),
+                    )
+                    cur.execute(
+                        "UPDATE mem_work_items "
+                        "SET merged_into=%s::uuid, deleted_at=NOW(), updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (target_id, source_id, pid),
+                    )
+                conn.commit()
+            return {"merged": True, "target_id": target_id, "source_id": source_id}
+        except Exception as e:
+            log.warning(f"merge({source_id}->{target_id}) error: {e}")
+            return {"error": str(e)}
+
     def reorder_items(self, pid: int, items: list[dict]) -> dict:
         """Bulk-update user_importance for a list of items (drag-to-reorder).
 

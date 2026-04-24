@@ -3018,6 +3018,17 @@ def m075_wi_deleted(conn) -> None:
     log.info("m075: deleted_at added to mem_work_items")
 
 
+def m076_wi_merged_into(conn) -> None:
+    """Add merged_into self-FK to mem_work_items for item merge (combine summaries)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mem_work_items "
+            "ADD COLUMN IF NOT EXISTS merged_into UUID REFERENCES mem_work_items(id) ON DELETE SET NULL"
+        )
+    conn.commit()
+    log.info("m076: merged_into added to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3141,4 +3152,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m073_prompts_source_id_unique", m073_prompts_source_id_unique),
     ("m074_wi_completed", m074_wi_completed),
     ("m075_wi_deleted",   m075_wi_deleted),
+    ("m076_wi_merged_into", m076_wi_merged_into),
 ]

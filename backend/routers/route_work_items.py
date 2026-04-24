@@ -87,6 +87,10 @@ class WiReorderRequest(BaseModel):
     items: list[WiReorderItem]
 
 
+class WiMergeRequest(BaseModel):
+    source_id: str   # item to merge into item_id (will be soft-deleted)
+
+
 class WiMdSaveRequest(BaseModel):
     content: str
 
@@ -301,6 +305,17 @@ async def move_event_to_item(project: str, item_id: str, body: WiMoveRequest):
     pid    = _pid(project)
     wi     = _wi(project)
     result = wi.move_event(item_id, pid, body.mrr_type, body.mrr_id, body.target_wi_id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/{item_id}/merge")
+async def merge_work_item(project: str, item_id: str, body: WiMergeRequest):
+    """Merge source item into target (item_id): combine summaries, soft-delete source."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.merge(body.source_id, item_id, pid)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result

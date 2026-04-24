@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 21:06 UTC by aicli /memory_
+_Generated: 2026-04-24 22:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform for software development that maintains persistent context across multiple AI tools (Claude, ChatGPT, Cursor) through a unified PostgreSQL database, semantic search via pgvector embeddings, and intelligent memory synthesis. Current state: fully functional 4-layer memory architecture with Work Items/Use Cases management, markdown documentation generation, due date tracking with descendant validation, completed use case tracking, and stable session history UI with proper session ID/timestamp visibility and text selection support.
 
 ## Tech Stack
 
@@ -103,16 +99,43 @@ aicli is a shared AI memory platform for software development that maintains per
 - **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## AI Synthesis
+## Recent Work (last 10 exchanges)
 
-**[2026-04-24]** `ui` — Completed Use Case lifecycle system: added `completed_at` timestamp tracking (m074), implemented completion validation (all descendants must finish), auto-move MD files to documents/completed/, and reopen functionality with descendant re-activation.
+**[2026-04-24 21:49]** `ui/`
+Q: I do see duplicates title at the md file - for example Features (6) or Tasks (7) .. Also there is title Requirements (1) - twise which is not suppose to be (all requirements suppose to be under requir
+A: The MD is now clean. Let me summarize what was fixed and what was done:  ---  **Issues fixed:**  1. **Duplicate `### Features (6)` / `### Tasks (7)` headers** — Root cause: previous `save_md()` parser didn't stop at `##` / `---` boundaries, causing 7 item summaries to accumulate subsequent section h
 
-**[2026-04-24]** `ui` — Use Case markdown generation now uses recursive CTEs to capture all descendants (not just direct children), generates plain-text created/updated dates + item counts (bugs/features/tasks) from DB state, removes HTML comment tags throughout.
+**[2026-04-24 21:10]** `ui/`
+Q: Looks better. in the md file I do see that there is title and line below there is bug/feature.. and below desc. there is no need for the line below the tile as it all grouped already as bugs, features
+A: The MD is now clean and correct:  - `## Requirements` — AI1070, AI1075 (both requirement items) - `## Completed (20)` — 7 bugs, 6 features, 7 tasks (no duplicates, no `### Requirements`) - `## Open Items (3)` — 1 bug, 1 feature, 1 task  **Root cause**: The old `save_md()` parser didn't stop at `##`/
 
-**[2026-04-24]** `ui` — MD file generation fix: "✎ MD" button now calls `api.wi.md.refresh()` before navigating to Documents, ensuring file exists on disk; proper path mapping under use_cases/ folder.
+**[2026-04-24 21:04]** `ui/`
+Q: I do see that it is not possible to makr content and copy paste in the UI (for example mark some content using maouse in order to copy to the clipboard) is it possible to enabe that? Also in history -
+A: That's the complete fix. To summarize what changed and why:  **Root cause:** `body { user-select: none }` was blocking text selection everywhere. The "allow" whitelist only covered chat messages, code blocks, and `.view-scrollable` — missing history entries, work item text, MD content, etc.  **Fix:*
 
-**[2026-04-24]** `ui` — UI/UX improvements: added "Use Cases" entry to left sidebar (separate from Work Items); Approve button removed from Use Cases tab (approval-only in Work Items); due date support with calendar or day offset input; re-parent conflict auto-resolution when children exceed parent due date.
+**[2026-04-24 19:31]** `ui/`
+Q: Looks better, the md file is not looks good yet. dont think there is need to add the <!-- tags >> this data will be save in the database and will be pupoluated from the databse (number of taks, number
+A: The format looks excellent. Here's a summary of all changes made:  ---  **MD format — before vs after:**  | Before | After | |--------|-------| | `<!-- STATUS: 2 -->` etc. | Removed — no HTML comments anywhere | | `Created: ... \| Updated: ...` + extra `<!-- CREATED -->` | `created: 2026-04-23 \| up
 
-**[2026-04-23]** `ui` — Work Items tab now displays ALL use cases (not just pending AI* items); fixed Work Items/Use Cases tab layout positioning to right side of toolbar; set default max UC to 8 in config to enable classify pipeline.
+**[2026-04-24 19:05]** `ui/`
+Q: I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use Cases, Documents and Complated. group named planning as all sections related to p
+A: All working. Here's a summary of what was implemented and is now live:  **Completed** - all features are fully implemented and working:  **Backend:** - Migration m074 applied — `completed_at TIMESTAMPTZ` column added to `mem_work_items` - `complete_use_case()` — validates all descendants are done (r
 
-**[2026-04-24]** `ui` — Fixed text selection across entire UI: removed `user-select: none` from body to enable copy-paste in history entries, work item cards, and markdown content; Electron now fully supports clipboard operations.
+**[2026-04-24 18:54]** `ui/`
+Q: the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complated feature - 6, complated tasks - 7. there is one requiremet that I dont see at t
+A: Good — all stale MD files cleared. Now the "✎ MD" button in Use Cases will generate fresh files with the new format. Here's a summary of all fixes:  ---  **MD file fixes:**  1. **Missing items (21 → 0 bug)**: `get_md()` now uses a **recursive CTE** to get all descendants (not just direct children). 
+
+**[2026-04-24 18:31]** `ui/`
+Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
+A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
+
+**[2026-04-24 18:21]** `ui/`
+Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
+A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
+
+**[2026-04-24 17:56]** `ui/`
+Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
+
+**[2026-04-24 17:52]** `ui/`
+Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
+A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio

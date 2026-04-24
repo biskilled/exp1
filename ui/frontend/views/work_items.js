@@ -25,6 +25,7 @@ let _allItems       = [];    // all loaded items
 let _filter         = '';    // wi_type filter
 let _dragItemId     = null;  // item id being dragged
 let _insertBeforeId = null;  // insert-before card id during within-UC reorder
+let _dragOverItemId = null;  // item card being hovered over during drag (for link/merge)
 let _classifyPoller = null;  // interval polling after background classify
 let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
@@ -296,6 +297,12 @@ function _sharedStyles() { return `<style>
         outline:2px solid #f59e0b;outline-offset:-2px;
         background:rgba(245,158,11,.07);
         cursor:crosshair !important;
+      }
+      /* item-over-item target: shows link/merge choice popover */
+      .wi-card.wi-item-target {
+        outline:2px solid var(--accent);outline-offset:-2px;
+        background:rgba(6,182,212,.07);
+        cursor:copy !important;
       }
       .wi-orphan-zone {
         margin-bottom:1.25rem;padding:0.65rem 0.9rem;
@@ -1029,6 +1036,77 @@ function _clearDragIndicators(listEl) {
   listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
   listEl.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
   listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+  listEl.querySelectorAll('.wi-item-target').forEach(el => el.classList.remove('wi-item-target'));
+  _dragOverItemId = null;
+}
+
+/**
+ * Show a small popover at position (x, y) offering two options:
+ *   ↓ Make child  — reparent draggedId under targetId
+ *   ⊕ Merge       — combine summaries, soft-delete draggedId
+ *
+ * reloadFn is called after a successful action.
+ */
+function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
+  document.querySelectorAll('.wi-link-merge-pop').forEach(p => p.remove());
+
+  const pop = document.createElement('div');
+  pop.className = 'wi-link-merge-pop';
+  pop.style.cssText = `position:fixed;z-index:950;padding:0.4rem;
+    background:var(--surface2);border:1px solid var(--accent);
+    border-radius:var(--radius);box-shadow:0 6px 24px rgba(0,0,0,.45);
+    display:flex;flex-direction:column;gap:0.25rem;min-width:160px`;
+  pop.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+  pop.style.top  = Math.min(y, window.innerHeight - 90) + 'px';
+
+  pop.innerHTML = `
+    <div style="font-size:0.65rem;color:var(--muted);font-weight:700;padding:0.1rem 0.3rem 0.3rem">
+      DROP ACTION</div>
+    <button id="wi-lm-child" style="text-align:left;padding:0.35rem 0.6rem;
+      background:transparent;border:1px solid var(--border);border-radius:4px;
+      color:var(--text);cursor:pointer;font-size:0.82rem">
+      ↓ Make child</button>
+    <button id="wi-lm-merge" style="text-align:left;padding:0.35rem 0.6rem;
+      background:transparent;border:1px solid var(--border);border-radius:4px;
+      color:var(--text);cursor:pointer;font-size:0.82rem">
+      ⊕ Merge into target</button>
+    <button id="wi-lm-cancel" style="text-align:left;padding:0.25rem 0.6rem;
+      background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.75rem">
+      Cancel</button>
+  `;
+  document.body.appendChild(pop);
+
+  const _close = () => pop.remove();
+
+  pop.querySelector('#wi-lm-child').addEventListener('click', async () => {
+    _close();
+    try {
+      const r = await api.wi.update(_project, draggedId, { wi_parent_id: targetId });
+      if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
+      toast('Item linked as child', 'success');
+      await reloadFn();
+    } catch (err) { toast(`Link failed: ${err.message}`, 'error'); }
+  });
+
+  pop.querySelector('#wi-lm-merge').addEventListener('click', async () => {
+    _close();
+    if (!confirm('Merge: source summary will be appended to target, and source will be deleted. Continue?')) return;
+    try {
+      const r = await api.wi.merge(_project, targetId, draggedId);
+      if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
+      toast('Items merged', 'success');
+      await reloadFn();
+    } catch (err) { toast(`Merge failed: ${err.message}`, 'error'); }
+  });
+
+  pop.querySelector('#wi-lm-cancel').addEventListener('click', _close);
+
+  // Auto-dismiss on outside click
+  setTimeout(() => {
+    document.addEventListener('click', e => {
+      if (!pop.contains(e.target)) _close();
+    }, { once: true });
+  }, 100);
 }
 
 function _attachDragListeners() {
@@ -1062,16 +1140,35 @@ function _attachDragListeners() {
       listEl.querySelectorAll('.wi-drag-over').forEach(el => { if (el !== zone) el.classList.remove('wi-drag-over'); });
       zone.classList.add('wi-drag-over');
 
-      // Compute insert position within zone for same-UC reorder
-      const cards = [...zone.querySelectorAll('.wi-card')].filter(c => c.dataset.itemId !== _dragItemId);
-      listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
-      _insertBeforeId = null;
-      for (const c of cards) {
-        const rect = c.getBoundingClientRect();
-        if (e.clientY < rect.top + rect.height / 2) {
-          c.classList.add('wi-insert-above');
-          _insertBeforeId = c.dataset.itemId;
-          break;
+      // Detect if hovering directly over a sibling card → link/merge mode
+      const hoverEl  = document.elementFromPoint(e.clientX, e.clientY);
+      const hoverCard = hoverEl?.closest('.wi-card[data-item-id]');
+      const hoverId  = hoverCard?.dataset.itemId;
+      const isHoverTarget = hoverId && hoverId !== _dragItemId;
+
+      // Clear old item-target highlights, then set new one if applicable
+      listEl.querySelectorAll('.wi-item-target').forEach(el => el.classList.remove('wi-item-target'));
+      _dragOverItemId = null;
+
+      if (isHoverTarget) {
+        // Hovering over a specific card → highlight for link/merge
+        hoverCard.classList.add('wi-item-target');
+        _dragOverItemId = hoverId;
+        // Don't show insert-above indicator when in link/merge mode
+        listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+        _insertBeforeId = null;
+      } else {
+        // Compute insert position within zone for same-UC reorder
+        const cards = [...zone.querySelectorAll('.wi-card')].filter(c => c.dataset.itemId !== _dragItemId);
+        listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+        _insertBeforeId = null;
+        for (const c of cards) {
+          const rect = c.getBoundingClientRect();
+          if (e.clientY < rect.top + rect.height / 2) {
+            c.classList.add('wi-insert-above');
+            _insertBeforeId = c.dataset.itemId;
+            break;
+          }
         }
       }
     });
@@ -1080,21 +1177,32 @@ function _attachDragListeners() {
       if (!zone.contains(e.relatedTarget)) {
         zone.classList.remove('wi-drag-over');
         zone.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
+        listEl.querySelectorAll('.wi-item-target').forEach(el => el.classList.remove('wi-item-target'));
+        _dragOverItemId = null;
       }
     });
 
     zone.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      _clearDragIndicators(listEl);
 
-      const targetUcId  = zone.dataset.ucId;
-      const itemId      = _dragItemId;
+      const targetUcId   = zone.dataset.ucId;
+      const itemId       = _dragItemId;
       const insertBefore = _insertBeforeId;
+      const overItemId   = _dragOverItemId;
+
+      _clearDragIndicators(listEl);
       _dragItemId     = null;
       _insertBeforeId = null;
+      _dragOverItemId = null;
 
       if (!targetUcId || !itemId || targetUcId === '__none__') return;
+
+      // If dropped directly onto another item card → show link/merge popover
+      if (overItemId) {
+        _showLinkMergePopover(e.clientX, e.clientY, itemId, overItemId, _loadAll);
+        return;
+      }
 
       const draggedItem = _allItems.find(i => i.id === itemId);
       if (!draggedItem) return;
@@ -1496,16 +1604,8 @@ function _attachUcDragListeners() {
       const itemId   = _ucDragId;
       _ucDragId = null;
       if (!targetId || !itemId || targetId === itemId) return;
-      try {
-        const r = await api.wi.update(_project, itemId, { wi_parent_id: targetId });
-        if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
-        if (r.date_conflict_resolved) {
-          toast('Linked — parent due date shortened by 1 day to create a work window', 'info');
-        } else {
-          toast('Item linked as child', 'success');
-        }
-        await _reloadCurrent();
-      } catch (err) { toast(`Link failed: ${err.message}`, 'error'); }
+      // Show link/merge choice popover instead of direct reparent
+      _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
     });
   });
 }
