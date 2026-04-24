@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 18:30 UTC by aicli /memory_
+_Generated: 2026-04-24 18:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 18:30 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 18:31]** `ui/`
+Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
+A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
+
 **[2026-04-24 18:21]** `ui/`
 Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
 A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
@@ -135,7 +139,3 @@ A: Everything is in place. Here's what changed:  **Navigation (main.js):** - "Wo
 **[2026-04-23 09:20]** `ui/`
 Q: it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the top. can you make another tab ob the right. first one  is for Work items  and the 
 A: The empty state message will say "Click Classify to generate AI-suggested use cases from **199 prompts** + **667 commits**." — clear and actionable.  Here's what changed and what you should see now:  **Tab layout**: The two tab buttons are now on the **right side** of the toolbar, grouped as a borde
-
-**[2026-04-23 09:06]** `ui/`
-Q: I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook offline(last promt 8.3H) - which makes sense  as it was the lat prompt
-A: Good. The hook is now healthy (0.1h). Here's a summary of what was done and what to expect:  **What I fixed:**  1. **Work Items tab now shows all items** — changed `_renderList()` to display ALL use cases (not just pending AI* ones). Previously, once a UC was approved, it disappeared from Work Items

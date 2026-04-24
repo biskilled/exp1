@@ -1317,7 +1317,11 @@ function _renderUseCases() {
                   data-id="${uc.id}" data-current-name="${_esc(uc.name || '')}" data-is-uc="true"
                   title="Rename use case">▾</button>
           <span style="flex:1"></span>
-          ${_dueBadge(uc.due_date, uc.start_date)}
+          ${uc.due_date
+            ? _dueBadge(uc.due_date, uc.start_date)
+            : `<button class="wi-edit-link" data-action="due-pop" data-item-id="${uc.id}"
+                       style="font-size:0.72rem;opacity:0.6" title="Set due date for this use case">📅 Due date</button>`
+          }
           <button class="wi-btn wi-btn-ghost" data-action="edit-md"
                   data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Open Markdown in Documents">✎ MD</button>
         </div>

@@ -1929,7 +1929,11 @@ class MemoryWorkItems:
         return "in_progress"
 
     def get_md(self, item_id: str, pid: int) -> str:
-        """Render a use_case work item as Markdown using the standard UC template."""
+        """Render a use_case work item as Markdown.
+
+        Uses a recursive CTE to capture all descendants (not just direct children),
+        so items re-parented to sub-items are included.
+        """
         if not db.is_available():
             return ""
         try:
@@ -1948,56 +1952,75 @@ class MemoryWorkItems:
                     created_str = created_at.strftime("%Y-%m-%d") if created_at else ""
                     updated_str = updated_at.strftime("%Y-%m-%d") if updated_at else ""
 
-                    # All non-rejected, non-AI children with effective status
+                    # Recursive CTE — all descendants (direct + nested)
                     cur.execute(
-                        """SELECT wi_id, wi_type, name, summary,
-                                  deliveries, delivery_type,
-                                  COALESCE(user_status, score_status, 0) AS eff_status,
-                                  mrr_ids
-                           FROM mem_work_items
-                           WHERE wi_parent_id=%s::uuid AND project_id=%s
-                             AND wi_id IS NOT NULL
-                             AND wi_id NOT LIKE 'REJ%%'
-                             AND wi_id NOT LIKE 'AI%%'
-                           ORDER BY created_at ASC""",
-                        (item_id, pid),
+                        """WITH RECURSIVE descendants AS (
+                             SELECT id, wi_id, wi_type, name, summary,
+                                    deliveries, delivery_type,
+                                    COALESCE(user_status, score_status, 0) AS eff_status,
+                                    mrr_ids
+                             FROM mem_work_items
+                             WHERE wi_parent_id=%s::uuid AND project_id=%s
+                           UNION ALL
+                             SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary,
+                                    w.deliveries, w.delivery_type,
+                                    COALESCE(w.user_status, w.score_status, 0),
+                                    w.mrr_ids
+                             FROM mem_work_items w
+                             JOIN descendants d ON w.wi_parent_id = d.id
+                             WHERE w.project_id=%s
+                           )
+                           SELECT wi_id, wi_type, name, summary,
+                                  deliveries, delivery_type, eff_status, mrr_ids
+                           FROM descendants
+                           WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
+                           ORDER BY wi_id""",
+                        (item_id, pid, pid),
                     )
                     cols = [d[0] for d in cur.description]
-                    children = [dict(zip(cols, r)) for r in cur.fetchall()]
+                    all_items = [dict(zip(cols, r)) for r in cur.fetchall()]
 
-                    # Pending AI-draft children
-                    cur.execute(
-                        """SELECT wi_type, name FROM mem_work_items
-                           WHERE wi_parent_id=%s::uuid AND project_id=%s
-                             AND wi_id LIKE 'AI%%'
-                           ORDER BY created_at ASC""",
-                        (item_id, pid),
-                    )
-                    pending = cur.fetchall()
-
-            _ICONS = {
-                "bug": "🐛", "feature": "⚡", "task": "✓",
-                "policy": "⚑", "requirement": "◎", "use_case": "◻",
+            _TYPE_LABEL = {
+                "bug": "bug", "feature": "feature", "task": "task",
+                "policy": "policy", "requirement": "requirement", "use_case": "use case",
             }
+            _TYPE_ORDER = ["bug", "feature", "task", "requirement", "policy"]
 
-            done_items = [c for c in children if (c["eff_status"] or 0) >= 5]
-            open_items = [c for c in children if (c["eff_status"] or 0) < 5]
+            done_items = [c for c in all_items if (c["eff_status"] or 0) >= 5]
+            open_items = [c for c in all_items if (c["eff_status"] or 0) < 5]
 
-            status_val = 3 if (score_status or 0) >= 5 else (2 if (score_status or 0) >= 1 or children else 1)
+            status_val = 3 if (score_status or 0) >= 5 else (2 if (score_status or 0) >= 1 or all_items else 1)
 
             def _item_line(ch: dict, done: bool) -> str:
-                icon  = _ICONS.get(ch["wi_type"], "•")
-                check = "x" if done else " "
-                mrr   = ch.get("mrr_ids") or {}
-                ev_ct = sum(len(v or []) for v in mrr.values())
-                ev_s  = f"  _(events: {ev_ct})_" if ev_ct else ""
-                parts = [f"- [{check}] <!-- item:{ch['wi_id']} --> {icon} **{ch['wi_id']}** {ch['name']}{ev_s}"]
+                t_label = _TYPE_LABEL.get(ch["wi_type"], ch["wi_type"])
+                check   = "x" if done else " "
+                mrr     = ch.get("mrr_ids") or {}
+                ev_ct   = sum(len(v or []) for v in mrr.values())
+                ev_s    = f"  _(events: {ev_ct})_" if ev_ct else ""
+                wid     = ch["wi_id"] or "pending"
+                parts   = [f"- [{check}] <!-- item:{wid} --> *{t_label}* **{wid}** {ch['name']}{ev_s}"]
                 if ch.get("summary"):
                     parts.append(f"  {ch['summary']}")
                 if ch.get("deliveries"):
                     parts.append(f"  ✓ {ch['deliveries']}")
-                parts.append(f"<!-- /item:{ch['wi_id']} -->")
+                parts.append(f"<!-- /item:{wid} -->")
                 return "\n".join(parts)
+
+            def _group_section(items: list, done: bool) -> list[str]:
+                """Return markdown lines for a group of items, organised by type."""
+                by_type: dict = {}
+                for c in items:
+                    by_type.setdefault(c["wi_type"], []).append(c)
+                lines: list[str] = []
+                for t in _TYPE_ORDER + [k for k in by_type if k not in _TYPE_ORDER]:
+                    grp = by_type.get(t, [])
+                    if not grp:
+                        continue
+                    t_plural = _TYPE_LABEL.get(t, t).capitalize() + "s"
+                    lines += [f"### {t_plural} ({len(grp)})", ""]
+                    for ch in grp:
+                        lines += [_item_line(ch, done=done), ""]
+                return lines
 
             L: list[str] = [
                 f"# {wi_id or 'pending'} — {name}",
@@ -2024,44 +2047,16 @@ class MemoryWorkItems:
             ]
 
             if done_items:
-                bugs_done  = [c for c in done_items if c["wi_type"] == "bug"]
-                other_done = [c for c in done_items if c["wi_type"] != "bug"]
-                if bugs_done:
-                    L += ["### 🐛 Bugs Fixed", ""]
-                    for ch in bugs_done:
-                        L += [_item_line(ch, done=True), ""]
-                if other_done:
-                    L += ["### ✓ Action Items", ""]
-                    for ch in other_done:
-                        L += [_item_line(ch, done=True), ""]
+                L += _group_section(done_items, done=True)
             else:
                 L += ["_No completed items yet._", ""]
 
             L += ["---", "", f"## Open Items ({len(open_items)})", ""]
 
             if open_items:
-                bugs_open  = [c for c in open_items if c["wi_type"] == "bug"]
-                other_open = [c for c in open_items if c["wi_type"] != "bug"]
-                if bugs_open:
-                    L += ["### 🐛 Open Bugs", ""]
-                    for ch in bugs_open:
-                        L += [_item_line(ch, done=False), ""]
-                if other_open:
-                    L += ["### Open Items", ""]
-                    for ch in other_open:
-                        L += [_item_line(ch, done=False), ""]
+                L += _group_section(open_items, done=False)
             else:
                 L += ["_No open items._", ""]
-
-            if pending:
-                L += [
-                    "---", "",
-                    f"## Pending — AI Draft ({len(pending)})", "",
-                    "_Awaiting approval in Work Items tab._", "",
-                ]
-                for pc in pending:
-                    L.append(f"- ⏳ {_ICONS.get(pc[0], '•')} {pc[1]}")
-                L.append("")
 
             return "\n".join(L)
         except Exception as e:
