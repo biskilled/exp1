@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-24 20:57 UTC — do not edit manually.
+> Auto-generated 2026-04-24 21:28 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 719
-- **Last active**: 2026-04-24T19:40:28Z
+- **Sessions**: 720
+- **Last active**: 2026-04-24T21:06:59Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -60,12 +60,12 @@
 
 ## In Progress
 
-- MD file generation refinement: Removed HTML comment tags; created/updated dates now plain text; item counts computed from recursive CTEs; status badges (bugs/features/tasks/completed/in-progress/open) derived from database state, not comments
-- Use Case due date management: Due dates support calendar (MM/DD/YY) and day offsets; re-parent conflict auto-resolution when items exceed parent due date; completion validation ensures all descendants finished
-- Work Items to Use Cases migration: Pending AI-classified items (AI* prefix) require approval in Work Items tab before moving to real IDs (FE/BU/TA); Use Cases tab shows only approved, completed, or in-progress items
-- Session ID and timestamp visibility: Chat/History tabs display last 5 chars of session ID in header with full UUID on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts; session selection loads correct session on startup (no 15s delay)
-- Completed section and Planning grouping: Left sidebar reorganized as 'Planning' group (Work Items/Use Cases/Documents/Completed); completed_at column tracks UC completion; MD files auto-move to documents/completed/ folder on completion
-- Hook-log stability and prompt loading: m050-m074 migrations fixed DB errors; 531 total prompts load correctly (389 DB + ~142 JSONL); hook shows 0.1h health with proper sorted session list and correct current session on startup
+- MD file format refinement: Removed HTML comment tags; created/updated dates now plain text; item counts (bugs/features/tasks) computed from recursive CTEs; status badges derived from database state; recursive CTE ensures all descendants included
+- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation ensures all descendants finished by parent due date
+- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts; correct current session loads on startup
+- Work Items to Use Cases UI separation: Two-tab system (Work Items | Use Cases) with different functionality; pending AI-classified items require approval before getting real IDs; approved items show in Use Cases only
+- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion and auto-moves MD to documents/completed/
+- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content in Electron UI
 
 ## Key Decisions
 
@@ -79,11 +79,11 @@
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id); timestamps + embedding at table end
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; markdown generation with recursive CTEs for all descendants
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant tracking
-- Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Use Case lifecycle: due dates (calendar or day offsets), completion validation (all descendants must finish by parent due date), completion tracking with completed_at timestamp, markdown file generation with type-based item categorization
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards, due dates, and recursive descendant tracking
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with type-based categorization
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; proper session loading on startup without 15s delay
+- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); completed_at column + auto-move MD to documents/completed/
+- Text selection enabled across UI: removed `user-select: none` from body to allow clipboard copy-paste in history, work items, and markdown content
 
 ---
 

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 19:40 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 21:06 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,16 +65,16 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
 - Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id); timestamps + embedding at table end
-- Feature snapshot layer (mem_ai_feature_snapshot): merges user requirements with work items; markdown generation with recursive CTEs for all descendants
-- Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant tracking
-- Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Use Case lifecycle: due dates (calendar or day offsets), completion validation (all descendants must finish by parent due date), completion tracking with completed_at timestamp, markdown file generation with type-based item categorization
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards, due dates, and recursive descendant tracking
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with type-based categorization
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM; proper session loading on startup without 15s delay
+- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); completed_at column + auto-move MD to documents/completed/
+- Text selection enabled across UI: removed `user-select: none` from body to allow clipboard copy-paste in history, work items, and markdown content
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginig
 - [2026-04-24] use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due 
 - [2026-04-24] the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complate
 - [2026-04-24] I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use C
 - [2026-04-24] Looks better, the md file is not looks good yet. dont think there is need to add the <!-- tags >> this data will be save
+- [2026-04-24] I do see that it is not possible to makr content and copy paste in the UI (for example mark some content using maouse in

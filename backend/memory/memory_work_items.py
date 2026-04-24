@@ -1982,10 +1982,14 @@ class MemoryWorkItems:
             }
             _TYPE_ORDER = ["bug", "feature", "task", "requirement", "policy"]
 
-            done_items = [c for c in all_items if (c["eff_status"] or 0) >= 5]
-            open_items = [c for c in all_items if (c["eff_status"] or 0) < 5]
+            # Separate requirements from other items
+            req_items  = [c for c in all_items if c["wi_type"] == "requirement"]
+            work_items = [c for c in all_items if c["wi_type"] != "requirement"]
 
-            # Build type-count summary for header line
+            done_items = [c for c in work_items if (c["eff_status"] or 0) >= 5]
+            open_items = [c for c in work_items if (c["eff_status"] or 0) < 5]
+
+            # Build type-count summary for header line (all items including requirements)
             type_counts: dict[str, int] = {}
             for c in all_items:
                 type_counts[c["wi_type"]] = type_counts.get(c["wi_type"], 0) + 1
@@ -1996,19 +2000,23 @@ class MemoryWorkItems:
             stats_str = " · ".join(stat_parts) if stat_parts else "no items"
 
             def _item_block(ch: dict) -> list[str]:
-                t_label = _TYPE_LABEL.get(ch["wi_type"], ch["wi_type"])
-                wid     = ch["wi_id"] or "pending"
-                lines   = [f"#### {wid} — {ch['name']}", f"*{t_label}*"]
+                """#### WKID — title (no type line — already grouped by ### header)."""
+                wid   = ch["wi_id"] or "pending"
+                lines = [f"#### {wid} — {ch['name']}"]
                 if ch.get("summary"):
                     lines += ["", ch["summary"]]
                 return lines
 
             def _group_section(items: list) -> list[str]:
+                """Group items by type, skip requirements (they go in ## Requirements)."""
+                _ORDER = ["bug", "feature", "task", "policy"]
+                _SKIP  = {"requirement", "use_case"}
                 by_type: dict = {}
                 for c in items:
-                    by_type.setdefault(c["wi_type"], []).append(c)
+                    if c["wi_type"] not in _SKIP:
+                        by_type.setdefault(c["wi_type"], []).append(c)
                 lines: list[str] = []
-                for t in _TYPE_ORDER + [k for k in by_type if k not in _TYPE_ORDER]:
+                for t in _ORDER + [k for k in by_type if k not in _ORDER]:
                     grp = by_type.get(t, [])
                     if not grp:
                         continue
@@ -2018,6 +2026,15 @@ class MemoryWorkItems:
                         lines += _item_block(ch)
                         lines.append("")
                 return lines
+
+            # Build ## Requirements section
+            req_lines: list[str] = []
+            if req_items:
+                for r in req_items:
+                    req_lines += _item_block(r)
+                    req_lines.append("")
+            else:
+                req_lines += ["_Add requirements here_", ""]
 
             L: list[str] = [
                 f"# {wi_id or 'pending'} — {name}",
@@ -2030,12 +2047,10 @@ class MemoryWorkItems:
                 "",
                 "## Requirements",
                 "",
-                "_Add requirements here_",
-                "",
-                "---",
-                "",
-                f"## Completed ({len(done_items)})",
             ]
+            L += req_lines
+
+            L += ["---", "", f"## Completed ({len(done_items)})"]
 
             if done_items:
                 L += _group_section(done_items)
@@ -2068,6 +2083,17 @@ class MemoryWorkItems:
         skip_type_line: bool = False
 
         for line in content.splitlines():
+            # Stop accumulating at section boundaries
+            if line.startswith("## ") or line.startswith("---"):
+                if current_id:
+                    items[current_id] = {
+                        "name": current_name,
+                        "summary": "\n".join(current_lines).strip(),
+                    }
+                current_id = None
+                current_lines = []
+                skip_type_line = False
+                continue
             m = re.match(r'^#### (\S+) — (.+)$', line)
             if m:
                 if current_id:
