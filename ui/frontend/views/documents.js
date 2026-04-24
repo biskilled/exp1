@@ -273,6 +273,8 @@ function _renderViewer(path, content) {
   if (!viewer) return;
   const isMd = path.endsWith('.md') || path.endsWith('.markdown');
 
+  const isUseCase = path.startsWith('use_cases/') && path.endsWith('.md');
+
   viewer.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);flex-shrink:0">
@@ -280,6 +282,8 @@ function _renderViewer(path, content) {
         ${_esc(path)}
       </span>
       <div style="display:flex;gap:0.4rem;flex-shrink:0">
+        ${isUseCase ? `<button class="btn btn-ghost btn-sm" id="doc-uc-btn"
+                style="font-size:0.65rem;padding:0.15rem 0.5rem" title="Open in Use Cases tab">◻ Use Case</button>` : ''}
         <button class="btn btn-ghost btn-sm" id="doc-edit-btn"
                 style="font-size:0.65rem;padding:0.15rem 0.5rem">Edit</button>
         <button class="btn btn-ghost btn-sm" id="doc-delete-btn"
@@ -295,6 +299,9 @@ function _renderViewer(path, content) {
   `;
   document.getElementById('doc-edit-btn').addEventListener('click', () => _editDoc(path, content));
   document.getElementById('doc-delete-btn').addEventListener('click', () => _deleteDoc(path));
+  document.getElementById('doc-uc-btn')?.addEventListener('click', () => {
+    if (window._nav) window._nav('use_cases');
+  });
 
 }
 

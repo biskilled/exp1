@@ -1916,15 +1916,14 @@ class MemoryWorkItems:
         return "in_progress"
 
     def get_md(self, item_id: str, pid: int) -> str:
-        """Render a use_case work item as Markdown string."""
+        """Render a use_case work item as Markdown using the standard UC template."""
         if not db.is_available():
             return ""
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Fetch use_case
                     cur.execute(
-                        """SELECT wi_id, name, summary, score_status, updated_at
+                        """SELECT wi_id, name, summary, score_status, created_at, updated_at
                            FROM mem_work_items
                            WHERE id=%s::uuid AND project_id=%s""",
                         (item_id, pid),
@@ -1932,13 +1931,16 @@ class MemoryWorkItems:
                     row = cur.fetchone()
                     if not row:
                         return ""
-                    wi_id, name, summary, score_status, updated_at = row
-                    updated_str = (updated_at.strftime("%Y-%m-%d") if updated_at else "")
+                    wi_id, name, summary, score_status, created_at, updated_at = row
+                    created_str = created_at.strftime("%Y-%m-%d") if created_at else ""
+                    updated_str = updated_at.strftime("%Y-%m-%d") if updated_at else ""
 
-                    # Fetch approved children (real IDs only)
+                    # All non-rejected, non-AI children with effective status
                     cur.execute(
-                        """SELECT id::text, wi_id, wi_type, name, summary,
-                                  deliveries, delivery_type, score_status, mrr_ids
+                        """SELECT wi_id, wi_type, name, summary,
+                                  deliveries, delivery_type,
+                                  COALESCE(user_status, score_status, 0) AS eff_status,
+                                  mrr_ids
                            FROM mem_work_items
                            WHERE wi_parent_id=%s::uuid AND project_id=%s
                              AND wi_id IS NOT NULL
@@ -1948,9 +1950,9 @@ class MemoryWorkItems:
                         (item_id, pid),
                     )
                     cols = [d[0] for d in cur.description]
-                    approved_children = [dict(zip(cols, r)) for r in cur.fetchall()]
+                    children = [dict(zip(cols, r)) for r in cur.fetchall()]
 
-                    # Fetch pending children (AI draft rows)
+                    # Pending AI-draft children
                     cur.execute(
                         """SELECT wi_type, name FROM mem_work_items
                            WHERE wi_parent_id=%s::uuid AND project_id=%s
@@ -1958,69 +1960,142 @@ class MemoryWorkItems:
                            ORDER BY created_at ASC""",
                         (item_id, pid),
                     )
-                    pending_children = cur.fetchall()
+                    pending = cur.fetchall()
 
-            cats = self._prompts_cfg().get("categories", {})
-            lines = [
-                f"# {name} · {wi_id or 'pending'}",
+            _ICONS = {
+                "bug": "🐛", "feature": "⚡", "task": "✓",
+                "policy": "⚑", "requirement": "◎", "use_case": "◻",
+            }
+
+            done_items = [c for c in children if (c["eff_status"] or 0) >= 5]
+            open_items = [c for c in children if (c["eff_status"] or 0) < 5]
+
+            status_val = 3 if (score_status or 0) >= 5 else (2 if (score_status or 0) >= 1 or children else 1)
+
+            def _item_line(ch: dict, done: bool) -> str:
+                icon  = _ICONS.get(ch["wi_type"], "•")
+                check = "x" if done else " "
+                mrr   = ch.get("mrr_ids") or {}
+                ev_ct = sum(len(v or []) for v in mrr.values())
+                ev_s  = f"  _(events: {ev_ct})_" if ev_ct else ""
+                parts = [f"- [{check}] <!-- item:{ch['wi_id']} --> {icon} **{ch['wi_id']}** {ch['name']}{ev_s}"]
+                if ch.get("summary"):
+                    parts.append(f"  {ch['summary']}")
+                if ch.get("deliveries"):
+                    parts.append(f"  ✓ {ch['deliveries']}")
+                parts.append(f"<!-- /item:{ch['wi_id']} -->")
+                return "\n".join(parts)
+
+            L: list[str] = [
+                f"# {wi_id or 'pending'} — {name}",
                 "",
-                f"<!-- wi_id:{wi_id or ''} updated:{updated_str} -->",
+                f"<!-- STATUS: {status_val} -->",
+                "<!-- STATUS_VALUES: 1=not started | 2=in progress | 3=done -->",
+                f"<!-- CREATED: {created_str} -->",
+                f"<!-- UPDATED: {updated_str} -->",
+                "",
+                f"Created: {created_str}  |  Updated: {updated_str}",
                 "",
                 "## Summary",
-                summary or "",
                 "",
-                "## Items",
+                summary or "_No summary yet. Click ⟳ Summarise in the Use Cases tab to generate._",
+                "",
+                "## Requirements",
+                "",
+                "- _Add requirements here_",
+                "",
+                "---",
+                "",
+                f"## Completed ({len(done_items)})",
                 "",
             ]
-            for ch in approved_children:
-                cat = cats.get(ch["wi_type"], {})
-                icon = cat.get("icon", "•")
-                st = self._status_label(ch["score_status"] or 0)
-                mrr = ch["mrr_ids"] or {}
-                mrr_ids_flat = ", ".join(
-                    str(v) for vals in mrr.values() for v in (vals or [])
-                )
-                lines += [
-                    f"<!-- item:{ch['wi_id']} -->",
-                    f"### {icon} {ch['wi_id']} · {ch['name']} [{st}]",
-                    "",
-                    ch["summary"] or "",
-                    "",
-                    f"**Deliveries**: {ch['deliveries'] or ''} ({ch['delivery_type'] or ''})",
-                    "",
-                    f"Events: {mrr_ids_flat}",
-                    f"<!-- /item:{ch['wi_id']} -->",
-                    "",
+
+            if done_items:
+                bugs_done  = [c for c in done_items if c["wi_type"] == "bug"]
+                other_done = [c for c in done_items if c["wi_type"] != "bug"]
+                if bugs_done:
+                    L += ["### 🐛 Bugs Fixed", ""]
+                    for ch in bugs_done:
+                        L += [_item_line(ch, done=True), ""]
+                if other_done:
+                    L += ["### ✓ Action Items", ""]
+                    for ch in other_done:
+                        L += [_item_line(ch, done=True), ""]
+            else:
+                L += ["_No completed items yet._", ""]
+
+            L += ["---", "", f"## Open Items ({len(open_items)})", ""]
+
+            if open_items:
+                bugs_open  = [c for c in open_items if c["wi_type"] == "bug"]
+                other_open = [c for c in open_items if c["wi_type"] != "bug"]
+                if bugs_open:
+                    L += ["### 🐛 Open Bugs", ""]
+                    for ch in bugs_open:
+                        L += [_item_line(ch, done=False), ""]
+                if other_open:
+                    L += ["### Open Items", ""]
+                    for ch in other_open:
+                        L += [_item_line(ch, done=False), ""]
+            else:
+                L += ["_No open items._", ""]
+
+            if pending:
+                L += [
+                    "---", "",
+                    f"## Pending — AI Draft ({len(pending)})", "",
+                    "_Awaiting approval in Work Items tab._", "",
                 ]
+                for pc in pending:
+                    L.append(f"- ⏳ {_ICONS.get(pc[0], '•')} {pc[1]}")
+                L.append("")
 
-            if pending_children:
-                lines += ["## Pending Items", "<!-- Awaiting approval — do not edit -->"]
-                for pc in pending_children:
-                    cat = cats.get(pc[0], {})
-                    icon = cat.get("icon", "•")
-                    lines.append(f"- {icon} pending · {pc[1]}")
-                lines.append("")
-
-            return "\n".join(lines)
+            return "\n".join(L)
         except Exception as e:
             log.warning(f"get_md({item_id}) error: {e}")
             return ""
 
     def save_md(self, item_id: str, pid: int, content: str) -> dict:
-        """Parse MD content and persist changes to DB + file."""
+        """Parse MD content and persist changes to DB + file.
+
+        Extracts ## Summary (→ UC summary), ## Requirements (→ preserved in file),
+        and <!-- item:X --> blocks (→ child summary/deliveries).
+        Validates that the UC ID in the title matches the saved item.
+        """
         if not db.is_available():
             return {"error": "db not available"}
+
+        # Validation: check title wi_id matches
+        title_match = re.match(r'^#\s+([\w]+)\s+[—-]', content)
+        if title_match:
+            title_wi_id = title_match.group(1).strip()
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT wi_id FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                            (item_id, pid),
+                        )
+                        db_row = cur.fetchone()
+                if db_row and db_row[0] and db_row[0] != title_wi_id:
+                    return {"error": f"Title ID mismatch: file has '{title_wi_id}' but DB has '{db_row[0]}'"}
+            except Exception:
+                pass  # non-fatal validation
+
         updated = 0
         embedded = 0
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Extract ## Summary block
+                    # Extract ## Summary (content up to next ##, excluding ## Requirements)
                     summary_match = re.search(
                         r'## Summary\s*\n(.*?)(?=\n## |\Z)', content, re.DOTALL
                     )
                     if summary_match:
                         new_summary = summary_match.group(1).strip()
+                        # Strip placeholder text
+                        if new_summary.startswith("_No summary"):
+                            new_summary = ""
                         cur.execute(
                             "UPDATE mem_work_items SET summary=%s, updated_at=NOW() "
                             "WHERE id=%s::uuid AND project_id=%s",
@@ -2104,7 +2179,27 @@ class MemoryWorkItems:
             return {"error": str(e)}
 
     def refresh_md(self, item_id: str, pid: int) -> str:
-        """Regenerate MD from DB and write to file. Returns content."""
+        """Ensure the MD file exists. Generates from DB only if file not yet created.
+
+        If the file already exists (user has edited it), returns the existing content
+        without overwriting user's changes.
+        """
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+            if row:
+                slug    = _use_case_slug(row[0])
+                uc_path = Path(settings.workspace_dir) / self.project / "documents" / "use_cases" / f"{slug}.md"
+                if uc_path.exists():
+                    return uc_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+        # File doesn't exist yet — generate fresh from DB and write
         content = self.get_md(item_id, pid)
         if content:
             self._write_md_file(item_id, pid, content)
