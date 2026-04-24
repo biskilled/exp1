@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 16:59 UTC by aicli /memory_
+_Generated: 2026-04-23 18:17 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -100,6 +100,10 @@ _Generated: 2026-04-23 16:59 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-23 18:04]** `ui/`
+Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
+A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
+
 **[2026-04-23 16:58]** `ui/`
 Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
 A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
@@ -134,7 +138,3 @@ A: The flow is now:  1. `renderChat()` → `_sessionId = null` (clears stale ses
 **[2026-04-15 21:25]** `ui/`
 Q: The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the current session is f6648726-1e7f-48bf-b604-4c74bf7c8154. it is update the the current
 A: Here's what was fixed:  **Stale session ID on load** — Two root causes: 1. `_sessionId` was a module-level var that persisted across tab navigations. Fixed by resetting it to `null` at the start of `renderChat()` (along with `_appliedEntities`/`_pendingEntities`). 2. The localStorage cache rendered 
-
-**[2026-04-15 21:12]** `ui/`
-Q: The loading is still an issue. when system start - I do not see all prompts only prompts started from certain point . is it loading from _system/session files ? why there are so many files over there 
-A: The sort is now correct with `limit=500` (April at top, March at bottom). The previous test with `limit=10` only showed the first 10 of all 389 entries which happened to be DB-only from the old code run. The total is now **531** (389 DB + ~142 merged from JSONL).  The fix is working correctly: - Apr

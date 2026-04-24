@@ -729,9 +729,10 @@ function _startClassifyPoller(btn) {
 let _mdPanel = null;
 
 function _openMdPanel(item) {
-  // Navigate to Documents section and open the file there
-  // Get the file path from the MD endpoint (documents/use_cases/{slug}.md)
-  const filePath = `documents/use_cases/${(item.name || item.id).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}.md`;
+  // Navigate to Documents section and open the file there.
+  // Documents API paths are relative to documents/ — no "documents/" prefix.
+  const slug = (item.name || item.id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  const filePath = `use_cases/${slug}.md`;
   if (window._nav) {
     toast(`Opening in Documents…`, 'info');
     window._nav('documents', { openFile: filePath, project: _project, itemId: item.id });
@@ -742,8 +743,15 @@ function _openMdPanel(item) {
 
 async function _appendSummaryToMdLog(ucId, oldSummary) {
   if (!oldSummary) return;
+
+  // Compute file path (must match Python _use_case_slug: re.sub(r'[^a-z0-9]+','-',name).strip('-')[:60])
+  const uc = _ucItems.find(u => u.id === ucId);
+  if (!uc?.name) return;
+  const slug     = uc.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  const filePath = `use_cases/${slug}.md`;   // relative to documents/
+
   const mdData = await api.wi.md.get(_project, ucId).catch(() => null);
-  if (!mdData?.content || !mdData?.path) return;
+  if (!mdData?.content) return;
 
   const now = new Date();
   const ts = `${String(now.getFullYear()).slice(2)}/${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -766,7 +774,7 @@ async function _appendSummaryToMdLog(ucId, oldSummary) {
     }
   }
 
-  await api.documents.save(mdData.path, content, _project);
+  await api.documents.save(filePath, content, _project);
 }
 
 // ── Status options ────────────────────────────────────────────────────────────

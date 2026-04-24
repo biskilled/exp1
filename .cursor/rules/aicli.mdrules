@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-23 16:59 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-23 18:17 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-23] test prompt after m073 fix
 - [2026-04-23] I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook of
 - [2026-04-23] it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the to
 - [2026-04-23] I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a ne
 - [2026-04-23] that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as tex
+- [2026-04-23] Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . w
