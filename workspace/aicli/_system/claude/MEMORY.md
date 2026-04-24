@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 22:23 UTC by aicli /memory_
+_Generated: 2026-04-24 22:39 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 22:23 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 22:30]** `ui/`
+Q: it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted of been linked as a child in the UI. in use case it is not working. Also can yo
+A: Backend is healthy. Here's a summary of all fixes:  ---  ## Fixes Applied  ### 1. Work Items tab — child no longer disappears  **Root cause**: `_renderList()` only showed items whose parent was a UC. When A became a child of B (non-UC), A was classified as an "orphan".  **Fix**:  - Computed `allSubI
+
 **[2026-04-24 22:08]** `ui/`
 Q: I can see that I can move items in use case and in work item - but they are not linked as prent-child. I would like to be able to linked as parent child or merged when user drag an item above another 
 A: The `/wi/{project}/{item_id}/merge` route is registered. Everything is in place. Here's a summary of what was implemented:  ---  ## Drag-to-Link/Merge — Implemented  ### What was built  **Backend (3 changes):** - `m076_wi_merged_into` migration — adds `merged_into UUID` self-FK to `mem_work_items` -
@@ -136,6 +140,3 @@ A: All changes are in place. Here's a summary of what was implemented:  ---  ## 
 **[2026-04-24 18:21]** `ui/`
 Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
 A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
-
-**[2026-04-24 17:56]** `ui/`
-Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button

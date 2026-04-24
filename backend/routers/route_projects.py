@@ -229,8 +229,8 @@ async def list_projects():
 
 @router.get("/templates")
 async def list_templates():
-    """List available project templates."""
-    templates_dir = _workspace() / "_templates"
+    """List available project templates (from _templates/starters/)."""
+    templates_dir = _workspace() / "_templates" / "starters"
     if not templates_dir.exists():
         return {"templates": []}
 
@@ -251,7 +251,7 @@ async def list_templates():
 
 class NewProject(BaseModel):
     name: str
-    template: str = "blank"
+    template: str = "default"
     code_dir: str = ""
     description: str = ""
     default_provider: str = "claude"
@@ -270,7 +270,7 @@ class NewProject(BaseModel):
 async def create_project(body: NewProject):
     """Create a new project from a template."""
     ws = _workspace()
-    template_dir = ws / "_templates" / body.template
+    template_dir = ws / "_templates" / "starters" / body.template
     dest_dir = ws / body.name
 
     if not template_dir.exists():
@@ -278,10 +278,7 @@ async def create_project(body: NewProject):
     if dest_dir.exists():
         raise HTTPException(status_code=409, detail=f"Project already exists: {body.name}")
 
-    # Copy only the template content (not hooks/)
-    def _ignore_hooks(src, names):
-        return ["hooks"] if Path(src).name == "_templates" else []
-
+    # Copy the starter template content directly
     shutil.copytree(template_dir, dest_dir)
 
     # Replace template vars
@@ -352,7 +349,8 @@ async def create_project(body: NewProject):
     setup_results: dict = {}
     if body.code_dir:
         code_path = Path(body.code_dir)
-        hooks_src = ws / "_templates" / "hooks"
+        claude_src = ws / "_templates" / "cli" / "claude"
+        mcp_tpl_path = ws / "_templates" / "cli" / "mcp.template.json"
 
         def _render_tpl(tpl_file: Path) -> str:
             return (tpl_file.read_text()
@@ -360,22 +358,22 @@ async def create_project(body: NewProject):
                     .replace("{{PROJECT_NAME}}", body.name)
                     .replace("{{AICLI_DIR}}", str(_AICLI_DIR)))
 
-        if body.claude_cli_support and hooks_src.exists():
+        if body.claude_cli_support and claude_src.exists():
             # Install hooks into _system/hooks/
             hooks_dest = sys_dir / "hooks"
             hooks_dest.mkdir(parents=True, exist_ok=True)
-            for sh in hooks_src.glob("*.sh"):
+            hooks_dir = claude_src / "hooks"
+            for sh in hooks_dir.glob("*.sh"):
                 shutil.copy2(str(sh), str(hooks_dest / sh.name))
             # Render settings.template.json → {code_dir}/.claude/settings.local.json
-            tpl_file = hooks_src / "settings.template.json"
+            tpl_file = claude_src / "settings.template.json"
             if tpl_file.exists():
                 settings_dir = code_path / ".claude"
                 settings_dir.mkdir(parents=True, exist_ok=True)
                 (settings_dir / "settings.local.json").write_text(_render_tpl(tpl_file))
             # Render mcp.template.json → {code_dir}/.mcp.json  (Claude Code + Claude CLI)
-            mcp_tpl = hooks_src / "mcp.template.json"
-            if mcp_tpl.exists():
-                (code_path / ".mcp.json").write_text(_render_tpl(mcp_tpl))
+            if mcp_tpl_path.exists():
+                (code_path / ".mcp.json").write_text(_render_tpl(mcp_tpl_path))
             setup_results["claude_cli"] = str(hooks_dest)
             setup_results["claude_mcp"] = str(code_path / ".mcp.json")
 
@@ -387,12 +385,11 @@ async def create_project(body: NewProject):
             proj_summary = proj_md.read_text()[:400] if proj_md.exists() else ""
             rules_content = f"# AI Rules — {body.name}\n> Managed by aicli. Re-run `/memory` to refresh.\n\n## Project\n{proj_summary}\n"
             (cursor_rules_dir / "aicli.mdrules").write_text(rules_content)
-            # Render mcp.template.json → {code_dir}/.cursor/mcp.json  (Cursor MCP)
-            mcp_tpl = hooks_src / "mcp.template.json"
-            if mcp_tpl.exists():
+            # Render shared mcp.template.json → {code_dir}/.cursor/mcp.json
+            if mcp_tpl_path.exists():
                 cursor_mcp_dir = code_path / ".cursor"
                 cursor_mcp_dir.mkdir(parents=True, exist_ok=True)
-                (cursor_mcp_dir / "mcp.json").write_text(_render_tpl(mcp_tpl))
+                (cursor_mcp_dir / "mcp.json").write_text(_render_tpl(mcp_tpl_path))
             setup_results["cursor"] = str(cursor_rules_dir)
             setup_results["cursor_mcp"] = str(code_path / ".cursor" / "mcp.json")
 
