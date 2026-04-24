@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 19:02 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 19:20 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and 
 - [2026-04-24] It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on
 - [2026-04-24] It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginig
 - [2026-04-24] use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due 
 - [2026-04-24] the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complate
+- [2026-04-24] I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use C

@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 19:02 UTC by aicli /memory_
+_Generated: 2026-04-24 19:20 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform for software development that maintains persistent context across sessions by storing project history in PostgreSQL with semantic embeddings. It separates development (backend FastAPI + Python CLI, frontend Electron + Vanilla JS) and enables work item lifecycle management with AI-generated metadata, use case synthesis, and workflow automation via async DAG execution. Current focus is stabilizing Work Items/Use Cases UI separation, MD file generation accuracy with due date enforcement, and hook-log reliability for prompt persistence.
 
 ## Tech Stack
 
@@ -103,6 +99,43 @@ aicli is a shared AI memory platform for software development that maintains per
 - **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## AI Synthesis
+## Recent Work (last 10 exchanges)
 
-**[2026-04-24]** `ui` — MD file generation now uses recursive CTEs to capture all descendant items across re-parented hierarchies; status counts and sections properly categorized by type (bug/feature/task) with completed/open/in-progress item tracking. **[2026-04-24]** `ui` — Due date management added to Use Cases: calendar dates or day offsets (e.g., 05/05/26 or 8 days); parent due dates auto-enforce on child items with conflict resolution for re-parenting. **[2026-04-24]** `ui` — Dropdown styling fixed with background color clarity; 'Use Case' button added to Use Cases toolbar to enable quick navigation back to UC management from item views. **[2026-04-24]** `ui` — Copy item (⎘) button stabilized to format work items as readable Markdown with name/type/ID/summary/deliveries; removed unintended duplication on copy. **[2026-04-23]** `ui` — Work Items and Use Cases UI separation complete: separate sidebar entries with distinct tabs; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved items with expandable cards. **[2026-04-15]** `backend` — m050 migration fixed silent DB error in hook-log endpoint; prompt storage now reliable with 531 total prompts (389 DB + ~142 JSONL merged) and proper descending sort by date.
+**[2026-04-24 19:05]** `ui/`
+Q: I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use Cases, Documents and Complated. group named planning as all sections related to p
+A: All working. Here's a summary of what was implemented and is now live:  **Completed** - all features are fully implemented and working:  **Backend:** - Migration m074 applied — `completed_at TIMESTAMPTZ` column added to `mem_work_items` - `complete_use_case()` — validates all descendants are done (r
+
+**[2026-04-24 18:54]** `ui/`
+Q: the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complated feature - 6, complated tasks - 7. there is one requiremet that I dont see at t
+A: Good — all stale MD files cleared. Now the "✎ MD" button in Use Cases will generate fresh files with the new format. Here's a summary of all fixes:  ---  **MD file fixes:**  1. **Missing items (21 → 0 bug)**: `get_md()` now uses a **recursive CTE** to get all descendants (not just direct children). 
+
+**[2026-04-24 18:31]** `ui/`
+Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
+A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
+
+**[2026-04-24 18:21]** `ui/`
+Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
+A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
+
+**[2026-04-24 17:56]** `ui/`
+Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
+
+**[2026-04-24 17:52]** `ui/`
+Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
+A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio
+
+**[2026-04-24 17:44]** `ui/`
+Q: Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already approved.
+A: Done. The "Approve X pending" button is removed from the Use Cases toolbar — it only exists in Work Items now.
+
+**[2026-04-24 10:59]** `ui/`
+Q: when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  used for in the use case ?
+A: Both fixes done. Now for your second question:  **"Approve X pending" button in Use Cases** — this approves child items under that UC that have been AI-classified but not yet manually approved. Items with IDs starting with `AI...` are "pending" — they've been created by the classify pipeline but nee
+
+**[2026-04-23 18:04]** `ui/`
+Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
+A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
+
+**[2026-04-23 16:58]** `ui/`
+Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
+A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na

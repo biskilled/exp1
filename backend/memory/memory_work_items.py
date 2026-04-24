@@ -1107,7 +1107,7 @@ class MemoryWorkItems:
                                    w.start_date, w.due_date, w.completed_at
                             FROM mem_work_items w
                             LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
-                            WHERE w.project_id=%s AND {where}
+                            WHERE w.project_id=%s AND {where} AND w.deleted_at IS NULL
                             ORDER BY COALESCE(w.user_importance, w.score_importance, 0) DESC,
                                      w.created_at DESC
                             LIMIT 500""",
@@ -1150,13 +1150,13 @@ class MemoryWorkItems:
                                  wi_parent_id AS uc_id
                           FROM mem_work_items
                           WHERE wi_parent_id = ANY(%s::uuid[]) AND project_id = %s
-                            AND wi_type != 'use_case'
+                            AND wi_type != 'use_case' AND deleted_at IS NULL
                           UNION ALL
                           SELECT c.id, c.wi_parent_id, dt.depth + 1, dt.uc_id
                           FROM mem_work_items c
                           JOIN desc_tree dt ON c.wi_parent_id = dt.id
                           WHERE c.project_id = %s AND c.wi_type != 'use_case'
-                            AND dt.depth < 10
+                            AND c.deleted_at IS NULL AND dt.depth < 10
                         )
                         SELECT w.id::text, w.wi_id, w.wi_type, w.item_level,
                                w.name, w.summary, w.deliveries, w.delivery_type,
@@ -1515,7 +1515,7 @@ class MemoryWorkItems:
                                AND COALESCE(user_status, score_status, 0) < 5
                              ) AS overdue
                            FROM mem_work_items
-                           WHERE project_id=%s""",
+                           WHERE project_id=%s AND deleted_at IS NULL""",
                         (pid,),
                     )
                     row = cur.fetchone()
@@ -1929,10 +1929,10 @@ class MemoryWorkItems:
         return "in_progress"
 
     def get_md(self, item_id: str, pid: int) -> str:
-        """Render a use_case work item as Markdown.
+        """Render a use_case work item as clean Markdown (no HTML comment tags).
 
-        Uses a recursive CTE to capture all descendants (not just direct children),
-        so items re-parented to sub-items are included.
+        Uses a recursive CTE to capture all descendants (not just direct children).
+        Format is designed to be human-editable — save_md() parses it back to DB.
         """
         if not db.is_available():
             return ""
@@ -1952,26 +1952,22 @@ class MemoryWorkItems:
                     created_str = created_at.strftime("%Y-%m-%d") if created_at else ""
                     updated_str = updated_at.strftime("%Y-%m-%d") if updated_at else ""
 
-                    # Recursive CTE — all descendants (direct + nested)
+                    # Recursive CTE — all descendants (direct + nested), excluding deleted/rejected
                     cur.execute(
                         """WITH RECURSIVE descendants AS (
                              SELECT id, wi_id, wi_type, name, summary,
-                                    deliveries, delivery_type,
-                                    COALESCE(user_status, score_status, 0) AS eff_status,
-                                    mrr_ids
+                                    COALESCE(user_status, score_status, 0) AS eff_status
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
+                               AND deleted_at IS NULL
                            UNION ALL
                              SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary,
-                                    w.deliveries, w.delivery_type,
-                                    COALESCE(w.user_status, w.score_status, 0),
-                                    w.mrr_ids
+                                    COALESCE(w.user_status, w.score_status, 0)
                              FROM mem_work_items w
                              JOIN descendants d ON w.wi_parent_id = d.id
-                             WHERE w.project_id=%s
+                             WHERE w.project_id=%s AND w.deleted_at IS NULL
                            )
-                           SELECT wi_id, wi_type, name, summary,
-                                  deliveries, delivery_type, eff_status, mrr_ids
+                           SELECT wi_id, wi_type, name, summary, eff_status
                            FROM descendants
                            WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
                            ORDER BY wi_id""",
@@ -1989,25 +1985,25 @@ class MemoryWorkItems:
             done_items = [c for c in all_items if (c["eff_status"] or 0) >= 5]
             open_items = [c for c in all_items if (c["eff_status"] or 0) < 5]
 
-            status_val = 3 if (score_status or 0) >= 5 else (2 if (score_status or 0) >= 1 or all_items else 1)
+            # Build type-count summary for header line
+            type_counts: dict[str, int] = {}
+            for c in all_items:
+                type_counts[c["wi_type"]] = type_counts.get(c["wi_type"], 0) + 1
+            stat_parts = [
+                f"{type_counts[t]} {_TYPE_LABEL.get(t, t)}{'s' if type_counts[t] != 1 else ''}"
+                for t in _TYPE_ORDER if t in type_counts
+            ]
+            stats_str = " · ".join(stat_parts) if stat_parts else "no items"
 
-            def _item_line(ch: dict, done: bool) -> str:
+            def _item_block(ch: dict) -> list[str]:
                 t_label = _TYPE_LABEL.get(ch["wi_type"], ch["wi_type"])
-                check   = "x" if done else " "
-                mrr     = ch.get("mrr_ids") or {}
-                ev_ct   = sum(len(v or []) for v in mrr.values())
-                ev_s    = f"  _(events: {ev_ct})_" if ev_ct else ""
                 wid     = ch["wi_id"] or "pending"
-                parts   = [f"- [{check}] <!-- item:{wid} --> *{t_label}* **{wid}** {ch['name']}{ev_s}"]
+                lines   = [f"#### {wid} — {ch['name']}", f"*{t_label}*"]
                 if ch.get("summary"):
-                    parts.append(f"  {ch['summary']}")
-                if ch.get("deliveries"):
-                    parts.append(f"  ✓ {ch['deliveries']}")
-                parts.append(f"<!-- /item:{wid} -->")
-                return "\n".join(parts)
+                    lines += ["", ch["summary"]]
+                return lines
 
-            def _group_section(items: list, done: bool) -> list[str]:
-                """Return markdown lines for a group of items, organised by type."""
+            def _group_section(items: list) -> list[str]:
                 by_type: dict = {}
                 for c in items:
                     by_type.setdefault(c["wi_type"], []).append(c)
@@ -2017,20 +2013,16 @@ class MemoryWorkItems:
                     if not grp:
                         continue
                     t_plural = _TYPE_LABEL.get(t, t).capitalize() + "s"
-                    lines += [f"### {t_plural} ({len(grp)})", ""]
+                    lines += ["", f"### {t_plural} ({len(grp)})", ""]
                     for ch in grp:
-                        lines += [_item_line(ch, done=done), ""]
+                        lines += _item_block(ch)
+                        lines.append("")
                 return lines
 
             L: list[str] = [
                 f"# {wi_id or 'pending'} — {name}",
                 "",
-                f"<!-- STATUS: {status_val} -->",
-                "<!-- STATUS_VALUES: 1=not started | 2=in progress | 3=done -->",
-                f"<!-- CREATED: {created_str} -->",
-                f"<!-- UPDATED: {updated_str} -->",
-                "",
-                f"Created: {created_str}  |  Updated: {updated_str}",
+                f"created: {created_str} | updated: {updated_str} | {stats_str}",
                 "",
                 "## Summary",
                 "",
@@ -2038,70 +2030,99 @@ class MemoryWorkItems:
                 "",
                 "## Requirements",
                 "",
-                "- _Add requirements here_",
+                "_Add requirements here_",
                 "",
                 "---",
                 "",
                 f"## Completed ({len(done_items)})",
-                "",
             ]
 
             if done_items:
-                L += _group_section(done_items, done=True)
+                L += _group_section(done_items)
             else:
-                L += ["_No completed items yet._", ""]
+                L += ["", "_No completed items yet._", ""]
 
-            L += ["---", "", f"## Open Items ({len(open_items)})", ""]
+            L += ["", "---", "", f"## Open Items ({len(open_items)})"]
 
             if open_items:
-                L += _group_section(open_items, done=False)
+                L += _group_section(open_items)
             else:
-                L += ["_No open items._", ""]
+                L += ["", "_No open items._", ""]
 
             return "\n".join(L)
         except Exception as e:
             log.warning(f"get_md({item_id}) error: {e}")
             return ""
 
+    @staticmethod
+    def _parse_md_items(content: str) -> dict[str, dict]:
+        """Parse #### WKID — title / *type* / summary blocks from MD content.
+
+        Returns {wi_id: {'name': str, 'summary': str}}.
+        The *type* line is skipped (type is authoritative in DB).
+        """
+        items: dict[str, dict] = {}
+        current_id: Optional[str] = None
+        current_name: str = ""
+        current_lines: list[str] = []
+        skip_type_line: bool = False
+
+        for line in content.splitlines():
+            m = re.match(r'^#### (\S+) — (.+)$', line)
+            if m:
+                if current_id:
+                    items[current_id] = {
+                        "name": current_name,
+                        "summary": "\n".join(current_lines).strip(),
+                    }
+                current_id   = m.group(1)
+                current_name = m.group(2).strip()
+                current_lines = []
+                skip_type_line = True
+                continue
+            if skip_type_line:
+                # Skip the *type* line immediately after the header
+                if re.match(r'^\*\w+\*$', line.strip()):
+                    skip_type_line = False
+                    continue
+                if line.strip() == "":
+                    skip_type_line = False  # blank line after header without *type* — stop skipping
+            if current_id:
+                current_lines.append(line)
+
+        if current_id:
+            items[current_id] = {
+                "name": current_name,
+                "summary": "\n".join(current_lines).strip(),
+            }
+        return items
+
     def save_md(self, item_id: str, pid: int, content: str) -> dict:
         """Parse MD content and persist changes to DB + file.
 
-        Extracts ## Summary (→ UC summary), ## Requirements (→ preserved in file),
-        and <!-- item:X --> blocks (→ child summary/deliveries).
-        Validates that the UC ID in the title matches the saved item.
+        Syncs:
+          - ## Summary section → UC summary field
+          - #### WKID — title blocks → child name + summary
+          - Items removed from MD → marked deleted_at=NOW() (approved) or deleted (pending)
+
+        The header info line (created/updated/stats) is read-only — changes ignored.
+        The ## Requirements section lives in the file only (no DB column).
         """
         if not db.is_available():
             return {"error": "db not available"}
 
-        # Validation: check title wi_id matches
-        title_match = re.match(r'^#\s+([\w]+)\s+[—-]', content)
-        if title_match:
-            title_wi_id = title_match.group(1).strip()
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "SELECT wi_id FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
-                            (item_id, pid),
-                        )
-                        db_row = cur.fetchone()
-                if db_row and db_row[0] and db_row[0] != title_wi_id:
-                    return {"error": f"Title ID mismatch: file has '{title_wi_id}' but DB has '{db_row[0]}'"}
-            except Exception:
-                pass  # non-fatal validation
-
         updated = 0
+        deleted_count = 0
         embedded = 0
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Extract ## Summary (content up to next ##, excluding ## Requirements)
+                    # 1. UC summary
                     summary_match = re.search(
                         r'## Summary\s*\n(.*?)(?=\n## |\Z)', content, re.DOTALL
                     )
                     if summary_match:
                         new_summary = summary_match.group(1).strip()
-                        # Strip placeholder text
                         if new_summary.startswith("_No summary"):
                             new_summary = ""
                         cur.execute(
@@ -2112,55 +2133,64 @@ class MemoryWorkItems:
                         if cur.rowcount:
                             updated += 1
 
-                    # Extract each <!-- item:X --> ... <!-- /item:X --> block
-                    for m in re.finditer(
-                        r'<!-- item:(\S+) -->(.*?)<!-- /item:\1 -->', content, re.DOTALL
-                    ):
-                        child_wi_id = m.group(1)
-                        block = m.group(2)
+                    # 2. Parse all #### WKID blocks from the file
+                    md_items = self._parse_md_items(content)
 
-                        # Summary: text between ### header line and **Deliveries**:
-                        sum_m = re.search(
-                            r'###[^\n]+\n\s*\n(.*?)(?=\*\*Deliveries\*\*:)', block, re.DOTALL
-                        )
-                        child_summary = sum_m.group(1).strip() if sum_m else ""
+                    # 3. Load all DB children (non-deleted, non-rejected)
+                    cur.execute(
+                        """WITH RECURSIVE tree AS (
+                             SELECT id, wi_id, wi_type, name, summary
+                             FROM mem_work_items
+                             WHERE wi_parent_id=%s::uuid AND project_id=%s
+                               AND deleted_at IS NULL
+                           UNION ALL
+                             SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary
+                             FROM mem_work_items w JOIN tree d ON w.wi_parent_id = d.id
+                             WHERE w.project_id=%s AND w.deleted_at IS NULL
+                           )
+                           SELECT id::text, wi_id, wi_type, name, summary
+                           FROM tree
+                           WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'""",
+                        (item_id, pid, pid),
+                    )
+                    db_children = {
+                        r[1]: {"id": r[0], "wi_type": r[2], "name": r[3], "summary": r[4]}
+                        for r in cur.fetchall()
+                    }
 
-                        # Deliveries line
-                        del_m = re.search(r'\*\*Deliveries\*\*:\s*(.+?)(?:\s*\(([^)]*)\))?$',
-                                          block, re.MULTILINE)
-                        child_deliveries = del_m.group(1).strip() if del_m else ""
-                        child_delivery_type = del_m.group(2).strip() if (del_m and del_m.group(2)) else ""
-
-                        cur.execute(
-                            """UPDATE mem_work_items
-                               SET summary=%s, deliveries=%s, delivery_type=%s, updated_at=NOW()
-                               WHERE wi_id=%s AND project_id=%s""",
-                            (child_summary, child_deliveries, child_delivery_type,
-                             child_wi_id, pid),
-                        )
-                        if cur.rowcount:
-                            updated += 1
-                            # Get id for embedding
-                            cur.execute(
-                                "SELECT id::text, wi_type FROM mem_work_items "
-                                "WHERE wi_id=%s AND project_id=%s",
-                                (child_wi_id, pid),
-                            )
-                            ch_row = cur.fetchone()
-                            if ch_row:
-                                _embed_work_item(ch_row[0], {
-                                    "name": child_wi_id,
-                                    "wi_type": ch_row[1],
-                                    "summary": child_summary,
-                                    "deliveries": child_deliveries,
-                                    "delivery_type": child_delivery_type,
-                                })
-                                embedded += 1
+                    # 4. Update items present in MD, mark missing ones as deleted
+                    for wi_id_key, db_child in db_children.items():
+                        if wi_id_key in md_items:
+                            md = md_items[wi_id_key]
+                            new_name    = md["name"]
+                            new_summary = md["summary"]
+                            if new_name != db_child["name"] or new_summary != (db_child["summary"] or ""):
+                                cur.execute(
+                                    """UPDATE mem_work_items
+                                       SET name=%s, summary=%s, updated_at=NOW()
+                                       WHERE wi_id=%s AND project_id=%s""",
+                                    (new_name, new_summary, wi_id_key, pid),
+                                )
+                                if cur.rowcount:
+                                    updated += 1
+                        else:
+                            # Item removed from MD — soft-delete or hard-delete
+                            if wi_id_key.startswith("AI"):
+                                cur.execute(
+                                    "DELETE FROM mem_work_items WHERE wi_id=%s AND project_id=%s",
+                                    (wi_id_key, pid),
+                                )
+                            else:
+                                cur.execute(
+                                    "UPDATE mem_work_items SET deleted_at=NOW(), updated_at=NOW() "
+                                    "WHERE wi_id=%s AND project_id=%s",
+                                    (wi_id_key, pid),
+                                )
+                            deleted_count += 1
 
                 conn.commit()
 
-            # Re-embed use_case itself (summary may have changed)
-            cur_uc = None
+            # Re-embed UC (summary may have changed) — fire-and-forget
             try:
                 with db.conn() as conn2:
                     with conn2.cursor() as cur2:
@@ -2178,10 +2208,10 @@ class MemoryWorkItems:
             except Exception:
                 pass
 
-            # Write file
+            # Write file as-is (requirements section preserved in file)
             self._write_md_file(item_id, pid, content)
 
-            return {"updated": updated, "embedded": embedded}
+            return {"updated": updated, "deleted": deleted_count, "embedded": embedded}
         except Exception as e:
             log.warning(f"save_md({item_id}) error: {e}")
             return {"error": str(e)}
@@ -2278,10 +2308,11 @@ class MemoryWorkItems:
                              SELECT id, wi_id, name, COALESCE(user_status, score_status, 0) AS eff
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
+                               AND deleted_at IS NULL
                            UNION ALL
                              SELECT w.id, w.wi_id, w.name, COALESCE(w.user_status, w.score_status, 0)
                              FROM mem_work_items w JOIN tree d ON w.wi_parent_id = d.id
-                             WHERE w.project_id=%s
+                             WHERE w.project_id=%s AND w.deleted_at IS NULL
                            )
                            SELECT name FROM tree
                            WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%' AND eff < 5

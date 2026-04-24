@@ -3008,6 +3008,16 @@ def m074_wi_completed(conn) -> None:
     log.info("m074: completed_at added to mem_work_items")
 
 
+def m075_wi_deleted(conn) -> None:
+    """Soft-delete column for work items — set when user removes item from MD."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mem_work_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"
+        )
+    conn.commit()
+    log.info("m075: deleted_at added to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3130,4 +3140,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m072_wi_dates", m072_wi_dates),
     ("m073_prompts_source_id_unique", m073_prompts_source_id_unique),
     ("m074_wi_completed", m074_wi_completed),
+    ("m075_wi_deleted",   m075_wi_deleted),
 ]
