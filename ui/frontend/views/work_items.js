@@ -728,15 +728,17 @@ function _startClassifyPoller(btn) {
 
 let _mdPanel = null;
 
-function _openMdPanel(item) {
-  // Navigate to Documents section and open the file there.
+async function _openMdPanel(item) {
+  // Regenerate (and write) the MD file on disk, then navigate to Documents.
   // Documents API paths are relative to documents/ — no "documents/" prefix.
   const slug = (item.name || item.id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
   const filePath = `use_cases/${slug}.md`;
-  if (window._nav) {
-    toast(`Opening in Documents…`, 'info');
-    window._nav('documents', { openFile: filePath, project: _project, itemId: item.id });
-  }
+  if (!window._nav) return;
+  toast('Generating MD file…', 'info');
+  try {
+    await api.wi.md.refresh(_project, item.id);
+  } catch (_) { /* non-fatal — navigate anyway, file may already exist */ }
+  window._nav('documents', { openFile: filePath, project: _project, itemId: item.id });
 }
 
 // ── Summary log helper ────────────────────────────────────────────────────────
@@ -1304,13 +1306,13 @@ function _renderUseCases() {
           <span class="wi-uc-label">◻ USE CASE</span>
           <span class="wi-id">${_esc(uc.wi_id)}</span>
           <span class="wi-name">${_esc(uc.name || uc.id)}</span>
-          <span style="flex:1"></span>
-          ${_dueBadge(uc.due_date, uc.start_date)}
-          <button class="wi-btn wi-btn-ghost" data-action="edit-md"
-                  data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Edit Markdown file">✎ MD</button>
           <button class="wi-edit-arrow" data-action="rename-pop"
                   data-id="${uc.id}" data-current-name="${_esc(uc.name || '')}" data-is-uc="true"
                   title="Rename use case">▾</button>
+          <span style="flex:1"></span>
+          ${_dueBadge(uc.due_date, uc.start_date)}
+          <button class="wi-btn wi-btn-ghost" data-action="edit-md"
+                  data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Open Markdown in Documents">✎ MD</button>
         </div>
         <div class="wi-uc-card-body" id="body-${uc.id}">
           <div class="wi-uc-dates">
