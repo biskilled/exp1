@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -1734,16 +1734,16 @@ class MemoryWorkItems:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    # Load current row
+                    # Load current row (include due_date for conflict detection)
                     cur.execute(
-                        "SELECT wi_type, wi_parent_id::text FROM mem_work_items "
+                        "SELECT wi_type, wi_parent_id::text, due_date FROM mem_work_items "
                         "WHERE id=%s::uuid AND project_id=%s",
                         (item_id, pid)
                     )
                     row = cur.fetchone()
                     if not row:
                         return {"error": "item not found"}
-                    wi_type, parent_id = row
+                    wi_type, parent_id, current_due_date = row
 
                     # When due_date is set (not cleared) → also set start_date = today
                     if "due_date" in updates and updates["due_date"]:
@@ -1762,6 +1762,7 @@ class MemoryWorkItems:
                                 return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
 
                     # Re-parent to a non-UC item → set child start_date = parent's due_date
+                    date_conflict_resolved = False
                     if "wi_parent_id" in updates and updates["wi_parent_id"]:
                         cur.execute(
                             "SELECT wi_type, due_date FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
@@ -1769,7 +1770,18 @@ class MemoryWorkItems:
                         )
                         np = cur.fetchone()
                         if np and np[0] != "use_case" and np[1]:
-                            updates["start_date"] = str(np[1])
+                            parent_due = np[1]  # date object from DB
+                            updates["start_date"] = str(parent_due)
+                            # Conflict: child has no work window (start_date >= due_date)
+                            if current_due_date and current_due_date <= parent_due:
+                                new_parent_due = parent_due - timedelta(days=1)
+                                cur.execute(
+                                    "UPDATE mem_work_items SET due_date=%s, updated_at=NOW() "
+                                    "WHERE id=%s::uuid AND project_id=%s",
+                                    (str(new_parent_due), updates["wi_parent_id"], pid)
+                                )
+                                updates["start_date"] = str(new_parent_due)
+                                date_conflict_resolved = True
 
                     # Apply main UPDATE
                     set_clause = ", ".join(f"{k}=%s" for k in updates)
@@ -1780,7 +1792,7 @@ class MemoryWorkItems:
                         vals,
                     )
 
-                    # UC due_date cascade: cap children's due_date to the new UC value
+                    # UC due_date cascade: set ALL direct children to UC due_date
                     cascade_count = 0
                     if "due_date" in updates and wi_type == "use_case" and updates["due_date"]:
                         cur.execute(
@@ -1788,15 +1800,16 @@ class MemoryWorkItems:
                                SET due_date=%s, updated_at=NOW()
                                WHERE project_id=%s AND wi_parent_id=%s::uuid
                                  AND wi_type != 'use_case'
-                                 AND (due_date IS NULL OR due_date > %s)
                                  AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'""",
-                            (updates["due_date"], pid, item_id, updates["due_date"])
+                            (updates["due_date"], pid, item_id)
                         )
                         cascade_count = cur.rowcount
                 conn.commit()
             result: dict = {"updated": True, "fields": list(updates.keys())}
             if cascade_count:
                 result["cascaded_children"] = cascade_count
+            if date_conflict_resolved:
+                result["date_conflict_resolved"] = True
             return result
         except Exception as e:
             log.warning(f"update({item_id}) error: {e}")

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 17:57 UTC by aicli /memory_
+_Generated: 2026-04-24 18:30 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -76,4 +76,66 @@ _Generated: 2026-04-24 17:57 UTC by aicli /memory_
 - Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)
 - UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding
 
+## Active Features / Bugs / Tasks
+
+### Bug
+
+- **ui-rendering-bugs** `[open]` — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
+
+### Feature
+
+- **ui-rendering-bugs** `[open]` — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
+- **general-commits** `[open]` — Add memory embedding and event extraction to memory promotion flow
+
+### Task
+
+- **Audit and clean planner_tags table schema** `[open]` — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
+- **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
+- **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
+- **discovery** `[open]` — Greeting and project context refresh
+
+### Use_case
+
+- **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
+- **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
+
 ## Recent Work (last 10 exchanges)
+
+**[2026-04-24 18:21]** `ui/`
+Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
+A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
+
+**[2026-04-24 17:56]** `ui/`
+Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
+
+**[2026-04-24 17:52]** `ui/`
+Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
+A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio
+
+**[2026-04-24 17:44]** `ui/`
+Q: Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already approved.
+A: Done. The "Approve X pending" button is removed from the Use Cases toolbar — it only exists in Work Items now.
+
+**[2026-04-24 10:59]** `ui/`
+Q: when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  used for in the use case ?
+A: Both fixes done. Now for your second question:  **"Approve X pending" button in Use Cases** — this approves child items under that UC that have been AI-classified but not yet manually approved. Items with IDs starting with `AI...` are "pending" — they've been created by the classify pipeline but nee
+
+**[2026-04-23 18:04]** `ui/`
+Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
+A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
+
+**[2026-04-23 16:58]** `ui/`
+Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
+A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
+
+**[2026-04-23 10:05]** `ui/`
+Q: I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a new section Use cases that managin the  use  cases. Also I do see now that the def
+A: Everything is in place. Here's what changed:  **Navigation (main.js):** - "Work Items" remains in the left sidebar (📥 icon) — shows pending items + classify flow - New "Use Cases" entry added below it (◻ icon) — completely separate page showing approved use cases  **Work Items page** — now clean, no
+
+**[2026-04-23 09:20]** `ui/`
+Q: it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the top. can you make another tab ob the right. first one  is for Work items  and the 
+A: The empty state message will say "Click Classify to generate AI-suggested use cases from **199 prompts** + **667 commits**." — clear and actionable.  Here's what changed and what you should see now:  **Tab layout**: The two tab buttons are now on the **right side** of the toolbar, grouped as a borde
+
+**[2026-04-23 09:06]** `ui/`
+Q: I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook offline(last promt 8.3H) - which makes sense  as it was the lat prompt
+A: Good. The hook is now healthy (0.1h). Here's a summary of what was done and what to expect:  **What I fixed:**  1. **Work Items tab now shows all items** — changed `_renderList()` to display ALL use cases (not just pending AI* ones). Previously, once a UC was approved, it disappeared from Work Items

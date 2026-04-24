@@ -291,6 +291,12 @@ function _sharedStyles() { return `<style>
       .wi-card.wi-insert-above {
         border-top:2px solid var(--accent) !important;
       }
+      /* item-as-parent drop target (drag onto card to set parent) */
+      .wi-card.wi-parent-target {
+        outline:2px solid #f59e0b;outline-offset:-2px;
+        background:rgba(245,158,11,.07);
+        cursor:crosshair !important;
+      }
       .wi-orphan-zone {
         margin-bottom:1.25rem;padding:0.65rem 0.9rem;
         border:2px dashed #f59e0b;border-radius:var(--radius);
@@ -994,6 +1000,7 @@ function _popupAt(el, anchor) {
 function _clearDragIndicators(listEl) {
   listEl.querySelectorAll('.wi-insert-above').forEach(el => el.classList.remove('wi-insert-above'));
   listEl.querySelectorAll('.wi-drag-over').forEach(el => el.classList.remove('wi-drag-over'));
+  listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
 }
 
 function _attachDragListeners() {
@@ -1396,6 +1403,72 @@ function _renderUseCases() {
       if (arrow) arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
     });
   });
+
+  _attachUcDragListeners();
+}
+
+// ── UC drag-to-parent ────────────────────────────────────────────────────────
+// Allows dragging a UC item onto another UC item to set it as parent.
+// Dragging within a drop-zone (between cards) still reorders; dragging ONTO
+// a card body highlights it amber and sets it as the new parent on drop.
+
+function _attachUcDragListeners() {
+  const listEl = document.getElementById('wi-list');
+  if (!listEl) return;
+
+  let _ucDragId = null;  // ID of item currently being dragged
+
+  listEl.querySelectorAll('.wi-uc-children .wi-card').forEach(card => {
+    const cardId = card.dataset.itemId;
+
+    card.addEventListener('dragstart', (e) => {
+      _ucDragId = cardId;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', cardId);
+      setTimeout(() => card.classList.add('wi-dragging'), 0);
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('wi-dragging');
+      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+      _ucDragId = null;
+    });
+
+    card.addEventListener('dragover', (e) => {
+      if (!_ucDragId || _ucDragId === cardId) return;
+      e.preventDefault();
+      e.stopPropagation();  // prevent parent drop-zone from firing
+      e.dataTransfer.dropEffect = 'link';
+      listEl.querySelectorAll('.wi-parent-target').forEach(el => { if (el !== card) el.classList.remove('wi-parent-target'); });
+      card.classList.add('wi-parent-target');
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      if (!card.contains(e.relatedTarget)) {
+        card.classList.remove('wi-parent-target');
+      }
+    });
+
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+      const targetId = cardId;
+      const itemId   = _ucDragId;
+      _ucDragId = null;
+      if (!targetId || !itemId || targetId === itemId) return;
+      try {
+        const r = await api.wi.update(_project, itemId, { wi_parent_id: targetId });
+        if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
+        if (r.date_conflict_resolved) {
+          toast('Linked — parent due date shortened by 1 day to create a work window', 'info');
+        } else {
+          toast('Item linked as child', 'success');
+        }
+        await _reloadCurrent();
+      } catch (err) { toast(`Link failed: ${err.message}`, 'error'); }
+    });
+  });
 }
 
 function _renderUcChildRow(c, rank) {
@@ -1411,7 +1484,7 @@ function _renderUcItem(item, depth = 0) {
 
   return `
     <div class="wi-card${isDone ? ' wi-card-done' : ''}"
-         style="${indent}margin-bottom:0.35rem" data-item-id="${item.id}">
+         draggable="true" style="${indent}margin-bottom:0.35rem" data-item-id="${item.id}">
       <div class="wi-card-header" title="Click to expand">
         <span class="wi-type-badge ${meta.cls}">${meta.icon} ${meta.label}</span>
         <button class="wi-edit-arrow" data-action="type-pop"

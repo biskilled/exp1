@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 17:57 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 18:30 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -70,3 +70,11 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
 - Mirror tables (mem_mrr_*) capture raw events with user_id INT; all 18 tables standardized with canonical column order and created_at/updated_at timestamps
+
+## Recent Context (last 5 changes)
+
+- [2026-04-24] when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  us
+- [2026-04-24] Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already 
+- [2026-04-24] When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and 
+- [2026-04-24] It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on
+- [2026-04-24] It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginig
