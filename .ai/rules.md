@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 17:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 17:53 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-23] I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a ne
 - [2026-04-23] that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as tex
 - [2026-04-23] Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . w
 - [2026-04-24] when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  us
 - [2026-04-24] Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already 
+- [2026-04-24] When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and 

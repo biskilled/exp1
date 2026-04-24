@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 17:44 UTC by aicli /memory_
+_Generated: 2026-04-24 17:53 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 17:44 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 17:52]** `ui/`
+Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
+A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio
+
 **[2026-04-24 17:44]** `ui/`
 Q: Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already approved.
 A: Done. The "Approve X pending" button is removed from the Use Cases toolbar — it only exists in Work Items now.
@@ -135,7 +139,3 @@ Q: test prompt after m073 fix
 **[2026-04-15 23:03]** `ui/`
 Q: I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppose to be after project_id. not need for cimmited_at as there is updated_at and cr
 A: All tables are correctly ordered. Here's a summary of everything done:  **Migration m052 — done (18 tables rebuilt):**  | Rule | Result | |------|--------| | `id → client_id → project_id → user_id` order | ✅ All tables | | `created_at → updated_at → embedding` always at end | ✅ All tables | | `commi
-
-**[2026-04-15 22:38]** `ui/`
-Q: I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) not string. I would like also to add updated_at for each mirror table. for all mir
-A: Clean startup, no errors. Migration m051 is complete and the backend is running correctly. Here's what was accomplished:  **Migration m051 — done:** - `mng_users.id`: now `SERIAL INT` PK; old UUID preserved as `uuid_id VARCHAR(36)` - `updated_at` added to: `mng_users`, `mng_clients`, all `mem_mrr_*`

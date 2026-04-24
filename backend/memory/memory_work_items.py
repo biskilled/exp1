@@ -2111,11 +2111,12 @@ class MemoryWorkItems:
         return content
 
     def _write_md_file(self, item_id: str, pid: int, content: str) -> None:
-        """Write MD content to documents/use_cases/{slug}.md."""
+        """Write MD content to workspace/{project}/documents/use_cases/{slug}.md.
+
+        Uses workspace_dir (same root the Documents API serves from) so the file
+        is immediately visible in the Documents view after refresh_md().
+        """
         try:
-            code_dir = _get_code_dir(self.project)
-            if not code_dir:
-                return
             # Get use_case name to derive slug
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -2126,10 +2127,11 @@ class MemoryWorkItems:
                     row = cur.fetchone()
             if not row:
                 return
-            slug = _use_case_slug(row[0])
-            uc_dir = code_dir / "documents" / "use_cases"
+            slug   = _use_case_slug(row[0])
+            uc_dir = Path(settings.workspace_dir) / self.project / "documents" / "use_cases"
             uc_dir.mkdir(parents=True, exist_ok=True)
             (uc_dir / f"{slug}.md").write_text(content, encoding="utf-8")
+            log.debug(f"_write_md_file({item_id}): wrote {slug}.md → {uc_dir}")
         except Exception as e:
             log.debug(f"_write_md_file({item_id}) error: {e}")
 
