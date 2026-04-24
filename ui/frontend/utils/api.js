@@ -523,6 +523,7 @@ api.wi = {
   create:     (p, b)        => _post(`/wi/${enc(p)}`, b),
   reorder:    (p, items)    => _post(`/wi/${enc(p)}/reorder`, { items }),
   merge:      (p, targetId, sourceId) => _post(`/wi/${enc(p)}/${enc(targetId)}/merge`, { source_id: sourceId }),
+  unmerge:    (p, sourceId)          => _post(`/wi/${enc(p)}/${enc(sourceId)}/unmerge`, {}),
   useCases:   (p)          => _get(`/wi/${enc(p)}/use-cases`),
   completed:  (p)          => _get(`/wi/${enc(p)}/completed`),
   complete:   (p, id)      => _post(`/wi/${enc(p)}/${enc(id)}/complete`, {}),

@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 22:39 UTC by aicli /memory_
+_Generated: 2026-04-24 22:53 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 22:39 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 22:46]** `ui/`
+Q: I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that is updated, make sure the aiCli folder is also updated. the goal os to remove un
+A: Here's the final structure and what changed:  ---  ## New `_templates/` Structure  ``` _templates/ ├── cli/ │   ├── claude/ │   │   ├── hooks/          ← 10 hook scripts (was: _templates/hooks/) │   │   └── settings.template.json │   └── mcp.template.json   ← shared Claude + Cursor MCP config ├── pi
+
 **[2026-04-24 22:30]** `ui/`
 Q: it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted of been linked as a child in the UI. in use case it is not working. Also can yo
 A: Backend is healthy. Here's a summary of all fixes:  ---  ## Fixes Applied  ### 1. Work Items tab — child no longer disappears  **Root cause**: `_renderList()` only showed items whose parent was a UC. When A became a child of B (non-UC), A was classified as an "orphan".  **Fix**:  - Computed `allSubI
@@ -136,7 +140,3 @@ A: Good — all stale MD files cleared. Now the "✎ MD" button in Use Cases wil
 **[2026-04-24 18:31]** `ui/`
 Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
 A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
-
-**[2026-04-24 18:21]** `ui/`
-Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
-A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-

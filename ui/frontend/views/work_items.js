@@ -30,6 +30,7 @@ let _classifyPoller = null;  // interval polling after background classify
 let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
 let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
+let _ucDragAbort    = null;       // AbortController for UC drag delegation listeners
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -1041,6 +1042,43 @@ function _clearDragIndicators(listEl) {
 }
 
 /**
+ * Show an 8-second undo toast at the bottom of the screen.
+ * undoFn must return a promise resolving to { error? } or truthy on success.
+ */
+function _showUndoToast(label, undoFn, reloadFn) {
+  document.querySelectorAll('.wi-undo-toast').forEach(t => t.remove());
+  const el = document.createElement('div');
+  el.className = 'wi-undo-toast';
+  el.style.cssText = [
+    'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%)',
+    'background:var(--surface2);border:1px solid var(--accent)',
+    'border-radius:8px;padding:0.45rem 0.9rem;z-index:9999',
+    'display:flex;gap:0.75rem;align-items:center',
+    'box-shadow:0 4px 16px rgba(0,0,0,.45);font-size:0.82rem;color:var(--text)',
+  ].join(';');
+  el.innerHTML = `
+    <span>${_esc(label)}</span>
+    <button id="wi-undo-btn" style="background:var(--accent);color:#fff;border:none;
+      border-radius:4px;padding:0.2rem 0.65rem;cursor:pointer;font-size:0.78rem">Undo</button>
+    <button id="wi-undo-dismiss" style="background:transparent;border:none;
+      color:var(--muted);cursor:pointer;font-size:0.9rem;line-height:1" title="Dismiss">✕</button>
+  `;
+  document.body.appendChild(el);
+  const timer = setTimeout(() => el.remove(), 8000);
+  const _rm   = () => { clearTimeout(timer); el.remove(); };
+  el.querySelector('#wi-undo-btn').addEventListener('click', async () => {
+    _rm();
+    try {
+      const r = await undoFn();
+      if (r && r.error) { toast(`Undo failed: ${r.error}`, 'error'); return; }
+      toast('Action undone', 'success');
+      await reloadFn();
+    } catch (err) { toast(`Undo failed: ${err.message}`, 'error'); }
+  });
+  el.querySelector('#wi-undo-dismiss').addEventListener('click', _rm);
+}
+
+/**
  * Show a small popover at position (x, y) offering two options:
  *   ↓ Make child  — reparent draggedId under targetId
  *   ⊕ Merge       — combine summaries, soft-delete draggedId
@@ -1058,6 +1096,9 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
     toast(`Cannot link: items must be the same type (${draggedItem.wi_type} ≠ ${targetItem.wi_type})`, 'error');
     return;
   }
+
+  // Capture original parent before any action (for Make-child undo)
+  const originalParentId = draggedItem?.wi_parent_id ?? null;
 
   const pop = document.createElement('div');
   pop.className = 'wi-link-merge-pop';
@@ -1092,8 +1133,11 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
     try {
       const r = await api.wi.update(_project, draggedId, { wi_parent_id: targetId });
       if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
-      toast('Item linked as child', 'success');
       await reloadFn();
+      _showUndoToast('Item linked as child', () =>
+        api.wi.update(_project, draggedId, { wi_parent_id: originalParentId || null }),
+        reloadFn
+      );
     } catch (err) { toast(`Link failed: ${err.message}`, 'error'); }
   });
 
@@ -1103,8 +1147,8 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
     try {
       const r = await api.wi.merge(_project, targetId, draggedId);
       if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
-      toast('Items merged', 'success');
       await reloadFn();
+      _showUndoToast('Items merged', () => api.wi.unmerge(_project, draggedId), reloadFn);
     } catch (err) { toast(`Merge failed: ${err.message}`, 'error'); }
   });
 
@@ -1572,51 +1616,61 @@ function _attachUcDragListeners() {
   const listEl = document.getElementById('wi-list');
   if (!listEl) return;
 
+  // Abort and replace any previous delegation listeners to avoid stacking on re-render
+  if (_ucDragAbort) _ucDragAbort.abort();
+  _ucDragAbort = new AbortController();
+  const { signal } = _ucDragAbort;
+
   let _ucDragId = null;  // ID of item currently being dragged
 
+  // dragstart / dragend still per-card (dragstart always fires on the draggable element itself)
   listEl.querySelectorAll('.wi-uc-children .wi-card').forEach(card => {
     const cardId = card.dataset.itemId;
-
     card.addEventListener('dragstart', (e) => {
       _ucDragId = cardId;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', cardId);
       setTimeout(() => card.classList.add('wi-dragging'), 0);
-    });
-
+    }, { signal });
     card.addEventListener('dragend', () => {
       card.classList.remove('wi-dragging');
       listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
       _ucDragId = null;
-    });
-
-    card.addEventListener('dragover', (e) => {
-      if (!_ucDragId || _ucDragId === cardId) return;
-      e.preventDefault();
-      e.stopPropagation();  // prevent parent drop-zone from firing
-      e.dataTransfer.dropEffect = 'link';
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => { if (el !== card) el.classList.remove('wi-parent-target'); });
-      card.classList.add('wi-parent-target');
-    });
-
-    card.addEventListener('dragleave', (e) => {
-      if (!card.contains(e.relatedTarget)) {
-        card.classList.remove('wi-parent-target');
-      }
-    });
-
-    card.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      const targetId = cardId;
-      const itemId   = _ucDragId;
-      _ucDragId = null;
-      if (!targetId || !itemId || targetId === itemId) return;
-      // Show link/merge choice popover instead of direct reparent
-      _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
-    });
+    }, { signal });
   });
+
+  // Delegated dragover/drop on listEl — finds the target card via closest().
+  // Works regardless of which child element the cursor is hovering over.
+  listEl.addEventListener('dragover', (e) => {
+    if (!_ucDragId) return;
+    const card = e.target.closest('.wi-uc-children .wi-card[data-item-id]');
+    if (!card || card.dataset.itemId === _ucDragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'link';
+    listEl.querySelectorAll('.wi-parent-target').forEach(el => { if (el !== card) el.classList.remove('wi-parent-target'); });
+    card.classList.add('wi-parent-target');
+  }, { signal });
+
+  listEl.addEventListener('dragleave', (e) => {
+    if (!_ucDragId) return;
+    if (!listEl.contains(e.relatedTarget)) {
+      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+    }
+  }, { signal });
+
+  listEl.addEventListener('drop', (e) => {
+    if (!_ucDragId) return;
+    const card = e.target.closest('.wi-uc-children .wi-card[data-item-id]');
+    if (!card) return;
+    const targetId = card.dataset.itemId;
+    const itemId   = _ucDragId;
+    if (!targetId || targetId === itemId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+    _ucDragId = null;
+    _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
+  }, { signal });
 }
 
 function _renderUcChildRow(c, rank) {

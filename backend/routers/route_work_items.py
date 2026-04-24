@@ -268,7 +268,7 @@ async def update_work_item(project: str, item_id: str, body: WiUpdateRequest):
     wi     = _wi(project)
     # Use exclude_unset so we can distinguish "not provided" from explicit null.
     # Allow explicit null for date fields (to clear them); filter None for everything else.
-    _nullable = {"due_date", "start_date"}
+    _nullable = {"due_date", "start_date", "wi_parent_id"}
     dumped = body.model_dump(exclude_unset=True)
     fields = {k: v for k, v in dumped.items() if v is not None or k in _nullable}
     result = wi.update(item_id, pid, fields)
@@ -316,6 +316,17 @@ async def merge_work_item(project: str, item_id: str, body: WiMergeRequest):
     pid    = _pid(project)
     wi     = _wi(project)
     result = wi.merge(body.source_id, item_id, pid)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/{item_id}/unmerge")
+async def unmerge_work_item(project: str, item_id: str):
+    """Undo a merge: restore soft-deleted item_id and remove its footnote from the target."""
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = wi.unmerge(item_id, pid)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
