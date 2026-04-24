@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-23 18:17 UTC by aicli /memory_
+_Generated: 2026-04-24 11:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform that captures development context across CLI, web, and workflow tools, storing it in PostgreSQL with semantic embeddings and a 4-layer memory synthesis pipeline. The system unifies raw events (mem_mrr_*) into AI-digested work items and feature snapshots, providing persistent context for LLM agents and enabling cross-tool collaboration. Current focus is on stabilizing the UI separation between Work Items (pending approvals) and Use Cases (approved features), fixing session history loading, and ensuring database schema consistency across all 18 core tables.
 
 ## Tech Stack
 
@@ -45,7 +49,7 @@ _Generated: 2026-04-23 18:17 UTC by aicli /memory_
 - **embeddings**: OpenAI text-embedding-3-small (1536-dim)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
-- **llm_provider_location**: agents/providers/
+- **llm_provider_location**: agents/providers/ with pr_ prefix
 - **database_migrations**: m001-m052 framework with db_schema.sql as source of truth
 - **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
 
@@ -69,12 +73,12 @@ _Generated: 2026-04-23 18:17 UTC by aicli /memory_
 
 ## In Progress
 
-- Database schema standardization complete (m052): all 18 tables rebuilt with canonical INT PK order (id → client_id → project_id → user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits
-- Session UI improvements: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id synchronously from runtime state on tab open
-- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading with correct descending sort; m050 migration fixed silent DB error in prompt storage
-- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained from mirror tables
-- Dashboard and pipeline UI implemented: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs
-- Planner_tags schema audit completed (m027): dropped unused columns (seq_num, summary, design, embedding, extra); added deliveries JSONB for code/document/design/ppt outputs; creator/updater fields standardized
+- Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards
+- Copy item functionality: ⎘ button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy
+- MD file navigation from Use Cases: clicking ✎ MD button auto-navigates to Documents section and opens the corresponding Markdown file by path
+- Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved
+- Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)
+- UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding
 
 ## Active Features / Bugs / Tasks
 
@@ -98,43 +102,6 @@ _Generated: 2026-04-23 18:17 UTC by aicli /memory_
 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## Recent Work (last 10 exchanges)
+## AI Synthesis
 
-**[2026-04-23 18:04]** `ui/`
-Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
-A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
-
-**[2026-04-23 16:58]** `ui/`
-Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
-A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
-
-**[2026-04-23 10:05]** `ui/`
-Q: I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a new section Use cases that managin the  use  cases. Also I do see now that the def
-A: Everything is in place. Here's what changed:  **Navigation (main.js):** - "Work Items" remains in the left sidebar (📥 icon) — shows pending items + classify flow - New "Use Cases" entry added below it (◻ icon) — completely separate page showing approved use cases  **Work Items page** — now clean, no
-
-**[2026-04-23 09:20]** `ui/`
-Q: it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the top. can you make another tab ob the right. first one  is for Work items  and the 
-A: The empty state message will say "Click Classify to generate AI-suggested use cases from **199 prompts** + **667 commits**." — clear and actionable.  Here's what changed and what you should see now:  **Tab layout**: The two tab buttons are now on the **right side** of the toolbar, grouped as a borde
-
-**[2026-04-23 09:06]** `ui/`
-Q: I still cannot see all work_items in Work itme tab. Also use case not showing any items. And I do seethe message Hook offline(last promt 8.3H) - which makes sense  as it was the lat prompt
-A: Good. The hook is now healthy (0.1h). Here's a summary of what was done and what to expect:  **What I fixed:**  1. **Work Items tab now shows all items** — changed `_renderList()` to display ALL use cases (not just pending AI* ones). Previously, once a UC was approved, it disappeared from Work Items
-
-**[2026-04-23 00:45]** `ui/`
-Q: test prompt after m073 fix
-
-**[2026-04-15 23:03]** `ui/`
-Q: I did ask to change the position in the table as well which not happend . for example in mem_mrr_promot - user_id suppose to be after project_id. not need for cimmited_at as there is updated_at and cr
-A: All tables are correctly ordered. Here's a summary of everything done:  **Migration m052 — done (18 tables rebuilt):**  | Rule | Result | |------|--------| | `id → client_id → project_id → user_id` order | ✅ All tables | | `created_at → updated_at → embedding` always at end | ✅ All tables | | `commi
-
-**[2026-04-15 22:38]** `ui/`
-Q: I would like to move to another database refactor - user_id this suppose to be int (same as project_id and clinet_id) not string. I would like also to add updated_at for each mirror table. for all mir
-A: Clean startup, no errors. Migration m051 is complete and the backend is running correctly. Here's what was accomplished:  **Migration m051 — done:** - `mng_users.id`: now `SERIAL INT` PK; old UUID preserved as `uuid_id VARCHAR(36)` - `updated_at` added to: `mng_users`, `mng_clients`, all `mem_mrr_*`
-
-**[2026-04-15 21:42]** `ui/`
-Q: it still loading on the start session 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 and after 15 seconds it is updated to the right session (current one) . I would like to load the current session on start
-A: The flow is now:  1. `renderChat()` → `_sessionId = null` (clears stale session) 2. `_loadSessions()` starts → **immediately** reads `state.currentProject.dev_runtime_state.last_session_id` and sets `_sessionId = "f6648726..."` — **synchronous, no network call** 3. Cache renders from localStorage → 
-
-**[2026-04-15 21:25]** `ui/`
-Q: The sort is ok. but when it is loading it loading with session id - 7d89c79f-b6f1-4bd4-a93f-09f2603fd1b1 whule the current session is f6648726-1e7f-48bf-b604-4c74bf7c8154. it is update the the current
-A: Here's what was fixed:  **Stale session ID on load** — Two root causes: 1. `_sessionId` was a module-level var that persisted across tab navigations. Fixed by resetting it to `null` at the start of `renderChat()` (along with `_appliedEntities`/`_pendingEntities`). 2. The localStorage cache rendered 
+**[2026-04-15]** `db_schema` — Migration m050 fixed silent DB error in hook-log endpoint; all 531 prompts (389 DB + ~142 JSONL) now load correctly with descending sort; system metadata tags stripped from 1441 events, retaining only phase/feature/bug/source user tags. **[2026-04-15]** `ui_history` — Session UI improved with last 5-char session ID badge in left panel, full ID in sticky banner on right pane, YY/MM/DD-HH:MM timestamps next to prompts; stale session loading fixed by reading last_session_id synchronously from runtime state. **[2026-04-23]** `ui_work_items` — Separated Work Items and Use Cases into distinct sidebar pages; Work Items tab now shows ALL pending AI-suggested items (not hidden after approval); Use Cases displays approved items with card-based UI and 'Approve X pending' button to commit child items to real IDs. **[2026-04-24]** `ui_navigation` — MD file link in Use Cases now auto-navigates to Documents section and opens target file; copy item button (⎘) formats work item as Markdown text (name/type/ID/summary/deliveries) to clipboard without duplication. **[2026-04-24]** `ui_styling` — Fixed dropdown visual clarity in Use Cases parent selector with proper background color; improved user understanding of classification workflow. **[2026-04-12]** `db_schema` — Completed m052 migration: all 18 tables rebuilt with canonical INT PK order (id → client_id → project_id → user_id); planner_tags schema cleaned (dropped seq_num/summary/design/embedding/extra); added deliveries JSONB column for code/document/design/ppt outputs.

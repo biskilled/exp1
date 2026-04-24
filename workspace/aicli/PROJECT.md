@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Database schema standardization complete (m052): all 18 tables rebuilt with canonical INT PK order (id → client_id → project_id → user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits
-- Session UI improvements: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id synchronously from runtime state on tab open
-- Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading with correct descending sort; m050 migration fixed silent DB error in prompt storage
-- Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained from mirror tables
-- Dashboard and pipeline UI implemented: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs
-- Planner_tags schema audit completed (m027): dropped unused columns (seq_num, summary, design, embedding, extra); added deliveries JSONB for code/document/design/ppt outputs; creator/updater fields standardized
+- Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards
+- Copy item functionality: ⎘ button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy
+- MD file navigation from Use Cases: clicking ✎ MD button auto-navigates to Documents section and opens the corresponding Markdown file by path
+- Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved
+- Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)
+- UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding

@@ -44,7 +44,7 @@
     "embeddings": "OpenAI text-embedding-3-small (1536-dim)",
     "deployment_backend": "Railway (Dockerfile + railway.toml)",
     "schema_migrations": "m001-m050 framework with db_schema.sql as source of truth",
-    "llm_provider_location": "agents/providers/",
+    "llm_provider_location": "agents/providers/ with pr_ prefix",
     "database_migrations": "m001-m052 framework with db_schema.sql as source of truth",
     "schema_core": "mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits"
   },
@@ -92,12 +92,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Database schema standardization complete (m052): all 18 tables rebuilt with canonical INT PK order (id \u2192 client_id \u2192 project_id \u2192 user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits",
-    "Session UI improvements: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id synchronously from runtime state on tab open",
-    "Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading with correct descending sort; m050 migration fixed silent DB error in prompt storage",
-    "Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained from mirror tables",
-    "Dashboard and pipeline UI implemented: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs",
-    "Planner_tags schema audit completed (m027): dropped unused columns (seq_num, summary, design, embedding, extra); added deliveries JSONB for code/document/design/ppt outputs; creator/updater fields standardized"
+    "Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards",
+    "Copy item functionality: \u2398 button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy",
+    "MD file navigation from Use Cases: clicking \u270e MD button auto-navigates to Documents section and opens the corresponding Markdown file by path",
+    "Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved",
+    "Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)",
+    "UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-23T18:17:56Z",
+  "last_memory_run": "2026-04-24T11:07:02Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -149,12 +149,12 @@
       "Mirror tables (mem_mrr_*) capture raw events with user_id INT; all 18 tables standardized with canonical column order and created_at/updated_at timestamps"
     ],
     "in_progress": [
-      "Database schema standardization complete (m052): all 18 tables rebuilt with canonical INT PK order (id \u2192 client_id \u2192 project_id \u2192 user_id); created_at/updated_at positioned at end before embedding; committed_at removed from commits",
-      "Session UI improvements: Chat and History tabs show session metadata (source badge, phase chip, last 5 char session ID); stale session loading fixed by reading last_session_id synchronously from runtime state on tab open",
-      "Hook-log endpoint verified: all 531 prompts (389 DB + ~142 JSONL merged) loading with correct descending sort; m050 migration fixed silent DB error in prompt storage",
-      "Event table cleanup: importance column dropped; system metadata tags stripped from 1441 events; only phase/feature/bug/source user tags retained from mirror tables",
-      "Dashboard and pipeline UI implemented: new Dashboard tab for workflow visibility; Cytoscape.js DAG visualization with 2-pane approval panel; pipelines executable from planner/docs/chat tabs",
-      "Planner_tags schema audit completed (m027): dropped unused columns (seq_num, summary, design, embedding, extra); added deliveries JSONB for code/document/design/ppt outputs; creator/updater fields standardized"
+      "Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards",
+      "Copy item functionality: \u2398 button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy",
+      "MD file navigation from Use Cases: clicking \u270e MD button auto-navigates to Documents section and opens the corresponding Markdown file by path",
+      "Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved",
+      "Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)",
+      "UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -162,17 +162,20 @@
       "frontend": "Vanilla JS + Electron shell + Vite dev server",
       "ui_components": "xterm.js + Monaco editor + Cytoscape.js + cytoscape-dagre",
       "storage_primary": "PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)",
+      "database": "PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework",
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
+      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
       "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
+      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment_backend": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "database_migrations": "m001-m052 framework with db_schema.sql as source of truth",
-      "database_schema": "Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_feature_snapshot; Mirror: mem_mrr_commits_code, mem_mrr_prompts, mem_mrr_events; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}; Shared: mng_users, mng_clients, session_tags"
+      "embeddings": "OpenAI text-embedding-3-small (1536-dim)",
+      "llm_provider_location": "agents/providers/ with pr_ prefix"
     },
-    "project_summary": "aicli is a shared AI memory platform for software development that maintains persistent context across multiple AI tools and sessions. It uses a 4-layer memory architecture (ephemeral \u2192 raw capture \u2192 LLM digests \u2192 synthesized work items), PostgreSQL with pgvector for semantic search, and an async DAG workflow executor. The project has recently completed database schema standardization (m001-m052), fixed session persistence in the UI, and implemented a Dashboard tab with visual pipeline execution.",
-    "memory_digest": "**[2026-04-15]** `db_migrations` \u2014 Migration m050 fixed silent DB error in hook-log endpoint; all 531 prompts now load correctly (389 DB + ~142 JSONL merged) with proper descending sort order. **[2026-04-15]** `ui` \u2014 Session persistence fixed: Chat tab now loads current session synchronously from runtime state instead of stale cached session; last_session_id read before network fetch prevents 15-second delay. **[2026-04-15]** `ui` \u2014 Session UI enhanced: History and Chat tabs display source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars in header, full ID copyable in body), and timestamp YY/MM/DD-HH:MM on each prompt. **[2026-04-14]** `db_migrations` \u2014 Migration m052 standardized all 18 tables: canonical INT PK order (id \u2192 client_id \u2192 project_id \u2192 user_id), created_at/updated_at at table end before embedding, committed_at removed from commits. **[2026-04-13]** `db_migrations` \u2014 Migration m037 dropped importance column from mem_ai_events; m038 dropped code_summary from mem_ai_project_facts; event tags cleaned to only user-facing tags (phase/feature/bug/source) after stripping 1441 system metadata entries. **[2026-04-12]** `schema` \u2014 Planner_tags audit completed (m027): dropped seq_num/summary/design/embedding/extra; added deliveries JSONB for code/document/design/ppt outputs; standardized creator/updater fields; mem_ai_feature_snapshot table created to merge user requirements with work items."
+    "project_summary": "aicli is a shared AI memory platform that captures development context across CLI, web, and workflow tools, storing it in PostgreSQL with semantic embeddings and a 4-layer memory synthesis pipeline. The system unifies raw events (mem_mrr_*) into AI-digested work items and feature snapshots, providing persistent context for LLM agents and enabling cross-tool collaboration. Current focus is on stabilizing the UI separation between Work Items (pending approvals) and Use Cases (approved features), fixing session history loading, and ensuring database schema consistency across all 18 core tables.",
+    "memory_digest": "**[2026-04-15]** `db_schema` \u2014 Migration m050 fixed silent DB error in hook-log endpoint; all 531 prompts (389 DB + ~142 JSONL) now load correctly with descending sort; system metadata tags stripped from 1441 events, retaining only phase/feature/bug/source user tags. **[2026-04-15]** `ui_history` \u2014 Session UI improved with last 5-char session ID badge in left panel, full ID in sticky banner on right pane, YY/MM/DD-HH:MM timestamps next to prompts; stale session loading fixed by reading last_session_id synchronously from runtime state. **[2026-04-23]** `ui_work_items` \u2014 Separated Work Items and Use Cases into distinct sidebar pages; Work Items tab now shows ALL pending AI-suggested items (not hidden after approval); Use Cases displays approved items with card-based UI and 'Approve X pending' button to commit child items to real IDs. **[2026-04-24]** `ui_navigation` \u2014 MD file link in Use Cases now auto-navigates to Documents section and opens target file; copy item button (\u2398) formats work item as Markdown text (name/type/ID/summary/deliveries) to clipboard without duplication. **[2026-04-24]** `ui_styling` \u2014 Fixed dropdown visual clarity in Use Cases parent selector with proper background color; improved user understanding of classification workflow. **[2026-04-12]** `db_schema` \u2014 Completed m052 migration: all 18 tables rebuilt with canonical INT PK order (id \u2192 client_id \u2192 project_id \u2192 user_id); planner_tags schema cleaned (dropped seq_num/summary/design/embedding/extra); added deliveries JSONB column for code/document/design/ppt outputs."
   }
 }

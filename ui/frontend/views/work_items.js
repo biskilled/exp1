@@ -1347,12 +1347,6 @@ function _renderUseCases() {
                 ${_ucHideDone.has(uc.id) ? '👁 Show Done' : '🙈 Hide Done'}
               </button>
             ` : ''}
-            ${s.pending_children > 0 ? `
-              <button class="wi-btn wi-btn-approve" data-action="approve-all" data-parent-id="${uc.id}"
-                      style="font-size:0.72rem">
-                ✓ Approve ${s.pending_children} pending
-              </button>
-            ` : ''}
           </div>
 
           <!-- Children grouped -->
