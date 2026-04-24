@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 22:02 UTC by aicli /memory_
+_Generated: 2026-04-24 22:23 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 22:02 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 22:08]** `ui/`
+Q: I can see that I can move items in use case and in work item - but they are not linked as prent-child. I would like to be able to linked as parent child or merged when user drag an item above another 
+A: The `/wi/{project}/{item_id}/merge` route is registered. Everything is in place. Here's a summary of what was implemented:  ---  ## Drag-to-Link/Merge — Implemented  ### What was built  **Backend (3 changes):** - `m076_wi_merged_into` migration — adds `merged_into UUID` self-FK to `mem_work_items` -
+
 **[2026-04-24 21:49]** `ui/`
 Q: I do see duplicates title at the md file - for example Features (6) or Tasks (7) .. Also there is title Requirements (1) - twise which is not suppose to be (all requirements suppose to be under requir
 A: The MD is now clean. Let me summarize what was fixed and what was done:  ---  **Issues fixed:**  1. **Duplicate `### Features (6)` / `### Tasks (7)` headers** — Root cause: previous `save_md()` parser didn't stop at `##` / `---` boundaries, causing 7 item summaries to accumulate subsequent section h
@@ -135,7 +139,3 @@ A: The file was created at the correct path. Everything is working:  **Summary o
 
 **[2026-04-24 17:56]** `ui/`
 Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
-
-**[2026-04-24 17:52]** `ui/`
-Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
-A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio

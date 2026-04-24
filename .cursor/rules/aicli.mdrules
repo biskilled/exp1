@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 22:02 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 22:23 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] I would like to add completed section on the left side panel.  And arrange that as group on the left - work Items, Use C
 - [2026-04-24] Looks better, the md file is not looks good yet. dont think there is need to add the <!-- tags >> this data will be save
 - [2026-04-24] I do see that it is not possible to makr content and copy paste in the UI (for example mark some content using maouse in
 - [2026-04-24] Looks better. in the md file I do see that there is title and line below there is bug/feature.. and below desc. there is
 - [2026-04-24] I do see duplicates title at the md file - for example Features (6) or Tasks (7) .. Also there is title Requirements (1)
+- [2026-04-24] I can see that I can move items in use case and in work item - but they are not linked as prent-child. I would like to b

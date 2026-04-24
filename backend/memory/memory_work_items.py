@@ -1761,7 +1761,7 @@ class MemoryWorkItems:
                             if new_due > parent_row[0]:
                                 return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
 
-                    # Re-parent to a non-UC item → set child start_date = parent's due_date
+                    # Re-parent: validate same type for non-UC parents; set start_date
                     date_conflict_resolved = False
                     if "wi_parent_id" in updates and updates["wi_parent_id"]:
                         cur.execute(
@@ -1769,6 +1769,9 @@ class MemoryWorkItems:
                             (updates["wi_parent_id"], pid)
                         )
                         np = cur.fetchone()
+                        # Same-type check only when reparenting to a non-UC item
+                        if np and np[0] != "use_case" and np[0] != wi_type:
+                            return {"error": f"cannot link items of different types ({wi_type} ≠ {np[0]})"}
                         if np and np[0] != "use_case" and np[1]:
                             parent_due = np[1]  # date object from DB
                             updates["start_date"] = str(parent_due)
@@ -1829,13 +1832,13 @@ class MemoryWorkItems:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT id::text, name, summary FROM mem_work_items "
+                        "SELECT id::text, name, summary, wi_type FROM mem_work_items "
                         "WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
                         (source_id, pid),
                     )
                     src = cur.fetchone()
                     cur.execute(
-                        "SELECT id::text, name, summary FROM mem_work_items "
+                        "SELECT id::text, name, summary, wi_type FROM mem_work_items "
                         "WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
                         (target_id, pid),
                     )
@@ -1844,6 +1847,8 @@ class MemoryWorkItems:
                         return {"error": "source item not found"}
                     if not tgt:
                         return {"error": "target item not found"}
+                    if src[3] != tgt[3]:
+                        return {"error": f"cannot merge items of different types ({src[3]} ≠ {tgt[3]})"}
 
                     src_name, src_summary = src[1] or "", src[2] or ""
                     tgt_summary          = tgt[2] or ""

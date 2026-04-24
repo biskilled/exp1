@@ -1050,6 +1050,15 @@ function _clearDragIndicators(listEl) {
 function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
   document.querySelectorAll('.wi-link-merge-pop').forEach(p => p.remove());
 
+  // Type validation — same type required for both actions
+  const allFlat = [..._allItems, ..._ucItems.flatMap(u => u.children || [])];
+  const draggedItem = allFlat.find(i => i.id === draggedId);
+  const targetItem  = allFlat.find(i => i.id === targetId);
+  if (draggedItem && targetItem && draggedItem.wi_type !== targetItem.wi_type) {
+    toast(`Cannot link: items must be the same type (${draggedItem.wi_type} ≠ ${targetItem.wi_type})`, 'error');
+    return;
+  }
+
   const pop = document.createElement('div');
   pop.className = 'wi-link-merge-pop';
   pop.style.cssText = `position:fixed;z-index:950;padding:0.4rem;
@@ -2112,9 +2121,13 @@ function _renderList() {
   const visibleUcIds = _filter ? new Set(children.map(c => c.wi_parent_id).filter(Boolean)) : allUcIds;
   const visibleUCs  = _filter ? useCases.filter(u => visibleUcIds.has(u.id)) : useCases;
 
-  // Orphans: items not in any UC and not use_case themselves
+  // Direct UC children IDs
   const childIds  = new Set(allChildren.map(c => c.id));
-  const orphans   = _allItems.filter(i => !allUcIds.has(i.id) && !childIds.has(i.id));
+  // Sub-items: children of non-UC items (depth 1+); rendered indented below their parent
+  const allSubItems  = _allItems.filter(i => i.wi_parent_id && childIds.has(i.wi_parent_id) && !allUcIds.has(i.id));
+  const subItemIds   = new Set(allSubItems.map(s => s.id));
+  // Orphans: not UC, not direct child, not sub-item
+  const orphans   = _allItems.filter(i => !allUcIds.has(i.id) && !childIds.has(i.id) && !subItemIds.has(i.id));
   const visibleOrphans = _filter ? orphans.filter(o => o.wi_type === _filter) : orphans;
 
   if (!visibleUCs.length && !visibleOrphans.length) {
@@ -2217,7 +2230,13 @@ function _renderList() {
                     data-id="${uc.id}" data-summary="${_esc(uc.summary || '')}">✎ Edit summary</button>
           </div>
           <div class="wi-uc-children wi-drop-zone" data-uc-id="${uc.id}">
-            ${ucChildren.length ? ucChildren.map((c, idx) => _renderItemCard(c, idx + 1)).join('') : `
+            ${ucChildren.length ? ucChildren.map((c, idx) => {
+                const subs = allSubItems.filter(s => s.wi_parent_id === c.id);
+                const subHtml = subs.map(s =>
+                  `<div style="margin-left:1.4rem;border-left:2px solid var(--border)">${_renderItemCard(s)}</div>`
+                ).join('');
+                return _renderItemCard(c, idx + 1) + subHtml;
+              }).join('') : `
               <div style="padding:0.75rem 0.9rem;color:var(--muted);font-size:0.78rem;font-style:italic">
                 Drop items here or use + Add Item
               </div>
