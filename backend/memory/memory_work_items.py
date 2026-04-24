@@ -1904,15 +1904,37 @@ class MemoryWorkItems:
             return {"error": str(e)}
 
     def approve_all_under(self, parent_id: str, pid: int) -> dict:
-        """Approve all pending items under a parent work item."""
-        items = self._list_items(
-            pid,
-            where=f"wi_parent_id='{parent_id}'::uuid AND wi_id LIKE 'AI%%'",
-        )
+        """Approve all pending (AI-prefixed) items under a parent — recursively."""
+        if not db.is_available():
+            return {"error": "db not available"}
+        # Collect ALL descendants (recursive) with AI-prefixed wi_id
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """WITH RECURSIVE tree AS (
+                             SELECT id::text, wi_id
+                             FROM mem_work_items
+                             WHERE wi_parent_id=%s::uuid AND project_id=%s
+                               AND deleted_at IS NULL
+                           UNION ALL
+                             SELECT w.id::text, w.wi_id
+                             FROM mem_work_items w
+                             JOIN tree d ON w.wi_parent_id = d.id::uuid
+                             WHERE w.project_id=%s AND w.deleted_at IS NULL
+                           )
+                           SELECT id FROM tree
+                           WHERE wi_id LIKE 'AI%%'""",
+                        (parent_id, pid, pid),
+                    )
+                    pending_ids = [r[0] for r in cur.fetchall()]
+        except Exception as e:
+            return {"error": str(e)}
+
         approved = []
         errors   = []
-        for item in items:
-            result = self.approve(item["id"], pid)
+        for item_id in pending_ids:
+            result = self.approve(item_id, pid)
             if "error" in result:
                 errors.append(result)
             else:
@@ -2021,10 +2043,13 @@ class MemoryWorkItems:
                     if not grp:
                         continue
                     t_plural = _TYPE_LABEL.get(t, t).capitalize() + "s"
-                    lines += ["", f"### {t_plural} ({len(grp)})", ""]
-                    for ch in grp:
-                        lines += _item_block(ch)
+                    if lines:                     # blank between type groups
                         lines.append("")
+                    lines += [f"### {t_plural} ({len(grp)})", ""]
+                    for i, ch in enumerate(grp):
+                        lines += _item_block(ch)
+                        if i < len(grp) - 1:     # blank between items, not after last
+                            lines.append("")
                 return lines
 
             # Build ## Requirements section
@@ -2050,19 +2075,20 @@ class MemoryWorkItems:
             ]
             L += req_lines
 
-            L += ["---", "", f"## Completed ({len(done_items)})"]
+            L += ["---", "", f"## Completed ({len(done_items)})", ""]
 
             if done_items:
                 L += _group_section(done_items)
+                L.append("")
             else:
-                L += ["", "_No completed items yet._", ""]
+                L += ["_No completed items yet._", ""]
 
-            L += ["", "---", "", f"## Open Items ({len(open_items)})"]
+            L += ["---", "", f"## Open Items ({len(open_items)})", ""]
 
             if open_items:
                 L += _group_section(open_items)
             else:
-                L += ["", "_No open items._", ""]
+                L += ["_No open items._"]
 
             return "\n".join(L)
         except Exception as e:
