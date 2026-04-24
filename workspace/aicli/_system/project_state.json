@@ -63,7 +63,7 @@
     "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
     "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
     "Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM",
-    "Mirror tables (mem_mrr_*) capture raw events with user_id INT; all 18 tables standardized with canonical column order and created_at/updated_at timestamps"
+    "Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant item tracking"
   ],
   "implemented_features": [
     "5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku",
@@ -92,12 +92,12 @@
     "config.py reads ~/.aicli/config.json for WORKSPACE_DIR at startup"
   ],
   "in_progress": [
-    "Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards",
-    "Copy item functionality: \u2398 button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy",
-    "MD file navigation from Use Cases: clicking \u270e MD button auto-navigates to Documents section and opens the corresponding Markdown file by path",
-    "Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved",
-    "Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)",
-    "UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding"
+    "MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections",
+    "Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts",
+    "Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts",
+    "Copy item functionality stability: \u2398 button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action",
+    "Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab",
+    "Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list"
   ],
   "next_phase_plan": {
     "project_management_page": [
@@ -129,7 +129,7 @@
     "cloud": "Railway (Dockerfile + railway.toml)",
     "desktop": "Electron-builder: Mac dmg (arm64+x64), Windows nsis, Linux AppImage+deb"
   },
-  "last_memory_run": "2026-04-24T18:40:09Z",
+  "last_memory_run": "2026-04-24T19:03:09Z",
   "_synthesis_cache": {
     "key_decisions": [
       "Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files",
@@ -146,15 +146,15 @@
       "Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations",
       "Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)",
       "Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM",
-      "Mirror tables (mem_mrr_*) capture raw events with user_id INT; all 18 tables standardized with canonical column order and created_at/updated_at timestamps"
+      "Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant item tracking"
     ],
     "in_progress": [
-      "Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards",
-      "Copy item functionality: \u2398 button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy",
-      "MD file navigation from Use Cases: clicking \u270e MD button auto-navigates to Documents section and opens the corresponding Markdown file by path",
-      "Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved",
-      "Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)",
-      "UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding"
+      "MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections",
+      "Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts",
+      "Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts",
+      "Copy item functionality stability: \u2398 button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action",
+      "Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab",
+      "Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list"
     ],
     "tech_stack": {
       "cli": "Python 3.12 + prompt_toolkit + rich",
@@ -166,16 +166,13 @@
       "authentication": "JWT (python-jose + bcrypt) + DEV_MODE toggle",
       "llm_providers": "Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok",
       "workflow_engine": "Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic",
-      "workflow_ui": "Cytoscape.js + cytoscape-dagre; 2-pane approval panel; Dashboard tab for pipeline visibility",
-      "memory_synthesis": "Claude Haiku dual-layer with 5 output files + timestamp tracking + LLM response summarization",
-      "chunking": "Smart chunking: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs)",
       "mcp": "Stdio MCP server with 12+ tools",
       "deployment_backend": "Railway (Dockerfile + railway.toml)",
       "deployment_desktop": "Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)",
-      "embeddings": "OpenAI text-embedding-3-small (1536-dim)",
-      "llm_provider_location": "agents/providers/ with pr_ prefix"
+      "config_management": "config.py + YAML pipelines + pyproject.toml",
+      "build_tooling": "npm 8+ + Electron-builder + Vite dev server"
     },
-    "project_summary": "aicli is a shared AI memory platform that captures development context across CLI, web, and workflow tools, storing it in PostgreSQL with semantic embeddings and a 4-layer memory synthesis pipeline. The system unifies raw events (mem_mrr_*) into AI-digested work items and feature snapshots, providing persistent context for LLM agents and enabling cross-tool collaboration. Current focus is on stabilizing the UI separation between Work Items (pending approvals) and Use Cases (approved features), fixing session history loading, and ensuring database schema consistency across all 18 core tables.",
-    "memory_digest": "**[2026-04-15]** `db_schema` \u2014 Migration m050 fixed silent DB error in hook-log endpoint; all 531 prompts (389 DB + ~142 JSONL) now load correctly with descending sort; system metadata tags stripped from 1441 events, retaining only phase/feature/bug/source user tags. **[2026-04-15]** `ui_history` \u2014 Session UI improved with last 5-char session ID badge in left panel, full ID in sticky banner on right pane, YY/MM/DD-HH:MM timestamps next to prompts; stale session loading fixed by reading last_session_id synchronously from runtime state. **[2026-04-23]** `ui_work_items` \u2014 Separated Work Items and Use Cases into distinct sidebar pages; Work Items tab now shows ALL pending AI-suggested items (not hidden after approval); Use Cases displays approved items with card-based UI and 'Approve X pending' button to commit child items to real IDs. **[2026-04-24]** `ui_navigation` \u2014 MD file link in Use Cases now auto-navigates to Documents section and opens target file; copy item button (\u2398) formats work item as Markdown text (name/type/ID/summary/deliveries) to clipboard without duplication. **[2026-04-24]** `ui_styling` \u2014 Fixed dropdown visual clarity in Use Cases parent selector with proper background color; improved user understanding of classification workflow. **[2026-04-12]** `db_schema` \u2014 Completed m052 migration: all 18 tables rebuilt with canonical INT PK order (id \u2192 client_id \u2192 project_id \u2192 user_id); planner_tags schema cleaned (dropped seq_num/summary/design/embedding/extra); added deliveries JSONB column for code/document/design/ppt outputs."
+    "project_summary": "aicli is a shared AI memory platform for software development that maintains persistent context across sessions by storing project history in PostgreSQL with semantic embeddings. It separates development (backend FastAPI + Python CLI, frontend Electron + Vanilla JS) and enables work item lifecycle management with AI-generated metadata, use case synthesis, and workflow automation via async DAG execution. Current focus is stabilizing Work Items/Use Cases UI separation, MD file generation accuracy with due date enforcement, and hook-log reliability for prompt persistence.",
+    "memory_digest": "**[2026-04-24]** `ui` \u2014 MD file generation now uses recursive CTEs to capture all descendant items across re-parented hierarchies; status counts and sections properly categorized by type (bug/feature/task) with completed/open/in-progress item tracking. **[2026-04-24]** `ui` \u2014 Due date management added to Use Cases: calendar dates or day offsets (e.g., 05/05/26 or 8 days); parent due dates auto-enforce on child items with conflict resolution for re-parenting. **[2026-04-24]** `ui` \u2014 Dropdown styling fixed with background color clarity; 'Use Case' button added to Use Cases toolbar to enable quick navigation back to UC management from item views. **[2026-04-24]** `ui` \u2014 Copy item (\u2398) button stabilized to format work items as readable Markdown with name/type/ID/summary/deliveries; removed unintended duplication on copy. **[2026-04-23]** `ui` \u2014 Work Items and Use Cases UI separation complete: separate sidebar entries with distinct tabs; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved items with expandable cards. **[2026-04-15]** `backend` \u2014 m050 migration fixed silent DB error in hook-log endpoint; prompt storage now reliable with 531 total prompts (389 DB + ~142 JSONL merged) and proper descending sort by date."
   }
 }

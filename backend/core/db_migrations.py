@@ -2995,6 +2995,19 @@ def m073_prompts_source_id_unique(conn) -> None:
     log.info("m073: unique index idx_prompts_project_source created on mem_mrr_prompts")
 
 
+def m074_wi_completed(conn) -> None:
+    """Add completed_at to mem_work_items for use-case lifecycle tracking."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+            CREATE INDEX IF NOT EXISTS idx_wi_completed ON mem_work_items (project_id, completed_at)
+              WHERE completed_at IS NOT NULL;
+        """)
+    conn.commit()
+    log.info("m074: completed_at added to mem_work_items")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3116,4 +3129,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m071_drop_score_tag", m071_drop_score_tag),
     ("m072_wi_dates", m072_wi_dates),
     ("m073_prompts_source_id_unique", m073_prompts_source_id_unique),
+    ("m074_wi_completed", m074_wi_completed),
 ]

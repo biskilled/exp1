@@ -610,6 +610,34 @@ function _setupEvents(container) {
       return;
     }
 
+    // Complete use case
+    const completeBtn = e.target.closest('[data-action="complete-uc"]');
+    if (completeBtn) {
+      e.stopPropagation();
+      const ucId = completeBtn.dataset.id;
+      const uc   = _ucItems.find(u => u.id === ucId);
+      const name = uc?.name || 'this use case';
+      if (!confirm(`Mark "${name}" as completed?\n\nAll items must be done. The use case will move to the Completed tab.`)) return;
+      completeBtn.disabled = true;
+      try {
+        const r = await api.wi.complete(_project, ucId);
+        if (r.error) {
+          const detail = r.incomplete?.length
+            ? `\n\nStill open:\n• ${r.incomplete.slice(0, 5).join('\n• ')}`
+            : '';
+          toast(`Cannot complete: ${r.error}${detail}`, 'error');
+          completeBtn.disabled = false;
+          return;
+        }
+        toast(`✓ "${name}" completed and moved to Completed tab`, 'success');
+        await _loadUseCases();
+      } catch (err) {
+        toast(`Failed: ${err.message}`, 'error');
+        completeBtn.disabled = false;
+      }
+      return;
+    }
+
     // Re-parent item
     const parentBtn = e.target.closest('[data-action="parent-pop"]');
     if (parentBtn) {
@@ -1226,9 +1254,13 @@ function _renderUseCases() {
   const el = document.getElementById('wi-list');
   if (!el) return;
 
-  if (!_ucItems.length) {
+  // Exclude completed use cases — they live in the Completed tab
+  const activeUcs = _ucItems.filter(uc => !uc.completed_at);
+
+  if (!activeUcs.length) {
     el.innerHTML = `<div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
-      No approved use cases yet.<br>Approve use cases in the <strong>Work Items</strong> tab first.
+      No active use cases.<br>Approve use cases in the <strong>Work Items</strong> tab first.<br>
+      ${_ucItems.length > activeUcs.length ? `<span style="color:#22c55e">✓ ${_ucItems.length - activeUcs.length} completed — see Completed tab.</span>` : ''}
     </div>`;
     return;
   }
@@ -1236,7 +1268,7 @@ function _renderUseCases() {
   const fmt = (iso) => iso ? iso.slice(0, 10) : '—';
 
   let html = '';
-  for (const uc of _ucItems) {
+  for (const uc of activeUcs) {
     const s = uc.stats;
     const evChips = [
       s.total_prompts  ? `${s.total_prompts} prompts`   : '',
@@ -1324,6 +1356,9 @@ function _renderUseCases() {
           }
           <button class="wi-btn wi-btn-ghost" data-action="edit-md"
                   data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Open Markdown in Documents">✎ MD</button>
+          <button class="wi-btn wi-btn-approve" style="font-size:0.7rem;opacity:0.85"
+                  data-action="complete-uc" data-id="${uc.id}"
+                  title="Mark use case as completed (all items must be done)">✓ Complete</button>
         </div>
         <div class="wi-uc-card-body" id="body-${uc.id}">
           <div class="wi-uc-dates">
@@ -2272,4 +2307,105 @@ export async function renderUseCases(container, projectName) {
   _setupEvents(container);
   await _loadUseCases();
   _checkHookHealth();
+}
+
+// ── Completed Use Cases view ───────────────────────────────────────────────
+
+export async function renderCompleted(container, projectName) {
+  const proj = projectName || state.currentProject?.name || '';
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+      <div style="padding:0.65rem 1.25rem;border-bottom:1px solid var(--border);
+                  display:flex;align-items:center;gap:0.75rem;flex-shrink:0">
+        <strong style="font-size:0.9rem;color:var(--text)">✓ Completed</strong>
+        <span style="color:var(--muted);font-size:0.78rem">Completed use cases</span>
+        <span style="flex:1"></span>
+        <button id="completed-refresh" class="btn btn-ghost btn-sm" title="Refresh">⟳</button>
+      </div>
+      <div id="completed-list" style="flex:1;overflow-y:auto;padding:1rem 1.25rem">
+        <div style="color:var(--muted);text-align:center;padding:3rem">Loading…</div>
+      </div>
+    </div>
+    ${_sharedStyles()}
+  `;
+
+  document.getElementById('completed-refresh')?.addEventListener('click', () => _loadCompleted());
+
+  async function _loadCompleted() {
+    const listEl = document.getElementById('completed-list');
+    if (!listEl) return;
+    try {
+      const data = await api.wi.completed(proj);
+      const ucs  = data.use_cases || [];
+
+      if (!ucs.length) {
+        listEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
+          No completed use cases yet.<br>
+          <span style="font-size:0.75rem">Complete a use case from the <strong>Use Cases</strong> tab when all its items are done.</span>
+        </div>`;
+        return;
+      }
+
+      let html = '';
+      for (const uc of ucs) {
+        const startDate  = uc.start_date   ? uc.start_date.slice(0,10)   : '—';
+        const doneDate   = uc.completed_at ? uc.completed_at.slice(0,10) : '—';
+        const totalDays  = uc.total_days != null ? `${uc.total_days}d` : '—';
+
+        html += `
+          <div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid #22c55e;
+                      border-radius:var(--radius);margin-bottom:0.75rem;overflow:hidden"
+               data-uc-id="${uc.id}">
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;
+                        border-bottom:1px solid var(--border)">
+              <span style="font-size:0.6rem;font-weight:700;color:#22c55e;letter-spacing:0.05em;
+                           background:#22c55e18;border:1px solid #22c55e33;border-radius:3px;
+                           padding:1px 5px">✓ DONE</span>
+              <span style="font-size:0.72rem;color:var(--muted);font-family:monospace">${_esc(uc.wi_id || '')}</span>
+              <span style="font-weight:600;font-size:0.85rem;color:var(--text)">${_esc(uc.name || '')}</span>
+              <span style="flex:1"></span>
+              <span style="font-size:0.7rem;color:var(--muted);display:flex;gap:1rem;align-items:center">
+                <span title="Start date">⚑ ${startDate}</span>
+                <span title="Completed date">✓ ${doneDate}</span>
+                <span title="Total days" style="font-weight:600;color:var(--text)">⏱ ${totalDays}</span>
+              </span>
+              ${uc.md_path ? `<button class="wi-btn wi-btn-ghost" style="font-size:0.72rem"
+                      data-action="view-md" data-path="${_esc(uc.md_path)}" data-id="${uc.id}">📋 MD</button>` : ''}
+              <button class="wi-btn wi-btn-ghost" style="font-size:0.72rem"
+                      data-action="reopen-uc" data-id="${uc.id}" title="Move back to Use Cases">↩ Reopen</button>
+            </div>
+            ${uc.summary ? `
+              <div style="padding:0.5rem 0.9rem;font-size:0.79rem;color:var(--text2);line-height:1.5">
+                ${_esc(uc.summary)}
+              </div>` : ''}
+          </div>`;
+      }
+      listEl.innerHTML = html;
+
+      listEl.querySelectorAll('[data-action="reopen-uc"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const ucId = btn.dataset.id;
+          btn.disabled = true;
+          try {
+            const r = await api.wi.reopen(proj, ucId);
+            if (r.error) { toast(`Error: ${r.error}`, 'error'); btn.disabled = false; return; }
+            toast('Use case reopened — now visible in Use Cases tab', 'success');
+            _loadCompleted();
+          } catch (err) { toast(`Failed: ${err.message}`, 'error'); btn.disabled = false; }
+        });
+      });
+
+      listEl.querySelectorAll('[data-action="view-md"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (window._nav) window._nav('documents', { openFile: btn.dataset.path });
+        });
+      });
+
+    } catch (err) {
+      const listEl = document.getElementById('completed-list');
+      if (listEl) listEl.innerHTML = `<div style="color:var(--muted);text-align:center;padding:2rem">Error: ${_esc(err.message)}</div>`;
+    }
+  }
+
+  await _loadCompleted();
 }

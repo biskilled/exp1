@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards
-- Copy item functionality: ⎘ button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy
-- MD file navigation from Use Cases: clicking ✎ MD button auto-navigates to Documents section and opens the corresponding Markdown file by path
-- Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved
-- Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)
-- UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding
+- MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections
+- Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts
+- Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts
+- Copy item functionality stability: ⎘ button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action
+- Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab
+- Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list

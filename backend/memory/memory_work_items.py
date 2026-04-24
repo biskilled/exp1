@@ -1104,7 +1104,7 @@ class MemoryWorkItems:
                                    p.wi_id AS wi_parent_wi_id,
                                    w.tags,
                                    w.approved_at, w.created_at, w.updated_at,
-                                   w.start_date, w.due_date
+                                   w.start_date, w.due_date, w.completed_at
                             FROM mem_work_items w
                             LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
                             WHERE w.project_id=%s AND {where}
@@ -1118,7 +1118,7 @@ class MemoryWorkItems:
             result = []
             for row in rows:
                 d = dict(zip(cols, row))
-                for key in ("approved_at", "created_at", "updated_at", "start_date", "due_date"):
+                for key in ("approved_at", "created_at", "updated_at", "start_date", "due_date", "completed_at"):
                     if d.get(key):
                         d[key] = d[key].isoformat() if hasattr(d[key], 'isoformat') else str(d[key])
                 result.append(d)
@@ -1165,7 +1165,7 @@ class MemoryWorkItems:
                                w.mrr_ids, w.wi_parent_id::text,
                                p.wi_id AS wi_parent_wi_id, w.tags,
                                w.approved_at, w.created_at, w.updated_at,
-                               w.start_date, w.due_date,
+                               w.start_date, w.due_date, w.completed_at,
                                dt.depth, dt.uc_id::text AS uc_id
                         FROM desc_tree dt
                         JOIN mem_work_items w ON w.id = dt.id
@@ -1177,7 +1177,7 @@ class MemoryWorkItems:
                     all_desc: list[dict] = []
                     for row in cur.fetchall():
                         d = dict(zip(cols, row))
-                        for k in ("approved_at", "created_at", "updated_at", "start_date", "due_date"):
+                        for k in ("approved_at", "created_at", "updated_at", "start_date", "due_date", "completed_at"):
                             if d.get(k):
                                 d[k] = d[k].isoformat() if hasattr(d[k], 'isoformat') else str(d[k])
                         all_desc.append(d)
@@ -2237,6 +2237,140 @@ class MemoryWorkItems:
             log.debug(f"_write_md_file({item_id}): wrote {slug}.md → {uc_dir}")
         except Exception as e:
             log.debug(f"_write_md_file({item_id}) error: {e}")
+
+    def _move_md_file(self, name: str, from_folder: str, to_folder: str) -> None:
+        """Move a use-case MD file between documents sub-folders."""
+        try:
+            slug    = _use_case_slug(name)
+            base    = Path(settings.workspace_dir) / self.project / "documents"
+            src     = base / from_folder / f"{slug}.md"
+            dst_dir = base / to_folder
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            if src.exists():
+                src.rename(dst_dir / f"{slug}.md")
+        except Exception as e:
+            log.debug(f"_move_md_file({name}) error: {e}")
+
+    def complete_use_case(self, item_id: str, pid: int) -> dict:
+        """Mark a use case as completed.
+
+        Validates all recursive descendants have eff_status >= 5, then sets
+        completed_at = NOW() and moves the MD file to documents/completed/.
+        """
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT wi_id, name FROM mem_work_items "
+                        "WHERE id=%s::uuid AND project_id=%s AND wi_type='use_case'",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return {"error": "use case not found"}
+                    wi_id, name = row
+
+                    # Check all descendants are done
+                    cur.execute(
+                        """WITH RECURSIVE tree AS (
+                             SELECT id, wi_id, name, COALESCE(user_status, score_status, 0) AS eff
+                             FROM mem_work_items
+                             WHERE wi_parent_id=%s::uuid AND project_id=%s
+                           UNION ALL
+                             SELECT w.id, w.wi_id, w.name, COALESCE(w.user_status, w.score_status, 0)
+                             FROM mem_work_items w JOIN tree d ON w.wi_parent_id = d.id
+                             WHERE w.project_id=%s
+                           )
+                           SELECT name FROM tree
+                           WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%' AND eff < 5
+                           LIMIT 10""",
+                        (item_id, pid, pid),
+                    )
+                    incomplete = [r[0] for r in cur.fetchall()]
+                    if incomplete:
+                        return {
+                            "error": "not all items completed",
+                            "incomplete": incomplete,
+                        }
+
+                    cur.execute(
+                        "UPDATE mem_work_items SET completed_at=NOW(), updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid),
+                    )
+                conn.commit()
+
+            self._move_md_file(name, "use_cases", "completed")
+            return {"completed": True, "wi_id": wi_id}
+        except Exception as e:
+            log.warning(f"complete_use_case({item_id}) error: {e}")
+            return {"error": str(e)}
+
+    def reopen_use_case(self, item_id: str, pid: int) -> dict:
+        """Reopen a completed use case — clears completed_at, moves MD back."""
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return {"error": "use case not found"}
+                    name = row[0]
+                    cur.execute(
+                        "UPDATE mem_work_items SET completed_at=NULL, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (item_id, pid),
+                    )
+                conn.commit()
+            self._move_md_file(name, "completed", "use_cases")
+            return {"reopened": True}
+        except Exception as e:
+            log.warning(f"reopen_use_case({item_id}) error: {e}")
+            return {"error": str(e)}
+
+    def get_completed_use_cases(self, pid: int) -> list[dict]:
+        """Return all completed use cases with summary, dates, total_days."""
+        if not db.is_available():
+            return []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT id::text, wi_id, name, summary,
+                                  start_date, completed_at,
+                                  CASE WHEN start_date IS NOT NULL
+                                       THEN (completed_at::date - start_date)
+                                       ELSE NULL END AS total_days
+                           FROM mem_work_items
+                           WHERE project_id=%s AND wi_type='use_case'
+                             AND completed_at IS NOT NULL
+                           ORDER BY completed_at DESC""",
+                        (pid,),
+                    )
+                    cols = [d[0] for d in cur.description]
+                    rows = cur.fetchall()
+            result = []
+            for r in rows:
+                d = dict(zip(cols, r))
+                for k in ("start_date", "completed_at"):
+                    if d.get(k):
+                        d[k] = d[k].isoformat() if hasattr(d[k], 'isoformat') else str(d[k])
+                if d.get("total_days") is not None:
+                    d["total_days"] = int(d["total_days"])
+                slug = _use_case_slug(d["name"])
+                d["md_path"] = f"completed/{slug}.md"
+                result.append(d)
+            return result
+        except Exception as e:
+            log.warning(f"get_completed_use_cases error: {e}")
+            return []
 
     # ── Direct create ─────────────────────────────────────────────────────────
 

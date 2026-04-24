@@ -409,3 +409,27 @@ async def refresh_wi_md(project: str, item_id: str):
     wi      = _wi(project)
     content = wi.refresh_md(item_id, pid)
     return {"content": content}
+
+
+@router.get("/{project}/completed")
+async def list_completed_use_cases(project: str):
+    """Return all completed use cases with summary, dates, and total_days."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    return {"use_cases": wi.get_completed_use_cases(pid)}
+
+
+@router.post("/{project}/{item_id}/complete")
+async def complete_use_case(project: str, item_id: str):
+    """Mark a use case as completed (validates all items done first)."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    return wi.complete_use_case(item_id, pid)
+
+
+@router.post("/{project}/{item_id}/reopen")
+async def reopen_use_case(project: str, item_id: str):
+    """Reopen a completed use case."""
+    pid = _pid(project)
+    wi  = _wi(project)
+    return wi.reopen_use_case(item_id, pid)

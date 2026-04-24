@@ -1,7 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 18:39 UTC by aicli /memory_
+_Generated: 2026-04-24 19:02 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
+
+## Project Summary
+
+aicli is a shared AI memory platform for software development that maintains persistent context across sessions by storing project history in PostgreSQL with semantic embeddings. It separates development (backend FastAPI + Python CLI, frontend Electron + Vanilla JS) and enables work item lifecycle management with AI-generated metadata, use case synthesis, and workflow automation via async DAG execution. Current focus is stabilizing Work Items/Use Cases UI separation, MD file generation accuracy with due date enforcement, and hook-log reliability for prompt persistence.
 
 ## Tech Stack
 
@@ -65,16 +69,16 @@ _Generated: 2026-04-24 18:39 UTC by aicli /memory_
 - Backend module organization: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations
 - Deployment: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop (Mac dmg, Windows nsis, Linux AppImage+deb)
 - Session history UI persistence: Chat/History tabs display sessions with source badge (CLI/UI/Workflow), phase chip, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Mirror tables (mem_mrr_*) capture raw events with user_id INT; all 18 tables standardized with canonical column order and created_at/updated_at timestamps
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items awaiting approval; Use Cases tab displays approved use cases with expandable cards, due dates, and recursive descendant item tracking
 
 ## In Progress
 
-- Use Cases UI separation: Work Items and Use Cases now on separate pages in left sidebar; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved use cases with expandable cards
-- Copy item functionality: ⎘ button copies work item text to clipboard in formatted Markdown (name, type, ID, summary, deliveries); removed unintended item duplication on copy
-- MD file navigation from Use Cases: clicking ✎ MD button auto-navigates to Documents section and opens the corresponding Markdown file by path
-- Use Case approval workflow: 'Approve X pending' button commits child items (AI-prefixed IDs) to real work item IDs (FE1001, BU1002, etc.); pending items hidden until approved
-- Hook-log endpoint stability: m050 fixed silent DB error in prompt storage; hook health now shows 0.1h (last prompt 8.3h ago); 531 total prompts loaded (389 DB + ~142 JSONL merged)
-- UI dropdown styling: parent selector in Use Cases now has proper background color and visual clarity for better user understanding
+- MD file generation alignment: Use Cases now generate MD files with correct item categorization by type (bug/feature/task), proper status counts using recursive CTEs to capture all descendants, and completed/in-progress/open item sections
+- Use Case due date management: Due dates can be set as calendar dates or day offsets (e.g., 8 days or 05/05/26); connected items must finish by parent due date with auto-resolution of re-parenting conflicts
+- Session ID and timestamp visibility: Chat and History tabs now display last 5 chars of session ID in header with full UUID available on click; timestamps formatted as YY/MM/DD-HH:MM next to user prompts
+- Copy item functionality stability: ⎘ button copies work item as formatted Markdown (name, type, ID, summary, deliveries); removed unintended duplication on copy action
+- Dropdown styling improvements: Parent selector in Use Cases now has proper background color and visual clarity; navigation improved with 'Use Case' button next to edit/delete to jump back to UC management tab
+- Hook-log stability and prompt loading: m050 fixed silent DB error in prompt storage; 531 total prompts now load correctly (389 from DB + ~142 from JSONL); hook shows 0.1h health with proper sorted session list
 
 ## Active Features / Bugs / Tasks
 
@@ -99,43 +103,6 @@ _Generated: 2026-04-24 18:39 UTC by aicli /memory_
 - **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## Recent Work (last 10 exchanges)
+## AI Synthesis
 
-**[2026-04-24 18:31]** `ui/`
-Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
-A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
-
-**[2026-04-24 18:21]** `ui/`
-Q: It started to work. some improvemnts:   Title suppose to be US1003 - Userc case name (add the use case Id at the beginign for the title)  created date, updated date - at the top of the file (not as <!
-A: The file was created at the correct path. Everything is working:  **Summary of what's done:**  1. **`get_md()`** — regenerates with new format: `# US1002 — Use Case Name`, readable Created/Updated dates, `## Summary`, `## Requirements`, `## Completed (N)`, `## Open Items (N)`, bullet items with `<!-
-
-**[2026-04-24 17:56]** `ui/`
-Q: It is still dont find the file. the file should be stored unde documents. and it is still not created when user click on the md file button
-
-**[2026-04-24 17:52]** `ui/`
-Q: When I am trying to aeding the use case usng md file , I still see an error - Not found . path is under use_cases.. and for use case - Work Item Management & Metadata System the path is work-item-mana
-A: Two fixes:  1. **MD "Not found"** — clicking "✎ MD" now calls `api.wi.md.refresh()` first, which generates the content and writes the file to disk, before navigating to Documents. Previously the file didn't exist on disk unless it had been through the old backlog pipeline.  2. **Rename arrow positio
-
-**[2026-04-24 17:44]** `ui/`
-Q: Approve items suppose to be only on work items - when user approved they get real ID , in use cases - all items already approved.
-A: Done. The "Approve X pending" button is removed from the Use Cases toolbar — it only exists in Work Items now.
-
-**[2026-04-24 10:59]** `ui/`
-Q: when i am tryiong to  open the md file,it show error - file not found. Also what is the butoon approve 12 pending is  used for in the use case ?
-A: Both fixes done. Now for your second question:  **"Approve X pending" button in Use Cases** — this approves child items under that UC that have been AI-classified but not yet manually approved. Items with IDs starting with `AI...` are "pending" — they've been created by the classify pipeline but nee
-
-**[2026-04-23 18:04]** `ui/`
-Q: Ok. When I press copy. I do see the item duplcated, which I am not sure is needed (same item with (copy) at the end) . when user is copies is suppose to copy as you mention. Also the change parnet but
-A: All looks clean. Here's a summary of what was implemented:  ---  **MD → Documents navigation** — clicking "✎ MD" in Use Cases now navigates to the Documents section and auto-opens the file: - `documents.js`: `renderDocuments(container, projectName, opts = {})` accepts an `opts.openFile` path; after 
-
-**[2026-04-23 16:58]** `ui/`
-Q: that looks better and started to work properly. what is the copy item button is used for ? can I copy to conetent as text ?
-A: The ⎘ button now copies the item's text to clipboard in this format:  ``` ## Audit and clean planner_tags table schema Type: task  |  ID: TA4001  ### Summary Review planner_tags table for redundant/unused columns...  ### Deliveries Schema audit completed. Recommendations provided... ```  Includes na
-
-**[2026-04-23 10:05]** `ui/`
-Q: I did not wanted 2 tabs under  work items. I wanted work item (selct from the left side bar) to show work items and a new section Use cases that managin the  use  cases. Also I do see now that the def
-A: Everything is in place. Here's what changed:  **Navigation (main.js):** - "Work Items" remains in the left sidebar (📥 icon) — shows pending items + classify flow - New "Use Cases" entry added below it (◻ icon) — completely separate page showing approved use cases  **Work Items page** — now clean, no
-
-**[2026-04-23 09:20]** `ui/`
-Q: it is still not working and it seems the the UI is broken. instesd of having 2 tab - Work itersm and use cases on the top. can you make another tab ob the right. first one  is for Work items  and the 
-A: The empty state message will say "Click Classify to generate AI-suggested use cases from **199 prompts** + **667 commits**." — clear and actionable.  Here's what changed and what you should see now:  **Tab layout**: The two tab buttons are now on the **right side** of the toolbar, grouped as a borde
+**[2026-04-24]** `ui` — MD file generation now uses recursive CTEs to capture all descendant items across re-parented hierarchies; status counts and sections properly categorized by type (bug/feature/task) with completed/open/in-progress item tracking. **[2026-04-24]** `ui` — Due date management added to Use Cases: calendar dates or day offsets (e.g., 05/05/26 or 8 days); parent due dates auto-enforce on child items with conflict resolution for re-parenting. **[2026-04-24]** `ui` — Dropdown styling fixed with background color clarity; 'Use Case' button added to Use Cases toolbar to enable quick navigation back to UC management from item views. **[2026-04-24]** `ui` — Copy item (⎘) button stabilized to format work items as readable Markdown with name/type/ID/summary/deliveries; removed unintended duplication on copy. **[2026-04-23]** `ui` — Work Items and Use Cases UI separation complete: separate sidebar entries with distinct tabs; Work Items shows pending AI-classified items awaiting approval; Use Cases displays approved items with expandable cards. **[2026-04-15]** `backend` — m050 migration fixed silent DB error in hook-log endpoint; prompt storage now reliable with 531 total prompts (389 DB + ~142 JSONL merged) and proper descending sort by date.
