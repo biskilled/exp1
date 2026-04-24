@@ -37,6 +37,7 @@ from routers import (
 )
 from routers import route_memory
 from routers.route_work_items import router as work_items_router
+from routers.route_system import router as system_router
 from pwa_router import router as pwa_router
 
 
@@ -104,6 +105,7 @@ app.include_router(route_agents.router,         prefix="/agents",         tags=[
 app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
 app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
 app.include_router(work_items_router,           prefix="/wi",             tags=["work_items"])
+app.include_router(system_router,                                          tags=["system"])
 
 # Static files
 STATIC_DIR = Path(__file__).parent / "static"

@@ -116,7 +116,7 @@ export async function renderSummary(container, projectName) {
   let _factsCardEl = null;
   async function _renderFactsCard() {
     try {
-      const data = await api.workItems.facts(projectName);
+      const data = await api.wi.facts(projectName);
       const facts = data.facts || [];
       if (!facts.length) { _factsCardEl.innerHTML = ''; return; }
       const rows = facts.map(f =>

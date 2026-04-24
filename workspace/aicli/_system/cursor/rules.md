@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 22:53 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:06 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -73,8 +73,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] Looks better. in the md file I do see that there is title and line below there is bug/feature.. and below desc. there is
 - [2026-04-24] I do see duplicates title at the md file - for example Features (6) or Tasks (7) .. Also there is title Requirements (1)
 - [2026-04-24] I can see that I can move items in use case and in work item - but they are not linked as prent-child. I would like to b
 - [2026-04-24] it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted
 - [2026-04-24] I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that 
+- [2026-04-24] It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is 

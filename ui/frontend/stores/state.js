@@ -45,6 +45,10 @@ export const state = {
 
   // Backend
   backendOnline: false,
+
+  // Version / updates
+  ui_version: null,       // populated from /system/version on boot
+  update_available: null, // { version, notes, download } when update found
 };
 
 const listeners = new Set();

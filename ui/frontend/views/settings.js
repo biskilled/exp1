@@ -54,6 +54,9 @@ export function renderSettings(container) {
           <div class="settings-nav-item" onclick="window._settingsSection('roles')" id="snav-roles">
             <span>◉</span> Agent Roles
           </div>
+          <div class="settings-nav-item" onclick="window._settingsSection('updates')" id="snav-updates">
+            <span>⟳</span> Updates
+          </div>
         </div>
 
         <div id="settings-content"></div>
@@ -86,6 +89,7 @@ function renderSettingsSection(section) {
     billing:   renderBilling,
     security:  renderSecurity,
     roles:     renderAgentRoles,
+    updates:   (c) => _renderUpdateSection(c),
   };
 
   (sections[section] || renderApiKeys)(content);
@@ -702,6 +706,165 @@ async function renderProjectSettings(content) {
 
 function _esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Updates ───────────────────────────────────────────────────────────────────
+
+async function _renderUpdateSection(content) {
+  const isAdmin = state.user?.is_admin || state.user?.role === 'admin';
+  const currentVersion = state.ui_version || 'unknown';
+
+  content.innerHTML = `
+    <div style="max-width:580px">
+      <div class="settings-section-title">Updates</div>
+      <div class="settings-section-desc">Check for new versions of aicli from your server's update manifest.</div>
+
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                  padding:1rem 1.25rem;margin-bottom:1.25rem">
+        <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em">Installed Version</div>
+        <div style="font-size:1.3rem;font-weight:700;color:var(--text);font-family:monospace">${_esc(currentVersion)}</div>
+      </div>
+
+      <div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem">
+        <button class="btn btn-primary" id="update-check-btn" onclick="window._checkForUpdates()">Check for Updates</button>
+        <div id="update-check-status" style="font-size:0.68rem;color:var(--muted)"></div>
+      </div>
+
+      <div id="update-result"></div>
+
+      ${isAdmin ? `
+      <div style="margin-top:2rem;padding-top:1.5rem;border-top:1px solid var(--border)">
+        <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.5rem">Edit Update Manifest (Admin)</div>
+        <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.75rem">
+          Write to <code>workspace/_system/update.json</code> — all connected clients will see this when they check for updates.
+        </div>
+        <textarea id="update-manifest-editor" rows="12"
+          style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.72rem;
+                 background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+                 color:var(--text);padding:0.65rem;resize:vertical"
+          placeholder='{"version":"2.1.0","release_notes":"...","download":{"mac":"...","win":"...","linux":"..."}}'
+        ></textarea>
+        <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+          <button class="btn btn-primary btn-sm" onclick="window._saveUpdateManifest()">Save Manifest</button>
+          <button class="btn btn-ghost btn-sm" onclick="window._loadManifestIntoEditor()">↺ Reload from Server</button>
+        </div>
+        <div id="manifest-save-status" style="font-size:0.65rem;color:var(--muted);margin-top:0.35rem"></div>
+      </div>` : ''}
+    </div>
+  `;
+
+  // Load current manifest into editor if admin
+  if (isAdmin) {
+    window._loadManifestIntoEditor = async () => {
+      const ed = document.getElementById('update-manifest-editor');
+      if (!ed) return;
+      try {
+        const m = await api.system.updateManifest();
+        ed.value = JSON.stringify(m, null, 2);
+      } catch (e) {
+        ed.value = '';
+      }
+    };
+    window._loadManifestIntoEditor();
+
+    window._saveUpdateManifest = async () => {
+      const ed = document.getElementById('update-manifest-editor');
+      const statusEl = document.getElementById('manifest-save-status');
+      if (!ed) return;
+      let body;
+      try { body = JSON.parse(ed.value); } catch {
+        if (statusEl) { statusEl.textContent = '✕ Invalid JSON'; statusEl.style.color = 'var(--red)'; }
+        return;
+      }
+      try {
+        await api.system.saveManifest(body);
+        if (statusEl) { statusEl.textContent = '✓ Manifest saved'; statusEl.style.color = 'var(--green)'; }
+      } catch (e) {
+        if (statusEl) { statusEl.textContent = `✕ ${e.message}`; statusEl.style.color = 'var(--red)'; }
+      }
+    };
+  }
+
+  window._checkForUpdates = async () => {
+    const btn = document.getElementById('update-check-btn');
+    const statusEl = document.getElementById('update-check-status');
+    const resultEl = document.getElementById('update-result');
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+    if (statusEl) statusEl.textContent = '';
+    if (resultEl) resultEl.innerHTML = '';
+
+    try {
+      const manifest = await api.system.updateManifest();
+
+      if (!manifest || !manifest.version) {
+        if (statusEl) { statusEl.textContent = 'No update manifest available on this server.'; }
+        if (resultEl) resultEl.innerHTML = `
+          <div style="font-size:0.72rem;color:var(--muted);padding:0.75rem;background:var(--surface2);
+                      border:1px solid var(--border);border-radius:var(--radius)">
+            No update information is available. Ask your administrator to publish an update manifest.
+          </div>`;
+        return;
+      }
+
+      const isNewer = manifest.version !== currentVersion && manifest.version > currentVersion;
+      setState({ update_available: isNewer ? manifest : null });
+
+      if (!isNewer) {
+        if (statusEl) { statusEl.textContent = `✓ You are up to date (${manifest.version})`; statusEl.style.color = 'var(--green)'; }
+        if (resultEl) resultEl.innerHTML = `
+          <div style="font-size:0.72rem;color:var(--green);padding:0.75rem;background:rgba(34,197,94,.07);
+                      border:1px solid rgba(34,197,94,.25);border-radius:var(--radius)">
+            ✓ aicli ${_esc(currentVersion)} is the latest version.
+          </div>`;
+        return;
+      }
+
+      // Update available
+      const dl = manifest.download || {};
+      const platform = navigator.platform?.toLowerCase() || '';
+      const suggestedKey = platform.includes('win') ? 'win' : platform.includes('mac') || platform.includes('mac') ? 'mac' : 'linux';
+
+      if (resultEl) resultEl.innerHTML = `
+        <div style="padding:1rem;background:rgba(255,107,53,.07);border:1px solid rgba(255,107,53,.3);
+                    border-radius:var(--radius)">
+          <div style="font-size:0.85rem;font-weight:700;color:var(--accent);margin-bottom:0.3rem">
+            Update available: ${_esc(manifest.version)}
+          </div>
+          ${manifest.release_notes ? `
+          <div style="font-size:0.72rem;color:var(--text2);margin-bottom:0.85rem;white-space:pre-wrap">${_esc(manifest.release_notes)}</div>` : ''}
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            ${dl.mac    ? `<button class="btn btn-primary btn-sm" onclick="window.open('${_esc(dl.mac)}','_blank')"   style="${suggestedKey==='mac'?'outline:2px solid var(--accent)':''}">↓ macOS</button>` : ''}
+            ${dl.win    ? `<button class="btn btn-primary btn-sm" onclick="window.open('${_esc(dl.win)}','_blank')"   style="${suggestedKey==='win'?'outline:2px solid var(--accent)':''}">↓ Windows</button>` : ''}
+            ${dl.linux  ? `<button class="btn btn-primary btn-sm" onclick="window.open('${_esc(dl.linux)}','_blank')" style="${suggestedKey==='linux'?'outline:2px solid var(--accent)':''}">↓ Linux</button>` : ''}
+          </div>
+          ${manifest.config?.default_models ? `
+          <div style="margin-top:0.85rem;padding-top:0.75rem;border-top:1px solid var(--border)">
+            <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.4rem">
+              This update includes recommended model settings:
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="window._applyManifestConfig(${JSON.stringify(JSON.stringify(manifest.config))})">
+              Apply Recommended Config
+            </button>
+          </div>` : ''}
+        </div>
+      `;
+
+      window._applyManifestConfig = (configJson) => {
+        try {
+          const cfg = JSON.parse(configJson);
+          if (cfg.default_models) {
+            setState({ settings: { ...state.settings, default_models: { ...state.settings.default_models, ...cfg.default_models } } });
+            import('../utils/toast.js').then(({ toast }) => toast('Model config applied', 'success'));
+          }
+        } catch { /* ignore */ }
+      };
+
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--red)'; }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Check for Updates'; }
+    }
+  };
 }
 
 // ── Billing ───────────────────────────────────────────────────────────────────

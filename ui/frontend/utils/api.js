@@ -4,14 +4,15 @@
  * Wraps fetch() with JWT auth headers, a 30-second AbortController timeout,
  * and structured error propagation. API keys live server-side; the client
  * sends only a Bearer token stored in localStorage as "aicli_token".
- * Exports the `api` namespace object plus `loadApiKeys` (deprecated shim) and
- * project-recency helpers `addRecentProject` / `getRecentProjects`.
+ * Exports the `api` namespace object and project-recency helpers
+ * `addRecentProject` / `getRecentProjects`.
  */
 
 import { state } from '../stores/state.js';
+import { BACKEND_URL } from './config.js';
 
 function _base() {
-  return (state.settings?.backend_url || 'http://localhost:8000').replace(/\/$/, '');
+  return (state.settings?.backend_url || BACKEND_URL).replace(/\/$/, '');
 }
 
 function _headers(extra = {}) {
@@ -222,32 +223,6 @@ export const api = {
   billingAddPayment:   ()          => _post('/billing/add-payment', {}),
 };
 
-// ── API key stub (keys are now server-side; kept for backward compat) ─────────
-
-/** @deprecated Keys are managed server-side. Returns {} so old call-sites don't crash. */
-export function loadApiKeys() { return {}; }
-
-// ── Workflow runs API ─────────────────────────────────────────────────────────
-
-api.workflowRuns = {
-  start:    (project, wfName, userInput) =>
-              _post(`/workflows/${encodeURIComponent(wfName)}/runs?project=${encodeURIComponent(project || '')}`,
-                    { user_input: userInput }),
-  get:      (project, runId) =>
-              _get(`/workflows/runs/${encodeURIComponent(runId)}?project=${encodeURIComponent(project || '')}`),
-  list:     (project) =>
-              _get(`/workflows/runs?project=${encodeURIComponent(project || '')}`),
-  decide:   (project, runId, action, nextStep = null) =>
-              _post(`/workflows/runs/${encodeURIComponent(runId)}/decision?project=${encodeURIComponent(project || '')}`,
-                    { action, next_step: nextStep }),
-};
-
-// ── Search API ────────────────────────────────────────────────────────────────
-
-api.search = {
-  semantic: (body)    => _post('/search/semantic', body),
-  ingest:   (project) => _get(`/search/ingest?project=${encodeURIComponent(project || '')}`),
-};
 
 // ── Entities API ──────────────────────────────────────────────────────────────
 
@@ -339,7 +314,7 @@ api.tags = {
   merge:                 (body)  => _post('/tags/merge', body),
   migrateToAiSuggestions:(proj) => _post(`/tags/migrate-to-ai-suggestions?project=${enc(proj)}`),
   plan:           (id, proj)     => _post(`/tags/${enc(id)}/plan?project=${enc(proj)}`),
-getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
+  getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(proj)}`),
   addSource:      (body)         => _post('/tags/source', body),
   removeSource:   (id)           => _del(`/tags/source/${enc(id)}`),
   sessionContext: (proj)         => _get(`/tags/session-context?project=${enc(proj)}`),
@@ -368,54 +343,6 @@ getSources:     (id, proj)     => _get(`/tags/${enc(id)}/sources?project=${enc(p
   },
 };
 
-
-// ── Work Items API ────────────────────────────────────────────────────────────
-
-api.workItems = {
-  list:         (projectOrOpts, category, status) => {
-    const opts = (projectOrOpts && typeof projectOrOpts === 'object')
-      ? projectOrOpts : { project: projectOrOpts, category, status };
-    const q = new URLSearchParams({ project: opts.project || '' });
-    if (opts.category)      q.set('category',      opts.category);
-    if (opts.status)        q.set('status',         opts.status);
-    if (opts.name)          q.set('name',           opts.name);
-    if (opts.quality_stage) q.set('quality_stage',  opts.quality_stage);
-    if (opts.limit)         q.set('limit',          String(opts.limit));
-    return _get(`/work-items?${q}`);
-  },
-  get:          (id, project) => _get(`/work-items/${enc(id)}?project=${enc(project || '')}`),
-  unlinked:     (project) => _get(`/work-items/unlinked?project=${enc(project || '')}`),
-  rematchAll:   (project) => _post(`/work-items/rematch-all?project=${enc(project || '')}`, {}),
-  create:       (project, body) => _post(`/work-items?project=${enc(project)}`, body),
-  patch:        (id, project, body) => fetch(
-    _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
-    { method: 'PATCH', headers: _headers(), body: JSON.stringify(body) }
-  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  delete:       (id, project) => fetch(
-    _base() + `/work-items/${enc(id)}?project=${enc(project)}`,
-    { method: 'DELETE', headers: _headers() }
-  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  interactions: (id, project, limit = 20) => _get(`/work-items/${enc(id)}/interactions?project=${enc(project)}&limit=${limit}`),
-  commits:      (id, project, limit = 20) => _get(`/work-items/${enc(id)}/commits?project=${enc(project)}&limit=${limit}`),
-  merge:        (id, mergeWith, project) => fetch(
-    _base() + `/work-items/${enc(id)}/merge?project=${enc(project)}`,
-    { method: 'POST', headers: _headers(), body: JSON.stringify({ merge_with: mergeWith }) }
-  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  dismerge:     (id, project) => fetch(
-    _base() + `/work-items/${enc(id)}/dismerge?project=${enc(project)}`,
-    { method: 'POST', headers: _headers() }
-  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
-  facts:        (project)     => _get(`/tags/${enc(project)}/facts`),
-  memoryItems:  (project, scope) => {
-    const q = new URLSearchParams({ project: project || '' });
-    if (scope) q.set('scope', scope);
-    return _get(`/work-items/memory-items?${q}`);
-  },
-  extract:      (id, proj) => _post(`/work-items/${enc(id)}/extract?project=${enc(proj)}`),
-  refresh:      (id, proj) => _post(`/work-items/${enc(id)}/refresh?project=${enc(proj)}`),
-  runPipeline:  (itemId, workflowId, project) =>
-    _post(`/work-items/${enc(itemId)}/run-pipeline?workflow_id=${enc(workflowId)}&project=${enc(project)}`, {}),
-};
 
 // ── Agent Roles API ───────────────────────────────────────────────────────────
 
@@ -541,6 +468,7 @@ api.wi = {
     save:    (p, id, txt) => _post(`/wi/${enc(p)}/${enc(id)}/md`, { content: txt }),
     refresh: (p, id)      => _post(`/wi/${enc(p)}/${enc(id)}/md/refresh`, {}),
   },
+  facts: (p) => _get(`/tags/${enc(p)}/facts`),
 };
 
 // ── Pipeline API ──────────────────────────────────────────────────────────────
@@ -574,6 +502,14 @@ api.pipeline = {
   llmCosts:        (project)                        => _get(`/memory/${enc(project)}/llm-costs`),
   qualityCheck:    (project)                        => _post(`/memory/${enc(project)}/quality-check`, {}),
   pruneTags:       (project, keepIds)               => _post(`/memory/${enc(project)}/prune-tags`, { keep_ids: keepIds }),
+};
+
+// ── System API ─────────────────────────────────────────────────────────────────
+
+api.system = {
+  version:        () => _get('/system/version'),
+  updateManifest: () => _get('/system/update-manifest'),
+  saveManifest:   (body) => _put('/system/update-manifest', body),  // admin only
 };
 
 // ── UI log helper — callable from any view ─────────────────────────────────────

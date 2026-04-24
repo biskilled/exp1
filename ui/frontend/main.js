@@ -1,5 +1,5 @@
 import { initLayout } from './utils/layout.js';
-import { api, addRecentProject, getRecentProjects } from './utils/api.js';
+import { api, logToBackend, addRecentProject, getRecentProjects } from './utils/api.js';
 import { renderAdmin as _renderAdminView } from './views/admin.js';
 import { state, setState } from './stores/state.js';
 import { toast } from './utils/toast.js';
@@ -24,17 +24,7 @@ import { closeWindow, minimizeWindow, maximizeWindow } from './utils/tauri.js';
 // Catches unhandled JS errors and promise rejections and ships them to the
 // backend log files (error.log) so frontend problems appear alongside backend logs.
 function _reportUiError(message, stack) {
-  const base = (state?.settings?.backend_url || 'http://localhost:8000').replace(/\/$/, '');
-  fetch(`${base}/logs/ui-error`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      level: 'ERROR',
-      message: String(message),
-      stack: stack || null,
-      url: window.location.href,
-    }),
-  }).catch(() => { /* swallow — logging must never cause more errors */ });
+  logToBackend('ERROR', String(message), { stack: stack || null, url: window.location.href });
 }
 
 window.addEventListener('error', (e) => {
@@ -105,6 +95,11 @@ async function boot() {
       backendOk = true;
       setState({ backendOnline: true, requireAuth: h.require_auth || false, dbConnected: h.db_connected || false });
       updateStatusDot();
+      // Load UI version (non-fatal)
+      try {
+        const ver = await api.system.version();
+        setState({ ui_version: ver.ui_version });
+      } catch { /* non-fatal */ }
       break;
     } catch {
       if (attempt < 7) {

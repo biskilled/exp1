@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 22:53 UTC by aicli /memory_
+_Generated: 2026-04-24 23:06 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -101,6 +101,10 @@ _Generated: 2026-04-24 22:53 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-24 22:55]** `ui/`
+Q: It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is it possible to add undo button in both section (work items and use cases) so use
+A: All done. Here's a summary of what was implemented:  ---  ### Fixes & Features  **1. UC tab drag-and-drop (fixed)** - Rewrote `_attachUcDragListeners` to use **event delegation** on the parent `listEl` container - `dragover`/`drop` handlers now use `e.target.closest('.wi-uc-children .wi-card[data-it
+
 **[2026-04-24 22:46]** `ui/`
 Q: I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that is updated, make sure the aiCli folder is also updated. the goal os to remove un
 A: Here's the final structure and what changed:  ---  ## New `_templates/` Structure  ``` _templates/ ├── cli/ │   ├── claude/ │   │   ├── hooks/          ← 10 hook scripts (was: _templates/hooks/) │   │   └── settings.template.json │   └── mcp.template.json   ← shared Claude + Cursor MCP config ├── pi
@@ -136,7 +140,3 @@ A: All working. Here's a summary of what was implemented and is now live:  **Com
 **[2026-04-24 18:54]** `ui/`
 Q: the md file is not aligned to the use case. there are 21 complated tasks. md file should show complted bug - 7, complated feature - 6, complated tasks - 7. there is one requiremet that I dont see at t
 A: Good — all stale MD files cleared. Now the "✎ MD" button in Use Cases will generate fresh files with the new format. Here's a summary of all fixes:  ---  **MD file fixes:**  1. **Missing items (21 → 0 bug)**: `get_md()` now uses a **recursive CTE** to get all descendants (not just direct children). 
-
-**[2026-04-24 18:31]** `ui/`
-Q: use case improvemnt - I have asked to add due data, so user can update a due date per use case (in use cases).   If due date is set in use case, all item connected must finished by this due date . due
-A: All changes are in place. Here's a summary of what was implemented:  ---  ## Changes implemented  ### Backend (`memory_work_items.py`)  **`update()` — 3 improvements:**  1. **Initial SELECT now includes `due_date`** — needed to detect the conflict case 2. **Re-parent conflict auto-resolution**: when
