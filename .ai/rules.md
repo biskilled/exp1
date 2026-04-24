@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:22 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:37 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,7 +25,7 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_feature_snapshot; Mirror: mem_mrr_commits_code, mem_mrr_prompts, mem_mrr_events; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}; Shared: mng_users, mng_clients, session_tags
-- **config_management**: config.py + YAML pipelines + pyproject.toml
+- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -33,7 +33,7 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m074 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m076 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -65,9 +65,17 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards and due dates
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); auto-move MD to documents/completed/
-- Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history, work items, and markdown content
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
+- Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+
+## Recent Context (last 5 changes)
+
+- [2026-04-24] it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted
+- [2026-04-24] I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that 
+- [2026-04-24] It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is 
+- [2026-04-24] can you go over the UI and optimise that, make sure the code is clean there are no duplicate or unused code. make sure c
+- [2026-04-24] it seems that the drag and drop working in work item, but is it not working in use cases, when I am dragging an item (th

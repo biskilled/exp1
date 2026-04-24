@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 23:22 UTC by aicli /memory_
+_Generated: 2026-04-24 23:37 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform integrating CLI, backend API, and Electron desktop UI for collaborative project work. It combines a 4-layer memory stack (ephemeral → raw capture → LLM digests → structured work items) with async DAG workflows, multi-LLM provider adapters, and semantic search via PostgreSQL pgvector. Current focus: refining Use Case lifecycle management, session visibility, and UI/UX polish for the Planning section.
+aicli is a shared AI memory platform with Python backend (FastAPI + PostgreSQL) and Electron desktop frontend. It implements a 4-layer memory architecture capturing prompts, synthesizing them into work items/use cases, and providing collaborative project management with AI classification, due dates, completion validation, and drag-drop parent-child relationships.
 
 ## Tech Stack
 
@@ -25,7 +25,7 @@ aicli is a shared AI memory platform integrating CLI, backend API, and Electron 
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_feature_snapshot; Mirror: mem_mrr_commits_code, mem_mrr_prompts, mem_mrr_events; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}; Shared: mng_users, mng_clients, session_tags
-- **config_management**: config.py + YAML pipelines + pyproject.toml
+- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -33,7 +33,7 @@ aicli is a shared AI memory platform integrating CLI, backend API, and Electron 
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m074 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m076 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -65,22 +65,45 @@ aicli is a shared AI memory platform integrating CLI, backend API, and Electron 
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards and due dates
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); auto-move MD to documents/completed/
-- Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history, work items, and markdown content
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
+- Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
 
 ## In Progress
 
-- MD file format refinement: Removed HTML comment tags; created/updated dates plain text; item counts computed from recursive CTEs; status badges derived from database state
-- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation
-- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts
-- Work Items to Use Cases UI separation: Two-tab system with different functionality; pending AI-classified items require approval before getting real IDs
-- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion
-- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
+- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
+- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
+
+## Active Features / Bugs / Tasks
+
+### Bug
+
+- **ui-rendering-bugs** `[open]` — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
+
+### Feature
+
+- **ui-rendering-bugs** `[open]` — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
+- **general-commits** `[open]` — Add memory embedding and event extraction to memory promotion flow
+
+### Task
+
+- **Audit and clean planner_tags table schema** `[open]` — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
+- **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
+- **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
+- **discovery** `[open]` — Greeting and project context refresh
+
+### Use_case
+
+- **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
+- **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
 ## AI Synthesis
 
-**[2026-04-17]** `project` — aicli v3.1.0 maintains 4-layer memory architecture with PostgreSQL pgvector semantic search, unified mem_ai_* tables, and JWT-based multi-tenant auth; deployed on Railway backend + Electron desktop. **Recent focus** — MD file format refined with recursive CTEs for item counts and status badges; Use Case due date system supports calendar MM/DD/YY and day offsets with re-parent conflict resolution and completion validation. **UI improvements** — Session history now displays source badges, phase chips, and session IDs (last 5 chars) with YY/MM/DD-HH:MM timestamps; Work Items/Use Cases tabs properly separated with pending items requiring approval before real ID assignment. **Planning reorganization** — Left sidebar refactored into Planning group containing Work Items, Use Cases, Documents, and Completed sections; complete_use_case() validates all descendants finished and auto-moves MD files to documents/completed/. **Accessibility fix** — Text selection re-enabled across history, work items, and markdown content by removing user-select: none restriction, allowing clipboard copy-paste in Electron UI.
+**[2026-04-24 22:46]** `ui` — Workspace template refactor: reorganized _templates/ into cli/, pipelines/, hooks/ subdirectories; removed unused files and simplified structure for new projects. **[2026-04-24 22:30]** `ui` — Drag-and-drop parent-child/merge for work items implemented with type validation; merged_into self-FK added to track relationships; undo functionality wired. **[2026-04-24 22:08]** `ui` — Parent-child linking and merge UI working: drag item above another to choose link or merge action; merge appends source summary to target as footnote. **[2026-04-24 21:49]** `ui` — MD file format stabilized: removed duplicate section headers, fixed Requirements section to avoid duplication, recursive CTE ensures all descendants included in counts. **[2026-04-24 21:04]** `ui` — Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history entries, work items, and markdown content. **[2026-04-24 19:05]** `ui` — Completed section on left sidebar implemented: new Planning group (Work Items, Use Cases, Documents, Completed); complete_use_case() validates all descendants done, sets completed_at, auto-moves MD to documents/completed/. **[2026-04-24 18:54]** `ui` — MD file accuracy improved: recursive CTE fetches all descendants (not just direct children); type-based grouping (bugs, features, tasks) with correct counts; requirements mapped to top section.

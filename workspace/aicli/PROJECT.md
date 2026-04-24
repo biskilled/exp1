@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- MD file format refinement: Removed HTML comment tags; created/updated dates plain text; item counts computed from recursive CTEs; status badges derived from database state
-- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation
-- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts
-- Work Items to Use Cases UI separation: Two-tab system with different functionality; pending AI-classified items require approval before getting real IDs
-- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion
-- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
+- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
+- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects

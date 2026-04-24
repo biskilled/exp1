@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-24 23:37 UTC — do not edit manually.
+> Auto-generated 2026-04-24 23:38 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 727
-- **Last active**: 2026-04-24T23:22:58Z
+- **Sessions**: 728
+- **Last active**: 2026-04-24T23:37:46Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -30,7 +30,7 @@
 - **mcp**: Stdio MCP server with 12+ tools
 - **deployment**: Railway (Dockerfile + railway.toml) for backend; Electron-builder for desktop
 - **database_schema**: Unified: mem_ai_events, mem_ai_tags_relations, mem_ai_project_facts, mem_ai_work_items, mem_ai_feature_snapshot; Mirror: mem_mrr_commits_code, mem_mrr_prompts, mem_mrr_events; Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}; Shared: mng_users, mng_clients, session_tags
-- **config_management**: config.py + YAML pipelines + pyproject.toml
+- **config_management**: config.py + YAML pipelines + pyproject.toml + aicli.yaml
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
@@ -38,7 +38,7 @@
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
-- **database**: PostgreSQL 15+ with pgvector extensions + m001-m074 migration framework
+- **database**: PostgreSQL 15+ with pgvector extensions + m001-m076 migration framework
 - **node_modules_build**: npm 8+ with Electron-builder; Vite dev server
 - **database_version**: PostgreSQL 15+ with pgvector extensions + m001-m052 migration framework
 - **build_tooling**: npm 8+ + Electron-builder + Vite dev server
@@ -61,12 +61,12 @@
 
 ## In Progress
 
-- MD file format refinement: Removed HTML comment tags; created/updated dates plain text; item counts computed from recursive CTEs; status badges derived from database state
-- Use Case due date system: Calendar (MM/DD/YY) and day offset support; re-parent conflict auto-resolution when items exceed parent due date; completion validation
-- Session ID and timestamp visibility: Chat/History tabs show last 5 chars in headers; full UUID on click for copy; YY/MM/DD-HH:MM timestamps next to prompts
-- Work Items to Use Cases UI separation: Two-tab system with different functionality; pending AI-classified items require approval before getting real IDs
-- Completed section implementation: New Planning group on left sidebar with Completed subsection; complete_use_case() validates descendant completion
-- Text selection and clipboard fix: Flipped user-select approach to enable copy-paste across history entries, work item text, and markdown content
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
+- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
+- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
 
 ## Key Decisions
 
@@ -79,12 +79,12 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m074 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with expandable cards and due dates
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM
-- Completed section and Planning grouping: left sidebar reorganized as Planning group (Work Items/Use Cases/Documents/Completed); auto-move MD to documents/completed/
-- Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history, work items, and markdown content
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
+- Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
 
 ---
 
