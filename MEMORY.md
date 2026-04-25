@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 23:45 UTC by aicli /memory_
+_Generated: 2026-04-25 09:24 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI, enabling collaborative project memory management through semantic embeddings, LLM-driven work item classification, and async DAG-based workflows. The current focus is on use case management lifecycle (due dates, completion validation, MD generation), drag-and-drop parent-child linking with undo support, and UI optimization including hardcoded string removal and config-driven backends.
+aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL 15+ with pgvector), desktop Electron UI, and Python CLI to capture, synthesize, and organize development work across projects. It features a 4-layer memory architecture with LLM-powered digestion (Claude/OpenAI), async DAG workflows with visual approval panels, and a dual Work Items/Use Cases system with drag-and-drop linking and completion validation. Currently in active development refactoring UI configuration, completing drag-and-drop interactions, and stabilizing markdown generation for approved work items.
 
 ## Tech Stack
 
@@ -29,7 +29,7 @@ aicli is a shared AI memory platform combining a Python/FastAPI backend with an 
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
@@ -50,7 +50,7 @@ aicli is a shared AI memory platform combining a Python/FastAPI backend with an 
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/ with pr_ prefix
-- **database_migrations**: m001-m074 framework with db_schema.sql as source of truth
+- **database_migrations**: m001-m076 framework with db_schema.sql as source of truth
 - **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
 - **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 
@@ -65,9 +65,9 @@ aicli is a shared AI memory platform combining a Python/FastAPI backend with an 
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates and completion validation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp, markdown file generation with auto-move to documents/completed/
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
 - Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
 - Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
@@ -81,39 +81,6 @@ aicli is a shared AI memory platform combining a Python/FastAPI backend with an 
 - Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/; reopen_use_case() reverses
 - Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
 
-## Active Features / Bugs / Tasks
-
-### Bug
-
-- **ui-rendering-bugs** `[open]` — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
-
-### Feature
-
-- **ui-rendering-bugs** `[open]` — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
-- **general-commits** `[open]` — Add memory embedding and event extraction to memory promotion flow
-
-### Task
-
-- **Audit and clean planner_tags table schema** `[open]` — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
-- **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
-- **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
-- **discovery** `[open]` — Greeting and project context refresh
-
-### Use_case
-
-- **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
-- **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
-
 ## AI Synthesis
 
-**[2026-04-24 23:45]** `ui` — Undo mechanism implemented as persistent button in Work Items and Use Cases toolbars; captures reverse API call as closure before link/merge happens, stores original parent_id to restore on undo click.
-
-**[2026-04-24 23:24]** `ui` — Fixed drag-and-drop parent-child/merge in Use Cases via event delegation; added undo button to toolbar; both Work Items and Use Cases now support type validation (only same-type items can link).
-
-**[2026-04-24 22:55]** `ui` — Template workspace refactor completed; reorganized _templates/ into cli/(claude/, mcp.template.json), pipelines/, hooks/ subdirectories; removed unused files; simplified structure for new projects.
-
-**[2026-04-24 22:30]** `ui` — Merged parent-child linking fully wired; orphan detection fixed by computing allSubItems and excluding re-parented children; use case improvements including due date conflict auto-resolution and type validation for merges.
-
-**[2026-04-24 18:54]** `ui` — MD file format refined; removed all HTML comments (no <!-- tags -->); created/updated dates as plain text; item counts (bugs/features/tasks) computed from recursive CTEs; Requirements section now correctly deduplicated and mapped without nested headers.
-
-**[2026-04-23 09:06]** `ui` — Work Items tab fixed to show all items (not just pending AI*); Use Cases tab now properly displays approved items; hook health restored (0.1h after 8.3h offline); empty state message clarified with prompt/commit counts for Classify action.
+**[2026-04-17]** `core` — Unified database schema consolidating mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with pgvector embeddings; m001-m076 migration framework establishes single source of truth in db_schema.sql. **[2026-04-17]** `architecture` — 4-layer memory system implemented: ephemeral session → mem_mrr_* raw captures → mem_ai_events with LLM digests and embeddings → mem_ai_work_items/project_facts/feature_snapshot; Claude Haiku dual-layer synthesis generates 5 output files with auto-tag suggestions. **[2026-04-17]** `workflow` — Async DAG executor via asyncio.gather with Cytoscape.js visualization and 2-pane approval panel for AI negotiation; loop-back support with max_iterations cap; YAML config-driven per-node retry/continue logic. **[2026-04-17]** `frontend` — Electron desktop UI with Vanilla JS, xterm.js terminal, Monaco editor, and Cytoscape.js DAG rendering; Vite dev server for hot-reload development; text selection enabled for copy-paste across all UI. **[2026-04-17]** `features` — Work Items vs Use Cases separation with drag-and-drop parent-child linking, merge functionality (merged_into self-FK), type validation, and persistent undo buttons; Use Case completion validates all descendants, sets completed_at, auto-moves markdown to documents/completed/. **[2026-04-17]** `configuration` — Centralized config management via aicli.yaml replacing hardcoded localhost references; Template workspace refactored with cli/, pipelines/, hooks/ subdirectories; JWT auth with DEV_MODE toggle and hierarchical Clients → Users → Projects permissions model.

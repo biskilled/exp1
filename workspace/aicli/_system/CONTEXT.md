@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-25 09:18 UTC — do not edit manually.
+> Auto-generated 2026-04-25 09:25 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 729
-- **Last active**: 2026-04-24T23:45:34Z
+- **Sessions**: 730
+- **Last active**: 2026-04-25T09:24:53Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -34,7 +34,7 @@
 - **db_tables**: Per-project: commits_{p}, events_{p}, embeddings_{p}, event_tags_{p}, event_links_{p}, memory_items_{p}, project_facts_{p}, pr_graph_runs; shared: users, usage_logs, transactions, session_tags, entity_categories, entity_values, agent_roles, system_roles
 - **llm_provider_adapters**: agents/providers/ with pr_ prefix for pricing and provider implementations
 - **pipeline_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry/continue logic
-- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel for chat negotiation
+- **pipeline_ui**: Cytoscape.js + cytoscape-dagre for graph visualization; 2-pane approval panel
 - **billing_storage**: data/provider_storage/ (provider_costs.json) + SQL pricing/coupon tables
 - **backend_modules**: routers/ for API endpoints, core/ for infrastructure, data/ for data access (dl_ prefix), agents/tools/ for agent implementations (tool_ prefix), agents/mcp/ for MCP server
 - **dev_environment**: PyProject.toml + VS Code launch.json; PyCharm: Mark backend/ as Sources Root
@@ -55,7 +55,7 @@
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **schema_migrations**: m001-m050 framework with db_schema.sql as source of truth
 - **llm_provider_location**: agents/providers/ with pr_ prefix
-- **database_migrations**: m001-m074 framework with db_schema.sql as source of truth
+- **database_migrations**: m001-m076 framework with db_schema.sql as source of truth
 - **schema_core**: mem_tags_relations (unified), planner_tags (with inline snapshot fields), mem_ai_events, mem_mrr_prompts/commits
 - **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 
@@ -79,9 +79,9 @@
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates and completion validation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp, markdown file generation with auto-move to documents/completed/
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
 - Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
 - Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
