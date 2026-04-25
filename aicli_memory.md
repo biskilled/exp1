@@ -1,616 +1,492 @@
-# aicli — Memory & Tagging Architecture
+# aicli Memory System — Reference Guide
 
-_Last updated: 2026-04-08 | Reflects migration 016, mem_mrr_commits_code, file-based prompt system_
+_Last updated: 2026-04-25 (m078 — planner_tags removed; mem_work_items is single source of truth)_
+
+This is the single authoritative reference for how aicli stores, updates, and serves project memory across every supported LLM tool. Written from scratch to reflect the post-m078 architecture. If this contradicts anything in CLAUDE.md, this document is more specific.
 
 ---
 
-## 0. Mental Model
+## 1. Memory Layers — Current DB Tables
 
-aicli memory is a **4-layer pipeline**. Data flows **down**: every raw event eventually becomes
-a structured work item. `planner_tags` sits above as the user-managed project view.
+> `mem_ai_events` was **dropped in m057**. `planner_tags` was **dropped in m078**. Neither exists any more.
+
+### Layer 1 — Raw Mirror (`mem_mrr_*`)
+Raw data captured as-is, no AI processing. The `wi_id` column tracks whether a row has been classified.
+
+| Table | Content | `wi_id` meaning |
+|-------|---------|-----------------|
+| `mem_mrr_prompts` | Every user prompt + response from all tools | NULL = unclassified; set to real ID after approve |
+| `mem_mrr_commits` | Git commits (hash, msg, summary, commit_type, is_external) | Same pattern |
+| `mem_mrr_commits_code` | Per-symbol diffs from tree-sitter (file, class, method, diff_snippet, llm_summary) | N/A (no wi_id) |
+| `mem_mrr_items` | Imported documents / meeting notes | Same pattern |
+| `mem_mrr_messages` | Slack / chat messages | Same pattern |
+| `mem_mrr_commits_file_stats` | Per-file hotspot metrics (commit_count, bug_commit_count, hotspot_score) | N/A |
+| `mem_mrr_commits_file_coupling` | Co-change file pairs | N/A |
+
+### Layer 2 — Work Items (`mem_work_items`) — Single Source of Truth
+All use cases, features, bugs, tasks, policies, and requirements live in one table.
+
+**Key columns:**
+- `wi_id` — NULL (pending AI draft) → AI0001 (draft) → US/FE/BU/TA/PO/RE prefixed (approved) → REJxxxxxx (rejected)
+- `wi_type` — `use_case | feature | bug | task | policy | requirement`
+- `wi_parent_id` — UUID FK to self (hierarchy: use_case → feature/bug/task children)
+- `name`, `summary`, `deliveries` — the substance
+- `user_status`, `score_importance` (0–5), `score_status` (0–5)
+- `start_date`, `due_date`, `completed_at`, `deleted_at`, `merged_into`
+- `embedding VECTOR(1536)` — set on approve via OpenAI text-embedding-3-small
+
+**wi_id prefix scheme:**
+
+| Type | Prefix | Example |
+|------|--------|---------|
+| use_case | US | US0001 |
+| feature | FE | FE0001 |
+| bug | BU | BU0001 |
+| task | TA | TA0001 |
+| policy | PO | PO0001 |
+| requirement | RE | RE0001 |
+
+**Companion table:** `mem_wi_versions` — snapshots of use-case items at each update (m068).
+
+### Layer 3 — Project Facts (`mem_ai_project_facts`)
+Durable architectural decisions that survive across sessions.
+
+- `fact_key` (UNIQUE per project where `valid_until IS NULL`)
+- `fact_value`, `category` (stack / pattern / convention / constraint / client / general)
+- `conflict_status` — `pending_review` blocks the fact from being rendered into CLAUDE.md
+- `embedding VECTOR(1536)` — for semantic search
+
+Written by `memory_promotion.py:save_fact()`. Rarely populated automatically now; used primarily when conflict detection fires.
+
+### Dropped Tables (do NOT reference in code)
+| Table | Dropped in | Replaced by |
+|-------|-----------|-------------|
+| `mem_ai_events` | m057 | `mem_work_items` |
+| `mem_ai_work_items` | m057 | `mem_work_items` (m063+) |
+| `planner_tags` | m078 | `mem_work_items` |
+| `mng_tags_categories` | m078 | `wi_type` column on `mem_work_items` |
+| `mem_backlog_links` | m078 | direct `wi_id` FK on `mem_mrr_*` |
+| `planner_tag_deps` | m078 | `wi_parent_id` on `mem_work_items` |
+| `mem_ai_feature_snapshot` | m078 | `summary` / `mem_wi_versions` |
+| `mng_deliveries` | m078 | `deliveries JSONB` on `mem_work_items` |
+
+---
+
+## 2. Output Files Written by `/memory`
+
+`memory_files.py` is **deterministic** — no LLM calls. Reads DB, renders templates, writes files.
+
+| File | Path | Consumed by |
+|------|------|-------------|
+| `CLAUDE.md` | `{code_dir}/CLAUDE.md` | **Claude Code** — auto-loaded from project root |
+| `CLAUDE.md` | `{workspace}/_system/claude/CLAUDE.md` | Archive copy |
+| `.cursorrules` | `{code_dir}/.cursorrules` | **Cursor** — auto-loaded |
+| `rules.md` | `{workspace}/_system/cursor/rules.md` | Archive copy |
+| `compact.md` | `{workspace}/_system/llm_prompts/compact.md` | GPT-4, any small-window model (≤2000 tokens) |
+| `full.md` | `{workspace}/_system/llm_prompts/full.md` | Claude CLI, DeepSeek, Grok (large context) |
+| `gemini_context.md` | `{workspace}/_system/llm_prompts/gemini_context.md` | **Gemini** Files API upload |
+| `openai.md` | `{workspace}/_system/llm_prompts/openai.md` | OpenAI API system prompt |
+| `system_prompt.md` | `{workspace}/_system/openai/system_prompt.md` | **Codex CLI** `--system-prompt` flag |
+
+### What goes into CLAUDE.md
+
+Data comes from three DB tables:
+1. `mem_ai_project_facts` — Stack, patterns, conventions, constraints
+2. `mem_work_items` — Active use cases + features (not completed, not deleted)
+3. `mem_mrr_commits` + `mem_mrr_commits_code` — Recently changed symbols (top 200, deduplicated)
+
+### Auto-regen triggers
+
+| Event | What fires |
+|-------|-----------|
+| `POST /projects/{p}/memory` | Full synthesis (LLM) + `write_root_files()` |
+| Session stop hook | Session summary → `write_root_files()` |
+| Session start hook | `write_root_files()` only (no LLM) |
+| Work item approve/update | `write_root_files()` (background) |
+
+---
+
+## 3. LLM Prompts — All Locations
+
+All prompts are under `backend/prompts/`. Changes take effect without restart (hot-reloaded by `prompt_loader.py`).
+
+### `backend/prompts/commit.yaml`
+
+| Key | Model | Max tokens | Trigger | Output |
+|-----|-------|-----------|---------|--------|
+| `commit_analysis` | Sonnet | 800 | `POST /git/commit-store` | JSON: message, summary, key_classes, key_methods, patterns_used, decisions, test_coverage, dependencies |
+| `commit_symbol` | Haiku | 120 | After each commit, per symbol above `min_lines` | One-sentence change summary for `mem_mrr_commits_code.llm_summary` |
+
+### `backend/prompts/work_items.yaml`
+
+| Key | Model | Max tokens | Trigger | Output |
+|-----|-------|-----------|---------|--------|
+| `classification` | Haiku | 4000 | `POST /wi/{p}/classify` (manual or threshold) | Flat JSON array of use cases + children with scores |
+| `summarise` | Haiku | 2000 | `POST /wi/{p}/summarize/{id}` | Reorganized use case: updated summary + in_progress + completed groupings |
+
+This file also contains category config (colors, seq prefixes) — parsed directly by `memory_work_items.py` via PyYAML, not `prompt_loader`.
+
+### `backend/prompts/memory_synthesis.yaml`
+
+| Trigger | Model | Output |
+|---------|-------|--------|
+| `POST /projects/{p}/memory` | Haiku | JSON: `key_decisions[]`, `in_progress[]`, `tech_stack{}`, `project_summary` → written to `project_state.json` + PROJECT.md |
+
+### `backend/prompts/conflict_detection.yaml`
+
+| Trigger | Model | Output |
+|---------|-------|--------|
+| `memory_promotion.py:save_fact()` when value contradicts existing | Haiku | JSON: `resolution` (supersede/merge/flag), `merged_value`, `reasoning` |
+
+---
+
+## 4. All LLM Call Sites
+
+Every place in the codebase that makes an LLM API call:
+
+| # | File | Function | Prompt source | Model | When |
+|---|------|----------|--------------|-------|------|
+| 1 | `route_projects.py` | `_synthesize_with_llm()` | `memory_synthesis.yaml` | Haiku | `POST /projects/{p}/memory` |
+| 2 | `memory_work_items.py` | `classify()` | `work_items.yaml:classification` | Haiku | `POST /wi/{p}/classify` or auto-threshold |
+| 3 | `memory_work_items.py` | `summarize_use_case()` | `work_items.yaml:summarise` | Haiku | `POST /wi/{p}/summarize/{id}` |
+| 4 | `route_git.py` | commit analysis | `commit.yaml:commit_analysis` | Sonnet | `POST /git/commit-store` |
+| 5 | `memory_code_parser.py` | `_haiku()` | `commit.yaml:commit_symbol` | Haiku | Per symbol in each commit |
+| 6 | `memory_promotion.py` | `_call_llm()` | `conflict_detection.yaml` | Haiku | When `save_fact()` detects contradiction |
+| 7 | `agents/agent.py` | ReAct loop | Agent role `system_prompt` from `mng_agent_roles` | Configurable | `POST /agents/run` |
+| 8 | `pipelines/pipeline_runner.py` | YAML pipeline step | Each step's `prompt:` field in pipeline YAML | Configurable | `POST /agents/run-pipeline` |
+| 9 | `pipelines/pipeline_graph_runner.py` | DAG node | Node's agent role system_prompt | Configurable | `POST /graph-workflows/{id}/run` |
+
+**Embedding calls** (OpenAI `text-embedding-3-small`, 1536-dim):
+
+| Where | When |
+|-------|------|
+| `memory_work_items.py:_embed_work_item()` | On work item approve |
+| `route_search.py` | On every `POST /search/semantic` query |
+
+---
+
+## 5. Data Flow
+
+### 5a. Developer Session → Memory Update
 
 ```
- ┌──────────────────────────────────────────────────────────────────────────────┐
- │ Layer 0 — Ephemeral     In-session message list (RAM / JSON file)            │
- │                                                                              │
- │ Layer 1 — Raw Capture   Everything stored verbatim         (mem_mrr_*)       │
- │                         ├─ mem_mrr_prompts                                   │
- │                         ├─ mem_mrr_commits  + mem_mrr_commits_code (new)     │
- │                         ├─ mem_mrr_items                                     │
- │                         └─ mem_mrr_messages                                  │
- │                                                                              │
- │ Layer 2 — AI Events     Digested + embedded                (mem_ai_events)   │
- │                                                                              │
- │ Layer 3 — Structured    AI-detected artifacts              (mem_ai_*)        │
- │                         ├─ mem_ai_work_items                                 │
- │                         └─ mem_ai_project_facts                              │
- │                                                                              │
- │ Layer 4 — User Tags     planner_tags   ← USER OWNS THIS                     │
- └──────────────────────────────────────────────────────────────────────────────┘
+Claude Code / Cursor session
+  │
+  ├── Every prompt → log_user_prompt.sh hook
+  │     → POST /hook-log/prompt
+  │     → INSERT mem_mrr_prompts (wi_id=NULL)
+  │
+  ├── git push → auto_commit_push.sh hook
+  │     → POST /git/commit-store
+  │     ├── Sonnet: commit_analysis → mem_mrr_commits
+  │     └── tree-sitter → mem_mrr_commits_code
+  │           + Haiku: per-symbol summaries
+  │
+  └── Session end → log_session_stop.sh hook
+        → POST /projects/{p}/memory
+        ├── Haiku: memory_synthesis.yaml
+        │     → project_state.json + PROJECT.md
+        └── write_root_files() (no LLM)
+              → CLAUDE.md, .cursorrules, llm_prompts/*
 ```
 
-**Ownership boundary**:
-
-| Layer | Owner | Rule |
-|-------|-------|------|
-| 0–3 | LLM + Triggers | Fully automatic. User does not manually edit. |
-| 4 | **User** | User creates/edits tags. LLM writes ONLY on explicit button click. |
-| `work_items.tag_id` | **User** | Drag-drop only. `ai_tag_id` = LLM suggestion (auto). |
-
-**Phase goal**: AI manages all data through Layer 3 (`mem_ai_work_items`). User manages Layer 4
-(`planner_tags`). Future: merge both via `tag_id` linkage.
-
----
-
-## Layer 0 — Ephemeral (Session Messages)
-
-**Storage**: `workspace/{project}/_system/sessions/{session_id}.json`
-**Python**: `SessionStore` in `backend/memory/memory_sessions.py`
-**Trigger**: Created on first prompt; appended on each turn; never written to PostgreSQL.
-
-Used only for LLM context continuity within a single session. Not searchable.
-
----
-
-## Layer 1 — Raw Capture (`mem_mrr_*`)
-
-Everything stored verbatim. No AI processing at insert time. The audit trail.
-
----
-
-### `mem_mrr_prompts`
-
-**Trigger**: `post_prompt.sh` hook → `POST /memory/{project}/prompts`
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `id` UUID | Hook | PK |
-| `session_id` | Hook | Groups turns |
-| `source_id` | Hook | External hook timestamp |
-| `prompt` TEXT | Hook | Raw user input |
-| `response` TEXT | Hook | Raw AI response |
-| `tags` JSONB | Hook | `{source, phase, feature, bug, work-item, llm}` |
-| `created_at` | DB | Auto |
-
-**Downstream trigger**: Every ~5 prompts in a session → `process_prompt_batch()` (Layer 2).
-
----
-
-### `mem_mrr_commits`
-
-**Trigger**: `post_commit.sh` hook → `POST /git/{project}/commit-push`
-
-After the hook fires, **three sequential background tasks** run automatically:
-
-| # | Background Task | Output |
-|---|----------------|--------|
-| 1 | `_sync_commit_and_link()` | INSERT into `mem_mrr_commits` + link to session/prompt |
-| 2 | `_embed_commit_background()` → `process_commit()` | Layer 2: mem_ai_events digest + diff chunks |
-| 3 | `_extract_commit_code_background()` → `extract_commit_code()` | Layer 1: mem_mrr_commits_code symbol rows |
-
-#### Columns (after migration 016)
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `commit_hash` VARCHAR(64) | Hook | PK |
-| `commit_short_hash` VARCHAR(8) | DB (generated) | `LEFT(commit_hash,8)` — read-only |
-| `author` TEXT | Hook (git log) | Git author name |
-| `author_email` TEXT | Hook (git log) | Git author email |
-| `commit_msg` TEXT | Hook | Full commit message |
-| `diff_summary` TEXT | Hook | `git diff --stat` output |
-| `summary` TEXT | **LLM** (back-prop) | 1-2 sentence Haiku digest from `commit_digest` prompt |
-| `llm` TEXT | **LLM** (back-prop) | Model used for digest e.g. `claude-haiku-4-5-20251001` |
-| `exec_llm` BOOLEAN | **LLM** (back-prop) | TRUE after `process_commit()` runs |
-| `session_id` | Hook | Links to active session |
-| `prompt_id` UUID | Hook | Links to prompt that triggered the commit |
-| `tags` JSONB | Hook | **User intent only**: `{source, phase, feature, bug, work-item}` |
-| `tags_ai` JSONB | **LLM** (back-prop) | AI metadata: `{languages: [...]}` from diff analysis |
-| `committed_at` | Hook | Git timestamp |
-| `created_at` | DB | Auto |
-
-**Key change (migration 016)**: `tags` is now **clean** — no file stats, no symbol lists, no LLM keys.
-Old technical keys (`files`, `languages`, `symbols`, `rows_changed`, `llm`, `analysis`) were migrated out:
-- `llm` → `llm` column
-- `languages` → `tags_ai["languages"]`
-- `files`, `symbols`, `rows_changed` → **`mem_mrr_commits_code`** table (per-symbol rows)
-
-#### Commit LLM Prompts
-
-Three prompts fire during a commit, each using a different model:
-
-| Step | Prompt | File | Model | Max tokens | When | Returns |
-|------|--------|------|-------|-----------|------|---------|
-| 1. Commit message | `commit_analysis` | `memory/commits/commit_analysis.md` | **Sonnet** | 800 | Before `git commit` (in `_generate_commit_message()`) | `{message, summary, key_classes, key_methods, patterns_used, decisions, test_coverage, dependencies}` |
-| 2. Digest | `commit_digest` | `memory/commits/commit_digest.md` | **Haiku** | 200 | After commit stored (`process_commit()`) | `{summary, action_items, importance}` |
-| 3. Symbol summary | `commit_symbol` | `memory/commits/commit_symbol.md` | **Haiku** | 120 | Per changed symbol (`extract_commit_code()`) | Plain 1-sentence summary |
-
-**Why Sonnet for step 1?** Generating a conventional commit message + full structured analysis from a diff requires deep code understanding. Steps 2 and 3 are simpler digests → Haiku is sufficient and cheaper.
-
----
-
-### `mem_mrr_commits_code` (new — migration 016)
-
-**Trigger**: Background task 3 above → `extract_commit_code()` in `memory/memory_code_parser.py`
-**Tool**: tree-sitter AST parsing (Python, JS/TS, Go, Rust, Java, Ruby)
-
-One row per changed **symbol** (class / method / function) per file per commit.
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `commit_hash` | FK | References mem_mrr_commits |
-| `file_path` TEXT | tree-sitter | Full file path in repo |
-| `file_ext` TEXT | Parser | `.py`, `.ts`, etc. |
-| `file_language` TEXT | Parser | Detected from extension |
-| `file_change` TEXT | Parser | `added` \| `modified` \| `deleted` \| `renamed` |
-| `symbol_type` TEXT | tree-sitter | `class` \| `method` \| `function` |
-| `class_name` TEXT | tree-sitter | Parent class (NULL for module-level functions) |
-| `method_name` TEXT | tree-sitter | Function/method name |
-| `full_symbol` TEXT | DB (generated) | `class_name.method_name` or just one of them |
-| `symbol_change` TEXT | Parser | `added` \| `modified` \| `deleted` |
-| `rows_added` INT | Parser | Lines added within this symbol's range |
-| `rows_removed` INT | Parser | Lines removed within this symbol's range |
-| `diff_snippet` TEXT | Parser | Diff lines touching this symbol (≤500 chars) |
-| `llm_summary` TEXT | **LLM** | 1-sentence summary from `commit_symbol` prompt (skipped if rows_added+rows_removed < min_lines) |
-| `embedding` VECTOR(1536) | Trigger | OpenAI embed of `llm_summary` |
-
-**YAML guards** (`workspace/{project}/project.yaml`):
-```yaml
-commit_code_extraction:
-  min_lines: 5                      # skip llm_summary if fewer rows changed
-  only_on_commits_with_tags: false  # if true, only extract symbols from tagged commits
-```
-
-**Use case**: Semantic search by symbol name, per-feature code coverage, "what touched `ClassName.method`?"
-
----
-
-### `mem_mrr_items`
-
-**Trigger**: Manual `POST /memory/{project}/items` or CLI import
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `item_type` | User | `requirement`, `decision`, `meeting`, `note` |
-| `raw_text` | User | Full document content |
-| `summary` TEXT | **LLM** (back-prop) | Haiku digest |
-| `tags` JSONB | User | Classification |
-
-**Downstream trigger**: `process_item()` → Layer 2 (item_digest + optional meeting_sections + relation_extraction).
-
----
-
-### `mem_mrr_messages`
-
-**Trigger**: Integration hook → `POST /memory/{project}/messages`
-
-Stores Slack / Teams / Discord thread dumps.
-
-**Downstream trigger**: `process_messages()` → Layer 2 (message_chunk_digest).
-
----
-
-## Layer 2 — AI Events (`mem_ai_events`)
-
-Every Layer 1 source gets a Haiku digest + OpenAI embedding here.
-This is the **primary semantic search target**.
-
-**Python**: `MemoryEmbedding` in `backend/memory/memory_embedding.py`
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `event_type` | Trigger | `prompt_batch` \| `commit` \| `item` \| `message` \| `session_summary` \| `workflow` |
-| `source_id` | Trigger | UUID or hash of the Layer 1 row |
-| `chunk` INT | Trigger | `0` = summary/digest; `1+` = detail chunks |
-| `chunk_type` | Trigger | `full`, `summary`, `section`, `diff_file` |
-| `content` TEXT | LLM/Trigger | Haiku digest (chunk=0); raw diff/code (chunk>0) |
-| `summary` TEXT | **LLM** | 1-2 sentence Haiku summary |
-| `action_items` TEXT | **LLM** | Extracted open tasks |
-| `importance` SMALLINT | **LLM** | 0–10 AI-scored |
-| `embedding` VECTOR(1536) | Trigger | OpenAI text-embedding-3-small |
-| `tags` JSONB | Trigger+LLM | Mirror tags merged with `{llm: model}` |
-| `processed_at` | Trigger | Set when `promote_feature_snapshot()` consumes event |
-
-### Importance Scale
-
-| Score | Meaning |
-|-------|---------|
-| 1–2 | Trivial / chore |
-| 3–4 | Minor fix / debug |
-| 5–6 | Feature work, new endpoint |
-| 7–8 | Significant change, new module |
-| 9–10 | Critical / architectural decision |
-
-**Relevance formula**: `importance × exp(-0.01 × age_days)` — foundational facts get 50% floor.
-
----
-
-### How each `event_type` is produced
-
-#### `prompt_batch`
-
-**When**: Auto after every ~5 prompts in a session (inside `POST /memory/{project}/prompts`)
-**Prompt**: `prompt_batch_digest` (Haiku, 250 tokens) → `{summary, action_items, importance}`
-**Chunks**: chunk=0 = Haiku digest; chunk≥1 = long response paragraphs (raw embed, no LLM)
-**Auto-triggers next**: `extract_work_items_from_events()` in background (fire-and-forget)
-
-#### `commit`
-
-**When**: After commit is stored → background task 2 → `process_commit()`
-**Prompt**: `commit_digest` (Haiku, 200 tokens) → `{summary, action_items, importance}`
-**Chunks**: chunk=0 = Haiku digest; chunk≥1 = per-file diff sections (code files only; CLAUDE.md / .cursorrules / MEMORY.md filtered out)
-**Back-propagates**: `summary` → `mem_mrr_commits.summary`; `llm` + `exec_llm=TRUE` → `mem_mrr_commits`; `languages` → `mem_mrr_commits.tags_ai`
-
-#### `item`
-
-**When**: After `POST /memory/{project}/items` → `process_item()`
-**Prompts**:
-- Short items (<200 words): `item_digest` (Haiku, 200 tokens) → `{summary, action_items, importance}`
-- Meeting/large items: `meeting_sections` (Haiku, 1000 tokens) → `[{title, content}]`
-- Always: `relation_extraction` (Haiku, 400 tokens) → `{relations: [{from, relation, to, note}]}`
-
-#### `session_summary`
-
-**When**: `log_session_stop.sh` hook → `POST /memory/{project}/session-summary`
-**Prompt**: `session_end_synthesis` (Haiku, 600 tokens) → `{summary, open_threads, next_steps}`
-**Importance**: typically 7–8 (session-level synthesis = high signal)
-
-#### `message`
-
-**When**: After `POST /memory/{project}/messages` → `process_messages()`
-**Prompt**: `message_chunk_digest` (Haiku, 200 tokens) → plain text summary
-
-#### `workflow`
-
-**When**: After a 4-agent pipeline run completes
-**No LLM digest** — workflow output embedded directly
-
----
-
-## Layer 3 — Structured Artifacts (`mem_ai_*`)
-
-### `mem_ai_work_items` — AI-detected tasks / bugs / features
-
-**Trigger**: `extract_work_items_from_events()` — **auto-triggered** after every prompt batch
-**Python**: `MemoryPromotion` in `backend/memory/memory_promotion.py`
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `ai_category` | **LLM** | `bug`, `feature`, `task` |
-| `ai_name` | **LLM** | Lowercase-hyphenated slug; UNIQUE key within project+category |
-| `ai_desc` | **LLM** | 1-2 sentence description |
-| `summary` | **LLM** (Planner) | 3-4 sentence status summary — written by `run_planner()` |
-| `action_items` | **LLM** (Planner) | Remaining tasks — written by `run_planner()` |
-| `acceptance_criteria` | **LLM** (Planner) | Testable QA criteria — written by `run_planner()` |
-| `requirements` | **LLM** | Functional requirements (from extraction) |
-| `code_summary` TEXT | **LLM** | Code context distilled from linked commits |
-| `status_ai` | **LLM** | AI suggestion: `active`, `in_progress`, `done` |
-| `status_user` | **User** | User-set lifecycle: `active`, `in_progress`, `paused`, `done` |
-| `start_date` | User+Trigger | Auto-set when `status_user` → `in_progress` |
-| `tag_id` UUID | **User** | Confirmed link to planner_tag (drag-drop ONLY) |
-| `ai_tag_id` UUID | **LLM** | Auto-suggested tag (set by `match_work_item_to_tags()`) |
-| `source_event_id` UUID | Trigger | mem_ai_events row that generated this item (prevents re-extraction) |
-| `embedding` VECTOR | Trigger | Semantic search |
-| `seq_num` INT | DB | Auto-increment display number |
-| `merged_into` UUID | **User** | Points to canonical work item after user merge |
-
-**LLM prompt**: `work_item_extraction` (Haiku, 500 tokens)
-→ `{items: [{category, name, description}]}`
-**Input**: Unprocessed `mem_ai_events` summaries + action_items where no `source_event_id` link exists
-
-#### Tag matching pipeline (auto after extract)
+### 5b. Raw Mirror → Work Items (classification pipeline)
 
 ```
-ai_name exact match → ai_tag_id @ confidence 1.0
-       ↓ (no match)
-Vector cosine > 0.85 → ai_tag_id auto-set
-       ↓ (no match)
-Haiku judgment 0.70–0.85 → ai_tag_id set if approved
-       ↓ (no match)
-ai_tag_id = NULL
+mem_mrr_prompts / mem_mrr_commits (wi_id IS NULL)
+  │
+  ├── Auto: threshold check after each INSERT
+  │     prompts: 2000 tokens accumulated
+  │     commits: 1000 tokens accumulated
+  │
+  └── Manual: POST /wi/{p}/classify
+        ├── Fetch unprocessed rows (max 200 prompts / 100 commits)
+        ├── Group into ~6000-token batches
+        └── For each batch:
+              Haiku: work_items classification prompt
+                → flat JSON: use_cases[] + children[]
+              INSERT mem_work_items (wi_id=AI0001..., draft)
 
-tag_id NEVER auto-set — user drag-drop only
+User reviews in Work Items tab → approve
+  ├── Assign real ID (US0001, FE0002, BU0003…)
+  ├── SET mem_mrr_*.wi_id = real ID
+  ├── OpenAI embed(summary + name) → mem_work_items.embedding
+  └── Write/refresh use case MD file (optional)
 ```
 
-**Prompt used**: `ai_tag_suggestion` (Haiku) via `MemoryTagging.match_work_item_to_tags()`
-
----
-
-### `mem_ai_project_facts` — Durable project facts
-
-**Trigger**: `MemoryPromotion.detect_fact_conflicts()` — called during feature snapshots
-**LLM prompt**: `conflict_detection` (Haiku, 300 tokens) → `{conflict, resolution, merged_value, reasoning}`
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `fact_key` | **LLM** | e.g. `primary_database`, `auth_method` |
-| `fact_value` | **LLM** | e.g. `PostgreSQL 15 + pgvector` |
-| `category` | **LLM** | `stack`, `convention`, `constraint`, `client` |
-| `valid_until` | Trigger | NULL = current fact; set when superseded |
-| `conflict_status` | LLM+User | `ok`, `supersede`, `merge`, `flag` |
-| `embedding` VECTOR | Trigger | Semantic fact search |
-
----
-
-## Layer 4 — User-Managed Tags (`planner_tags`)
-
-**Owner**: User. No auto-writes.
-LLM writes ONLY when user explicitly clicks "Run Planner" or "Snapshot" in the UI.
-
-| Column | Written by | Notes |
-|--------|-----------|-------|
-| `name` | **User** | Tag identity, UNIQUE per project+category |
-| `category_id` | **User** | FK to mng_tags_categories: feature/bug/task |
-| `status` | **User** | `open`, `active`, `done`, `archived` |
-| `priority` | **User** | 1–5 |
-| `short_desc`, `full_desc` | **User** | Human descriptions |
-| `requirements` | **User** | What the feature must do (user-written, NOT LLM) |
-| `due_date` | **User** | Target completion date |
-| `acceptance_criteria` | **LLM** (Run Planner) | Written by `run_planner()` |
-| `summary` | **LLM** (Planner/Snapshot) | Use-case summary |
-| `action_items` | **LLM** (Planner/Snapshot) | Remaining work |
-| `design` JSONB | **LLM** (Snapshot) | `{high_level, low_level, patterns_used}` |
-| `code_summary` JSONB | **LLM** (Snapshot) | `{files, key_classes, key_methods, ...}` |
-| `embedding` VECTOR | Trigger | From summary+action_items; used by tag matching |
-
-#### LLM writes to planner_tags (explicit user action only)
-
-| User Action | Method | Prompt | Model | Writes |
-|------------|--------|--------|-------|--------|
-| "Run Planner" button | `MemoryPlanner.run_planner()` | `planner_summary` (Haiku, 2000 tokens) | Haiku | `summary`, `action_items`, `acceptance_criteria`; updates linked work items |
-| "Snapshot" button | `MemoryPromotion.promote_feature_snapshot()` | `feature_snapshot` (Haiku, 2500 tokens) | Haiku | `summary` (=requirements), `action_items`, `design`, `code_summary` |
-
----
-
-## All System Prompts
-
-All prompts are **file-based** in `backend/prompts/` — NOT stored in the DB, NOT exposed to users.
-Loaded via `from core.prompt_loader import prompts` (singleton, lazy-loaded).
-Change model or cost by editing `backend/prompts/prompts.yaml`.
-
-| Prompt name | File | Model | Max tokens | Trigger | Returns |
-|------------|------|-------|-----------|---------|---------|
-| `commit_analysis` | `memory/commits/commit_analysis.md` | **Sonnet** | 800 | Before `git commit` | `{message, summary, key_classes, key_methods, patterns_used, decisions, test_coverage, dependencies}` |
-| `commit_digest` | `memory/commits/commit_digest.md` | Haiku | 200 | After commit stored | `{summary, action_items, importance}` |
-| `commit_symbol` | `memory/commits/commit_symbol.md` | Haiku | 120 | Per changed symbol | 1-sentence plain text |
-| `prompt_batch_digest` | `memory/prompt_batch_digest.md` | Haiku | 250 | Every ~5 prompts | `{summary, action_items, importance}` |
-| `item_digest` | `memory/item_digest.md` | Haiku | 200 | Item stored (short) | `{summary, action_items, importance}` |
-| `meeting_sections` | `memory/meeting_sections.md` | Haiku | 1000 | Item stored (meeting/large) | `[{title, content}]` |
-| `message_chunk_digest` | `memory/message_chunk_digest.md` | Haiku | 200 | Message stored | Plain text summary |
-| `relation_extraction` | `memory/relation_extraction.md` | Haiku | 400 | Item embed | `{relations: [{from, relation, to, note}]}` |
-| `session_end_synthesis` | `memory/session_end_synthesis.md` | Haiku | 600 | Session end hook | `{summary, open_threads, next_steps}` |
-| `work_item_extraction` | `memory/work_items/work_item_extraction.md` | Haiku | 500 | After prompt batch | `{items: [{category, name, description}]}` |
-| `work_item_promotion` | `memory/work_items/work_item_promotion.md` | Haiku | 300 | Work item pipeline | `{summary, status_ai}` |
-| `conflict_detection` | `memory/conflict_detection.md` | Haiku | 300 | Fact upsert | `{conflict, resolution, merged_value, reasoning}` |
-| `feature_snapshot` | `memory/feature_snapshot.md` | Haiku | 2500 | Snapshot button | `{requirements, action_items, design, code_summary, relations}` |
-| `planner_summary` | `memory/planner/planner_summary.md` | Haiku | 2000 | Run Planner button | `{use_case_summary, done_items, remaining_items, acceptance_criteria, work_item_updates}` |
-
-**To switch a prompt to Sonnet**: edit `prompts.yaml` → `model: sonnet`. No code changes needed.
-
----
-
-## Full Trigger Flow
+### 5c. Fact Conflict Detection
 
 ```
-post_prompt.sh hook
-        │
-        ▼
-POST /memory/{p}/prompts
-        │  MemoryMirroring.mirror_prompt()
-        ▼
-mem_mrr_prompts (insert)
-        │
-        │  [every ~5 prompts in session]
-        ▼
-process_prompt_batch()          ← prompt_batch_digest (Haiku)
-        │
-        ▼
-mem_ai_events (event_type='prompt_batch', chunk=0, embedding)
-        │
-        │  [background, fire-and-forget]
-        ▼
-extract_work_items_from_events()  ← work_item_extraction (Haiku)
-        │
-        ▼
-mem_ai_work_items (INSERT/upsert)
-        │
-        │  [background]
-        ▼
-match_work_item_to_tags()         ← ai_tag_suggestion (Haiku, if needed)
-        │
-        ▼
-work_item.ai_tag_id updated (suggestion only — tag_id requires user drag-drop)
-
-
-─────────────────────────────────────────────────────────
-
-post_commit.sh hook
-        │
-        ▼
-POST /git/{p}/commit-push
-        │  [background task 0: inline]
-        │  _generate_commit_message()   ← commit_analysis (Sonnet)
-        │  → commit message written to git
-        │
-        │  git commit + git push
-        │
-        │  [background task 1]
-        ▼
-_sync_commit_and_link()
-        │  INSERT mem_mrr_commits {commit_hash, author, tags={source,phase,feature,bug,work-item},
-        │                          tags_ai={}, exec_llm=FALSE}
-        │  LINK to session + prompt_id
-        ▼
-mem_mrr_commits (insert)
-        │
-        │  [background task 2]
-        ▼
-process_commit()                  ← commit_digest (Haiku)
-        │
-        ├─ mem_ai_events (event_type='commit', chunk=0 = digest + embedding)
-        ├─ mem_ai_events (chunk≥1 = per-file diff sections, raw embed)
-        │
-        ├─ mem_mrr_commits.summary = digest text (back-propagate)
-        ├─ mem_mrr_commits.llm = haiku_model (back-propagate)
-        ├─ mem_mrr_commits.exec_llm = TRUE (back-propagate)
-        └─ mem_mrr_commits.tags_ai["languages"] = [...] (back-propagate)
-        │
-        │  [background task 3]
-        ▼
-extract_commit_code()             ← commit_symbol (Haiku, per symbol if rows ≥ min_lines)
-        │  tree-sitter AST parse → per-symbol rows
-        ▼
-mem_mrr_commits_code (bulk insert, ON CONFLICT DO NOTHING)
-
-
-─────────────────────────────────────────────────────────
-
-log_session_stop.sh hook
-        │
-        ▼
-POST /memory/{p}/session-summary
-        │
-        ▼
-_generate_session_summary()       ← session_end_synthesis (Haiku)
-        │
-        ▼
-mem_ai_events (event_type='session_summary', summary, open_threads, next_steps)
-        │
-        │  [auto]
-        ▼
-write_root_files()
-        │
-        ▼
-{code_dir}/CLAUDE.md, .cursorrules, .claude/memory/top_events.md (regenerated)
-
-
-─────────────────────────────────────────────────────────
-
-User clicks "Snapshot" in UI
-        │
-        ▼
-POST /projects/{p}/snapshot/{tag_name}
-        │
-        ▼
-promote_feature_snapshot()        ← feature_snapshot (Haiku)
-        │
-        ├─ planner_tags: summary, action_items, design, code_summary, embedding
-        └─ detect_fact_conflicts() ← conflict_detection (Haiku)
-                │
-                ▼
-           mem_ai_project_facts (upsert)
-
-
-─────────────────────────────────────────────────────────
-
-User clicks "Run Planner" in UI
-        │
-        ▼
-POST /projects/{p}/planner/{tag_id}
-        │
-        ▼
-MemoryPlanner.run_planner()       ← planner_summary (Haiku)
-        │
-        ├─ planner_tags: summary, action_items, acceptance_criteria
-        ├─ mem_ai_work_items: action_items, acceptance_criteria, summary (per linked item)
-        └─ workspace/{p}/documents/{cat}/{tag}.md  (written to disk)
+save_fact(project, key, value)
+  ├── SELECT existing fact (valid_until IS NULL)
+  └── If exists AND different value:
+        Haiku: conflict_detection.yaml
+          → { resolution: "supersede|merge|flag", merged_value }
+        UPDATE mem_ai_project_facts based on resolution
 ```
 
 ---
 
-## Tagging — How `tags` JSONB Works
+## 6. Supported CLI Tools
 
-Every `mem_mrr_*` table has a `tags JSONB` column. Tags flow from the hook into raw storage, then propagate upward through digests into `mem_ai_events.tags`.
+aicli is a **FastAPI backend** (HTTP API). All integrations work by calling HTTP endpoints or running hook scripts. There is no separate CLI binary.
 
-### `mem_mrr_prompts.tags` — set by hook at insert time
+### Claude Code (primary)
+
+Set up hooks in `~/.claude/settings.json`:
 
 ```json
 {
-  "source": "claude_cli",        // hook source: claude_cli | cursor | aicli_cli | ui
-  "phase": "development",        // optional: discovery | development | testing | ...
-  "feature": "auth-refactor",    // optional: current feature slug
-  "bug": "login-500-error",      // optional: bug reference
-  "work-item": "uuid-or-slug",   // optional: linked work item
-  "llm": "claude-sonnet-4-6"     // optional: LLM used in session
+  "hooks": {
+    "UserPromptSubmit": [{ "command": "/path/to/log_user_prompt.sh" }],
+    "Stop": [
+      { "command": "/path/to/log_session_stop.sh" },
+      { "command": "/path/to/auto_commit_push.sh" }
+    ],
+    "PreToolUse": [{ "command": "/path/to/check_session_context.sh" }]
+  }
 }
 ```
 
-### `mem_mrr_commits.tags` — user intent only (clean after migration 016)
+Hook scripts live in `workspace/_templates/cli/claude/hooks/`:
 
-```json
-{
-  "source": "commit_push",       // always present
-  "phase": "development",        // from active session tags
-  "feature": "auth-refactor",    // from active session tags
-  "bug": "login-500-error",      // from active session tags
-  "work-item": "uuid-or-slug"    // from active session tags
-}
+| Script | Trigger | What it does |
+|--------|---------|-------------|
+| `log_user_prompt.sh` | Every prompt | POST to `/hook-log/prompt` → inserts into `mem_mrr_prompts` |
+| `log_session_stop.sh` | Session end | POST to `/projects/{p}/memory` → LLM synthesis + write_root_files |
+| `auto_commit_push.sh` | Session end | `git add/commit/push` + POST to `/git/commit-log` |
+| `check_session_context.sh` | Session start | `write_root_files()` to refresh CLAUDE.md |
+| `log_commit.sh` | Git hook | POST to `/git/commit-store` |
+| `slack_notify.sh` | Session end | Slack webhook notification |
+| `format_on_save.sh` | Tool use | Run formatter on modified files |
+
+### Cursor
+
+- `.cursorrules` auto-loaded from project root (kept ≤2000 tokens)
+- MCP server: add to Cursor MCP settings pointing to `backend/agents/mcp/server.py`
+- Use `commit_push` MCP tool for tagging commits with phase/feature
+
+### Claude CLI (terminal)
+
+```bash
+cat workspace/aicli/_system/llm_prompts/full.md | claude -
+# or pipe it as system prompt
+claude --system-prompt "$(cat workspace/aicli/_system/llm_prompts/full.md)"
 ```
 
-**`tags_ai`** (AI-enriched, separate):
-```json
-{
-  "languages": ["python", "typescript"],  // from smart_chunk_diff()
-  "analysis": { ... }                     // from commit_analysis (Sonnet)
-}
+### OpenAI / GPT-4
+
+```python
+system = open("workspace/aicli/_system/llm_prompts/openai.md").read()
+client.chat.completions.create(model="gpt-4.1",
+    messages=[{"role": "system", "content": system}, ...])
 ```
 
-### `mem_ai_events.tags` — merged from mirror + LLM metadata
+### Codex CLI
 
-```json
-{
-  "source": "claude_cli",        // from mirror row
-  "feature": "auth-refactor",    // from mirror row
-  "llm": "claude-haiku-4-5-20251001",  // added by process_*()
-  "event": "prompt_batch",       // added by _upsert_event()
-  "chunk_type": "full"           // added by _upsert_event()
-}
+```bash
+codex --system-prompt "$(cat workspace/aicli/_system/openai/system_prompt.md)"
+```
+
+### DeepSeek / Grok / Any OpenAI-compatible
+
+Use `llm_prompts/full.md` as system prompt — provider-agnostic plain text.
+
+### Gemini
+
+Upload `gemini_context.md` via Files API, reference the file URI in your request. Contains all facts + active work items.
+
+---
+
+## 7. LLM Providers
+
+Five providers are supported. Each has an adapter in `backend/agents/providers/`.
+
+| Provider | File | Default model | Env var |
+|----------|------|--------------|---------|
+| **Anthropic (Claude)** | `pr_claude.py` | `claude-sonnet-4-6` | `ANTHROPIC_API_KEY` |
+| **OpenAI** | `pr_openai.py` | `gpt-4.1` | `OPENAI_API_KEY` |
+| **DeepSeek** | `pr_deepseek.py` | `deepseek-chat` / `deepseek-reasoner` | `DEEPSEEK_API_KEY` |
+| **Google Gemini** | `pr_gemini.py` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
+| **xAI Grok** | `pr_grok.py` | `grok-3` | `GROK_API_KEY` |
+
+**Haiku** (`claude-haiku-4-5-20251001`) is used for all internal memory pipeline calls (classification, synthesis, conflict detection, symbol summaries) — it's fast and cheap.
+
+**Sonnet** (`claude-sonnet-4-6`) is used for commit analysis (higher quality needed).
+
+**OpenAI `text-embedding-3-small`** is used for all vector embeddings (1536 dimensions).
+
+### Shared System Prompts (`mng_system_roles`)
+
+Admin-managed text blocks that prepend to any agent role's system_prompt. Managed via `GET/POST/PATCH /system-roles`.
+
+Built-in blocks: `coding_standards`, `output_format`, `security_principles`, `testing_standards`, `performance_standards`, `documentation_standards`, `deployment_standards`.
+
+Linked to agent roles via `mng_role_system_links` (with `order_index` for priority stacking).
+
+---
+
+## 8. MCP Integration
+
+The MCP server (`backend/agents/mcp/server.py`) uses **stdio transport** and exposes 18 tools. Add it to Claude Code or Cursor settings.
+
+### Tool List
+
+| Tool | What it returns / does |
+|------|------------------------|
+| `search_memory` | Semantic + text search over history, commits, docs, code chunks (pgvector cosine) |
+| `get_project_state` | PROJECT.md + tech_stack + in_progress + active work items (live DB) |
+| `get_recent_history` | Last N prompt/response entries (filterable: phase, feature, provider) |
+| `get_roles` | Available AI role YAML files |
+| `get_commits` | Recent commits with phase/feature tags (untagged = red flag) |
+| `get_tagged_context` | All events with a specific phase or feature tag |
+| `get_session_tags` | Current active session tags (phase, feature, bug_ref) |
+| `set_session_tags` | Update active session tags |
+| `commit_push` | Stage → commit → push; logs to `commit_log.jsonl` with `source='cursor_mcp'` |
+| `create_entity` | Create feature/bug/task/use_case in `mem_work_items` |
+| `sync_github_issues` | Import GitHub issues as work items (bug/feature/task) |
+| `list_work_items` | Active work items (filterable by category, status) |
+| `run_work_item_pipeline` | Trigger 4-agent pipeline: PM → Architect → Developer → Reviewer |
+| `get_db_schema` | Full table schema reference for the current project |
+| `search_facts` | Semantic search over `mem_ai_project_facts` |
+| `search_work_items` | Semantic search over `mem_work_items` embeddings |
+| `get_tag_context` | Full context for a work item: summary + recent prompts |
+| `get_item_by_number` | Resolve `#US0001` → full work item record |
+
+**Why bother with MCP when CLAUDE.md exists?**
+CLAUDE.md is a snapshot at the last `/memory` run. MCP gives live DB access: semantic search over all history, create items mid-session, tag the session. Use both.
+
+---
+
+## 9. File Locations Quick Reference
+
+```
+backend/
+  prompts/
+    commit.yaml              ← commit_analysis (Sonnet) + commit_symbol (Haiku)
+    work_items.yaml          ← classification + summarise (both Haiku) + category config
+    conflict_detection.yaml  ← fact conflict resolution (Haiku)
+    memory_synthesis.yaml    ← /memory LLM synthesis (Haiku)
+
+  memory/
+    memory_files.py          ← deterministic renderer → CLAUDE.md / .cursorrules / llm_prompts/*
+    memory_mirroring.py      ← INSERT into mem_mrr_* tables
+    memory_work_items.py     ← classify() + approve() + reject() pipeline
+    memory_code_parser.py    ← tree-sitter AST → mem_mrr_commits_code + hotspot scoring
+    memory_promotion.py      ← fact conflict detection + save_fact()
+    memory_sessions.py       ← per-turn LLM message continuity (JSON file sessions)
+
+  routers/
+    route_work_items.py      ← /wi/* endpoints (classify, pending, approve, reject, update)
+    route_projects.py        ← /projects/* + /memory synthesis + session-tags endpoint
+    route_git.py             ← /git/commit-store, /git/sync-commits
+    route_memory.py          ← /memory/stats + pipeline-status + data-dashboard
+    route_search.py          ← /search/tagged + /search/semantic
+
+workspace/{project}/
+  PROJECT.md                 ← User-maintained; auto-updated "Key Decisions" + "Recent Work"
+  _system/
+    claude/CLAUDE.md         ← Full context (primary archive)
+    cursor/rules.md          ← Compact Cursor rules (≤2000 tokens)
+    llm_prompts/
+      compact.md             ← GPT-4 / small-window models
+      full.md                ← Claude CLI / DeepSeek / Grok
+      gemini_context.md      ← Gemini Files API
+      openai.md              ← OpenAI API
+    openai/
+      system_prompt.md       ← Codex CLI --system-prompt
+
+{code_dir}/
+  CLAUDE.md                  ← Auto-loaded by Claude Code
+  .cursorrules               ← Auto-loaded by Cursor
 ```
 
 ---
 
-## Quick Reference: Which Table for What
+## 10. Recommendations for Improvement
 
-| Question | Table / Query |
-|----------|--------------|
-| All prompts this session | `mem_mrr_prompts WHERE session_id=?` |
-| Which files changed in a commit | `mem_mrr_commits_code WHERE commit_hash=?` (new!) |
-| Which symbols changed in a commit | `mem_mrr_commits_code WHERE commit_hash=? AND symbol_type IN (...)` |
-| Semantic search across all history | `mem_ai_events` (vector cosine via `semantic_search()`) |
-| What work is in progress | `mem_ai_work_items WHERE status_user='in_progress'` |
-| AI-suggested tag for a work item | `mem_ai_work_items.ai_tag_id` |
-| Full context for feature X | `planner_tags WHERE name=X` + `mem_ai_work_items WHERE tag_id=X.id` |
-| Recent high-importance events | `mem_ai_events ORDER BY importance*exp(-0.01*age_days) DESC` |
-| What languages were used in commit | `mem_mrr_commits.tags_ai->>'languages'` |
-| Project tech stack | `mem_ai_project_facts WHERE category='stack' AND valid_until IS NULL` |
+These are genuine gaps based on the current architecture — ordered by impact:
+
+### High impact
+
+**1. Commit code embeddings** — `mem_mrr_commits_code` has `llm_summary` per symbol but no embedding. A semantic search "show me all auth-related code changes" is impossible without it. The table has the right shape; just needs `embedding VECTOR(1536)` + a backfill job.
+
+**2. Hotspot → work item feedback loop** — `mem_mrr_commits_file_stats` tracks bug commits per file, but this data never surfaces to the work item classifier. A file with `hotspot_score > 0.8` should auto-suggest a "refactor" task.
+
+**3. Context auto-compaction** — CLAUDE.md grows without bound. When it exceeds a configurable token limit (say 8000), the oldest "Recently Changed" entries should roll off automatically. Right now the user never knows when it's getting too large.
+
+**4. Per-work-item branch awareness** — When a feature branch is checked out, automatically inject the matching `US/FE` item's summary into the Claude session. Currently requires manual `/wi` lookup.
+
+### Medium impact
+
+**5. Multi-repo support** — `mem_mrr_commits_code` assumes one `code_dir` per project. Monorepo or multi-service projects (e.g., `backend/` + `ui/`) need a `repo_path` column so symbol searches can distinguish modules.
+
+**6. Embedding drift detection** — Work item embeddings are computed once on approve and never refreshed. If the summary is edited, the embedding becomes stale silently. A `last_embedded_at` column + periodic drift check would fix this.
+
+**7. Session tagging at the prompt level** — `mem_mrr_prompts.tags` is set by hooks but relies on the user having run `/tag`. Most prompts end up with empty tags, making feature-filtered searches useless. Auto-tagging from work item name matching in the prompt text would help.
+
+### Low impact / polish
+
+**8. CLAUDE.md per-work-item drill-down** — Active features show name + status but not their children or recent bugs. A collapsed bullet list of child items (top 3) would make handoff context much richer.
+
+**9. PROJECT.md conflict guard** — If the user edits a `<!-- auto-updated by /memory -->` section manually, the next `/memory` run overwrites it. A git-diff check before overwrite would prevent surprise data loss.
+
+**10. Embedding model upgrade** — `text-embedding-3-small` (1536-dim) is used. `text-embedding-3-large` (3072-dim) gives ~10% better recall on code retrieval tasks. Worth the cost increase for a team tool.
 
 ---
 
-## AI vs. User Ownership — Summary
+## 11. Honest Assessment — Roasted Mode 🔥
 
-| Data | AI Writes | User Writes | User Reads |
-|------|-----------|-------------|-----------|
-| `mem_mrr_prompts` | ✗ | via hook | ✓ history |
-| `mem_mrr_commits` | `summary`, `llm`, `exec_llm`, `tags_ai` | via hook: `tags`, `author` | ✓ history |
-| `mem_mrr_commits_code` | ALL (tree-sitter + Haiku) | ✗ | ✓ code intelligence |
-| `mem_ai_events` | ALL | ✗ | ✓ search results |
-| `mem_ai_work_items` | ALL except `status_user`, `tag_id` | `status_user`, `tag_id` | ✓ work board |
-| `mem_ai_project_facts` | ALL (LLM resolves conflicts) | review `flag` items | ✓ knowledge |
-| `planner_tags` | `summary`, `action_items`, `acceptance_criteria`, `design`, `code_summary` (on button click only) | ALL other fields | ✓ project plan |
+**Rating: 3.5 / 5**
+
+> _"It's not a must-have yet, but it's past the 'interesting experiment' stage."_
+
+### What works well (earned points)
+
+| Capability | Score | Comment |
+|------------|-------|---------|
+| Shared memory across tools | ✅ 4/5 | CLAUDE.md + .cursorrules genuinely auto-load in the right tools. Hook → DB → file pipeline works end to end. |
+| Work item classification | ✅ 4/5 | Haiku classifier is surprisingly accurate for grouping prompts into use cases. The approve/reject UI flow is clean. |
+| Commit code memory | ✅ 3.5/5 | tree-sitter symbol extraction + per-symbol Haiku summaries is smart. The "Recently Changed" section in CLAUDE.md is genuinely useful on a new session. |
+| MCP live context | ✅ 3.5/5 | 18 tools is more than any competing tool. `search_memory` + `get_project_state` are the two that actually get used. |
+| Multi-provider | ✅ 3/5 | Five providers with a clean adapter interface. Switching is trivial. |
+| Migration discipline | ✅ 4/5 | 78 migrations with rollback paths and a proper version table. Production-grade. |
+
+### What hurts (points deducted)
+
+| Problem | Score | Comment |
+|---------|-------|---------|
+| Hook setup friction | ❌ -0.5 | 10 shell scripts, manual symlinks, JSON settings editing. First-time setup takes 30+ minutes and breaks on path changes. Should be `aicli init` with a single command. |
+| No embeddings on code symbols | ❌ -0.5 | The most useful search ("find me all the places we handle auth") doesn't work because `mem_mrr_commits_code` has no embedding. The infrastructure is there. |
+| Memory goes stale silently | ❌ -0.3 | If hooks aren't configured (or fail), CLAUDE.md drifts. No staleness indicator. No "last updated X hours ago" warning. |
+| prompt tagging relies on user discipline | ❌ -0.2 | `/tag` must be run manually. Most prompts have empty tags. Feature-filtered history searches mostly return nothing. |
+
+### vs. alternatives
+
+| Tool | Memory | Code awareness | Multi-LLM | Rating |
+|------|--------|---------------|-----------|--------|
+| **aicli** | ✅ Persistent across sessions + tools | ✅ Symbol-level via tree-sitter | ✅ 5 providers | 3.5/5 |
+| **Raw Claude Code** | ❌ Session-only | ❌ None | ❌ Claude only | 2/5 |
+| **Cursor without MCP** | ❌ Session-only | ✅ Codebase index | ❌ Limited | 2.5/5 |
+| **Cursor + aicli MCP** | ✅ Full persistent | ✅ Symbol + hotspot | ✅ 5 providers | 4/5 |
+| **Custom CLAUDE.md only** | ⚠️ Manual maintenance | ❌ None | ❌ 1 tool | 1.5/5 |
+
+### What would push it to 5/5
+
+1. **`aicli init` command** that installs hooks in 60 seconds — no manual JSON editing
+2. **Code symbol embeddings** — semantic search over code changes
+3. **Automatic session tagging** — classify the active feature from prompt content, no `/tag` needed
+4. **Context freshness indicator** in CLAUDE.md: `_Context is 4 hours old — run /memory to refresh_`
+5. **Web UI onboarding** for non-Claude-Code users — Gemini/GPT users need a way to pull context without hooks
+
+### Bottom line
+
+If you're a solo developer using Claude Code on one project: **it works today** and the CLAUDE.md auto-inject genuinely saves 5–10 minutes of context re-explanation per session. That's real value.
+
+If you're a team of 4+ people switching between Claude Code, Cursor, and GPT-4: **it's the best option available right now**, but plan for a half-day of setup and expect some manual hook maintenance.
+
+If you just want to chat with an LLM about your code without building infrastructure: **use Claude Code with a hand-written CLAUDE.md**. aicli is overhead you don't need.
 
 ---
 
-## Phase Plan: Merging work_items ↔ planner_tags
-
-Current state: Two parallel systems exist.
-- `mem_ai_work_items` — AI creates and owns; user can set `status_user` + `tag_id`
-- `planner_tags` — User creates and owns; LLM enriches on demand
-
-**Both work correctly independently**. The merge path:
-
-| Step | Action | Field |
-|------|--------|-------|
-| ✅ Done | AI suggests tag for each work item | `ai_tag_id` (auto, vector search) |
-| ✅ Done | User confirms link via drag-drop | `tag_id` (manual) |
-| Next | Run Planner reads from linked work_items | `planner_tags.id = work_item.tag_id` |
-| Next | Snapshot filters events by `feature` tag | `mem_ai_events.tags->>'feature' = tag_name` |
-| Future | Work item creation auto-creates planner_tag if no match | merge into one flow |
+_Generated 2026-04-25. Run `/memory` on any project to regenerate CLAUDE.md, .cursorrules, and all llm_prompts files._
