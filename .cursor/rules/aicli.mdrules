@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 19:41 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 19:51 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-25_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-25] I would like to make sure commits history is well used as part of the work item classifications and also use for better 
 - [2026-04-25] Plannded tag/ planner module - I am thinking to remove that, as I have changed to module.  work item -> use cases. in us
 - [2026-04-25] I wuld like to do directly Phase B, as I dont think it will effect so much. backlog is not used as well.. plan full remo
 - [2026-04-25] I would like to have a recreate / full update the aiCli_memory file, as I am not sure it is updted with latest changes. 
 - [2026-04-25] I would like to speak about the commit based on the prevoius prompts -  The goal is have optimsed overview of all code .
+- [2026-04-25] I think the table you sujjest - mem_code_symbols looks qute similar to mem_mrr_commits_code which can be used (there are
