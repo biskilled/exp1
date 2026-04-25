@@ -1,11 +1,7 @@
 # Project Memory — aicli
-_Generated: 2026-04-25 09:41 UTC by aicli /memory_
+_Generated: 2026-04-25 10:00 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
-
-## Project Summary
-
-aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL with pgvector, and an Electron desktop UI to capture, synthesize, and manage development context across commits, prompts, and work items. The project is in active refinement phase, with recent work focused on stabilizing drag-and-drop work item linking (parent-child/merge), implementing undo functionality via reverse API closures, and generating markdown documentation aligned to hierarchical use case structures.
 
 ## Tech Stack
 
@@ -104,6 +100,42 @@ aicli is a shared AI memory platform combining a FastAPI backend, PostgreSQL wit
 - **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
 - **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
-## AI Synthesis
+## Recent Work (last 10 exchanges)
 
-**[2026-04-24 22:30]** `ui` — Drag-and-drop parent-child/merge linking implemented in Work Items with type validation (same-type only); users see merge/parent-child options on drop, merged items show source summary as footnote. **[2026-04-24 22:55]** `ui` — Undo button added to Work Items toolbar as persistent button (not popup); stores reverse API call closure capturing original parent_id before link, allows reverting drag-drop actions via single click. **[2026-04-24 23:45]** `ui` — Drag-and-drop for Use Cases fixed: unconditional e.preventDefault() and event delegation via document.elementFromPoint(e.clientX, e.clientY) resolves relatedTarget=null browser bug on drop; parent-child linking now functional. **[2026-04-24 19:05]** `ui` — Completed section added to left sidebar under Planning group; complete_use_case() validates all descendants, sets completed_at timestamp, auto-moves MD file to documents/completed/. **[2026-04-24 18:54]** `backend` — MD file generation refactored: recursive CTE fetches all descendants (including re-parented items), separate sections for Requirements/Completed/Open Items, removed HTML comments in favor of plain text timestamps (created: | updated:). **[2026-04-24 18:21]** `ui` — Use Case markdown titles now show use case ID prefix (e.g. 'US1002 — Use Case Name'), created/updated dates displayed as plain text at top, jump-to-use-cases button added next to edit/delete for quick navigation.
+**[2026-04-25 09:58]** `ui/`
+Q: Still not working. can you compare to work item and see why it is working on work item and not on use cases ?
+A: The implementation now mirrors Work Items exactly:  | | Work Items | Use Cases (now) | |---|---|---| | `dragstart`/`dragend` | Per-card, direct | Per-card, direct | | State variables | Module-level `_dragItemId`, `_dragOverItemId` | Module-level `_ucDragItemId`, `_ucDragOverId` | | Drop detection | 
+
+**[2026-04-25 09:49]** `ui/`
+Q: Not working yet. dan drag items, but it is not linked (tried any items in use case section)
+A: Now open the browser DevTools console (F12), go to Use Cases tab, try dragging one item onto another, then paste what the console shows. Specifically I need to see:  1. `[UC-drag] attached to N zones` — how many zones were found 2. `[UC-drag] dragstart` — whether `_ucDragId` is set 3. `[UC-drag] dro
+
+**[2026-04-25 09:38]** `ui/`
+Q: This is still not working. I can move item , but it is not linked anywhere
+A: The real bug: `dragleave` fires with `relatedTarget = null` right before `drop` completes — a known browser behaviour when the mouse releases. This cleared `_ucHoverTarget`, so by the time `drop` ran, the target was already null and `_showLinkMergePopover` was never called.  The fix: the `drop` hand
+
+**[2026-04-25 09:34]** `ui/`
+Q: It is still not working on use cases. how come it works well on work item and you can not fix that in use case ?
+A: Good. The root cause was two things that Work Items got right but UC didn't:  1. **`e.preventDefault()` must be unconditional** — in the previous UC version it was inside an `if (card)` guard, so if `e.target.closest()` returned null for any reason (hovering over a gap, a section header, or any elem
+
+**[2026-04-25 09:21]** `ui/`
+Q: Can undo on merge work partialy (expose the old item, but the new one will be with the latest summery ) ? Also merge/ set parent-child still not workng in Use cases
+
+**[2026-04-24 23:45]** `ui/`
+Q: how is the undo works, if item is linked - there is db update, how doas undo work?
+A: It works by **storing a reverse API call as a closure** before anything is applied:  1. **Before** the link happens, `originalParentId = draggedItem?.wi_parent_id ?? null` is captured (line ~1095).  2. **After** the `PATCH /wi/{project}/{id}` sets `wi_parent_id = targetId`, `_setUndoAction` stores a
+
+**[2026-04-24 23:24]** `ui/`
+Q: it seems that the drag and drop working in work item, but is it not working in use cases, when I am dragging an item (the same type) nothing happend . I dont see the option to merge or parent-child. c
+A: Done. Here's what was completed:  **1. Undo button wired** (`_setupEvents` at line 457): The `#wi-undo-btn` click handler is now active in both the Work Items and Use Cases views (both call `_setupEvents`). On click it calls `undoFn()`, clears the undo state, shows a toast, then reloads.  **2. Undo 
+
+**[2026-04-24 23:08]** `ui/`
+Q: can you go over the UI and optimise that, make sure the code is clean there are no duplicate or unused code. make sure code and merthod are optimised.  I do see some hard coded string like localhost (
+
+**[2026-04-24 22:55]** `ui/`
+Q: It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is it possible to add undo button in both section (work items and use cases) so use
+A: All done. Here's a summary of what was implemented:  ---  ### Fixes & Features  **1. UC tab drag-and-drop (fixed)** - Rewrote `_attachUcDragListeners` to use **event delegation** on the parent `listEl` container - `dragover`/`drop` handlers now use `e.target.closest('.wi-uc-children .wi-card[data-it
+
+**[2026-04-24 22:46]** `ui/`
+Q: I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that is updated, make sure the aiCli folder is also updated. the goal os to remove un
+A: Here's the final structure and what changed:  ---  ## New `_templates/` Structure  ``` _templates/ ├── cli/ │   ├── claude/ │   │   ├── hooks/          ← 10 hook scripts (was: _templates/hooks/) │   │   └── settings.template.json │   └── mcp.template.json   ← shared Claude + Cursor MCP config ├── pi

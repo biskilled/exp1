@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 09:41 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 10:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -74,8 +74,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] it seems that the drag and drop working in work item, but is it not working in use cases, when I am dragging an item (th
-- [2026-04-24] how is the undo works, if item is linked - there is db update, how doas undo work?
 - [2026-04-25] Can undo on merge work partialy (expose the old item, but the new one will be with the latest summery ) ? Also merge/ se
 - [2026-04-25] It is still not working on use cases. how come it works well on work item and you can not fix that in use case ?
 - [2026-04-25] This is still not working. I can move item , but it is not linked anywhere
+- [2026-04-25] Not working yet. dan drag items, but it is not linked (tried any items in use case section)
+- [2026-04-25] Still not working. can you compare to work item and see why it is working on work item and not on use cases ?

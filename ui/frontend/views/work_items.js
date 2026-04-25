@@ -30,9 +30,6 @@ let _classifyPoller = null;  // interval polling after background classify
 let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
 let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
-let _ucDragAbort    = null;       // AbortController for UC drag delegation listeners
-let _ucDragItemId   = null;       // UC drag: id of item being dragged (module-level like _dragItemId)
-let _ucDragOverId   = null;       // UC drag: id of card under cursor (module-level like _dragOverItemId)
 let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _setUndoAction
 
 // ── Type config ──────────────────────────────────────────────────────────────
@@ -67,9 +64,6 @@ function _esc(s) {
 export function destroyWorkItems() {
   if (_polling)        { clearInterval(_polling);        _polling        = null; }
   if (_classifyPoller) { clearInterval(_classifyPoller); _classifyPoller = null; }
-  if (_ucDragAbort)    { _ucDragAbort.abort();           _ucDragAbort    = null; }
-  _ucDragItemId = null;
-  _ucDragOverId = null;
 }
 
 export async function renderWorkItems(container, projectName) {
@@ -1175,7 +1169,7 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
   }, 100);
 }
 
-function _attachDragListeners() {
+function _attachDragListeners(reloadFn = _loadAll) {
   const listEl = document.getElementById('wi-list');
   if (!listEl) return;
 
@@ -1266,7 +1260,7 @@ function _attachDragListeners() {
 
       // If dropped directly onto another item card → show link/merge popover
       if (overItemId) {
-        _showLinkMergePopover(e.clientX, e.clientY, itemId, overItemId, _loadAll);
+        _showLinkMergePopover(e.clientX, e.clientY, itemId, overItemId, reloadFn);
         return;
       }
 
@@ -1280,7 +1274,7 @@ function _attachDragListeners() {
         try {
           await api.wi.update(_project, itemId, { wi_parent_id: targetUcId });
           toast('Moved to use case', 'success');
-          await _loadAll();
+          await reloadFn();
         } catch (err) { toast(`Move failed: ${err.message}`, 'error'); }
         return;
       }
@@ -1314,7 +1308,7 @@ function _attachDragListeners() {
 
       try {
         await api.wi.reorder(_project, updates);
-        await _loadAll();
+        await reloadFn();
       } catch (err) { toast(`Reorder failed: ${err.message}`, 'error'); }
     });
   });
@@ -1572,7 +1566,7 @@ function _renderUseCases() {
           </div>
 
           <!-- Children grouped -->
-          <div class="wi-uc-children" style="padding:0.4rem 0.9rem 0.3rem;border-bottom:1px solid var(--border)">
+          <div class="wi-uc-children wi-drop-zone" data-uc-id="${uc.id}" style="padding:0.4rem 0.9rem 0.3rem;border-bottom:1px solid var(--border)">
             ${childrenHtml}
           </div>
 
@@ -1617,77 +1611,7 @@ function _renderUseCases() {
     });
   });
 
-  _attachUcDragListeners();
-}
-
-// ── UC drag-to-parent ────────────────────────────────────────────────────────
-// Allows dragging a UC item onto another UC item to set it as parent.
-// Dragging within a drop-zone (between cards) still reorders; dragging ONTO
-// a card body highlights it amber and sets it as the new parent on drop.
-
-function _attachUcDragListeners() {
-  const listEl = document.getElementById('wi-list');
-  if (!listEl) return;
-
-  if (_ucDragAbort) _ucDragAbort.abort();
-  _ucDragAbort = new AbortController();
-  const { signal } = _ucDragAbort;
-
-  // ── Per-card dragstart/dragend — identical to Work Items _attachDragListeners ──
-  listEl.querySelectorAll('.wi-uc-children .wi-card[data-item-id]').forEach(card => {
-    card.addEventListener('dragstart', (e) => {
-      _ucDragItemId = card.dataset.itemId;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', _ucDragItemId);
-      setTimeout(() => card.classList.add('wi-dragging'), 0);
-    }, { signal });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('wi-dragging');
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      _ucDragItemId = null;
-      _ucDragOverId = null;
-    }, { signal });
-  });
-
-  // ── Per-zone dragover/drop — identical pattern to Work Items ──────────────
-  listEl.querySelectorAll('.wi-uc-children').forEach(zone => {
-    zone.addEventListener('dragover', (e) => {
-      if (!_ucDragItemId) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'link';
-
-      const hoverEl   = document.elementFromPoint(e.clientX, e.clientY);
-      const hoverCard = hoverEl?.closest('.wi-card[data-item-id]');
-      const hoverId   = hoverCard?.dataset.itemId;
-
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      _ucDragOverId = null;
-      if (hoverId && hoverId !== _ucDragItemId) {
-        hoverCard.classList.add('wi-parent-target');
-        _ucDragOverId = hoverId;
-      }
-    }, { signal });
-
-    zone.addEventListener('dragleave', (e) => {
-      if (!zone.contains(e.relatedTarget)) {
-        listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-        _ucDragOverId = null;
-      }
-    }, { signal });
-
-    zone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const itemId   = _ucDragItemId;
-      const targetId = _ucDragOverId;
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      _ucDragItemId = null;
-      _ucDragOverId = null;
-      if (itemId && targetId && targetId !== itemId) {
-        _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
-      }
-    }, { signal });
-  });
+  _attachDragListeners(_reloadCurrent);
 }
 
 function _renderUcChildRow(c, rank) {
