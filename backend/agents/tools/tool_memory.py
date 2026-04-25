@@ -6,7 +6,7 @@ Provides direct DB access (no HTTP round-trip) for pipeline ReAct agents:
   - get_recent_history: latest prompts from mem_mrr_prompts (with optional tag filter)
   - get_project_facts : current facts from mem_ai_project_facts
   - get_tag_context   : full context for a tag — snapshot, relations
-  - search_features   : search planner_tags by tag name or semantic query
+  - search_features   : search mem_work_items by name or summary
 
 Assigned to research-oriented roles (PM, Architect, Reviewer) so they can reason
 over past decisions without leaving the agentic loop.
@@ -107,19 +107,17 @@ MEMORY_TOOL_DEFS: list[dict] = [
     {
         "name": "get_tag_context",
         "description": (
-            "Return comprehensive context for a specific feature/bug/task tag. "
-            "Includes: tag description + requirements, recent prompts tagged to this feature, "
-            "feature snapshot (requirements, action_items, design, code_summary), "
-            "and tag relations (depends_on, blocks, etc.). "
+            "Return comprehensive context for a specific work item (use case / feature / bug). "
+            "Includes: name, summary, recent prompts tagged to this feature. "
             "Call this FIRST when starting work on any feature or bug — the PM agent "
             "uses this to orient on full history before creating acceptance criteria."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "tag_name": {"type": "string",  "description": "Tag name, e.g. 'auth-refactor', 'retry-dashboard'"},
+                "tag_name": {"type": "string",  "description": "Work item name, e.g. 'auth-refactor', 'retry-dashboard'"},
                 "project":  {"type": "string",  "description": "Project name"},
-                "limit":    {"type": "integer", "description": "Max AI events to return (default 8)"},
+                "limit":    {"type": "integer", "description": "Max recent prompts to return (default 8)"},
             },
             "required": ["tag_name"],
         },
@@ -127,13 +125,12 @@ MEMORY_TOOL_DEFS: list[dict] = [
     {
         "name": "search_features",
         "description": (
-            "Search planner_tags (feature snapshots) by tag name or semantic query. "
-            "Returns requirements, action_items, design overview, and affected files for matching features."
+            "Search use cases and work items by name or summary."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query":   {"type": "string",  "description": "Tag name or semantic query"},
+                "query":   {"type": "string",  "description": "Name or summary search query"},
                 "project": {"type": "string",  "description": "Project name"},
                 "limit":   {"type": "integer", "description": "Max results (default 5)"},
             },
@@ -341,58 +338,26 @@ def _handle_get_tag_context(args: dict) -> str:
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # ── Tag + meta ────────────────────────────────────────────
+                # ── Work item lookup ──────────────────────────────────────
                 cur.execute(
-                    """SELECT t.id, t.name, t.status, t.status,
-                              c.name AS category,
-                              t.description, t.requirements, t.due_date, t.priority
-                       FROM planner_tags t
-                       LEFT JOIN mng_tags_categories c ON c.id = t.category_id
-                       WHERE t.project_id=%s AND t.name=%s
+                    """SELECT wi_id, name, wi_type, user_status, summary, due_date
+                       FROM mem_work_items
+                       WHERE project_id=%s AND name=%s AND deleted_at IS NULL
                        LIMIT 1""",
                     (project_id, tag_name),
                 )
-                tag_row = cur.fetchone()
-                if not tag_row:
-                    return f"Tag '{tag_name}' not found in project '{project}'."
-                tag_id = str(tag_row[0])
+                wi_row = cur.fetchone()
+                if not wi_row:
+                    return f"Work item '{tag_name}' not found in project '{project}'."
 
                 lines = [
-                    f"=== Tag: {tag_row[1]} ===",
-                    f"Category: {tag_row[4] or 'unset'}  |  Status: {tag_row[2]}",
+                    f"=== Work Item: {wi_row[1]} ===",
+                    f"Type: {wi_row[2]}  |  Status: {wi_row[3] or 'open'}",
                 ]
-                if tag_row[5]:
-                    lines.append(f"Description: {tag_row[5]}")
-                if tag_row[6]:
-                    lines.append(f"Requirements: {tag_row[6][:500]}")
-                if tag_row[7]:
-                    lines.append(f"Due: {tag_row[7]}  Priority: {tag_row[8] or 3}")
-
-                # ── Feature snapshot (inline on planner_tags) ─────────────
-                cur.execute(
-                    """SELECT requirements, action_items, design, code_summary, updated_at
-                       FROM planner_tags
-                       WHERE project_id=%s AND id=%s::uuid
-                       LIMIT 1""",
-                    (project_id, tag_id),
-                )
-                snap = cur.fetchone()
-                if snap:
-                    lines.append("\n--- Feature Snapshot ---")
-                    if snap[0]:
-                        lines.append(f"Requirements: {snap[0][:600]}")
-                    if snap[1]:
-                        lines.append(f"Action Items: {snap[1][:400]}")
-                    if snap[2]:
-                        design = snap[2] if isinstance(snap[2], dict) else {}
-                        hl = design.get("high_level", "")
-                        if hl:
-                            lines.append(f"Design: {hl[:300]}")
-                    if snap[3]:
-                        cs = snap[3] if isinstance(snap[3], dict) else {}
-                        files = cs.get("files", [])
-                        if files:
-                            lines.append(f"Key files: {', '.join(files[:8])}")
+                if wi_row[4]:
+                    lines.append(f"Summary: {wi_row[4][:500]}")
+                if wi_row[5]:
+                    lines.append(f"Due: {wi_row[5]}")
 
                 # ── Recent prompts for this tag ───────────────────────────
                 cur.execute(
@@ -411,23 +376,6 @@ def _handle_get_tag_context(args: dict) -> str:
                         ts = pr[2].strftime("%Y-%m-%d") if pr[2] else "?"
                         q_snippet = (pr[0] or "")[:200]
                         lines.append(f"[{ts}] Q: {q_snippet}")
-
-                # ── Relations ─────────────────────────────────────────────
-                cur.execute(
-                    """SELECT r.relation, r.note,
-                              tf.name AS from_name, tt.name AS to_name
-                       FROM mng_ai_tags_relations r
-                       JOIN planner_tags tf ON tf.id = r.from_tag_id
-                       JOIN planner_tags tt ON tt.id = r.to_tag_id
-                       WHERE r.from_tag_id=%s::uuid OR r.to_tag_id=%s::uuid""",
-                    (tag_id, tag_id),
-                )
-                rels = cur.fetchall()
-                if rels:
-                    lines.append("\n--- Relations ---")
-                    for rel in rels:
-                        note = f" ({rel[1]})" if rel[1] else ""
-                        lines.append(f"  {rel[2]} --[{rel[0]}]--> {rel[3]}{note}")
 
         return "\n".join(lines)
 
@@ -454,40 +402,30 @@ def _handle_search_features(args: dict) -> str:
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Text search on name + description (embedding column dropped in m027)
                 cur.execute(
-                    """SELECT t.name, t.requirements, t.action_items, t.description,
-                              t.updated_at, t.status
-                       FROM planner_tags t
-                       WHERE t.project_id=%s
-                         AND (t.name ILIKE %s OR t.description ILIKE %s
-                              OR t.requirements ILIKE %s)
-                       ORDER BY t.updated_at DESC LIMIT %s""",
-                    (project_id, f"%{query}%", f"%{query}%", f"%{query}%", limit),
+                    """SELECT wi_id, name, wi_type, summary, due_date
+                       FROM mem_work_items
+                       WHERE project_id = %s
+                         AND (name ILIKE %s OR summary ILIKE %s)
+                         AND deleted_at IS NULL
+                       ORDER BY score_importance DESC NULLS LAST
+                       LIMIT %s""",
+                    (project_id, f"%{query}%", f"%{query}%", limit),
                 )
                 rows = cur.fetchall()
                 for row in rows:
-                    ts   = row[4].strftime("%Y-%m-%d") if row[4] else "?"
-                    reqs = (row[1] or "")[:300]
-                    acts = (row[2] or "")[:200]
-                    desc = (row[3] or "")[:120]
-                    status = row[5] or "open"
-                    block = [
-                        f"[Feature: {row[0]}] [{status}] updated {ts}",
-                    ]
-                    if desc:
-                        block.append(f"  Description: {desc}")
-                    if reqs:
-                        block.append(f"  Requirements: {reqs}")
-                    if acts:
-                        block.append(f"  Action Items: {acts}")
+                    due = f" due {row[4]}" if row[4] else ""
+                    summary = (row[3] or "")[:300]
+                    block = [f"[{row[2]}: {row[1]}]{due}"]
+                    if summary:
+                        block.append(f"  {summary}")
                     results.append("\n".join(block))
     except Exception as e:
         log.debug(f"search_features error: {e}")
-        return f"Error searching features: {e}"
+        return f"Error searching work items: {e}"
 
     if not results:
-        return f"No feature snapshots found matching: {query}"
+        return f"No work items found matching: {query}"
     return "\n\n".join(results)
 
 

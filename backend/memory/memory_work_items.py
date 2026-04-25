@@ -312,89 +312,6 @@ def _embed_work_item(item_id: str, fields: dict) -> None:
         log.debug(f"_embed_work_item({item_id}) skipped: {e}")
 
 
-def _upsert_planner_tag(
-    project: str,
-    project_id: int,
-    name: str,
-    wi_type: str,
-    description: str = "",
-    parent_id: Optional[str] = None,
-) -> Optional[tuple[str, int]]:
-    """Find or create a planner_tag for this work item.
-
-    Maps wi_type → mng_tags_categories.name (reuses existing mapping).
-    Returns (tag_id: str, seq_num: int) or None on failure.
-    """
-    if not db.is_available():
-        return None
-
-    # wi_type → category name
-    cat_name_map = {
-        "use_case":    "use_case",
-        "feature":     "feature",
-        "bug":         "bug",
-        "task":        "task",
-        "policy":      "policy",
-        "requirement": "requirement",
-    }
-    # planner seq category (reuse existing uc/feat/bug ranges from m055)
-    seq_cat_map = {
-        "use_case":    "uc",
-        "feature":     "feat",
-        "bug":         "bug",
-        "task":        "feat",   # tasks fall into feature range
-        "policy":      "feat",
-        "requirement": "feat",
-    }
-    cat_name = cat_name_map.get(wi_type, "use_case")
-    seq_cat  = seq_cat_map.get(wi_type, "feat")
-
-    try:
-        from data.dl_seq import next_seq
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM mng_tags_categories WHERE client_id=1 AND name=%s",
-                    (cat_name,),
-                )
-                row = cur.fetchone()
-                if not row:
-                    return None
-                cat_id = row[0]
-
-                # Check existing
-                cur.execute(
-                    "SELECT id::text, seq_num FROM planner_tags "
-                    "WHERE project_id=%s AND name=%s AND category_id=%s",
-                    (project_id, name, cat_id),
-                )
-                existing = cur.fetchone()
-                if existing:
-                    tag_id, seq_num = existing
-                    return (tag_id, seq_num)
-
-                seq_num = next_seq(cur, project_id, seq_cat)
-                cur.execute(
-                    """INSERT INTO planner_tags
-                       (project_id, name, category_id, description, status,
-                        creator, seq_num, parent_id)
-                       VALUES (%s, %s, %s, %s, 'open', 'ai', %s, %s::uuid)
-                       ON CONFLICT (project_id, name, category_id) DO UPDATE SET
-                           seq_num   = COALESCE(planner_tags.seq_num, EXCLUDED.seq_num),
-                           parent_id = COALESCE(planner_tags.parent_id, EXCLUDED.parent_id),
-                           updated_at = NOW()
-                       RETURNING id::text, seq_num""",
-                    (project_id, name, cat_id, description or name, seq_num,
-                     parent_id if parent_id else None),
-                )
-                result = cur.fetchone()
-                conn.commit()
-                if result:
-                    return (result[0], result[1])
-    except Exception as e:
-        log.warning(f"_upsert_planner_tag({name!r}, {wi_type}) error: {e}")
-    return None
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main class
@@ -1559,7 +1476,7 @@ class MemoryWorkItems:
     # ── Approval ──────────────────────────────────────────────────────────────
 
     def approve(self, item_id: str, pid: int) -> dict:
-        """Approve a work item: assign wi_id, mark linked mirror rows, upsert planner_tag."""
+        """Approve a work item: assign wi_id, mark linked mirror rows."""
         if not db.is_available():
             return {"error": "db not available"}
         try:
@@ -1622,16 +1539,6 @@ class MemoryWorkItems:
                         )
 
                 conn.commit()
-
-            # Create / update planner_tag
-            _upsert_planner_tag(
-                project=self.project,
-                project_id=pid,
-                name=name or new_wi_id,
-                wi_type=wi_type,
-                description=summary or "",
-                parent_id=parent_id,
-            )
 
             # Compute embedding
             _embed_work_item(item_id, {

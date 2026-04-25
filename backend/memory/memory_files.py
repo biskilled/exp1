@@ -13,12 +13,9 @@ Managed files (root):
   {code_dir}/CLAUDE.md                    — copy to code root (auto-loaded by Claude CLI)
   {code_dir}/.cursorrules                 — copy to code root (Cursor)
 
-Per-feature:
-  {code_dir}/features/{tag}/CLAUDE.md     — feature context (auto-loaded when in that dir)
-
 Trigger conditions:
   project_facts upsert → write_root_files()
-  planner_tag update   → write_root_files()
+  work_item update     → write_root_files()
   /memory endpoint     → write_all_files()
 """
 from __future__ import annotations
@@ -44,30 +41,15 @@ _SQL_FACTS = """
     ORDER BY category NULLS LAST, fact_key
 """
 
-_SQL_FEATURE_SNAPSHOTS = """
-    SELECT t.id, t.name, t.action_items
-    FROM planner_tags t
-    WHERE t.project_id = %s AND t.action_items != ''
-    ORDER BY t.updated_at DESC LIMIT 20
-"""
-
-_SQL_BLOCKED_TAGS = """
-    SELECT t.id, t.name, t.status, t.description
-    FROM planner_tags t
-    WHERE t.project_id = %s AND t.status = 'active'
-"""
-
-_SQL_ACTIVE_TAGS = """
-    SELECT t.id, t.name, t.status, t.description, t.priority, t.due_date
-    FROM planner_tags t
-    WHERE t.project_id = %s AND t.status IN ('open', 'active')
-    ORDER BY t.priority ASC, t.updated_at DESC LIMIT 20
-"""
-
-_SQL_FEATURE_SNAPSHOT_BY_TAG = """
-    SELECT t.id, t.name, t.requirements, t.action_items
-    FROM planner_tags t
-    WHERE t.id = %s AND t.project_id = %s
+_SQL_ACTIVE_WORK_ITEMS = """
+    SELECT wi_id, name, wi_type, user_status, due_date
+    FROM mem_work_items
+    WHERE project_id = %s
+      AND wi_type IN ('use_case', 'feature')
+      AND deleted_at IS NULL
+      AND completed_at IS NULL
+    ORDER BY score_importance DESC NULLS LAST, created_at DESC
+    LIMIT 20
 """
 
 _SQL_RECENTLY_CHANGED = """
@@ -113,9 +95,7 @@ class MemoryFiles:
         ctx: dict = {
             "project":          project,
             "facts_by_cat":     {},      # category → [(key, value)]
-            "active_tags":      [],      # list of dicts from planner_tags (status open/active)
-            "features":         {},      # tag_name → snapshot dict
-            "blocked_tags":     [],      # (name, description) — status='active' tags
+            "active_tags":      [],      # list of dicts from mem_work_items (use_case/feature)
             "recently_changed": [],      # recently changed symbols from commits
             "project_summary":  "",      # first lines from PROJECT.md
             "code_structure":   [],      # top-level dirs in code_dir
@@ -133,27 +113,15 @@ class MemoryFiles:
                     for cat, key, val in cur.fetchall():
                         ctx["facts_by_cat"].setdefault(cat, []).append((key, val))
 
-                    # Active planner tags (open/active — drives "Active Features" section)
-                    cur.execute(_SQL_ACTIVE_TAGS, (project_id,))
-                    for t_id, t_name, t_status, t_desc, t_priority, t_due in cur.fetchall():
+                    # Active work items (use_case/feature — drives "Active Features" section)
+                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
+                    for wi_id, wi_name, wi_type, user_status, due_date in cur.fetchall():
                         ctx["active_tags"].append({
-                            "name":        t_name,
-                            "status":      t_status or "open",
-                            "description": (t_desc or "")[:120],
-                            "priority":    t_priority,
-                            "due_date":    t_due.isoformat() if t_due else None,
+                            "name":        wi_name,
+                            "status":      user_status or wi_type or "open",
+                            "description": "",
+                            "due_date":    due_date.isoformat() if due_date else None,
                         })
-
-                    # Feature snapshots (inline on planner_tags)
-                    cur.execute(_SQL_FEATURE_SNAPSHOTS, (project_id,))
-                    for t_id, t_name, action in cur.fetchall():
-                        ctx["features"][t_name] = {
-                            "action_items": action or "",
-                        }
-
-                    # Tags with status='active' (for "Do Not Touch" section)
-                    cur.execute(_SQL_BLOCKED_TAGS, (project_id,))
-                    ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
                     # Recently changed symbols (deduplicated, most recent first)
                     try:
@@ -216,15 +184,15 @@ class MemoryFiles:
         return ctx
 
     def get_active_feature_tags(self, project: str) -> list[str]:
-        """Return tag names for active/open tags (active features that have snapshots)."""
+        """Return names for active use_case/feature work items."""
         if not db.is_available():
             return []
         project_id = db.get_or_create_project_id(project)
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(_SQL_ACTIVE_TAGS, (project_id,))
-                    # _SQL_ACTIVE_TAGS returns (id, name, status, description, priority, due_date)
+                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
+                    # _SQL_ACTIVE_WORK_ITEMS returns (wi_id, name, wi_type, user_status, due_date)
                     return [r[1] for r in cur.fetchall()]
         except Exception:
             return []
@@ -307,14 +275,6 @@ class MemoryFiles:
                 lines.append(f"- **{key}**: {val}")
             lines.append("")
 
-        # Do Not Touch
-        if ctx["blocked_tags"]:
-            lines += ["## Do Not Touch", ""]
-            for name, desc in ctx["blocked_tags"]:
-                reason = f" — {desc}" if desc else ""
-                lines.append(f"- `{name}`{reason}")
-            lines.append("")
-
         # Memory reference footer
         lines += [
             "---",
@@ -327,48 +287,29 @@ class MemoryFiles:
     def render_feature_claude_md(self, project: str, tag_name: str) -> str:
         """Render per-feature CLAUDE.md — auto-loaded when Claude enters features/{tag}/ dir.
 
-        Reads snapshot data (summary, action_items, design, code_summary) from inline
-        planner_tags fields. Relations section is omitted since mem_ai_tags_relations is dropped.
+        Reads summary from mem_work_items by name.
         """
-        if not db.is_available():
-            return f"# Feature: {tag_name}\n_No database available._\n"
-
-        snap: dict = {}
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    # Look up tag by name to get its id, then read inline snapshot fields
-                    project_id = db.get_or_create_project_id(project)
-                    cur.execute("""
-                        SELECT t.id, t.name, t.requirements,
-                               t.action_items, t.description
-                        FROM planner_tags t
-                        WHERE t.project_id = %s AND t.name = %s
-                        LIMIT 1
-                    """, (project_id, tag_name))
-                    row = cur.fetchone()
-                    if row:
-                        snap = {
-                            "tag_id":       str(row[0]),
-                            "requirements": row[2] or "",
-                            "action_items": row[3] or "",
-                            "description":  row[4] or "",
-                        }
-        except Exception as e:
-            log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
-
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        desc = snap.get("description") or ""
-        header_line = f"_Feature: {tag_name}{' — ' + desc if desc else ''} | {ts}_"
-        lines = [f"# Feature: {tag_name}", header_line, ""]
+        summary = ""
+        if db.is_available():
+            try:
+                project_id = db.get_or_create_project_id(project)
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT summary FROM mem_work_items "
+                            "WHERE project_id=%s AND name=%s AND deleted_at IS NULL LIMIT 1",
+                            (project_id, tag_name),
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            summary = row[0] or ""
+            except Exception as e:
+                log.debug(f"render_feature_claude_md error for '{tag_name}': {e}")
 
-        if snap.get("requirements"):
-            lines += ["## Requirements", "", snap["requirements"], ""]
-        if snap.get("action_items"):
-            lines += ["## Action Items", "", snap["action_items"], ""]
-
-        # design + code_summary removed from planner_tags (lives on work_items / future merge layer)
-
+        lines = [f"# Feature: {tag_name}", f"_{ts}_", ""]
+        if summary:
+            lines += ["## Summary", "", summary, ""]
         lines += ["---", "_Auto-generated by aicli. Run `/memory` to refresh._"]
         return "\n".join(lines)
 
@@ -550,26 +491,15 @@ class MemoryFiles:
                     lines.append(f"- {key}: {val}")
                 lines.append("")
 
-        # Active planner tags
+        # Active work items
         if ctx["active_tags"]:
             lines += ["## Active Features", ""]
             for tag in ctx["active_tags"]:
                 due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
                 lines += [
                     f"### {tag['name']} [{tag['status']}]{due}",
-                    tag["description"] or "",
                     "",
                 ]
-
-        # Feature snapshots (active features only)
-        active_tag_names = {t["name"] for t in ctx["active_tags"]}
-        active_snaps = {k: v for k, v in ctx["features"].items() if k in active_tag_names}
-        if active_snaps:
-            lines += ["## Feature Snapshots (Active)", ""]
-            for tag_name, snap in active_snaps.items():
-                lines += [f"### {tag_name}", ""]
-                if snap.get("action_items"):
-                    lines += ["**Action Items:**", snap["action_items"], ""]
 
         return "\n".join(lines)
 

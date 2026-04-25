@@ -3069,6 +3069,32 @@ def m077_commit_history(conn) -> None:
     log.info("m077: file stats tables renamed to mrr namespace; is_external + commit_type added to mem_mrr_commits")
 
 
+def m078_drop_planner_tags(conn) -> None:
+    """Drop planner_tags and all dependent tables (replaced by mem_work_items / Use Cases).
+
+    Dropped tables (in FK dependency order):
+      mem_ai_feature_snapshot  — FK to planner_tags.id
+      mem_backlog_links        — FK to planner_tags.id (old file-based backlog, unused)
+      planner_tag_deps         — FK to planner_tags.id (from m058)
+      planner_tags             — CASCADE handles self-FKs (parent_id, merged_into)
+      mng_tags_categories      — only used by planner_tags.category_id
+      mng_deliveries           — only used by planner_tags.deliveries JSONB
+    """
+    with conn.cursor() as cur:
+        # Drop any FK columns on mem_work_items that reference planner_tags
+        cur.execute("ALTER TABLE mem_work_items DROP COLUMN IF EXISTS tag_id_ai")
+        cur.execute("ALTER TABLE mem_work_items DROP COLUMN IF EXISTS tag_id_user")
+        # Drop dependent tables
+        cur.execute("DROP TABLE IF EXISTS mem_ai_feature_snapshot CASCADE")
+        cur.execute("DROP TABLE IF EXISTS mem_backlog_links CASCADE")
+        cur.execute("DROP TABLE IF EXISTS planner_tag_deps CASCADE")
+        cur.execute("DROP TABLE IF EXISTS planner_tags CASCADE")
+        cur.execute("DROP TABLE IF EXISTS mng_tags_categories CASCADE")
+        cur.execute("DROP TABLE IF EXISTS mng_deliveries CASCADE")
+    conn.commit()
+    log.info("m078_drop_planner_tags: planner_tags and dependencies dropped")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3194,4 +3220,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m075_wi_deleted",   m075_wi_deleted),
     ("m076_wi_merged_into", m076_wi_merged_into),
     ("m077_commit_history", m077_commit_history),
+    ("m078_drop_planner_tags", m078_drop_planner_tags),
 ]

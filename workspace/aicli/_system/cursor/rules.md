@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 18:54 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 19:00 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-25_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-25] Not working yet. dan drag items, but it is not linked (tried any items in use case section)
 - [2026-04-25] Still not working. can you compare to work item and see why it is working on work item and not on use cases ?
 - [2026-04-25] Still not working !
 - [2026-04-25] I would like to refactor the project fact as well. it looks very long, and not sure it is really helping the over all pr
 - [2026-04-25] I would like to make sure commits history is well used as part of the work item classifications and also use for better 
+- [2026-04-25] Plannded tag/ planner module - I am thinking to remove that, as I have changed to module.  work item -> use cases. in us

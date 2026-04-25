@@ -110,23 +110,6 @@ _SQL_MIGRATE_CHECK_TABLE = (
     "WHERE table_schema='public' AND table_name=%s"
 )
 
-# Updated to new tag tables (memory-infra migration)
-_SQL_INSERT_CATEGORY = """
-    INSERT INTO mng_tags_categories (client_id, name, color, icon)
-    VALUES (1, %s, %s, %s)
-    ON CONFLICT (client_id, name) DO NOTHING
-    RETURNING id
-"""
-
-_SQL_UPSERT_TAG = """
-    INSERT INTO planner_tags
-        (project_id, category_id, name, status, created_at)
-    VALUES (%s, %s, %s, 'active', NOW())
-    ON CONFLICT (project_id, name) DO UPDATE
-        SET category_id = EXCLUDED.category_id
-    RETURNING id
-"""
-
 # ── Router definition ─────────────────────────────────────────────────────────
 
 router = APIRouter()

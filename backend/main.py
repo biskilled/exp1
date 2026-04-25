@@ -31,9 +31,9 @@ from core.database import db
 from routers import (
     route_auth, route_chat, route_history, route_usage, route_workflows,
     route_prompts, route_files, route_projects, route_config_sync, route_admin,
-    route_git, route_billing, route_search, route_entities, route_graph_workflows,
+    route_git, route_billing, route_search, route_graph_workflows,
     route_agent_roles, route_system_roles, route_documents,
-    route_user_api_keys, route_logs, route_agents, route_tags,
+    route_user_api_keys, route_logs, route_agents,
 )
 from routers import route_memory
 from routers.route_work_items import router as work_items_router
@@ -94,7 +94,6 @@ app.include_router(route_admin.router,          prefix="/admin",          tags=[
 app.include_router(route_git.router,            prefix="/git",            tags=["git"])
 app.include_router(route_billing.router,        prefix="/billing",        tags=["billing"])
 app.include_router(route_search.router,         prefix="/search",         tags=["search"])
-app.include_router(route_entities.router,       prefix="/entities",       tags=["entities"])
 app.include_router(route_graph_workflows.router,prefix="/graph",          tags=["graph_workflows"])
 app.include_router(route_agent_roles.router,    prefix="/agent-roles",    tags=["agent_roles"])
 app.include_router(route_system_roles.router,   prefix="/system-roles",   tags=["system_roles"])
@@ -102,7 +101,6 @@ app.include_router(route_documents.router,      prefix="/documents",      tags=[
 app.include_router(route_user_api_keys.router,  prefix="/user/api-keys",  tags=["user_api_keys"])
 app.include_router(route_logs.router,           prefix="/logs",           tags=["logs"])
 app.include_router(route_agents.router,         prefix="/agents",         tags=["agents"])
-app.include_router(route_tags.router,           prefix="/tags",           tags=["tags"])
 app.include_router(route_memory.router,         prefix="/memory",         tags=["memory"])
 app.include_router(work_items_router,           prefix="/wi",             tags=["work_items"])
 app.include_router(system_router,                                          tags=["system"])

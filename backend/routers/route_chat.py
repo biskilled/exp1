@@ -48,10 +48,10 @@ _SQL_GET_SESSION_FEATURE = """
 """
 
 _SQL_GET_ACTIVE_FEATURES = """
-    SELECT t.name FROM planner_tags t
-       JOIN mng_tags_categories tc ON tc.id = t.category_id
-       WHERE t.project_id=%s AND tc.name='feature' AND t.status='active'
-       ORDER BY t.name
+    SELECT name FROM mem_work_items
+    WHERE project_id=%s AND wi_type='feature'
+      AND completed_at IS NULL AND deleted_at IS NULL
+    ORDER BY name
 """
 
 _SQL_UPSERT_SESSION_FEATURE = """

@@ -20,24 +20,22 @@ from core.database import db
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
 _SQL_GET_ENTITY_SUMMARY = (
-    """SELECT tc.name AS category, tc.icon,
-              t.id::text, t.name,
-              COALESCE(t.description, '') AS description,
-              t.status, t.due_date, t.parent_id::text,
+    """SELECT wi_type AS category, NULL AS icon,
+              wi_id::text, name,
+              COALESCE(summary, '') AS description,
+              COALESCE(user_status, wi_type) AS status,
+              due_date, wi_parent_id::text,
               0 AS event_count,
               0 AS commit_count
-       FROM mng_tags_categories tc
-       JOIN planner_tags t ON t.category_id = tc.id AND t.project_id=%s
-       WHERE t.status != 'archived'
-       ORDER BY tc.name, t.status"""
+       FROM mem_work_items
+       WHERE project_id=%s AND deleted_at IS NULL
+       ORDER BY wi_type, created_at DESC"""
 )
 
 
-
-
 _SQL_GET_EXISTING_ENTITY_VALUES = (
-    """SELECT id::text, name FROM planner_tags
-       WHERE project_id=%s AND status='active'
+    """SELECT wi_id::text, name FROM mem_work_items
+       WHERE project_id=%s AND completed_at IS NULL AND deleted_at IS NULL
        ORDER BY name LIMIT 50"""
 )
 
@@ -63,9 +61,10 @@ _SQL_GET_UNPROCESSED_MESSAGES = (
 )
 
 _SQL_GET_ACTIVE_PLANNER_TAGS = (
-    """SELECT name FROM planner_tags
-       WHERE project_id=%s AND status IN ('open', 'active')
-       ORDER BY updated_at DESC LIMIT 10"""
+    """SELECT name FROM mem_work_items
+       WHERE project_id=%s AND wi_type='use_case'
+         AND completed_at IS NULL AND deleted_at IS NULL
+       ORDER BY created_at DESC LIMIT 10"""
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1589,3 +1588,41 @@ def remove_project_member(project: str, user_id: str):
                 (user_id, project_id)
             )
     return {"ok": True}
+
+
+# Session tags: distinct tag strings from prompts + commits in a session.
+# Expands JSONB dict {"phase":"discovery","feature":"auth"} → "phase:discovery", "feature:auth"
+_SQL_GET_SESSION_TAGS_FROM_MRR = """
+    SELECT DISTINCT (key || ':' || value) AS tag_str
+    FROM mem_mrr_prompts, jsonb_each_text(tags - 'source' - 'llm')
+    WHERE project_id=%s AND session_id=%s
+      AND (tags - 'source' - 'llm') != '{}'::jsonb
+    UNION
+    SELECT DISTINCT (key || ':' || value)
+    FROM mem_mrr_commits, jsonb_each_text(tags - 'source' - 'llm')
+    WHERE project_id=%s AND session_id=%s
+      AND (tags - 'source' - 'llm') != '{}'::jsonb
+"""
+
+
+@router.get("/{project}/session-tags")
+async def get_session_tags(
+    project: str,
+    session_id: str,
+):
+    """Return all distinct tags from prompts/commits in a session.
+
+    Returns tag strings like ["phase:discovery", "feature:auth"].
+    Moved here from route_entities.py when planner_tags was removed.
+    """
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+    project_id = db.get_or_create_project_id(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                _SQL_GET_SESSION_TAGS_FROM_MRR,
+                (project_id, session_id, project_id, session_id),
+            )
+            tags = [row[0] for row in cur.fetchall() if row[0]]
+    return {"tags": tags, "session_id": session_id, "project": project}

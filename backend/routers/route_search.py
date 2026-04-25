@@ -41,8 +41,7 @@ async def get_tagged_context(
     project: str = Query(""),
     phase: Optional[str] = Query(None),
     feature: Optional[str] = Query(None),
-    tag_id: Optional[str] = Query(None),        # planner_tags UUID — replaces entity_value_id
-    entity_value_id: Optional[int] = Query(None),  # deprecated alias; ignored if tag_id given
+    entity_value_id: Optional[int] = Query(None),  # deprecated alias; ignored
     limit: int = Query(20),
     user=Depends(get_optional_user),
 ):
@@ -67,24 +66,6 @@ async def get_tagged_context(
     if feature:
         filters.append("('feature:' || %s) = ANY(p.tags)")
         params.append(feature)
-    if tag_id:
-        # tag_id is a planner_tags UUID — look up the tag name and filter by "cat:name"
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT tc.name || ':' || t.name FROM planner_tags t
-                           JOIN mng_tags_categories tc ON tc.id = t.category_id
-                           WHERE t.id=%s::uuid LIMIT 1""",
-                        (tag_id,),
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        filters.append("%s = ANY(p.tags)")
-                        params.append(row[0])
-        except Exception:
-            pass
-
     where = "WHERE " + " AND ".join(filters)
     params.append(limit)
 

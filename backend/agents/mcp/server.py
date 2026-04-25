@@ -26,7 +26,7 @@ Tools:
 Database naming convention:
     mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
     pr_TABLE   — flat per-project tables with project_id INT FK (replaces project TEXT)
-                 (e.g. mem_mrr_commits, mem_mrr_prompts, mem_ai_project_facts, planner_tags)
+                 (e.g. mem_mrr_commits, mem_mrr_prompts, mem_ai_project_facts, mem_work_items)
 """
 from __future__ import annotations
 
@@ -762,22 +762,18 @@ async def _dispatch(name: str, args: dict) -> Any:
         p = project
         return {
             "naming_convention": {
-                "mng_TABLE": "Global/shared tables (users, billing, roles, tag categories, system prompts)",
-                "planner_TABLE": "Tag hierarchy tables (planner_tags)",
+                "mng_TABLE": "Global/shared tables (users, billing, roles, system prompts)",
                 "mem_mrr_TABLE": "Mirroring layer — raw source data as-is (prompts, commits, items, messages)",
                 "mem_ai_TABLE": "AI/embedding layer — digests, embeddings, facts, work items",
+                "mem_work_items": "Single source of truth for use cases, features, bugs, tasks",
                 "pr_TABLE": "Graph workflow tables (pr_graph_*)",
-                "filter": "Most tables use project_id INT FK for isolation; legacy text project column removed from pr_* tables",
+                "filter": "Most tables use project_id INT FK for isolation",
             },
             "global_tables": {
                 "mng_users": {
                     "purpose": "User accounts, roles, billing balances",
                     "key_columns": ["id VARCHAR(36) PK", "email UNIQUE", "role (free/paid/admin)",
                                     "balance_added_usd", "balance_used_usd"],
-                },
-                "mng_tags_categories": {
-                    "purpose": "Tag category definitions (feature, bug, task, component, ai_suggestion, etc.)",
-                    "key_columns": ["id UUID PK", "client_id INT", "name TEXT", "color TEXT", "icon TEXT"],
                 },
                 "mng_agent_roles": {
                     "purpose": "LLM agent role definitions (system_prompt, model, provider, tools list)",
@@ -790,38 +786,17 @@ async def _dispatch(name: str, args: dict) -> Any:
                     "key_columns": ["id SERIAL PK", "client_id INT", "name TEXT", "content TEXT", "is_active BOOLEAN"],
                 },
             },
-            "tagging_tables": {
-                "planner_tags": {
-                    "purpose": "Per-project tag hierarchy (features, bugs, tasks, components) with inline metadata",
+            "work_items_table": {
+                "mem_work_items": {
+                    "purpose": "Single source of truth for all classified work (use cases, features, bugs, tasks, policies)",
                     "key_columns": [
-                        "id UUID PK", "client_id INT FK", "project TEXT", "name TEXT",
-                        "category_id INT FK mng_tags_categories",
-                        "parent_id UUID FK self", "merged_into UUID FK self", "seq_num INT",
-                        "source TEXT DEFAULT 'user'", "creator TEXT", "description TEXT",
-                        "requirements TEXT", "acceptance_criteria TEXT", "action_items TEXT",
-                        "deliveries JSONB DEFAULT '[]'",
-                        "status TEXT DEFAULT 'open'  -- open|active|done|archived",
-                        "priority SMALLINT DEFAULT 3", "due_date DATE", "requester TEXT",
+                        "wi_id UUID PK", "project_id INT FK", "name TEXT", "wi_type TEXT",
+                        "summary TEXT", "user_status TEXT", "wi_parent_id UUID FK self",
+                        "due_date DATE", "score_importance FLOAT",
+                        "completed_at TIMESTAMPTZ", "deleted_at TIMESTAMPTZ",
                         "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ",
-                        "created_at TIMESTAMPTZ", "updated_at TIMESTAMPTZ",
-                        "UNIQUE(client_id, project, name, category_id)",
                     ],
-                    "filter": "WHERE project_id=%s",
-                },
-                "mem_tags_relations": {
-                    "purpose": "Links planner_tags to raw source rows (mirror layer) or AI-inferred events",
-                    "key_columns": [
-                        "id UUID PK",
-                        "tag_id UUID FK planner_tags",
-                        "related_layer TEXT  -- 'mirror'=raw source links | 'ai'=AI-inferred links",
-                        "related_type TEXT  -- 'prompt'|'commit'|'item'|'message'|'memory_event'|'work_item'|'session'",
-                        "related_id TEXT",
-                        "related_type_score FLOAT",
-                        "related_approved TEXT  -- NULL=pending | 'approved' | 'rejected'",
-                        "created_at TIMESTAMPTZ",
-                        "UNIQUE(tag_id, related_type, related_id)",
-                    ],
-                    "filter": "WHERE tag_id IN (SELECT id FROM planner_tags WHERE project_id=%s)",
+                    "filter": "WHERE project_id=%s AND deleted_at IS NULL",
                 },
             },
             "mirroring_tables": {

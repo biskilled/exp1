@@ -4,7 +4,6 @@ route_memory.py — Memory file generation endpoints.
 Endpoints:
     POST /memory/{project}/regenerate           — regenerate context files from DB
     GET  /memory/{project}/llm-prompt           — get rendered system prompt (compact|full|gemini)
-    POST /memory/{project}/prune-tags           — delete planner_tags except keep_ids list
     GET  /memory/{project}/pipeline-status      — pipeline health dashboard
     GET  /memory/{project}/data-dashboard       — aggregated statistics (uses pr_statistics cache)
 """
@@ -41,8 +40,8 @@ _SQL_STATS_COUNTS = """
       (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NULL) AS prompts_pending,
       (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s) AS commits_total,
       (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NULL) AS commits_pending,
-      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s) AS tags_total,
-      (SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status IN ('open','active')) AS tags_active,
+      (SELECT COUNT(*) FROM mem_work_items WHERE project_id=%s AND deleted_at IS NULL) AS wi_total,
+      (SELECT COUNT(*) FROM mem_work_items WHERE project_id=%s AND deleted_at IS NULL AND completed_at IS NULL) AS wi_active,
       (SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s AND wi_id IS NOT NULL) AS prompts_processed,
       (SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s AND wi_id IS NOT NULL) AS commits_processed
 """
@@ -119,8 +118,8 @@ def _refresh_stats(project_id: int) -> dict:
             "commits_total":           c_total,
             "commits_pending":         r[3] or 0,
             "commits_processed":       c_processed,
-            "planner_tags_total":      r[4] or 0,
-            "planner_tags_active":     r[5] or 0,
+            "wi_total":                r[4] or 0,
+            "wi_active":               r[5] or 0,
             # KPIs
             "prompt_backlog_pct":      prompt_backlog_pct,
             "commit_backlog_pct":      commit_backlog_pct,
@@ -280,44 +279,6 @@ async def get_llm_prompt(
         content = mf.render_gemini_context(ctx)
 
     return {"variant": variant, "project": project, "content": content}
-
-
-class PruneTagsBody(BaseModel):
-    keep_ids: list[str]  # UUIDs to keep; all others will be deleted
-
-
-@router.post("/{project}/prune-tags")
-async def prune_tags(project: str, body: PruneTagsBody):
-    """Delete all planner_tags for this project EXCEPT those in keep_ids.
-
-    Use this to reset the tag taxonomy to a curated set before a full rebuild.
-    Returns {deleted, kept}.
-    """
-    if not db.is_available():
-        raise HTTPException(status_code=503, detail="PostgreSQL not available")
-    if not body.keep_ids:
-        raise HTTPException(status_code=400, detail="keep_ids must not be empty — pass the UUIDs to keep")
-
-    project_id = db.get_or_create_project_id(project)
-    try:
-        with db.conn() as conn:
-            with conn.cursor() as cur:
-                # Count total before deletion
-                cur.execute("SELECT COUNT(*) FROM planner_tags WHERE project_id=%s", (project_id,))
-                total_before = cur.fetchone()[0] or 0
-
-                # Delete all except keep_ids
-                import psycopg2.extras
-                cur.execute(
-                    "DELETE FROM planner_tags WHERE project_id=%s AND id != ALL(%s::uuid[])",
-                    (project_id, body.keep_ids),
-                )
-                deleted = cur.rowcount
-        kept = total_before - deleted
-        log.info(f"prune_tags: deleted={deleted} kept={kept} for '{project}'")
-        return {"project": project, "deleted": deleted, "kept": kept}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{project}/pipeline-status")
@@ -507,19 +468,19 @@ async def get_data_dashboard(
                     mirror["prompts"]["pending_backlog"] = 0
 
                 # ── AI layer ──────────────────────────────────────────────
-                # Planner tags
+                # Work items (replaces planner_tags)
                 try:
                     cur.execute(
                         """SELECT COUNT(*),
-                                  COUNT(*) FILTER (WHERE status IN ('open','active')),
-                                  COUNT(*) FILTER (WHERE status = 'done'),
+                                  COUNT(*) FILTER (WHERE completed_at IS NULL AND deleted_at IS NULL),
+                                  COUNT(*) FILTER (WHERE completed_at IS NOT NULL),
                                   COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
                                   MAX(updated_at)
-                           FROM planner_tags WHERE project_id = %s""",
+                           FROM mem_work_items WHERE project_id = %s AND deleted_at IS NULL""",
                         (project_id,),
                     )
                     r = cur.fetchone()
-                    ai["planner_tags"] = {
+                    ai["work_items"] = {
                         "total":      r[0] or 0,
                         "active":     r[1] or 0,
                         "done":       r[2] or 0,
@@ -528,7 +489,7 @@ async def get_data_dashboard(
                     }
                 except Exception:
                     conn.rollback()
-                    ai["planner_tags"] = {"total": 0, "active": 0, "done": 0, "last_24h": 0, "last_at": None}
+                    ai["work_items"] = {"total": 0, "active": 0, "done": 0, "last_24h": 0, "last_at": None}
 
                 # Backlog stats
                 try:
@@ -612,20 +573,6 @@ async def get_data_dashboard(
                 # ── Health KPIs ───────────────────────────────────────────
                 health: dict = {}
                 try:
-                    # Total active planner tags
-                    cur.execute(
-                        "SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND status NOT IN ('archived','done')",
-                        (project_id,),
-                    )
-                    total_tags = cur.fetchone()[0] or 0
-
-                    # Tags with file_ref (linked to use case files)
-                    cur.execute(
-                        "SELECT COUNT(*) FROM planner_tags WHERE project_id=%s AND file_ref IS NOT NULL",
-                        (project_id,),
-                    )
-                    tags_with_use_case = cur.fetchone()[0] or 0
-
                     # Backlog coverage
                     _bl = ai.get("backlog", {})
                     total_p = (_bl.get("prompts_pending", 0) + _bl.get("prompts_processed", 0))
@@ -633,19 +580,18 @@ async def get_data_dashboard(
                     prompt_coverage = round(_bl.get("prompts_processed", 0) / max(total_p, 1) * 100, 1)
                     commit_coverage = round(_bl.get("commits_processed", 0) / max(total_c, 1) * 100, 1)
 
+                    wi = ai.get("work_items", {})
                     health = {
-                        "total_planner_tags":    total_tags,
-                        "tags_with_use_case":    tags_with_use_case,
-                        "use_case_coverage_pct": round(tags_with_use_case / max(total_tags, 1) * 100, 1),
-                        "prompt_backlog_pct":    prompt_coverage,
-                        "commit_backlog_pct":    commit_coverage,
+                        "wi_total":             wi.get("total", 0),
+                        "wi_active":            wi.get("active", 0),
+                        "prompt_backlog_pct":   prompt_coverage,
+                        "commit_backlog_pct":   commit_coverage,
                     }
                 except Exception:
                     conn.rollback()
                     health = {
-                        "total_planner_tags": 0, "tags_with_use_case": 0,
-                        "use_case_coverage_pct": 0, "prompt_backlog_pct": 0,
-                        "commit_backlog_pct": 0,
+                        "wi_total": 0, "wi_active": 0,
+                        "prompt_backlog_pct": 0, "commit_backlog_pct": 0,
                     }
 
                 # ── Recent errors ─────────────────────────────────────────
