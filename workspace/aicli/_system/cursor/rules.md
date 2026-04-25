@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 09:24 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 09:35 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -65,9 +65,17 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates and completion validation
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp, markdown file generation with auto-move to documents/completed/
-- Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id → created_at → updated_at → embedding)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and auto-markdown generation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offset), completion validation (all descendants validated), completed_at timestamp, MD file auto-move to documents/completed/ on completion
+- Drag-and-drop parent-child linking and merge functionality for work items with type validation (same-type only) and undo support; merged_into self-FK tracks item relationships
 - Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
-- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
+- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup); undo stores reverse API call closure
+
+## Recent Context (last 5 changes)
+
+- [2026-04-24] can you go over the UI and optimise that, make sure the code is clean there are no duplicate or unused code. make sure c
+- [2026-04-24] it seems that the drag and drop working in work item, but is it not working in use cases, when I am dragging an item (th
+- [2026-04-24] how is the undo works, if item is linked - there is db update, how doas undo work?
+- [2026-04-25] Can undo on merge work partialy (expose the old item, but the new one will be with the latest summery ) ? Also merge/ se
+- [2026-04-25] It is still not working on use cases. how come it works well on work item and you can not fix that in use case ?

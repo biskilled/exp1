@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-25 09:24 UTC by aicli /memory_
+_Generated: 2026-04-25 09:35 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL 15+ with pgvector), desktop Electron UI, and Python CLI to capture, synthesize, and organize development work across projects. It features a 4-layer memory architecture with LLM-powered digestion (Claude/OpenAI), async DAG workflows with visual approval panels, and a dual Work Items/Use Cases system with drag-and-drop linking and completion validation. Currently in active development refactoring UI configuration, completing drag-and-drop interactions, and stabilizing markdown generation for approved work items.
+aicli is a shared AI memory platform combining a Python backend (FastAPI + PostgreSQL + pgvector) with an Electron desktop UI (Vanilla JS + xterm + Monaco) for AI-assisted project management. It implements a 4-layer memory architecture (ephemeral → raw capture → LLM digests → structured work items) with dual semantic/relational storage, async DAG workflow orchestration, and intelligent chunking. Current focus is UI polish: fixing drag-and-drop parent-child linking in Use Cases, implementing persistent undo buttons, aligning MD file generation with use case structure (recursive CTE for all descendants), and completing the Completed section with auto-move to documents folder.
 
 ## Tech Stack
 
@@ -65,22 +65,45 @@ aicli is a shared AI memory platform combining a FastAPI backend (PostgreSQL 15+
 - Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
 - 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts/feature_snapshot
 - Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates and completion validation
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp, markdown file generation with auto-move to documents/completed/
-- Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id → created_at → updated_at → embedding)
+- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and auto-markdown generation
+- Use Case lifecycle: due dates (calendar MM/DD/YY or day offset), completion validation (all descendants validated), completed_at timestamp, MD file auto-move to documents/completed/ on completion
+- Drag-and-drop parent-child linking and merge functionality for work items with type validation (same-type only) and undo support; merged_into self-FK tracks item relationships
 - Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
-- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
+- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup); undo stores reverse API call closure
 
 ## In Progress
 
-- UI hardcoded string removal — replacing localhost references in main.js, api.js with dynamic config from aicli.yaml; centralizing backend URL configuration
-- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed to detect drop targets on any child element; type validation ensures only same-type items link
-- Undo button implementation — added to Work Items and Use Cases toolbars; captures reverse API call as closure before link happens; _setUndoAction stores PATCH with original parent_id
-- MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
-- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/; reopen_use_case() reverses
-- Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
+- UI drag-and-drop parent-child/merge in Use Cases fixed via unconditional e.preventDefault() and event delegation targeting any child element; type validation ensures same-type items only link
+- Undo button implementation as persistent toolbar button (not popup) in both Work Items and Use Cases; stores reverse API call closure capturing original parent_id before link
+- MD file generation aligned with use case structure: recursive CTE fetches all descendants, separate sections for Requirements/Completed/Open Items, no HTML comments, plain text timestamps
+- Completed section added to left sidebar under Planning group (Work Items/Use Cases/Documents/Completed); complete_use_case() validates all descendants done, moves MD to documents/completed/
+- Backend hardcoded string removal — localhost references in main.js, api.js to be replaced with dynamic config from aicli.yaml; centralizing backend URL configuration across frontend
+- Template workspace refactor complete — _templates/ reorganized into cli/pipelines/hooks subdirectories with per-provider hooks; aicli/ folder to be synced with template changes
+
+## Active Features / Bugs / Tasks
+
+### Bug
+
+- **ui-rendering-bugs** `[open]` — Diagnosed bind error on port 8000 caused by stale uvicorn instance; verified backend is healthy.
+
+### Feature
+
+- **ui-rendering-bugs** `[open]` — User reports history shows only small text instead of full prompt/LLM response and requests copy fun
+- **general-commits** `[open]` — Add memory embedding and event extraction to memory promotion flow
+
+### Task
+
+- **Audit and clean planner_tags table schema** `[open]` — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
+- **ui-rendering-bugs** `[open]` — Provided clean restart procedure using dev script with NODE_ENV=development after killing stale back
+- **general-commits** `[open]` — Refactor memory promotion and work item column naming across DB/memory/router modules
+- **discovery** `[open]` — Greeting and project context refresh
+
+### Use_case
+
+- **Work Item Management & Metadata System** `[open]` — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and 
+- **MCP Configuration** `[open]` — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
 
 ## AI Synthesis
 
-**[2026-04-17]** `core` — Unified database schema consolidating mem_ai_* tables (events, tags_relations, project_facts, work_items, features) with pgvector embeddings; m001-m076 migration framework establishes single source of truth in db_schema.sql. **[2026-04-17]** `architecture` — 4-layer memory system implemented: ephemeral session → mem_mrr_* raw captures → mem_ai_events with LLM digests and embeddings → mem_ai_work_items/project_facts/feature_snapshot; Claude Haiku dual-layer synthesis generates 5 output files with auto-tag suggestions. **[2026-04-17]** `workflow` — Async DAG executor via asyncio.gather with Cytoscape.js visualization and 2-pane approval panel for AI negotiation; loop-back support with max_iterations cap; YAML config-driven per-node retry/continue logic. **[2026-04-17]** `frontend` — Electron desktop UI with Vanilla JS, xterm.js terminal, Monaco editor, and Cytoscape.js DAG rendering; Vite dev server for hot-reload development; text selection enabled for copy-paste across all UI. **[2026-04-17]** `features` — Work Items vs Use Cases separation with drag-and-drop parent-child linking, merge functionality (merged_into self-FK), type validation, and persistent undo buttons; Use Case completion validates all descendants, sets completed_at, auto-moves markdown to documents/completed/. **[2026-04-17]** `configuration` — Centralized config management via aicli.yaml replacing hardcoded localhost references; Template workspace refactored with cli/, pipelines/, hooks/ subdirectories; JWT auth with DEV_MODE toggle and hierarchical Clients → Users → Projects permissions model.
+**[2026-04-24]** `ui` — Fixed drag-and-drop parent-child/merge in Use Cases tab by switching to event delegation with unconditional e.preventDefault(); type validation ensures only same-type items can link. **[2026-04-24]** `ui` — Undo button moved from disappearing popup to persistent toolbar button in both Work Items and Use Cases; captures reverse PATCH closure with original parent_id before link applied. **[2026-04-24]** `ui` — MD file format cleaned: removed HTML comments, plain text timestamps (created/updated), recursive CTE fetches all descendants, sections properly separated (Requirements → Completed → Open Items) without duplicates. **[2026-04-24]** `ui` — Completed section added to left sidebar under Planning group; complete_use_case() validates all descendants done, sets completed_at timestamp, auto-moves MD to documents/completed/. **[2026-04-24]** `backend` — Migration m074 applied (completed_at TIMESTAMPTZ to mem_work_items); migration m076 adds merged_into self-FK for item merge tracking. **[2026-04-23]** `ui` — Work Items tab now shows all items (pending + approved); Use Cases tab isolated as separate view with approve pending button; classify flow moved to Work Items only. **[2026-04-23]** `ui` — Due dates implemented for use cases: users can set MM/DD/YY or day offset (e.g. +8 days); all child items inherit deadline; re-parent conflict auto-resolves by preventing child due_date ≤ parent due_date. **[2026-04-24]** `ui` — Template workspace refactor: _templates/ reorganized into cli/{claude/hooks, settings, mcp.config}/ + pipelines/ + hooks removed from root; aicli/ folder sync pending. **[2026-04-15]** `backend` — Migration m051-m052: user_id changed from UUID string to INT SERIAL PK; all mirror tables rebuilt with canonical column order (id → client_id → project_id → user_id → created_at → updated_at). **[2026-04-15]** `ui` — Chat history visibility: session ID badge (last 5 chars) added to session headers; phase chips extracted; full session ID shown in top banner; localStorage cache no longer renders stale session on load.

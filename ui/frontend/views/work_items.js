@@ -1628,8 +1628,7 @@ function _attachUcDragListeners() {
   _ucDragAbort = new AbortController();
   const { signal } = _ucDragAbort;
 
-  let _ucDragId      = null;  // ID of item being dragged
-  let _ucHoverTarget = null;  // ID of card under cursor during drag
+  let _ucDragId = null;
 
   // Delegated dragstart/dragend on listEl (bubbles from .wi-card[draggable])
   listEl.addEventListener('dragstart', (e) => {
@@ -1647,35 +1646,21 @@ function _attachUcDragListeners() {
     if (card) card.classList.remove('wi-dragging');
     listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
     _ucDragId = null;
-    _ucHoverTarget = null;
   }, { signal });
 
-  // dragover/dragleave/drop on each .wi-uc-children zone — same pattern as Work Items .wi-drop-zone
+  // dragover/drop on each .wi-uc-children zone
   listEl.querySelectorAll('.wi-uc-children').forEach(zone => {
     zone.addEventListener('dragover', (e) => {
       if (!_ucDragId) return;
-      e.preventDefault();                      // must be unconditional so drop fires
+      e.preventDefault();   // unconditional — required for drop to fire
       e.dataTransfer.dropEffect = 'link';
 
-      // Use elementFromPoint — more reliable during drag than e.target.closest()
+      // Visual highlight only — uses elementFromPoint for reliability
       const hoverEl   = document.elementFromPoint(e.clientX, e.clientY);
       const hoverCard = hoverEl?.closest('.wi-card[data-item-id]');
       const hoverId   = hoverCard?.dataset.itemId;
-
       listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      _ucHoverTarget = null;
-
-      if (hoverId && hoverId !== _ucDragId) {
-        hoverCard.classList.add('wi-parent-target');
-        _ucHoverTarget = hoverId;
-      }
-    }, { signal });
-
-    zone.addEventListener('dragleave', (e) => {
-      if (!zone.contains(e.relatedTarget)) {
-        listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-        _ucHoverTarget = null;
-      }
+      if (hoverId && hoverId !== _ucDragId) hoverCard.classList.add('wi-parent-target');
     }, { signal });
 
     zone.addEventListener('drop', (e) => {
@@ -1683,10 +1668,14 @@ function _attachUcDragListeners() {
       e.preventDefault();
       e.stopPropagation();
       listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      const itemId   = _ucDragId;
-      const targetId = _ucHoverTarget;
-      _ucDragId      = null;
-      _ucHoverTarget = null;
+      const itemId = _ucDragId;
+      _ucDragId = null;
+
+      // Re-detect target at drop coords — dragleave fires before drop and would clear any
+      // stored hover target, so we must re-query here rather than reading a cached value
+      const dropEl   = document.elementFromPoint(e.clientX, e.clientY);
+      const dropCard = dropEl?.closest('.wi-card[data-item-id]');
+      const targetId = dropCard?.dataset.itemId;
       if (targetId && targetId !== itemId) {
         _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
       }
