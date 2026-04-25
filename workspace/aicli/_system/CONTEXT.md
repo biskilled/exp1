@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-25 12:17 UTC — do not edit manually.
+> Auto-generated 2026-04-25 18:14 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 735
-- **Last active**: 2026-04-25T10:25:03Z
+- **Sessions**: 739
+- **Last active**: 2026-04-25T18:11:10Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -94,8 +94,15 @@
 
 _Last updated: 2026-04-17 | Version 3.1.0_
 
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
+
 ---
 
+<!-- user-managed -->
 ## Vision
 
 **aicli gives every LLM the same project memory.**
@@ -106,6 +113,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 
+<!-- user-managed -->
 ## Core Goals
 
 | # | Goal | Status |
@@ -163,16 +171,8 @@ Step 4 — Merge:         POST /memory/{p}/work-items processes approved entries
 Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
 ```
 
-### How `/memory` syncs context
 
-```
-POST /projects/aicli/memory
-  ├── Flush all pending mirror rows → backlog.md
-  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + planner_tags
-  └── Top events → .claude/memory/top_events.md
-
-
-*...201 more lines in PROJECT.md*
+*...210 more lines in PROJECT.md*
 
 ---
 

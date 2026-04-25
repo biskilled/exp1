@@ -877,3 +877,41 @@ async def get_project_facts(project: str):
         if r.get("id"):
             r["id"] = str(r["id"])
     return {"facts": rows, "project": project, "total": len(rows)}
+
+
+@router.delete("/{project}/facts/{fact_id}")
+async def delete_fact(project: str, fact_id: str):
+    """Expire a single project fact by ID (sets valid_until=NOW())."""
+    if not db.is_available():
+        return {"error": "db not available"}
+    project_id = db.get_or_create_project_id(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE mem_ai_project_facts SET valid_until=NOW() "
+                "WHERE id=%s::uuid AND project_id=%s AND valid_until IS NULL",
+                (fact_id, project_id),
+            )
+            affected = cur.rowcount
+        conn.commit()
+    if not affected:
+        return {"error": "fact not found or already expired"}
+    return {"expired": True, "id": fact_id}
+
+
+@router.delete("/{project}/facts")
+async def clear_all_facts(project: str):
+    """Expire ALL project facts (sets valid_until=NOW() on all active rows)."""
+    if not db.is_available():
+        return {"error": "db not available"}
+    project_id = db.get_or_create_project_id(project)
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE mem_ai_project_facts SET valid_until=NOW() "
+                "WHERE project_id=%s AND valid_until IS NULL",
+                (project_id,),
+            )
+            affected = cur.rowcount
+        conn.commit()
+    return {"expired": affected, "project": project}

@@ -50,8 +50,15 @@ You are a senior Python software architect with deep expertise in:
 
 _Last updated: 2026-04-17 | Version 3.1.0_
 
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
+
 ---
 
+<!-- user-managed -->
 ## Vision
 
 **aicli gives every LLM the same project memory.**
@@ -62,6 +69,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 
+<!-- user-managed -->
 ## Core Goals
 
 | # | Goal | Status |
@@ -98,17 +106,9 @@ Layer 3 — Structured Artifacts (mem_ai_project_facts)
   Durable facts ("uses pgvector", "auth is JWT")
 
 Layer 4 — User Taxonomy (planner_tags)
-  Human-owned hierarchy: features, bugs, tasks, phases
-  file_ref → links to use case .md files
-  ← USER OWNS THIS — AI suggests, user confirms
-```
-
-### Backlog Pipeline (5 steps)
-
-```
 
 
-*See PROJECT.md for full documentation (281 lines total)*
+*See PROJECT.md for full documentation (290 lines total)*
 
 ## Recent Work (last 5 prompts)
 
