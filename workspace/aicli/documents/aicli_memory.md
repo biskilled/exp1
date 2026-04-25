@@ -1,6 +1,6 @@
 # aicli Memory System — Reference Guide
 
-_Last updated: 2026-04-25_
+_Last updated: 2026-04-25 (m077 — commit history enrichment)_
 
 This document is the single authoritative reference for how aicli stores, updates, and serves project memory across every supported LLM tool. It covers output files, prompt locations, data flow, and MCP integration.
 
@@ -249,6 +249,101 @@ The MCP server exposes 10 tools that Claude Code / Cursor can call during a sess
 - Commit embeddings are not stored (commits in `mem_ai_events` via the old embedding pipeline may be stale)
 - No auto-compaction when context files exceed token limits
 - `planner_tags` text search is weak (ILIKE) — a proper embedding column would make feature discovery much better
+
+---
+
+## 9. Commit History Enrichment (m077 — 2026-04-25)
+
+### New DB columns (mem_mrr_commits)
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `commit_type` | `TEXT` | Conventional prefix hint: `feat`→feature, `fix`→bug, `chore`/`refactor`/`test`→task |
+| `is_external` | `BOOLEAN DEFAULT FALSE` | Marks commits from external collaborators (not pushed via aicli) |
+
+### Renamed tables
+
+| Old name | New name (m077) |
+|----------|-----------------|
+| `mem_file_stats` | `mem_mrr_commits_file_stats` |
+| `mem_file_coupling` | `mem_mrr_commits_file_coupling` |
+
+These renames align the hotspot/coupling tables with the `mem_mrr_*` namespace used by all mirror tables.
+
+### New endpoint: `POST /git/{project}/sync-commits`
+
+Ingests git commits that exist locally but are not yet stored in `mem_mrr_commits`. Useful when:
+- External collaborators push commits directly (no aicli)
+- You import an existing repo with commit history
+- The backend was offline when commits were pushed
+
+**Response:**
+```json
+{
+  "synced": 12,
+  "skipped": 0,
+  "already_known": 5,
+  "latest_hash": "abc12345..."
+}
+```
+
+All synced commits are stored with `is_external=true` and `commit_type` derived from the conventional prefix. Tree-sitter symbol extraction is queued in the background.
+
+### commit_type in classification
+
+The `commit_type` column is included in the `[COMMIT ...]` block sent to the work item classification LLM:
+
+```
+[COMMIT abc12345 2026-04-25 type=bug (linked to prompt def67890)]
+  fix: null pointer in session refresh
+```
+
+This gives the classifier an explicit type hint instead of requiring it to infer from free text, improving bug/feature/task classification accuracy.
+
+### CLAUDE.md enhanced sections (memory_files.py)
+
+The rendered `CLAUDE.md` now includes:
+
+```markdown
+# aicli
+aicli gives every LLM the same project memory...
+
+## Structure
+- backend/
+- cli/
+- ui/
+- workspace/
+
+## Active Features
+- `auth-refactor` [active] — JWT token refresh
+
+## Recently Changed (last commits)
+- `AuthService.refresh_token` — modified in abc12345 — refreshes JWT silently
+- `route_git.sync_missing_commits` — added in def67890
+(+ 3 more — see git log)
+
+## Conventions & Decisions
+...
+```
+
+### Memory quality rating (0–5 scale)
+
+| Capability | Before m077 | After m077 |
+|------------|-------------|------------|
+| Code structure visible to LLM | 0 — no dirs/modules shown | 3 — top dirs + recently changed symbols |
+| Commit classification quality | 2 — LLM infers type from free text | 4 — `commit_type` hint pre-categorizes |
+| External commit ingestion | 0 — no sync mechanism | 4 — `sync-commits` endpoint |
+| Memory freshness for new CLIs | 2 — CLAUDE.md has tags + facts | 3.5 — + structure + recent changes |
+| MCP semantic search | 3 — works on events | 3 — unchanged |
+
+**Overall rating: 3.5/5**
+
+What's needed for 5/5:
+1. Embedding over `mem_mrr_commits_code` symbols (cosine search for "show me auth code")
+2. Per-module summary refresh (only regenerate when module hash changes)
+3. Design document extraction from commit diffs (docstrings, ADRs)
+4. Cross-repo memory (multiple repos per project)
+5. Auto-compaction when context window fills
 
 ---
 

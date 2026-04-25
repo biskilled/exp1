@@ -1,11 +1,15 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 10:25 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-25 18:31 UTC
 
 # aicli — Shared AI Memory Platform
 
 _Last updated: 2026-04-17 | Version 3.1.0_
 
----
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files
 
 ## Tech Stack
 
@@ -74,8 +78,8 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-25] It is still not working on use cases. how come it works well on work item and you can not fix that in use case ?
 - [2026-04-25] This is still not working. I can move item , but it is not linked anywhere
 - [2026-04-25] Not working yet. dan drag items, but it is not linked (tried any items in use case section)
 - [2026-04-25] Still not working. can you compare to work item and see why it is working on work item and not on use cases ?
 - [2026-04-25] Still not working !
+- [2026-04-25] I would like to refactor the project fact as well. it looks very long, and not sure it is really helping the over all pr

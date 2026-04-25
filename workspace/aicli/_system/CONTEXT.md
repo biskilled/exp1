@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-25 18:14 UTC — do not edit manually.
+> Auto-generated 2026-04-25 18:32 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 739
-- **Last active**: 2026-04-25T18:11:10Z
+- **Sessions**: 740
+- **Last active**: 2026-04-25T18:31:39Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -92,7 +92,7 @@
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-17 | Version 3.1.0_
+_Last updated: 2026-04-25_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.

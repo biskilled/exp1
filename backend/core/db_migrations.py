@@ -3029,6 +3029,46 @@ def m076_wi_merged_into(conn) -> None:
     log.info("m076: merged_into added to mem_work_items")
 
 
+def m077_commit_history(conn) -> None:
+    """Rename file stats tables to mrr namespace; add is_external + commit_type to commits.
+
+    1. Rename mem_file_stats → mem_mrr_commits_file_stats
+    2. Rename mem_file_coupling → mem_mrr_commits_file_coupling
+    3. Add is_external BOOLEAN to mem_mrr_commits (flags commits from external collaborators)
+    4. Add commit_type TEXT to mem_mrr_commits (conventional prefix: feat/fix/chore/test/refactor)
+    """
+    with conn.cursor() as cur:
+        # 1 & 2. Rename file stats tables to mrr namespace
+        cur.execute("ALTER TABLE IF EXISTS mem_file_stats RENAME TO mem_mrr_commits_file_stats")
+        cur.execute("ALTER TABLE IF EXISTS mem_file_coupling RENAME TO mem_mrr_commits_file_coupling")
+        # Recreate indexes under new names
+        for idx in ["idx_mfs_project_score", "idx_mfs_project_path", "idx_mfc_project_file_a"]:
+            cur.execute(f"DROP INDEX IF EXISTS {idx}")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mfs_project_score "
+            "ON mem_mrr_commits_file_stats(project_id, hotspot_score DESC)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mfs_project_path "
+            "ON mem_mrr_commits_file_stats(project_id, file_path)"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_mfc_project_file_a "
+            "ON mem_mrr_commits_file_coupling(project_id, file_a)"
+        )
+        # 3 & 4. New columns on mem_mrr_commits
+        cur.execute(
+            "ALTER TABLE mem_mrr_commits "
+            "ADD COLUMN IF NOT EXISTS is_external BOOLEAN DEFAULT FALSE"
+        )
+        cur.execute(
+            "ALTER TABLE mem_mrr_commits "
+            "ADD COLUMN IF NOT EXISTS commit_type TEXT DEFAULT NULL"
+        )
+    conn.commit()
+    log.info("m077: file stats tables renamed to mrr namespace; is_external + commit_type added to mem_mrr_commits")
+
+
 def m061_rebuild_backlog_links(conn) -> None:
     """Rebuild mem_backlog_links with richer schema.
 
@@ -3153,4 +3193,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m074_wi_completed", m074_wi_completed),
     ("m075_wi_deleted",   m075_wi_deleted),
     ("m076_wi_merged_into", m076_wi_merged_into),
+    ("m077_commit_history", m077_commit_history),
 ]

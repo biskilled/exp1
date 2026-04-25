@@ -538,7 +538,8 @@ class MemoryWorkItems:
                                   LEFT(c.summary, 800) AS summary,
                                   LEFT(c.diff_summary, 1000) AS diff_summary,
                                   c.tags, c.author, c.created_at,
-                                  c.prompt_id::text AS prompt_id
+                                  c.prompt_id::text AS prompt_id,
+                                  c.commit_type
                            FROM mem_mrr_commits c
                            WHERE c.project_id=%s AND c.wi_id IS NULL
                            ORDER BY c.created_at ASC
@@ -685,7 +686,8 @@ class MemoryWorkItems:
         for c in group.get("commits", []):
             ts = (c.get("created_at") or "")[:16]
             linked = f" (linked to prompt {c['prompt_id'][:8]})" if c.get("prompt_id") else ""
-            lines.append(f"[COMMIT {c['commit_hash'][:8]} {ts}{linked}]")
+            ctype = f" type={c['commit_type']}" if c.get("commit_type") else ""
+            lines.append(f"[COMMIT {c['commit_hash'][:8]} {ts}{ctype}{linked}]")
             lines.append(f"  {c.get('commit_msg', '')}")
             if c.get("summary"):
                 lines.append(f"  Summary: {c['summary'][:400]}")

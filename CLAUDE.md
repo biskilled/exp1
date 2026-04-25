@@ -48,7 +48,7 @@ You are a senior Python software architect with deep expertise in:
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-17 | Version 3.1.0_
+_Last updated: 2026-04-25_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.

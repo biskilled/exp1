@@ -70,6 +70,17 @@ _SQL_FEATURE_SNAPSHOT_BY_TAG = """
     WHERE t.id = %s AND t.project_id = %s
 """
 
+_SQL_RECENTLY_CHANGED = """
+    SELECT c.commit_hash_short, c.created_at::date AS commit_date,
+           cc.file_path, cc.symbol_type, cc.class_name, cc.method_name,
+           cc.file_change, cc.llm_summary
+    FROM mem_mrr_commits c
+    JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
+    WHERE c.project_id = %s
+    ORDER BY c.created_at DESC
+    LIMIT 200
+"""
+
 
 # ── MemoryFiles ────────────────────────────────────────────────────────────────
 
@@ -105,6 +116,9 @@ class MemoryFiles:
             "active_tags":      [],      # list of dicts from planner_tags (status open/active)
             "features":         {},      # tag_name → snapshot dict
             "blocked_tags":     [],      # (name, description) — status='active' tags
+            "recently_changed": [],      # recently changed symbols from commits
+            "project_summary":  "",      # first lines from PROJECT.md
+            "code_structure":   [],      # top-level dirs in code_dir
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
         if not db.is_available():
@@ -141,8 +155,63 @@ class MemoryFiles:
                     cur.execute(_SQL_BLOCKED_TAGS, (project_id,))
                     ctx["blocked_tags"] = [(r[1], r[3] or "") for r in cur.fetchall()]
 
+                    # Recently changed symbols (deduplicated, most recent first)
+                    try:
+                        cur.execute(_SQL_RECENTLY_CHANGED, (project_id,))
+                        seen: dict = {}
+                        for hash_short, date, fp, stype, cls, meth, change, summary in cur.fetchall():
+                            key = (fp, cls or "", meth or "")
+                            if key not in seen:
+                                if cls and meth:
+                                    label = f"{cls}.{meth}"
+                                elif cls:
+                                    label = cls
+                                elif meth:
+                                    label = meth
+                                else:
+                                    label = fp
+                                seen[key] = {
+                                    "label":   label,
+                                    "file":    fp,
+                                    "change":  change or "modified",
+                                    "hash":    hash_short or "",
+                                    "summary": (summary or "")[:80],
+                                }
+                        ctx["recently_changed"] = list(seen.values())[:50]
+                    except Exception as e:
+                        log.debug(f"_load_context recently_changed error: {e}")
+
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
+
+        # Project summary from PROJECT.md
+        try:
+            proj_md_path = self._workspace() / project / "PROJECT.md"
+            if proj_md_path.exists():
+                md_text = proj_md_path.read_text(encoding="utf-8")
+                body = md_text.split("\n## ")[0]
+                summary_lines = [
+                    l for l in body.splitlines()
+                    if l and not l.startswith(("#", ">", "<!--", "_", "```", "|"))
+                ]
+                ctx["project_summary"] = " ".join(summary_lines[:3])[:300]
+        except Exception:
+            pass
+
+        # Code structure (top-level dirs)
+        try:
+            code_dir = self._code_dir(project)
+            if code_dir and code_dir.exists():
+                _SKIP = {
+                    "__pycache__", "node_modules", "venv", ".git", "dist",
+                    "build", ".venv", "old",
+                }
+                ctx["code_structure"] = sorted(
+                    p.name for p in code_dir.iterdir()
+                    if p.is_dir() and not p.name.startswith(".") and p.name not in _SKIP
+                )[:20]
+        except Exception:
+            pass
 
         return ctx
 
@@ -165,7 +234,18 @@ class MemoryFiles:
     def render_root_claude_md(self, ctx: dict) -> str:
         """Render root CLAUDE.md — Claude CLI auto-loads this."""
         project = ctx["project"]
-        lines = [f"# Project: {project}", ""]
+        lines = [f"# {project}", ""]
+
+        # Project summary (from PROJECT.md)
+        if ctx.get("project_summary"):
+            lines += [ctx["project_summary"], ""]
+
+        # Code structure (top-level dirs)
+        if ctx.get("code_structure"):
+            lines += ["## Structure", ""]
+            for d in ctx["code_structure"]:
+                lines.append(f"- {d}/")
+            lines.append("")
 
         # Stack & Architecture
         stack_cats = ("stack", "pattern")
@@ -187,10 +267,26 @@ class MemoryFiles:
                 lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
             lines.append("")
 
+        # Recently Changed
+        recent = ctx.get("recently_changed") or []
+        if recent:
+            lines += [f"## Recently Changed (last commits)", ""]
+            shown = recent[:30]
+            for item in shown:
+                summary_part = f" — {item['summary']}" if item.get("summary") else ""
+                lines.append(
+                    f"- `{item['label']}` — {item['change']} in {item['hash']}{summary_part}"
+                )
+            if len(recent) > 30:
+                lines.append(f"(+ {len(recent) - 30} more — see git log)")
+            lines.append("")
+        else:
+            lines += ["## Recently Changed", "", "(no commit history indexed yet)", ""]
+
         # Conventions
         conv_facts = ctx["facts_by_cat"].get("convention", [])
         if conv_facts:
-            lines += ["## Conventions", ""]
+            lines += ["## Conventions & Decisions", ""]
             for key, val in conv_facts:
                 lines.append(f"- **{key}**: {val}")
             lines.append("")

@@ -28,12 +28,15 @@ log = logging.getLogger(__name__)
 
 _SQL_UPSERT_COMMIT = """
     INSERT INTO mem_mrr_commits
-            (project_id, commit_hash, session_id, commit_msg, diff_summary,
-             author, author_email, created_at, tags, src, wi_id, user_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (project_id, commit_hash, session_id, commit_msg, summary, diff_summary,
+             author, author_email, created_at, tags, src, wi_id, user_id,
+             commit_type, is_external)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (commit_hash) DO UPDATE
             SET session_id   = COALESCE(EXCLUDED.session_id,   mem_mrr_commits.session_id),
                 commit_msg   = COALESCE(EXCLUDED.commit_msg,   mem_mrr_commits.commit_msg),
+                summary      = CASE WHEN mem_mrr_commits.summary = '' THEN EXCLUDED.summary
+                                    ELSE mem_mrr_commits.summary END,
                 diff_summary = COALESCE(EXCLUDED.diff_summary, mem_mrr_commits.diff_summary),
                 author       = CASE WHEN EXCLUDED.author != '' THEN EXCLUDED.author
                                     ELSE mem_mrr_commits.author END,
@@ -44,7 +47,9 @@ _SQL_UPSERT_COMMIT = """
                                     ELSE mem_mrr_commits.tags END,
                 src          = COALESCE(EXCLUDED.src, mem_mrr_commits.src),
                 wi_id        = COALESCE(EXCLUDED.wi_id, mem_mrr_commits.wi_id),
-                user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id)
+                user_id      = COALESCE(EXCLUDED.user_id, mem_mrr_commits.user_id),
+                commit_type  = CASE WHEN mem_mrr_commits.commit_type IS NULL THEN EXCLUDED.commit_type
+                                    ELSE mem_mrr_commits.commit_type END
 """
 
 # Link commit → most-recent prompt in the same session that occurred BEFORE the commit.
@@ -236,10 +241,27 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
 
 # ── Commit→prompt linking background task ─────────────────────────────────────
 
+def _extract_commit_type(message: str) -> str | None:
+    """Derive work item type hint from conventional commit prefix."""
+    msg = (message or "").lower().strip()
+    if msg.startswith(("fix", "bug")):
+        return "bug"
+    if msg.startswith(("feat", "feature")):
+        return "feature"
+    if msg.startswith(("chore", "refactor", "perf", "style")):
+        return "task"
+    if msg.startswith(("test", "ci", "docs")):
+        return "task"
+    return None
+
+
 def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None,
                           commit_msg: str, committed_at: str,
                           diff_summary: str = "",
-                          author: str = "", author_email: str = "") -> None:
+                          author: str = "", author_email: str = "",
+                          summary: str = "",
+                          commit_type: str | None = None,
+                          is_external: bool = False) -> None:
     """Upsert the new commit into mem_mrr_commits and link it to its triggering prompt."""
     if not db.is_available():
         return
@@ -269,10 +291,12 @@ def _sync_commit_and_link(project: str, commit_hash: str, session_id: str | None
             with conn.cursor() as cur:
                 cur.execute(
                     _SQL_UPSERT_COMMIT,
-                    (project_id, commit_hash, session_id, commit_msg, diff_summary or None,
+                    (project_id, commit_hash, session_id, commit_msg, summary or "",
+                     diff_summary or None,
                      author, author_email,
                      committed_at or datetime.now(timezone.utc),  # git timestamp → created_at
-                     json.dumps(tags_dict), "git", wi_id_val, ADMIN_USER_ID),
+                     json.dumps(tags_dict), "git", wi_id_val, ADMIN_USER_ID,
+                     commit_type, is_external),
                 )
                 if session_id:
                     commit_ts = committed_at or datetime.now(timezone.utc)
@@ -1083,6 +1107,8 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
         else:
             commit_message = f"chore: update {len(changed)} files"
         commit_analysis = {}
+        commit_summary = ""
+        commit_type_val = _extract_commit_type(commit_message)
         log.debug(f"Skipping LLM commit analysis: diff_lines={_diff_line_count} < min={_min_diff_lines}")
     else:
         commit_message, commit_analysis = await _generate_commit_message(
@@ -1092,6 +1118,8 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             staged_diff=staged_diff,
             api_key=api_key,
         )
+        commit_summary = commit_analysis.get("summary", "") if commit_analysis else ""
+        commit_type_val = _extract_commit_type(commit_message)
 
     # Stage all changed files
     _git(["add", "--"] + changed, code_dir)
@@ -1196,6 +1224,8 @@ async def commit_and_push(project_name: str, body: CommitRequest, request: Reque
             code_stat,          # only code file stats stored
             commit_author,
             commit_author_email,
+            commit_summary,
+            commit_type_val,
         )
         # Threshold-based commit batch check — queues embedding when batch_size reached
         background.add_task(_embed_commit_background, project_name, commit_hash)
@@ -1264,6 +1294,103 @@ async def pull_from_remote(project_name: str):
     lines = [l for l in out.strip().splitlines() if l.strip()]
     message = lines[0][:120] if lines else "Already up to date"
     return {"ok": True, "pulled": True, "message": message}
+
+
+# ── Sync missing commits ───────────────────────────────────────────────────────
+
+@router.post("/{project_name}/sync-commits")
+async def sync_missing_commits(project_name: str, background: BackgroundTasks):
+    """Ingest git commits not yet stored in mem_mrr_commits (external collaborators, imports).
+
+    Walks git log from the last known commit to HEAD, stores each unknown commit
+    as is_external=True, and queues tree-sitter extraction in the background.
+    """
+    code_dir = _resolve_code_dir(project_name)
+    if not code_dir.exists():
+        raise HTTPException(status_code=404, detail=f"code_dir does not exist: {code_dir}")
+    if not _is_git_repo(code_dir):
+        raise HTTPException(status_code=400, detail="Not a git repository")
+
+    if not db.is_available():
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    project_id = db.get_or_create_project_id(project_name)
+
+    # Find last stored commit
+    last_hash: str | None = None
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT commit_hash FROM mem_mrr_commits "
+                    "WHERE project_id=%s ORDER BY created_at DESC LIMIT 1",
+                    (project_id,),
+                )
+                row = cur.fetchone()
+                last_hash = row[0] if row else None
+    except Exception as e:
+        log.warning(f"sync-commits: failed to get last hash: {e}")
+
+    # Build git log range
+    log_range = f"{last_hash}..HEAD" if last_hash else "HEAD"
+    rc, raw_log, err = _git(
+        ["log", log_range, "--format=%H\t%s\t%an\t%ae\t%aI", "--reverse"],
+        code_dir,
+    )
+    if rc != 0:
+        return {"synced": 0, "skipped": 0, "already_known": 0, "latest_hash": None, "error": err[:200]}
+
+    lines = [l for l in raw_log.splitlines() if l.strip()][:200]
+    synced = 0
+    skipped = 0
+    already_known = 0
+    latest_hash: str | None = None
+
+    for line in lines:
+        parts = line.split("\t", 4)
+        if len(parts) < 2:
+            continue
+        chash = parts[0].strip()
+        commit_msg = parts[1].strip() if len(parts) > 1 else ""
+        author = parts[2].strip() if len(parts) > 2 else ""
+        author_email = parts[3].strip() if len(parts) > 3 else ""
+        committed_at = parts[4].strip() if len(parts) > 4 else ""
+
+        # Skip if already stored
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM mem_mrr_commits WHERE commit_hash=%s", (chash,)
+                    )
+                    if cur.fetchone():
+                        already_known += 1
+                        latest_hash = chash
+                        continue
+        except Exception:
+            skipped += 1
+            continue
+
+        # Get diff stat for this commit (code files only)
+        _, diff_raw, _ = _git(["show", "--stat", "--format=", chash], code_dir)
+        code_stat, _ = _filter_diff_stat(diff_raw or "")
+
+        ctype = _extract_commit_type(commit_msg)
+        _sync_commit_and_link(
+            project_name, chash, None, commit_msg, committed_at or "",
+            code_stat, author, author_email,
+            summary="", commit_type=ctype, is_external=True,
+        )
+        background.add_task(_extract_commit_code_background, project_name, chash)
+        synced += 1
+        latest_hash = chash
+
+    return {
+        "synced":       synced,
+        "skipped":      skipped,
+        "already_known": already_known,
+        "latest_hash":  latest_hash,
+    }
 
 
 # ── Push-all (force sync local → remote) ─────────────────────────────────────
