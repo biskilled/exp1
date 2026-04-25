@@ -256,9 +256,16 @@ async def regenerate_memory_files(
 @router.get("/{project}/llm-prompt")
 async def get_llm_prompt(
     project: str,
-    variant: str = Query("compact", pattern="^(compact|full|gemini)$"),
+    variant: str = Query("compact", pattern="^(compact|full|gemini|openai)$"),
 ):
-    """Return a rendered LLM system prompt. Useful for copy-paste into claude.ai, ChatGPT, etc."""
+    """Return a rendered LLM system prompt. Useful for copy-paste into claude.ai, ChatGPT, etc.
+
+    Variants:
+      compact — GPT-4 / small-window models (≤2000 tokens)
+      full    — Claude / DeepSeek / Gemini (large context)
+      gemini  — Verbose for Gemini Files API upload
+      openai  — OpenAI API / Codex CLI system prompt
+    """
     from memory.memory_files import MemoryFiles
     mf = MemoryFiles()
     ctx = mf._load_context(project)
@@ -267,6 +274,8 @@ async def get_llm_prompt(
         content = mf.render_system_compact(ctx)
     elif variant == "full":
         content = mf.render_system_full(ctx)
+    elif variant == "openai":
+        content = mf.render_openai_system(ctx)
     else:
         content = mf.render_gemini_context(ctx)
 

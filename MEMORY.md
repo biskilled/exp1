@@ -1,5 +1,5 @@
 # Project Memory — aicli
-_Generated: 2026-04-25 10:00 UTC by aicli /memory_
+_Generated: 2026-04-25 10:25 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
@@ -102,6 +102,10 @@ _Generated: 2026-04-25 10:00 UTC by aicli /memory_
 
 ## Recent Work (last 10 exchanges)
 
+**[2026-04-25 10:16]** `ui/`
+Q: Still not working !
+A: Clean. The fix is:  1. **Deleted** `_attachUcDragListeners()` and its 3 module-level variables — they were a parallel reimplementation that had a subtle bug 2. **Added** `reloadFn = _loadAll` param to `_attachDragListeners()` — all 3 `_loadAll` calls inside are now `reloadFn` 3. **Added** `wi-drop-z
+
 **[2026-04-25 09:58]** `ui/`
 Q: Still not working. can you compare to work item and see why it is working on work item and not on use cases ?
 A: The implementation now mirrors Work Items exactly:  | | Work Items | Use Cases (now) | |---|---|---| | `dragstart`/`dragend` | Per-card, direct | Per-card, direct | | State variables | Module-level `_dragItemId`, `_dragOverItemId` | Module-level `_ucDragItemId`, `_ucDragOverId` | | Drop detection | 
@@ -135,7 +139,3 @@ Q: can you go over the UI and optimise that, make sure the code is clean there a
 **[2026-04-24 22:55]** `ui/`
 Q: It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is it possible to add undo button in both section (work items and use cases) so use
 A: All done. Here's a summary of what was implemented:  ---  ### Fixes & Features  **1. UC tab drag-and-drop (fixed)** - Rewrote `_attachUcDragListeners` to use **event delegation** on the parent `listEl` container - `dragover`/`drop` handlers now use `e.target.closest('.wi-uc-children .wi-card[data-it
-
-**[2026-04-24 22:46]** `ui/`
-Q: I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that is updated, make sure the aiCli folder is also updated. the goal os to remove un
-A: Here's the final structure and what changed:  ---  ## New `_templates/` Structure  ``` _templates/ ├── cli/ │   ├── claude/ │   │   ├── hooks/          ← 10 hook scripts (was: _templates/hooks/) │   │   └── settings.template.json │   └── mcp.template.json   ← shared Claude + Cursor MCP config ├── pi

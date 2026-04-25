@@ -1,5 +1,16 @@
 # {{PROJECT_NAME}}
 
+_Last updated: {{DATE}}_
+
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed when you run `/memory`.
+>   You can still edit them; `/memory` will merge without discarding your additions.
+> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files.
+
+---
+
+<!-- user-managed -->
 ## Use Case
 
 **Who**:
@@ -8,32 +19,32 @@
 
 ---
 
+<!-- user-managed -->
 ## Architecture
 
 _Describe the high-level architecture here._
 
 ---
 
+<!-- user-managed -->
 ## Features
 
-### Implemented [x]
+### Implemented
+- (none yet)
 
-- [ ] (none yet)
-
-### In Progress [ ]
-
----
-
-## TODO
-
-1. [ ] Define project scope
-2. [ ] Set up code directory
-3. [ ] Run first workflow
+### Planned
+- (none yet)
 
 ---
 
-## Recent Changes
+<!-- auto-updated by /memory — safe to edit, will be merged on next run -->
+## Key Decisions
 
-| Date | Change |
-|------|--------|
-| {{DATE}} | Project created from blank template |
+- (populated automatically by /memory after first session)
+
+---
+
+<!-- auto-updated by /memory — safe to edit, will be merged on next run -->
+## Recent Work
+
+- (populated automatically by /memory after first session)

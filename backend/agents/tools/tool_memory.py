@@ -454,46 +454,33 @@ def _handle_search_features(args: dict) -> str:
         project_id = db.get_or_create_project_id(project)
         with db.conn() as conn:
             with conn.cursor() as cur:
-                # Vector search first
-                vec = _embed_sync(query)
-                if vec:
-                    vs = _vec_str(vec)
-                    cur.execute(
-                        """SELECT t.name, t.requirements, t.action_items, t.code_summary,
-                                  t.updated_at,
-                                  1 - (t.embedding <=> %s::vector) AS score
-                           FROM planner_tags t
-                           WHERE t.project_id=%s AND t.embedding IS NOT NULL
-                           ORDER BY t.embedding <=> %s::vector
-                           LIMIT %s""",
-                        (vs, project_id, vs, limit),
-                    )
-                else:
-                    # Tag name match fallback
-                    cur.execute(
-                        """SELECT t.name, t.requirements, t.action_items, t.code_summary,
-                                  t.updated_at, 1.0 AS score
-                           FROM planner_tags t
-                           WHERE t.project_id=%s AND t.name ILIKE %s
-                           ORDER BY t.updated_at DESC LIMIT %s""",
-                        (project_id, f"%{query}%", limit),
-                    )
+                # Text search on name + description (embedding column dropped in m027)
+                cur.execute(
+                    """SELECT t.name, t.requirements, t.action_items, t.description,
+                              t.updated_at, t.status
+                       FROM planner_tags t
+                       WHERE t.project_id=%s
+                         AND (t.name ILIKE %s OR t.description ILIKE %s
+                              OR t.requirements ILIKE %s)
+                       ORDER BY t.updated_at DESC LIMIT %s""",
+                    (project_id, f"%{query}%", f"%{query}%", f"%{query}%", limit),
+                )
                 rows = cur.fetchall()
                 for row in rows:
                     ts   = row[4].strftime("%Y-%m-%d") if row[4] else "?"
                     reqs = (row[1] or "")[:300]
                     acts = (row[2] or "")[:200]
-                    cs   = row[3] if isinstance(row[3], dict) else {}
-                    files = ", ".join(cs.get("files", [])[:5])
-                    score = f" (score={row[5]:.2f})" if row[5] else ""
+                    desc = (row[3] or "")[:120]
+                    status = row[5] or "open"
                     block = [
-                        f"[Feature: {row[0]}{score}] updated {ts}",
-                        f"  Requirements: {reqs}",
+                        f"[Feature: {row[0]}] [{status}] updated {ts}",
                     ]
+                    if desc:
+                        block.append(f"  Description: {desc}")
+                    if reqs:
+                        block.append(f"  Requirements: {reqs}")
                     if acts:
                         block.append(f"  Action Items: {acts}")
-                    if files:
-                        block.append(f"  Files: {files}")
                     results.append("\n".join(block))
     except Exception as e:
         log.debug(f"search_features error: {e}")

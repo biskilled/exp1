@@ -2,8 +2,15 @@
 
 _Last updated: 2026-04-17 | Version 3.1.0_
 
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
+
 ---
 
+<!-- user-managed -->
 ## Vision
 
 **aicli gives every LLM the same project memory.**
@@ -14,6 +21,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 
+<!-- user-managed -->
 ## Core Goals
 
 | # | Goal | Status |
@@ -271,6 +279,7 @@ sidebar tabs:
 - Electron packaging with embedded Python 3.12
 - Semantic search over use case file content (pgvector on chunked .md files)
 
+<!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
 - Drag-and-drop parent-child/merge in Use Cases fixed via unconditional e.preventDefault() and document.elementFromPoint(e.clientX, e.clientY) target detection; relatedTarget=null bug on drop resolved

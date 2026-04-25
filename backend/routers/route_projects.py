@@ -714,12 +714,18 @@ def _save_project_state(sys_dir: Path, state_data: dict) -> None:
 
 
 def _update_project_md_section(proj_dir: Path, section_title: str, new_body: str) -> None:
-    """Update or append a '## {section_title}' section in PROJECT.md without touching other content."""
+    """Update or append a '## {section_title}' section in PROJECT.md.
+
+    Also updates the '_Last updated: YYYY-MM-DD_' line in the header so
+    consumers can skip re-processing when the file hasn't changed recently.
+    """
     try:
         proj_md_path = proj_dir / "PROJECT.md"
         if not proj_md_path.exists():
             return
         content = proj_md_path.read_text()
+
+        # Update section body
         marker = f"## {section_title}"
         if marker in content:
             before, rest = content.split(marker, 1)
@@ -728,9 +734,42 @@ def _update_project_md_section(proj_dir: Path, section_title: str, new_body: str
             content = before + marker + "\n\n" + new_body.rstrip() + "\n" + after
         else:
             content = content.rstrip() + "\n\n" + marker + "\n\n" + new_body.rstrip() + "\n"
+
+        # Bump "_Last updated: YYYY-MM-DD_" in the header (first 10 lines)
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        lines = content.splitlines()
+        updated = False
+        for i, line in enumerate(lines[:10]):
+            if re.match(r"^_Last updated:", line):
+                lines[i] = f"_Last updated: {today}_"
+                updated = True
+                break
+        if not updated:
+            # Insert after title line (line 0)
+            insert_at = 1 if lines else 0
+            lines.insert(insert_at, f"_Last updated: {today}_")
+        content = "\n".join(lines) + "\n"
+
         proj_md_path.write_text(content)
     except Exception:
         pass
+
+
+def _project_md_age_days(proj_dir: Path) -> int | None:
+    """Return days since PROJECT.md '_Last updated_' date, or None if not found/parseable."""
+    try:
+        proj_md_path = proj_dir / "PROJECT.md"
+        if not proj_md_path.exists():
+            return None
+        for line in proj_md_path.read_text().splitlines()[:10]:
+            m = re.match(r"^_Last updated:\s*(\d{4}-\d{2}-\d{2})", line)
+            if m:
+                from datetime import date
+                last = date.fromisoformat(m.group(1))
+                return (date.today() - last).days
+    except Exception:
+        pass
+    return None
 
 
 async def _synthesize_with_llm(
@@ -791,28 +830,38 @@ async def _synthesize_with_llm(
             }, indent=2)[:800]
             prior_block = f"Prior synthesis (merge, do not discard stable decisions):\n{prior_json}\n\n"
 
-        prompt = (
-            f'You are analyzing development history for project "{project_name}".\n\n'
-            f"Current structured state:\n{current_state}\n\n"
-            f"{prior_block}"
-            f"Project intro (from PROJECT.md):\n{proj_intro}\n\n"
-            f"{entity_block}"
-            f"Development history ({len(history)} entries, oldest→newest):\n{history_text}\n\n"
-            "Return ONLY valid JSON (no markdown fences) with exactly these fields:\n"
-            "{\n"
-            '  "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],\n'
-            '  "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],\n'
-            '  "tech_stack": {"component": "technology or version"},\n'
-            '  "memory_digest": "Markdown: synthesize the 10 most important recent work items. '
-            'Format each as: **[date]** `source` — description of what was done/decided.",\n'
-            '  "project_summary": "2-3 sentence description of what this project is and its current state."\n'
-            "}\n\n"
-            "Rules:\n"
-            "- key_decisions: permanent facts (tech choices, auth approach, architecture patterns)\n"
-            "- in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)\n"
-            "- tech_stack: merge existing + any new tech mentioned in history\n"
-            "- memory_digest: synthesize meaningfully, don't just copy. Focus on decisions + features.\n"
-            "- Return ONLY valid JSON, no explanation outside the JSON."
+        # Load prompt from YAML file (hot-reloadable — no restart needed)
+        _prompt_tpl = None
+        _prompt_file = Path(__file__).parent.parent / "prompts" / "memory_synthesis.yaml"
+        if _prompt_file.exists():
+            try:
+                import yaml as _yaml
+                _prompt_tpl = (_yaml.safe_load(_prompt_file.read_text()) or {}).get("prompt", "")
+            except Exception:
+                pass
+        if not _prompt_tpl:
+            # Minimal inline fallback — prefer editing memory_synthesis.yaml
+            _prompt_tpl = (
+                'You are analyzing development history for project "{project_name}".\n\n'
+                "Current structured state:\n{current_state}\n\n"
+                "{prior_block}"
+                "Project intro (from PROJECT.md):\n{proj_intro}\n\n"
+                "{entity_block}"
+                "Development history ({history_len} entries, oldest→newest):\n{history_text}\n\n"
+                "Return ONLY valid JSON with: key_decisions, in_progress, tech_stack, "
+                "memory_digest, project_summary.\n"
+                "- tech_stack: return only ~15 canonical entries, no duplicates.\n"
+                "- Return ONLY valid JSON, no markdown fences."
+            )
+
+        prompt = _prompt_tpl.format(
+            project_name=project_name,
+            current_state=current_state,
+            prior_block=prior_block,
+            proj_intro=proj_intro,
+            entity_block=entity_block,
+            history_len=len(history),
+            history_text=history_text,
         )
 
         client = anthropic.AsyncAnthropic(api_key=key)
@@ -1070,9 +1119,10 @@ async def generate_memory(project_name: str):
         prior_synthesis=prior_synthesis if new_entries else None,
     )
     if synthesis:
-        # Merge LLM-extracted structured data into state_data (LLM wins on new fields)
+        # Replace (not merge) tech_stack so stale/duplicate keys never accumulate.
+        # The LLM prompt already passes the current state, so it can preserve stable entries.
         if synthesis.get("tech_stack"):
-            state_data.setdefault("tech_stack", {}).update(synthesis["tech_stack"])
+            state_data["tech_stack"] = synthesis["tech_stack"]
         if synthesis.get("key_decisions"):
             # Deduplicate: LLM wins on new entries; preserve prior unique decisions
             existing = set(state_data.get("key_decisions", []))
@@ -1084,122 +1134,55 @@ async def generate_memory(project_name: str):
         # Save synthesis as cache for next incremental run
         state_data["_synthesis_cache"] = {
             k: synthesis.get(k)
-            for k in ("key_decisions", "in_progress", "tech_stack", "project_summary", "memory_digest")
+            for k in ("key_decisions", "in_progress", "tech_stack", "project_summary")
         }
         # Persist updated project_state.json so get_project_context() reads fresh data below
         _save_project_state(sys_dir, state_data)
-        # Refresh PROJECT.md "Recent Work" section with LLM-extracted items
+
+    # ── 1. Refresh PROJECT.md sections from synthesis ─────────────────────────
+    # Always update "Recent Work" and "Key Decisions" from fresh synthesis so
+    # PROJECT.md stays current. The "_Last updated_" date is bumped automatically
+    # by _update_project_md_section() so stale-check consumers know when to skip.
+    if synthesis:
         if synthesis.get("in_progress"):
             recent_body = "\n".join(f"- {item}" for item in synthesis["in_progress"]) + "\n"
             _update_project_md_section(proj_dir, "Recent Work", recent_body)
-
-    # ── 1. MEMORY.md — distilled history for Claude CLI ───────────────────────
-    # Claude CLI reads CLAUDE.md at startup; CLAUDE.md references MEMORY.md.
-    memory_lines = [
-        f"# Project Memory — {project_name}",
-        f"_Generated: {ts} by aicli /memory_\n",
-        "> Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.\n",
-    ]
-
-    if synthesis and synthesis.get("project_summary"):
-        memory_lines.append("## Project Summary\n")
-        memory_lines.append(synthesis["project_summary"])
-        memory_lines.append("")
-
-    if state_data.get("tech_stack"):
-        memory_lines.append("## Tech Stack\n")
-        for k, v in state_data["tech_stack"].items():
-            memory_lines.append(f"- **{k}**: {v}")
-        memory_lines.append("")
-
-    if state_data.get("key_decisions"):
-        memory_lines.append("## Key Decisions\n")
-        for d in state_data["key_decisions"]:
-            memory_lines.append(f"- {d}")
-        memory_lines.append("")
-
-    if state_data.get("in_progress"):
-        memory_lines.append("## In Progress\n")
-        for item in state_data["in_progress"]:
-            memory_lines.append(f"- {item}")
-        memory_lines.append("")
-
-    # ── Active Features from entity layer (uses pre-loaded entity_groups) ──────
-    if entity_groups:
-        memory_lines.append("## Active Features / Bugs / Tasks\n")
-        for g in entity_groups:
-            cat = g["category"]
-            vals = g["values"]
-            if not vals:
-                continue
-            memory_lines.append(f"### {cat.capitalize()}\n")
-            for (icon, vname, vdesc, vstatus, vdue, vparent, ec, cc) in vals:
-                label = f"- **{vname}**"
-                if vstatus != "active":
-                    label += f" `[{vstatus}]`"
-                if vdue:
-                    label += f" | due: {vdue.isoformat() if hasattr(vdue, 'isoformat') else vdue}"
-                if vdesc:
-                    label += f" — {vdesc[:100]}"
-                meta = []
-                if ec:
-                    meta.append(f"{ec} events")
-                if cc:
-                    meta.append(f"{cc} commits")
-                if meta:
-                    label += f" `({', '.join(meta)})`"
-                memory_lines.append(label)
-            memory_lines.append("")
-
-    if synthesis and synthesis.get("memory_digest"):
-        # LLM synthesis across all context (supplements memory_items or standalone)
-        memory_lines.append("## AI Synthesis\n")
-        memory_lines.append(synthesis["memory_digest"])
+        if synthesis.get("key_decisions"):
+            kd_body = "\n".join(f"- {d}" for d in synthesis["key_decisions"]) + "\n"
+            _update_project_md_section(proj_dir, "Key Decisions", kd_body)
     else:
-        # Fallback: mechanical Q&A truncation (no API key or synthesis failed)
-        memory_lines.append("## Recent Work (last 10 exchanges)\n")
-        shown = 0
-        for e in reversed(recent):
-            if shown >= 10:
-                break
-            date = (e.get("ts") or "")[:16].replace("T", " ")
-            src = e.get("source", "")
-            prov = e.get("provider", "")
-            q = (e.get("user_input") or "").strip()[:200].replace("\n", " ")
-            a = (e.get("output") or "").strip()[:300].replace("\n", " ")
-            memory_lines.append(f"**[{date}]** `{src}/{prov}`")
-            memory_lines.append(f"Q: {q}")
-            if a:
-                memory_lines.append(f"A: {a}")
-            memory_lines.append("")
-            shown += 1
+        # No synthesis (no API key) — still bump the date so the file isn't
+        # treated as stale on the next check.
+        age = _project_md_age_days(proj_dir)
+        if age is None or age > 0:
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            try:
+                proj_md_path = proj_dir / "PROJECT.md"
+                if proj_md_path.exists():
+                    content = proj_md_path.read_text()
+                    lines = content.splitlines()
+                    updated = False
+                    for i, line in enumerate(lines[:10]):
+                        if re.match(r"^_Last updated:", line):
+                            lines[i] = f"_Last updated: {today}_"
+                            updated = True
+                            break
+                    if not updated:
+                        lines.insert(1, f"_Last updated: {today}_")
+                    proj_md_path.write_text("\n".join(lines) + "\n")
+            except Exception:
+                pass
 
-    memory_md = "\n".join(memory_lines)
-    (sys_dir / "claude" / "MEMORY.md").write_text(memory_md)
-    generated.append("_system/claude/MEMORY.md")
-
-    # ── 2. CLAUDE.md — refreshed context with MEMORY.md reference ─────────────
+    # ── 2. CLAUDE.md — regenerate from PROJECT.md + state_data ───────────────
+    # PROJECT.md was just refreshed above, so get_project_context() will pick
+    # up the latest "Recent Work" and "Key Decisions" sections automatically.
+    claude_md_content = ""
     try:
         ctx_result = await get_project_context(project_name, save=True)
         claude_md_content = ctx_result.get("claude_md", "")
-        # Append MEMORY.md reference so Claude CLI reads it
-        if claude_md_content and "MEMORY.md" not in claude_md_content:
-            digest_note = (
-                "LLM-synthesized project digest" if synthesis
-                else "last 10 development exchanges"
-            )
-            claude_md_content += (
-                "\n\n---\n\n## Session Memory\n\n"
-                f"Read `MEMORY.md` in this directory for recent work history, "
-                f"key decisions, and in-progress items. It was generated by aicli `/memory` "
-                f"({digest_note}).\n"
-            )
-            # Re-write with the reference included
-            (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
-            (sys_dir / "CLAUDE.md").write_text(claude_md_content)
         generated.append("_system/claude/CLAUDE.md")
     except Exception:
-        claude_md_content = ""
+        pass
 
     # ── 3. cursor/rules.md — Cursor AI coding rules ───────────────────────────
     # Cursor reads .cursor/rules/*.mdrules — keep focused on coding conventions.
@@ -1318,7 +1301,6 @@ async def generate_memory(project_name: str):
             skipped_copy = False
             for src_content, dest_rel, make_parents in [
                 (claude_md_content, "CLAUDE.md", False),
-                (memory_md, "MEMORY.md", False),
                 (cursor_md, ".cursor/rules/aicli.mdrules", True),
                 (copilot_md, ".github/copilot-instructions.md", True),
                 (ai_rules_md, ".ai/rules.md", True),
