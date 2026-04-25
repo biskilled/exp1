@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- UI drag-and-drop parent-child/merge in Use Cases fixed via unconditional e.preventDefault() and event delegation targeting any child element; type validation ensures same-type items only link
-- Undo button implementation as persistent toolbar button (not popup) in both Work Items and Use Cases; stores reverse API call closure capturing original parent_id before link
+- Drag-and-drop parent-child/merge in Use Cases fixed via unconditional e.preventDefault() and document.elementFromPoint(e.clientX, e.clientY) target detection; relatedTarget=null bug on drop resolved
+- Undo button implementation as persistent toolbar button in Work Items and Use Cases; stores reverse API call closure capturing original parent_id before link
 - MD file generation aligned with use case structure: recursive CTE fetches all descendants, separate sections for Requirements/Completed/Open Items, no HTML comments, plain text timestamps
 - Completed section added to left sidebar under Planning group (Work Items/Use Cases/Documents/Completed); complete_use_case() validates all descendants done, moves MD to documents/completed/
 - Backend hardcoded string removal — localhost references in main.js, api.js to be replaced with dynamic config from aicli.yaml; centralizing backend URL configuration across frontend
-- Template workspace refactor complete — _templates/ reorganized into cli/pipelines/hooks subdirectories with per-provider hooks; aicli/ folder to be synced with template changes
+- UI code optimization and refactoring — removing duplicate/unused code, cleaning hardcoded strings, consolidating initialization methods across work_items.js and use_cases.js

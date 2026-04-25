@@ -1639,17 +1639,22 @@ function _attachUcDragListeners() {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', _ucDragId);
     setTimeout(() => card.classList.add('wi-dragging'), 0);
+    console.log('[UC-drag] dragstart', _ucDragId);
   }, { signal });
 
   listEl.addEventListener('dragend', (e) => {
     const card = e.target.closest('.wi-card[data-item-id]');
     if (card) card.classList.remove('wi-dragging');
     listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+    console.log('[UC-drag] dragend, _ucDragId was', _ucDragId);
     _ucDragId = null;
   }, { signal });
 
+  const zones = listEl.querySelectorAll('.wi-uc-children');
+  console.log('[UC-drag] attached to', zones.length, 'zones');
+
   // dragover/drop on each .wi-uc-children zone
-  listEl.querySelectorAll('.wi-uc-children').forEach(zone => {
+  zones.forEach(zone => {
     zone.addEventListener('dragover', (e) => {
       if (!_ucDragId) return;
       e.preventDefault();   // unconditional — required for drop to fire
@@ -1664,6 +1669,7 @@ function _attachUcDragListeners() {
     }, { signal });
 
     zone.addEventListener('drop', (e) => {
+      console.log('[UC-drag] drop fired, _ucDragId=', _ucDragId, 'clientX/Y=', e.clientX, e.clientY);
       if (!_ucDragId) return;
       e.preventDefault();
       e.stopPropagation();
@@ -1671,11 +1677,10 @@ function _attachUcDragListeners() {
       const itemId = _ucDragId;
       _ucDragId = null;
 
-      // Re-detect target at drop coords — dragleave fires before drop and would clear any
-      // stored hover target, so we must re-query here rather than reading a cached value
       const dropEl   = document.elementFromPoint(e.clientX, e.clientY);
       const dropCard = dropEl?.closest('.wi-card[data-item-id]');
       const targetId = dropCard?.dataset.itemId;
+      console.log('[UC-drag] drop: itemId=', itemId, 'targetId=', targetId, 'dropEl=', dropEl?.className);
       if (targetId && targetId !== itemId) {
         _showLinkMergePopover(e.clientX, e.clientY, itemId, targetId, _reloadCurrent);
       }
