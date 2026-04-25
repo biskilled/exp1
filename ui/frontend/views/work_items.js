@@ -1151,7 +1151,7 @@ function _showLinkMergePopover(x, y, draggedId, targetId, reloadFn) {
 
   pop.querySelector('#wi-lm-merge').addEventListener('click', async () => {
     _close();
-    if (!confirm('Merge: source summary will be appended to target, and source will be deleted. Continue?')) return;
+    if (!confirm('Merge: source summary will be appended to target, source will be soft-deleted. You can undo to restore the source. Continue?')) return;
     try {
       const r = await api.wi.merge(_project, targetId, draggedId);
       if (r.error) { toast(`Error: ${r.error}`, 'error'); return; }
@@ -1631,21 +1631,24 @@ function _attachUcDragListeners() {
 
   let _ucDragId = null;  // ID of item currently being dragged
 
-  // dragstart / dragend still per-card (dragstart always fires on the draggable element itself)
-  listEl.querySelectorAll('.wi-uc-children .wi-card').forEach(card => {
-    const cardId = card.dataset.itemId;
-    card.addEventListener('dragstart', (e) => {
-      _ucDragId = cardId;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', cardId);
-      setTimeout(() => card.classList.add('wi-dragging'), 0);
-    }, { signal });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('wi-dragging');
-      listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
-      _ucDragId = null;
-    }, { signal });
-  });
+  // Fully delegated dragstart — bubbles from .wi-card[draggable][data-item-id]
+  // Avoids querySelectorAll at attach time so newly expanded cards work too
+  listEl.addEventListener('dragstart', (e) => {
+    if (e.target.closest('button,input,select,textarea')) return;
+    const card = e.target.closest('.wi-card[data-item-id]');
+    if (!card) return;
+    _ucDragId = card.dataset.itemId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', _ucDragId);
+    setTimeout(() => card.classList.add('wi-dragging'), 0);
+  }, { signal });
+
+  listEl.addEventListener('dragend', (e) => {
+    const card = e.target.closest('.wi-card[data-item-id]');
+    if (card) card.classList.remove('wi-dragging');
+    listEl.querySelectorAll('.wi-parent-target').forEach(el => el.classList.remove('wi-parent-target'));
+    _ucDragId = null;
+  }, { signal });
 
   // Delegated dragover/drop on listEl — finds the target card via closest().
   // Works regardless of which child element the cursor is hovering over.

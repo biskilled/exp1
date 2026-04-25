@@ -1,14 +1,14 @@
 # Project Context: aicli
 
-> Auto-generated 2026-04-24 23:38 UTC — do not edit manually.
+> Auto-generated 2026-04-25 09:18 UTC — do not edit manually.
 
 ## Quick Stats
 
 - **Provider**: claude
 - **GitHub**: https://github.com/biskilled/exp1.git
 - **Code dir**: `/Users/user/Documents/gdrive_cellqlick/2026/aicli`
-- **Sessions**: 728
-- **Last active**: 2026-04-24T23:37:46Z
+- **Sessions**: 729
+- **Last active**: 2026-04-24T23:45:34Z
 - **Last provider**: claude
 - **Version**: 2.1.0
 
@@ -61,11 +61,11 @@
 
 ## In Progress
 
-- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
-- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- UI hardcoded string removal — replacing localhost references in main.js, api.js with dynamic config from aicli.yaml; centralizing backend URL configuration
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed to detect drop targets on any child element; type validation ensures only same-type items link
+- Undo button implementation — added to Work Items and Use Cases toolbars; captures reverse API call as closure before link happens; _setUndoAction stores PATCH with original parent_id
 - MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
-- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
-- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/; reopen_use_case() reverses
 - Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
 
 ## Key Decisions
@@ -82,9 +82,9 @@
 - Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
 - Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
 - Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
-- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
 
 ---
 

@@ -273,9 +273,9 @@ sidebar tabs:
 
 ## Recent Work
 
-- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
-- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- UI hardcoded string removal — replacing localhost references in main.js, api.js with dynamic config from aicli.yaml; centralizing backend URL configuration
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed to detect drop targets on any child element; type validation ensures only same-type items link
+- Undo button implementation — added to Work Items and Use Cases toolbars; captures reverse API call as closure before link happens; _setUndoAction stores PATCH with original parent_id
 - MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
-- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
-- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/; reopen_use_case() reverses
 - Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects

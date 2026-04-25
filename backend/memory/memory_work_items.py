@@ -1878,42 +1878,25 @@ class MemoryWorkItems:
             return {"error": str(e)}
 
     def unmerge(self, source_id: str, pid: int) -> dict:
-        """Undo a merge: restore soft-deleted source and strip its footnote from target."""
+        """Partial undo of a merge: restore the soft-deleted source item.
+
+        The target's summary is kept as-is (the merged footnote stays).
+        """
         if not db.is_available():
             return {"error": "db not available"}
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT id::text, name, merged_into::text FROM mem_work_items "
+                        "SELECT id::text, merged_into::text FROM mem_work_items "
                         "WHERE id=%s::uuid AND project_id=%s AND merged_into IS NOT NULL",
                         (source_id, pid),
                     )
                     src = cur.fetchone()
                     if not src:
                         return {"error": "source item not found or not merged"}
-                    target_id = src[2]
-                    src_name  = src[1] or ""
+                    target_id = src[1]
 
-                    cur.execute(
-                        "SELECT summary FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
-                        (target_id, pid),
-                    )
-                    tgt = cur.fetchone()
-                    if not tgt:
-                        return {"error": "target item not found"}
-
-                    # Remove appended footnote (last occurrence of the merge marker)
-                    tgt_summary = tgt[0] or ""
-                    marker = f"\n\n_Merged from **{src_name}**"
-                    idx = tgt_summary.rfind(marker)
-                    restored = tgt_summary[:idx].rstrip() if idx >= 0 else tgt_summary
-
-                    cur.execute(
-                        "UPDATE mem_work_items SET summary=%s, updated_at=NOW() "
-                        "WHERE id=%s::uuid AND project_id=%s",
-                        (restored or None, target_id, pid),
-                    )
                     cur.execute(
                         "UPDATE mem_work_items "
                         "SET deleted_at=NULL, merged_into=NULL, updated_at=NOW() "

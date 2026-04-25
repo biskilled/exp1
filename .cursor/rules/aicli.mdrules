@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:37 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-24 23:45 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -68,14 +68,14 @@ _Last updated: 2026-04-17 | Version 3.1.0_
 - Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
 - Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
 - Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
-- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-24] it look like in work item i do see the option parent child/ merge. but when I do parent-child, the child disapred insted
 - [2026-04-24] I would like to clean refactor the  worksqapce/_tamplate that will be used as a tamplate for any new project. once that 
 - [2026-04-24] It looks like the drag and drop with parent-child work for work items but it is not working for the use cases . Also is 
 - [2026-04-24] can you go over the UI and optimise that, make sure the code is clean there are no duplicate or unused code. make sure c
 - [2026-04-24] it seems that the drag and drop working in work item, but is it not working in use cases, when I am dragging an item (th
+- [2026-04-24] how is the undo works, if item is linked - there is db update, how doas undo work?

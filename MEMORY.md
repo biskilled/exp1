@@ -1,11 +1,11 @@
 # Project Memory — aicli
-_Generated: 2026-04-24 23:37 UTC by aicli /memory_
+_Generated: 2026-04-24 23:45 UTC by aicli /memory_
 
 > Auto-generated. CLAUDE.md references this so Claude CLI reads it at session start.
 
 ## Project Summary
 
-aicli is a shared AI memory platform with Python backend (FastAPI + PostgreSQL) and Electron desktop frontend. It implements a 4-layer memory architecture capturing prompts, synthesizing them into work items/use cases, and providing collaborative project management with AI classification, due dates, completion validation, and drag-drop parent-child relationships.
+aicli is a shared AI memory platform combining a Python/FastAPI backend with an Electron desktop UI, enabling collaborative project memory management through semantic embeddings, LLM-driven work item classification, and async DAG-based workflows. The current focus is on use case management lifecycle (due dates, completion validation, MD generation), drag-and-drop parent-child linking with undo support, and UI optimization including hardcoded string removal and config-driven backends.
 
 ## Tech Stack
 
@@ -68,17 +68,17 @@ aicli is a shared AI memory platform with Python backend (FastAPI + PostgreSQL) 
 - Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id)
 - Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, and MD generation
 - Use Case lifecycle: due dates (calendar MM/DD/YY or day offsets), completion validation (all descendants must finish), completed_at timestamp tracking, markdown file generation with auto-move to documents/completed/
-- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
-- Planning group on left sidebar: Work Items, Use Cases, Documents, Completed subsections; text selection enabled across UI for clipboard copy-paste
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation and undo support; merged_into self-FK tracks item relationships
+- Session history UI with source badges (CLI/UI/Workflow), phase chips, session ID (last 5 chars), timestamp YY/MM/DD-HH:MM, and per-prompt tag management
+- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
 
 ## In Progress
 
-- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed; type validation ensures only same-type items link; undo button added to toolbar
-- Undo button implementation — added to Work Items and Use Cases toolbars; calls undoFn() to restore previous state; tooltip shows undo availability
+- UI hardcoded string removal — replacing localhost references in main.js, api.js with dynamic config from aicli.yaml; centralizing backend URL configuration
+- Drag-and-drop parent-child/merge in Use Cases — event delegation fixed to detect drop targets on any child element; type validation ensures only same-type items link
+- Undo button implementation — added to Work Items and Use Cases toolbars; captures reverse API call as closure before link happens; _setUndoAction stores PATCH with original parent_id
 - MD file format refinement — removed HTML comment tags; created/updated dates as plain text; item counts computed from recursive CTEs; requirements mapped correctly without duplicates
-- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/
-- UI optimization and hardcoded string removal — refactoring localhost references to load from aicli.yaml; code cleanup for duplicate methods and unused variables
+- Use Case completion flow — complete_use_case() validates all descendants done (recursive CTE), sets completed_at timestamp, auto-moves MD to documents/completed/; reopen_use_case() reverses
 - Template workspace refactor — reorganized _templates/ with cli/, pipelines/, and hooks/ subdirectories; removed unused files; simplified structure for new projects
 
 ## Active Features / Bugs / Tasks
@@ -106,4 +106,14 @@ aicli is a shared AI memory platform with Python backend (FastAPI + PostgreSQL) 
 
 ## AI Synthesis
 
-**[2026-04-24 22:46]** `ui` — Workspace template refactor: reorganized _templates/ into cli/, pipelines/, hooks/ subdirectories; removed unused files and simplified structure for new projects. **[2026-04-24 22:30]** `ui` — Drag-and-drop parent-child/merge for work items implemented with type validation; merged_into self-FK added to track relationships; undo functionality wired. **[2026-04-24 22:08]** `ui` — Parent-child linking and merge UI working: drag item above another to choose link or merge action; merge appends source summary to target as footnote. **[2026-04-24 21:49]** `ui` — MD file format stabilized: removed duplicate section headers, fixed Requirements section to avoid duplication, recursive CTE ensures all descendants included in counts. **[2026-04-24 21:04]** `ui` — Text selection enabled across UI: removed user-select: none from body to allow clipboard copy-paste in history entries, work items, and markdown content. **[2026-04-24 19:05]** `ui` — Completed section on left sidebar implemented: new Planning group (Work Items, Use Cases, Documents, Completed); complete_use_case() validates all descendants done, sets completed_at, auto-moves MD to documents/completed/. **[2026-04-24 18:54]** `ui` — MD file accuracy improved: recursive CTE fetches all descendants (not just direct children); type-based grouping (bugs, features, tasks) with correct counts; requirements mapped to top section.
+**[2026-04-24 23:45]** `ui` — Undo mechanism implemented as persistent button in Work Items and Use Cases toolbars; captures reverse API call as closure before link/merge happens, stores original parent_id to restore on undo click.
+
+**[2026-04-24 23:24]** `ui` — Fixed drag-and-drop parent-child/merge in Use Cases via event delegation; added undo button to toolbar; both Work Items and Use Cases now support type validation (only same-type items can link).
+
+**[2026-04-24 22:55]** `ui` — Template workspace refactor completed; reorganized _templates/ into cli/(claude/, mcp.template.json), pipelines/, hooks/ subdirectories; removed unused files; simplified structure for new projects.
+
+**[2026-04-24 22:30]** `ui` — Merged parent-child linking fully wired; orphan detection fixed by computing allSubItems and excluding re-parented children; use case improvements including due date conflict auto-resolution and type validation for merges.
+
+**[2026-04-24 18:54]** `ui` — MD file format refined; removed all HTML comments (no <!-- tags -->); created/updated dates as plain text; item counts (bugs/features/tasks) computed from recursive CTEs; Requirements section now correctly deduplicated and mapped without nested headers.
+
+**[2026-04-23 09:06]** `ui` — Work Items tab fixed to show all items (not just pending AI*); Use Cases tab now properly displays approved items; hook health restored (0.1h after 8.3h offline); empty state message clarified with prompt/commit counts for Classify action.
