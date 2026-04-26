@@ -15,18 +15,19 @@ Tools:
     get_session_tags     — active session tags (phase, feature, bug_ref)
     set_session_tags     — update active session tags
     commit_push          — commit + push from Cursor; logs to commit_log.jsonl
-    get_db_schema        — complete database schema (mem_mrr_*, mem_ai_*, planner_*, pr_graph_*)
-    list_work_items      — list work items with pipeline status
-    run_work_item_pipeline — trigger 4-agent PM→Architect→Dev→Reviewer pipeline
-    get_item_by_number   — resolve #NNNNN sequential ref to full work item or entity
-    search_facts         — semantic search over current project facts (embedding-based)
-    search_work_items    — semantic search over work items (embedding-based)
-    get_tag_context      — full context for a tag: events, sources, relations, work items
+    get_db_schema        — complete database schema (mem_mrr_*, mem_work_items, pr_graph_*)
+    create_entity        — create a new work item (feature/bug/task/use_case) pending approval
+    list_work_items      — list mem_work_items filtered by wi_type and user_status
+    run_work_item_pipeline — run Haiku AI summarise on a use case (rewrites summary + reorders children)
+    get_item_by_number   — resolve a wi_id ref (e.g. BU0001, FE0002) to the full work item
+    search_work_items    — semantic search over embedded (approved) work items
 
-Database naming convention:
-    mng_TABLE  — global/shared tables (users, billing, entity categories, agent roles, etc.)
-    pr_TABLE   — flat per-project tables with project_id INT FK (replaces project TEXT)
-                 (e.g. mem_mrr_commits, mem_mrr_prompts, mem_ai_project_facts, mem_work_items)
+Database:  mem_work_items — single table for use_case/feature/bug/task/requirement
+  wi_type:    use_case | feature | bug | task | requirement
+  user_status: open | pending | in-progress | review | blocked | done
+  approved_at IS NOT NULL → item is approved (has wi_id like BU0001, FE0002)
+  embedding IS NOT NULL  → item is embedded (approved items only)
+  wi_parent_id           → links features/bugs/tasks to their parent use_case
 """
 from __future__ import annotations
 
@@ -265,59 +266,44 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="create_entity",
             description=(
-                "Create a new entity value (feature, bug, task, etc.) in the project's knowledge graph. "
-                "Use this to track a new feature you are about to implement, a bug you discovered, "
-                "or a task that needs to be done. The entity will appear in the Planner tab."
+                "Create a new work item (feature, bug, task, use_case, requirement) in mem_work_items. "
+                "Created items are unapproved (no wi_id yet) until a human approves them in the UI. "
+                "Approved items get a permanent ID like BU0001 (bug), FE0001 (feature), UC0001 (use_case). "
+                "Link child items to a parent use_case by providing parent_id (UUID of the use_case)."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "category": {
                         "type": "string",
-                        "description": "Category name: 'feature', 'bug', 'task', 'component', etc.",
+                        "description": "wi_type: 'feature', 'bug', 'task', 'use_case', or 'requirement'",
                     },
                     "name": {
                         "type": "string",
-                        "description": "Short name for this entity (e.g. 'auth-refactor', 'login-500-error')",
+                        "description": "Short name for this work item (e.g. 'auth-refactor', 'login-500-error')",
                     },
-                    "description": {"type": "string", "description": "Optional description"},
+                    "description": {"type": "string", "description": "Optional summary / description"},
                     "due_date":    {"type": "string", "description": "Optional due date (YYYY-MM-DD)"},
+                    "parent_id":   {"type": "string", "description": "Optional UUID of parent use_case (for feature/bug/task children)"},
                     "project":     {"type": "string"},
                 },
                 "required": ["category", "name"],
             },
         ),
         mcp_types.Tool(
-            name="sync_github_issues",
-            description=(
-                "Import GitHub issues as entity values into the project's Planner. "
-                "Bug-labelled issues → bug category; enhancement/feature → feature; others → task. "
-                "Idempotent: safe to run repeatedly."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "owner":   {"type": "string", "description": "GitHub repo owner (org or user)"},
-                    "repo":    {"type": "string", "description": "GitHub repository name"},
-                    "token":   {"type": "string", "description": "Optional GitHub personal access token"},
-                    "state":   {"type": "string", "default": "open", "description": "Issue state: open, closed, all"},
-                    "project": {"type": "string"},
-                },
-                "required": ["owner", "repo"],
-            },
-        ),
-        mcp_types.Tool(
             name="list_work_items",
             description=(
-                "List work items (features, bugs, tasks) for the project. "
-                "Returns name, lifecycle_status, agent_status, acceptance_criteria preview, and due_date. "
-                "Filter by category (feature/bug/task) and status (active/done/archived)."
+                "List work items from mem_work_items for the project. "
+                "Returns wi_id (e.g. BU0001), name, wi_type, user_status, is_approved, parent_wi_id, "
+                "updated_at, and summary preview. "
+                "Filter by category (wi_type) and status (active/done/archived). "
+                "approved=True means item has been human-reviewed; embedding exists for approved items."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Filter by category: feature, bug, task"},
-                    "status":   {"type": "string", "default": "active", "description": "active, done, or archived"},
+                    "category": {"type": "string", "description": "Filter by wi_type: use_case, feature, bug, task, requirement"},
+                    "status":   {"type": "string", "default": "active", "description": "active (not done), done, or archived (deleted)"},
                     "project":  {"type": "string"},
                 },
             },
@@ -325,17 +311,17 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="run_work_item_pipeline",
             description=(
-                "Trigger the 4-agent pipeline (PM → Architect → Developer → Reviewer) for a work item. "
-                "The pipeline writes acceptance_criteria and implementation_plan to the work item. "
-                "Provide either work_item_id (UUID) or work_item_name + category to look it up. "
-                "Returns the agent_status after triggering (pipeline runs in background)."
+                "Run Haiku AI summarise on a use_case work item: rewrites the summary and reorders "
+                "child items by importance. Saves result as a draft version. "
+                "Provide either work_item_id (UUID) or work_item_name. "
+                "Only use_case items support this — for features/bugs/tasks use search_work_items."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "work_item_id":   {"type": "string", "description": "UUID of the work item"},
-                    "work_item_name": {"type": "string", "description": "Name of the work item (alternative to ID)"},
-                    "category":       {"type": "string", "description": "Category needed if using work_item_name"},
+                    "work_item_id":   {"type": "string", "description": "UUID of the use_case work item"},
+                    "work_item_name": {"type": "string", "description": "Name of the use_case (alternative to ID)"},
+                    "category":       {"type": "string", "description": "wi_type filter when looking up by name (default: use_case)"},
                     "project":        {"type": "string"},
                 },
             },
@@ -343,15 +329,14 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="get_item_by_number",
             description=(
-                "Resolve a short sequential number (e.g. #10005) to the full work item or entity value. "
-                "Features start at #10000, bugs at #20000, tasks at #30000, components at #40000. "
-                "Use this when a user or another AI references an item by its #NNNNN number. "
-                "Returns full item details including acceptance criteria, implementation plan, and pipeline status."
+                "Look up a work item by its approved wi_id (e.g. BU0001, FE0002, UC0001, TA0003). "
+                "Use this when a user or another AI references an item by its short ID. "
+                "Returns full item details: name, wi_type, user_status, is_approved, parent_wi_id, summary, due_date."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "seq_num":  {"type": "integer", "description": "The sequential number, e.g. 10005"},
+                    "seq_num":  {"type": "string", "description": "The wi_id string, e.g. 'BU0001' or 'FE0002' (leading # is stripped automatically)"},
                     "project":  {"type": "string"},
                 },
                 "required": ["seq_num"],
@@ -362,8 +347,8 @@ async def list_tools() -> list[mcp_types.Tool]:
             description=(
                 "Return the complete database table schema for this project. "
                 "Use this when you need to write SQL queries or understand the data model. "
-                "Tables follow naming convention: mng_ (global), planner_ (tag hierarchy), "
-                "mem_mrr_ (mirror/raw), mem_ai_ (AI layer), pr_ (graph workflows)."
+                "Tables follow naming convention: mng_ (global), mem_mrr_ (mirror/raw), "
+                "mem_work_items (entities: use_case/feature/bug/task), pr_ (graph workflows)."
             ),
             inputSchema={
                 "type": "object",
@@ -373,10 +358,9 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="search_facts",
             description=(
-                "Semantic search over current project facts (durable architectural decisions, "
-                "stack choices, conventions, and constraints). "
-                "Use when you need to recall a specific architectural decision or project constraint. "
-                "More targeted than search_memory — facts only, no chat history or code chunks."
+                "Semantic search over approved, embedded work items in mem_work_items. "
+                "Only approved items (wi_id IS NOT NULL, embedding IS NOT NULL) are searched. "
+                "For architectural facts use search_memory with doc_type='role' or source_types=['commit']."
             ),
             inputSchema={
                 "type": "object",
@@ -465,33 +449,29 @@ async def _dispatch(name: str, args: dict) -> Any:
             _get(f"/projects/{project}"),
             _get("/history/session-tags", {"project": project}),
         )
-        # Load work items, project facts, recent memory — each best-effort
+        # Load work items from mem_work_items — best-effort
         work_items_data: dict = {}
-        facts_data: dict = {}
-        memory_data: dict = {}
         try:
-            work_items_data = await _get(f"/work-items?project={project}&status=active")
-        except Exception:
-            pass
-        try:
-            facts_data = await _get("/work-items/facts", {"project": project})
-        except Exception:
-            pass
-        try:
-            memory_data = await _get("/work-items/memory-items", {"project": project, "scope": "session"})
+            work_items_data = await _get(f"/wi/{project}")
         except Exception:
             pass
 
-        # Build compact work items map: {category: [{name, lifecycle, status, seq_num, criteria_preview}]}
+        # Build compact work items map: {wi_type: [{wi_id, name, is_approved, lifecycle, parent_wi_id, summary_preview}]}
+        # Only include non-deleted, non-done items (active backlog)
         wi_map: dict = {}
-        for wi in work_items_data.get("work_items", []):
-            cat = wi.get("category_name", "other")
+        for wi in work_items_data.get("items", []):
+            if wi.get("deleted_at"):
+                continue
+            cat = wi.get("wi_type", "other")
             wi_map.setdefault(cat, []).append({
-                "seq_num": wi.get("seq_num"),
+                "wi_id": wi.get("wi_id"),          # BU0001, FE0002, or None if unapproved
                 "name": wi["name"],
-                "lifecycle": wi.get("lifecycle_status", "idea"),
-                "status": wi.get("status", "active"),
-                "criteria_preview": (wi.get("acceptance_criteria_ai") or "")[:120],
+                "is_approved": wi.get("approved_at") is not None,
+                "lifecycle": wi.get("user_status", "open"),
+                "parent_wi_id": wi.get("wi_parent_wi_id"),
+                "summary": (wi.get("summary") or "")[:120],
+                "due_date": wi.get("due_date"),
+                "updated_at": wi.get("updated_at"),
             })
 
         return {
@@ -505,18 +485,6 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "bug_ref": tags.get("bug_ref"),
             },
             "work_items": wi_map,
-            "project_facts": {
-                f["fact_key"]: f["fact_value"]
-                for f in facts_data.get("facts", [])
-            },
-            "recent_memory": [
-                {
-                    "scope": m["scope"],
-                    "ref": m.get("scope_ref"),
-                    "summary": (m.get("content") or "")[:500],
-                }
-                for m in memory_data.get("memory_items", [])[:3]
-            ],
         }
 
     elif name == "get_recent_history":
@@ -598,155 +566,149 @@ async def _dispatch(name: str, args: dict) -> Any:
         })
 
     elif name == "create_entity":
-        # Resolve category name → id via the categories list
-        cats_data = await _get("/entities/categories", {"project": project})
+        # Map category → wi_type (mem_work_items)
+        _type_map = {
+            "feature": "feature", "bug": "bug", "task": "task",
+            "use_case": "use_case", "requirement": "requirement",
+            "component": "task",   # component → task (closest match)
+        }
         cat_name = args["category"]
-        cat = next(
-            (c for c in cats_data.get("categories", []) if c["name"] == cat_name),
-            None,
-        )
-        if not cat:
+        wi_type = _type_map.get(cat_name.lower(), cat_name.lower())
+        valid_types = {"use_case", "feature", "bug", "task", "requirement"}
+        if wi_type not in valid_types:
             raise ValueError(
-                f"Unknown category: '{cat_name}'. "
-                f"Available: {[c['name'] for c in cats_data.get('categories', [])]}"
+                f"Unknown category: '{cat_name}'. Valid values: {sorted(valid_types)}"
             )
         body: dict = {
-            "category_id": cat["id"],
-            "project": project,
             "name": args["name"],
-            "description": args.get("description", ""),
+            "wi_type": wi_type,
+            "summary": args.get("description", ""),
         }
-        if args.get("due_date"):
-            body["due_date"] = args["due_date"]
-        result = await _post("/entities/values", body)
+        if args.get("wi_parent_id") or args.get("parent_id"):
+            body["wi_parent_id"] = args.get("wi_parent_id") or args.get("parent_id")
+        result = await _post(f"/wi/{project}", body)
         return {
             "id": result.get("id"),
-            "seq_num": result.get("seq_num"),
-            "ref": f"#{result['seq_num']}" if result.get("seq_num") else None,
+            "wi_id": result.get("wi_id"),          # None until approved by human
             "name": result.get("name"),
-            "category": cat_name,
+            "category": wi_type,
+            "is_approved": False,                   # new items always unapproved
             "project": project,
+            "note": "Item created as unapproved. Approve in the Work Items UI to assign a wi_id (BU0001, etc.).",
         }
 
     elif name == "sync_github_issues":
-        import urllib.parse
-        params = {
-            "project": project,
-            "owner": args["owner"],
-            "repo": args["repo"],
+        return {
+            "error": "sync_github_issues is not implemented in the current backend.",
+            "suggestion": "Import issues manually via POST /wi/{project} or use the Work Items classify pipeline.",
         }
-        if args.get("token"):
-            params["token"] = args["token"]
-        if args.get("state"):
-            params["state"] = args["state"]
-        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
-        return await _post(f"/entities/github-sync?{qs}", {})
 
     elif name == "list_work_items":
-        import urllib.parse as _up
-        params: dict = {"project": project}
+        # Fetch from /wi/{project} (mem_work_items table)
+        params: dict = {}
         if args.get("category"):
-            params["category"] = args["category"]
-        if args.get("status"):
-            params["status"] = args["status"]
-        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
-        data = await _get(f"/work-items?{qs}")
-        items = data.get("work_items", [])
+            params["wi_type"] = args["category"]   # category → wi_type filter
+        data = await _get(f"/wi/{project}", params)
+        items = data.get("items", [])
+
+        # Apply status filter client-side
+        status_filter = args.get("status", "active")
+        if status_filter == "active":
+            items = [i for i in items if not i.get("deleted_at") and i.get("user_status") != "done"]
+        elif status_filter == "done":
+            items = [i for i in items if i.get("user_status") == "done" and not i.get("deleted_at")]
+        elif status_filter == "archived":
+            items = [i for i in items if i.get("deleted_at")]
+
         return {
             "count": len(items),
             "work_items": [
                 {
                     "id": wi["id"],
-                    "seq_num": wi.get("seq_num"),
-                    "ref": f"#{wi['seq_num']}" if wi.get("seq_num") else None,
+                    "wi_id": wi.get("wi_id"),              # BU0001 / FE0002 / None
                     "name": wi["name"],
-                    "category": wi.get("category_name"),
-                    "lifecycle": wi.get("lifecycle_status", "idea"),
-                    "status": wi.get("status", "active"),
-                    "agent_status": wi.get("agent_status"),
+                    "category": wi.get("wi_type"),         # use_case | feature | bug | task
+                    "is_approved": wi.get("approved_at") is not None,
+                    "lifecycle": wi.get("user_status", "open"),
+                    "parent_id": wi.get("wi_parent_id"),
+                    "parent_wi_id": wi.get("wi_parent_wi_id"),
                     "due_date": wi.get("due_date"),
-                    "criteria_preview": (wi.get("acceptance_criteria_ai") or "")[:120],
+                    "updated_at": wi.get("updated_at"),
+                    "summary": (wi.get("summary") or "")[:200],
                 }
                 for wi in items
             ],
         }
 
     elif name == "run_work_item_pipeline":
-        import urllib.parse as _up
+        # Calls ai-summarise on a use_case: Haiku rewrites summary + reorders children
         wi_id = args.get("work_item_id")
         if not wi_id:
-            # Look up by name + category
-            cat = args.get("category", "feature")
             wname = args.get("work_item_name", "")
+            cat = args.get("category", "use_case")
             if not wname:
-                raise ValueError("Provide work_item_id or work_item_name + category")
-            data = await _get(f"/work-items?project={_up.quote(project)}&category={_up.quote(cat)}")
-            matches = [w for w in data.get("work_items", []) if w["name"].lower() == wname.lower()]
+                raise ValueError("Provide work_item_id or work_item_name")
+            data = await _get(f"/wi/{project}", {"wi_type": cat})
+            matches = [w for w in data.get("items", []) if w["name"].lower() == wname.lower()]
             if not matches:
-                raise ValueError(f"Work item '{wname}' not found in {cat}")
+                raise ValueError(f"Work item '{wname}' not found (wi_type={cat})")
             wi_id = matches[0]["id"]
-        result = await _post(f"/work-items/{wi_id}/run-pipeline?project={_up.quote(project)}", {})
-        return {"work_item_id": wi_id, "status": result.get("status"), "project": project}
+        result = await _post(f"/wi/{project}/{wi_id}/ai-summarise", {})
+        return {"work_item_id": wi_id, "status": result.get("status", "triggered"), "project": project}
 
     elif name == "get_item_by_number":
-        import urllib.parse as _up
-        seq = int(args["seq_num"])
-        # Try work_items first, then entity_values
-        try:
-            wi = await _get(f"/work-items/number/{seq}", {"project": project})
-            return {
-                "found_in": "work_items",
-                "seq_num": seq,
-                "id": wi.get("id"),
-                "name": wi.get("name"),
-                "category": wi.get("category_name"),
-                "lifecycle": wi.get("lifecycle_status", "idea"),
-                "status": wi.get("status", "active"),
-                "agent_status": wi.get("agent_status"),
-                "description": (wi.get("description") or "")[:500],
-                "acceptance_criteria": (wi.get("acceptance_criteria_ai") or "")[:800],
-                "implementation_plan": (wi.get("implementation_plan") or "")[:800],
-                "due_date": wi.get("due_date"),
-                "created_at": wi.get("created_at"),
-            }
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code != 404:
-                raise
-        # Fallback to entity_values
-        ev = await _get(f"/entities/values/number/{seq}", {"project": project})
+        # Look up by wi_id string (e.g. BU0001, FE0002, UC0001)
+        ref = str(args["seq_num"]).lstrip("#").upper()
+        data = await _get(f"/wi/{project}")
+        items = data.get("items", [])
+        # Match by wi_id (approved items) or fall back to name substring
+        wi = next((i for i in items if (i.get("wi_id") or "").upper() == ref), None)
+        if not wi:
+            raise ValueError(
+                f"Work item '{ref}' not found. "
+                f"Use wi_id like BU0001, FE0002, UC0001, TA0001. "
+                f"Only approved items have a wi_id — check list_work_items first."
+            )
         return {
-            "found_in": "entity_values",
-            "seq_num": seq,
-            "id": ev.get("id"),
-            "name": ev.get("name"),
-            "category": ev.get("category_name"),
-            "lifecycle": ev.get("lifecycle_status", "idea"),
-            "status": ev.get("status", "active"),
-            "description": (ev.get("description") or "")[:500],
-            "due_date": ev.get("due_date"),
+            "id": wi.get("id"),
+            "wi_id": wi.get("wi_id"),
+            "name": wi.get("name"),
+            "category": wi.get("wi_type"),
+            "is_approved": wi.get("approved_at") is not None,
+            "lifecycle": wi.get("user_status", "open"),
+            "parent_id": wi.get("wi_parent_id"),
+            "parent_wi_id": wi.get("wi_parent_wi_id"),
+            "summary": wi.get("summary", ""),
+            "due_date": wi.get("due_date"),
+            "created_at": wi.get("created_at"),
+            "updated_at": wi.get("updated_at"),
+            "completed_at": wi.get("completed_at"),
         }
 
     elif name == "search_facts":
-        import urllib.parse as _up
-        params = {
+        # Semantic search over embedded (approved) work items in mem_work_items
+        return await _post("/search/semantic", {
             "query": args["query"],
             "project": project,
-            "limit": str(args.get("limit", 10)),
-        }
-        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
-        return await _get(f"/work-items/facts/search?{qs}")
+            "limit": args.get("limit", 10),
+            "source_types": ["work_item"],
+        })
 
     elif name == "search_work_items":
-        import urllib.parse as _up
-        params = {
+        # Semantic search over approved (embedded) work items via pgvector cosine similarity
+        # Note: only approved items with embedding IS NOT NULL are searchable
+        result = await _post("/search/semantic", {
             "query": args["query"],
             "project": project,
-            "limit": str(args.get("limit", 10)),
-        }
+            "limit": args.get("limit", 10),
+            "source_types": ["work_item"],
+        })
+        hits = result.get("results", [])
+        # Optionally filter by wi_type (category) client-side
         if args.get("category"):
-            params["category"] = args["category"]
-        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
-        return await _get(f"/work-items/search?{qs}")
+            cat = args["category"]
+            hits = [h for h in hits if h.get("source_type") == cat or h.get("wi_type") == cat]
+        return {"results": hits, "count": len(hits), "note": "Only approved (embedded) work items are searchable."}
 
     elif name == "get_tag_context":
         import urllib.parse as _up
@@ -823,7 +785,7 @@ async def _dispatch(name: str, args: dict) -> Any:
                                     "embedding VECTOR(1536)", "valid_from TIMESTAMPTZ", "valid_until TIMESTAMPTZ",
                                     "UNIQUE(project_id, fact_key) WHERE valid_until IS NULL"],
                     "filter": "WHERE project_id=%s AND valid_until IS NULL",
-                    "search_endpoint": "GET /work-items/facts/search?query=...&project=...",
+                    "search_endpoint": "POST /search/semantic with source_types=['work_item']",
                 },
             },
             "graph_tables": {
