@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 21:42 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 21:43 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-26] I think there is a bit if confustion. is .aiCli required ? all data suppose to be under aiCli workspace (including code.
 - [2026-04-26] code.md not suppose to have all project strucure - folder , classes, method - use cases. this file not suppose to be ali
 - [2026-04-26] Let me design the infra before I continue - the goal is have solid memory layer. I would like to strta buid aiCli_memory
 - [2026-04-26] Lets start with step 1 - simplifiy. .ai folder under aiCli - I think it is not required and can be deleted. I am not sur
 - [2026-04-26] I do see tha under aiCli there is a workflow folder while in _tamplte it called pipeline. change the name to pipelines a
+- [2026-04-26] Are session_state and session_tags used ?
