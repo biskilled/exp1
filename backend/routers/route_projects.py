@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from core.config import settings
 from core.database import db
 from core.prompt_loader import prompts as _prompts
+from core import project_paths as pp
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
@@ -82,17 +83,20 @@ _MEMORY_STATUS_TTL = 60.0  # seconds
 
 # ── History rotation ──────────────────────────────────────────────────────────
 
-def _rotate_history(sys_dir: Path, max_rows: int = 500) -> dict:
+def _rotate_history(state_dir: Path, max_rows: int = 500, logs_dir: Path | None = None) -> dict:
     """Rotate history.jsonl when it exceeds max_rows.
 
     Keeps the most recent max_rows entries in history.jsonl.
-    Archives older entries to history_YYMMDDHHMM.jsonl (named from the first
-    entry's timestamp so the filename reflects the period it covers).
+    Archives older entries to history/history_YYMMDDHHMM.jsonl.
 
     Returns a dict with rotation metadata (rotated, archived_to, rows_kept, rows_archived).
     Called during /memory so the DB has already imported older entries via _do_sync_events.
     """
-    hist = sys_dir / "history.jsonl"
+    # Check history/ first (new), fallback to state/ (legacy)
+    proj_root = state_dir.parent
+    hist = proj_root / "history" / "history.jsonl"
+    if not hist.exists():
+        hist = state_dir / "history.jsonl"  # legacy fallback
     if not hist.exists():
         return {"rotated": False}
     lines = [ln for ln in hist.read_text().splitlines() if ln.strip()]
@@ -113,12 +117,14 @@ def _rotate_history(sys_dir: Path, max_rows: int = 500) -> dict:
     except Exception:
         pass
 
-    archive_path = sys_dir / f"history_{suffix}.jsonl"
+    archive_base = hist.parent  # archive next to history.jsonl
+    archive_base.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_base / f"history_{suffix}.jsonl"
     # Avoid overwriting if file already exists (e.g. two rotations same minute)
     counter = 0
     while archive_path.exists():
         counter += 1
-        archive_path = sys_dir / f"history_{suffix}_{counter}.jsonl"
+        archive_path = archive_base / f"history_{suffix}_{counter}.jsonl"
 
     archive_path.write_text("\n".join(archive_lines) + "\n")
     hist.write_text("\n".join(keep_lines) + "\n")
@@ -150,25 +156,28 @@ def _workspace() -> Path:
     return Path(settings.workspace_dir)
 
 
-def _find_claude_md(sys_dir: Path) -> Path:
-    """Return path to CLAUDE.md — new per-LLM location first, then legacy fallback."""
-    new = sys_dir / "claude" / "CLAUDE.md"
+def _find_claude_md(proj_dir: Path) -> Path:
+    """Return path to CLAUDE.md — new cli/claude/ location first, then legacy fallbacks."""
+    new = proj_dir / "cli" / "claude" / "CLAUDE.md"
     if new.exists():
         return new
-    return sys_dir / "CLAUDE.md"  # legacy
+    # Legacy fallbacks
+    legacy_sys = proj_dir / "_system" / "claude" / "CLAUDE.md"
+    if legacy_sys.exists():
+        return legacy_sys
+    return proj_dir / "_system" / "CLAUDE.md"
 
 
-def _ensure_per_llm_dirs(sys_dir: Path) -> None:
-    """Create the per-LLM subdirectories and migrate legacy CLAUDE.md if needed."""
-    for subdir in ("claude", "cursor", "aicli", "hooks"):
-        (sys_dir / subdir).mkdir(parents=True, exist_ok=True)
-    # Migrate legacy _system/CLAUDE.md → _system/claude/CLAUDE.md
-    legacy = sys_dir / "CLAUDE.md"
-    new = sys_dir / "claude" / "CLAUDE.md"
-    if legacy.exists() and not new.exists():
-        shutil.copy2(str(legacy), str(new))
+def _ensure_per_llm_dirs(proj_dir: Path) -> None:
+    """Create the new workspace directory structure using project_paths helpers."""
+    project = proj_dir.name
+    pp.ensure_project_dirs(project)
     # Create empty stubs if missing
-    for stub in [sys_dir / "claude" / "MEMORY.md", sys_dir / "cursor" / "rules.md", sys_dir / "aicli" / "context.md"]:
+    for stub in [
+        pp.claude_md_path(project),
+        pp.cursor_rules_path(project),
+        pp.aicli_context_path(project),
+    ]:
         if not stub.exists():
             stub.write_text("")
 
@@ -229,29 +238,25 @@ async def list_projects():
 
 @router.get("/templates")
 async def list_templates():
-    """List available project templates (from _templates/starters/)."""
-    templates_dir = _workspace() / "_templates" / "starters"
-    if not templates_dir.exists():
+    """List available pipeline templates from _templates/pipelines/."""
+    pipelines_dir = _workspace() / "_templates" / "pipelines"
+    if not pipelines_dir.exists():
         return {"templates": []}
 
     templates = []
-    for d in sorted(templates_dir.iterdir()):
-        if d.is_dir():
-            proj_yaml = d / "project.yaml"
-            info: dict = {"name": d.name}
-            if proj_yaml.exists():
-                try:
-                    data = yaml.safe_load(proj_yaml.read_text()) or {}
-                    info["description"] = data.get("description", "")
-                except Exception:
-                    pass
-            templates.append(info)
+    for f in sorted(pipelines_dir.glob("*.yaml")):
+        info: dict = {"name": f.stem}
+        try:
+            data = yaml.safe_load(f.read_text()) or {}
+            info["description"] = (data.get("description") or "").strip().split("\n")[0]
+        except Exception:
+            pass
+        templates.append(info)
     return {"templates": templates}
 
 
 class NewProject(BaseModel):
     name: str
-    template: str = "default"
     code_dir: str = ""
     description: str = ""
     default_provider: str = "claude"
@@ -268,89 +273,79 @@ class NewProject(BaseModel):
 
 @router.post("/")
 async def create_project(body: NewProject):
-    """Create a new project from a template."""
+    """Create a new project workspace from _templates/ structure."""
     ws = _workspace()
-    template_dir = ws / "_templates" / "starters" / body.template
+    tpl = ws / "_templates"
     dest_dir = ws / body.name
 
-    if not template_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Template not found: {body.template}")
     if dest_dir.exists():
         raise HTTPException(status_code=409, detail=f"Project already exists: {body.name}")
 
-    # Copy the starter template content directly
-    shutil.copytree(template_dir, dest_dir)
-
-    # Replace template vars
+    dest_dir.mkdir(parents=True)
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    for path in dest_dir.rglob("*.yaml"):
-        try:
-            content = path.read_text()
-            content = content.replace("{{PROJECT_NAME}}", body.name)
-            content = content.replace("{{DATE}}", today)
-            if body.code_dir:
-                content = content.replace("../../{{PROJECT_NAME}}", body.code_dir)
-            path.write_text(content)
-        except Exception:
-            pass
 
-    for path in dest_dir.rglob("*.md"):
-        try:
-            content = path.read_text()
-            content = content.replace("{{PROJECT_NAME}}", body.name)
-            content = content.replace("{{DATE}}", today)
-            path.write_text(content)
-        except Exception:
-            pass
+    def _render(text: str) -> str:
+        return (text
+                .replace("{{PROJECT_NAME}}", body.name)
+                .replace("{{DATE}}", today)
+                .replace("{{CODE_DIR}}", body.code_dir or ""))
 
-    # Create documents folder
-    docs_dir = dest_dir / "documents"
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "README.md").write_text(
-        f"# {body.name} — Documents\n\nProject documents go here. "
-        "Workflow outputs are saved automatically when runs are linked to a work item.\n"
-    )
+    # ── Merge _templates/documents/ → project/documents/ ─────────────────────
+    docs_tpl = tpl / "documents"
+    if docs_tpl.exists():
+        docs_dest = dest_dir / "documents"
+        for src in docs_tpl.rglob("*"):
+            if src.is_file():
+                dst = docs_dest / src.relative_to(docs_tpl)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if not dst.exists():
+                    dst.write_text(_render(src.read_text(encoding="utf-8")))
 
-    # Create per-LLM _system/ directories and stubs
-    sys_dir = dest_dir / "_system"
-    _ensure_per_llm_dirs(sys_dir)
+    # Ensure standard project dirs (memory/, state/, logs/, sessions/, workflows/)
+    _ensure_per_llm_dirs(dest_dir)
 
-    # Merge extra fields into project.yaml
-    extra: dict = {}
-    if body.description:
-        extra["description"] = body.description
-    if body.default_provider:
-        extra["default_provider"] = body.default_provider
-    if body.code_dir:
-        extra["code_dir"] = body.code_dir
-    if body.claude_cli_support:
-        extra["claude_cli_support"] = True
-    if body.cursor_support:
-        extra["cursor_support"] = True
-    # Record enabled API providers
+    # Write project.yaml
     enabled_providers = [p for p, flag in [
         ("openai", body.openai_support), ("deepseek", body.deepseek_support),
         ("gemini", body.gemini_support), ("grok", body.grok_support),
     ] if flag]
+    proj_config: dict = {"name": body.name, "created": today}
+    if body.description:
+        proj_config["description"] = body.description
+    if body.default_provider:
+        proj_config["default_provider"] = body.default_provider
+    if body.code_dir:
+        proj_config["code_dir"] = body.code_dir
+    if body.claude_cli_support:
+        proj_config["claude_cli_support"] = True
+    if body.cursor_support:
+        proj_config["cursor_support"] = True
     if enabled_providers:
-        extra["enabled_api_providers"] = enabled_providers
-    if extra:
-        proj_yaml = dest_dir / "project.yaml"
-        existing: dict = {}
-        if proj_yaml.exists():
-            try:
-                existing = yaml.safe_load(proj_yaml.read_text()) or {}
-            except Exception:
-                pass
-        existing.update(extra)
-        proj_yaml.write_text(yaml.dump(existing, default_flow_style=False, allow_unicode=True))
+        proj_config["enabled_api_providers"] = enabled_providers
+    (dest_dir / "project.yaml").write_text(
+        yaml.dump(proj_config, default_flow_style=False, allow_unicode=True)
+    )
 
-    # IDE support setup
+    # ── Merge _templates/memory/ → project/memory/ ───────────────────────────
+    # Copies hooks, _CLAUDE.md, _mcp.json, _settings.json, providers.yaml etc.
+    memory_tpl = ws / "_templates" / "memory"
+    if memory_tpl.exists():
+        memory_dest = dest_dir / "memory"
+        for src_file in memory_tpl.rglob("*"):
+            if src_file.is_file():
+                rel = src_file.relative_to(memory_tpl)
+                dst_file = memory_dest / rel
+                dst_file.parent.mkdir(parents=True, exist_ok=True)
+                if not dst_file.exists():
+                    shutil.copy2(str(src_file), str(dst_file))
+
+    # ── IDE support setup ─────────────────────────────────────────────────────
     setup_results: dict = {}
     if body.code_dir:
         code_path = Path(body.code_dir)
-        claude_src = ws / "_templates" / "cli" / "claude"
-        mcp_tpl_path = ws / "_templates" / "cli" / "mcp.template.json"
+        mcp_tpl_path = dest_dir / "memory" / "_mcp.json"
+        settings_tpl_path = dest_dir / "memory" / "claude" / "_settings.json"
+        claude_seed_path = dest_dir / "memory" / "claude" / "_CLAUDE.md"
 
         def _render_tpl(tpl_file: Path) -> str:
             return (tpl_file.read_text()
@@ -358,34 +353,30 @@ async def create_project(body: NewProject):
                     .replace("{{PROJECT_NAME}}", body.name)
                     .replace("{{AICLI_DIR}}", str(_AICLI_DIR)))
 
-        if body.claude_cli_support and claude_src.exists():
-            # Install hooks into _system/hooks/
-            hooks_dest = sys_dir / "hooks"
-            hooks_dest.mkdir(parents=True, exist_ok=True)
-            hooks_dir = claude_src / "hooks"
-            for sh in hooks_dir.glob("*.sh"):
-                shutil.copy2(str(sh), str(hooks_dest / sh.name))
-            # Render settings.template.json → {code_dir}/.claude/settings.local.json
-            tpl_file = claude_src / "settings.template.json"
-            if tpl_file.exists():
+        if body.claude_cli_support:
+            # Render _settings.json → {code_dir}/.claude/settings.local.json
+            if settings_tpl_path.exists():
                 settings_dir = code_path / ".claude"
                 settings_dir.mkdir(parents=True, exist_ok=True)
-                (settings_dir / "settings.local.json").write_text(_render_tpl(tpl_file))
-            # Render mcp.template.json → {code_dir}/.mcp.json  (Claude Code + Claude CLI)
+                (settings_dir / "settings.local.json").write_text(_render_tpl(settings_tpl_path))
+            # Render _mcp.json → {code_dir}/.mcp.json  (Claude Code + Claude CLI)
             if mcp_tpl_path.exists():
                 (code_path / ".mcp.json").write_text(_render_tpl(mcp_tpl_path))
-            setup_results["claude_cli"] = str(hooks_dest)
+            # Seed _CLAUDE.md → memory/claude/CLAUDE.md (replaced on first /memory call)
+            if claude_seed_path.exists():
+                (dest_dir / "memory" / "claude" / "CLAUDE.md").write_text(_render_tpl(claude_seed_path))
+            setup_results["claude_cli"] = str(dest_dir / "memory" / "claude" / "hooks")
             setup_results["claude_mcp"] = str(code_path / ".mcp.json")
 
         if body.cursor_support:
             cursor_rules_dir = code_path / ".cursor" / "rules"
             cursor_rules_dir.mkdir(parents=True, exist_ok=True)
             # Initial rules stub (refreshed on every /memory call)
-            proj_md = dest_dir / "PROJECT.md"
+            proj_md = dest_dir / "memory" / "PROJECT.md"
             proj_summary = proj_md.read_text()[:400] if proj_md.exists() else ""
             rules_content = f"# AI Rules — {body.name}\n> Managed by aicli. Re-run `/memory` to refresh.\n\n## Project\n{proj_summary}\n"
             (cursor_rules_dir / "aicli.mdrules").write_text(rules_content)
-            # Render shared mcp.template.json → {code_dir}/.cursor/mcp.json
+            # Render _mcp.json → {code_dir}/.cursor/mcp.json
             if mcp_tpl_path.exists():
                 cursor_mcp_dir = code_path / ".cursor"
                 cursor_mcp_dir.mkdir(parents=True, exist_ok=True)
@@ -397,7 +388,6 @@ async def create_project(body: NewProject):
 
     return {
         "created": body.name,
-        "template": body.template,
         "path": str(dest_dir),
         "setup": setup_results,
     }
@@ -510,14 +500,14 @@ async def get_project_context(project_name: str, save: bool = False):
 
     # 2. PROJECT.md — full living doc
     project_md = ""
-    if (proj_dir / "PROJECT.md").exists():
-        project_md = (proj_dir / "PROJECT.md").read_text()
+    if (proj_dir / "memory" / "PROJECT.md").exists():
+        project_md = (proj_dir / "memory" / "PROJECT.md").read_text()
 
-    sys_dir = proj_dir / "_system"
+    state_dir = pp.state_dir(project_name)
 
-    # 3. project_state.json — structured metadata (in _system/)
+    # 3. project_state.json — structured metadata (in state/)
     state_data: dict = {}
-    for p in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
+    for p in [pp.project_state_path(project_name), proj_dir / "project_state.json"]:
         if p.exists():
             try:
                 state_data = json.loads(p.read_text())
@@ -525,9 +515,9 @@ async def get_project_context(project_name: str, save: bool = False):
             except Exception:
                 pass
 
-    # 4. Recent history — last 15 exchanges (in _system/), excluding noisy entries
+    # 4. Recent history — last 15 exchanges (in state/), excluding noisy entries
     recent: list[dict] = []
-    for hist_file in [sys_dir / "history.jsonl", proj_dir / "history" / "history.jsonl"]:
+    for hist_file in [pp.history_path(project_name), pp.state_dir(project_name) / "history.jsonl"]:
         if hist_file.exists():
             with open(hist_file) as f:
                 lines = [l.strip() for l in f if l.strip()]
@@ -541,9 +531,9 @@ async def get_project_context(project_name: str, save: bool = False):
             recent = recent[-15:]
             break
 
-    # 5. Runtime state (in _system/)
+    # 5. Runtime state (in state/)
     runtime: dict = {}
-    for p in [sys_dir / "dev_runtime_state.json", proj_dir / "dev_runtime_state.json"]:
+    for p in [pp.dev_runtime_state_path(project_name), proj_dir / "dev_runtime_state.json"]:
         if p.exists():
             try:
                 runtime = json.loads(p.read_text())
@@ -651,17 +641,14 @@ async def get_project_context(project_name: str, save: bool = False):
             src = e.get("source", "")
             claude_lines.append(f"- [{ts}] `{src}`: {user_in}")
 
-    claude_lines.append(f"\n---\n*Full context: see `_system/CONTEXT.md` — refresh with `GET /projects/{project_name}/context?save=true`*")
+    claude_lines.append(f"\n---\n*Full context: see `state/CONTEXT.md` — refresh with `GET /projects/{project_name}/context?save=true`*")
     claude_md = "\n".join(claude_lines)
 
     if save:
-        sys_dir.mkdir(parents=True, exist_ok=True)
-        # Migrate to per-LLM structure if needed
-        _ensure_per_llm_dirs(sys_dir)
-        (sys_dir / "CONTEXT.md").write_text(context_md)
-        # Write to new location; also keep legacy for backward compat
-        (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md)
-        (sys_dir / "CLAUDE.md").write_text(claude_md)
+        # Ensure all project directories exist
+        _ensure_per_llm_dirs(proj_dir)
+        pp.context_md_path(project_name).write_text(context_md)
+        pp.claude_md_path(project_name).write_text(claude_md)
 
         # Copy CLAUDE.md to code_dir root so Claude Code CLI finds it
         code_dir = cfg.get("code_dir", "")
@@ -685,10 +672,10 @@ async def get_project_summary(project_name: str):
     proj_dir = _workspace() / project_name
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
-    proj_md = proj_dir / "PROJECT.md"
+    proj_md = proj_dir / "memory" / "PROJECT.md"
     if not proj_md.exists():
         raise HTTPException(status_code=404, detail="PROJECT.md not found")
-    return {"content": proj_md.read_text(), "path": "PROJECT.md"}
+    return {"content": proj_md.read_text(), "path": "memory/PROJECT.md"}
 
 
 @router.put("/{project_name}/summary")
@@ -698,16 +685,17 @@ async def update_project_summary(project_name: str, body: dict = Body(...)):
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
     content = body.get("content", "")
-    (proj_dir / "PROJECT.md").write_text(content)
+    (proj_dir / "memory" / "PROJECT.md").write_text(content)
     return {"saved": True}
 
 
 # ── Memory generation helpers ─────────────────────────────────────────────────
 
-def _save_project_state(sys_dir: Path, state_data: dict) -> None:
-    """Persist updated project_state.json to _system/ directory."""
+def _save_project_state(project_name: str, state_data: dict) -> None:
+    """Persist updated project_state.json to state/ directory."""
     try:
-        state_path = sys_dir / "project_state.json"
+        state_path = pp.project_state_path(project_name)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state_data, indent=2, ensure_ascii=False))
     except Exception:
         pass
@@ -720,7 +708,7 @@ def _update_project_md_section(proj_dir: Path, section_title: str, new_body: str
     consumers can skip re-processing when the file hasn't changed recently.
     """
     try:
-        proj_md_path = proj_dir / "PROJECT.md"
+        proj_md_path = proj_dir / "memory" / "PROJECT.md"
         if not proj_md_path.exists():
             return
         content = proj_md_path.read_text()
@@ -758,7 +746,7 @@ def _update_project_md_section(proj_dir: Path, section_title: str, new_body: str
 def _project_md_age_days(proj_dir: Path) -> int | None:
     """Return days since PROJECT.md '_Last updated_' date, or None if not found/parseable."""
     try:
-        proj_md_path = proj_dir / "PROJECT.md"
+        proj_md_path = proj_dir / "memory" / "PROJECT.md"
         if not proj_md_path.exists():
             return None
         for line in proj_md_path.read_text().splitlines()[:10]:
@@ -992,12 +980,11 @@ async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
 
     Generates files for every AI tool in use:
-      _system/claude/MEMORY.md         — distilled Q&A history + decisions (Claude CLI reads at session start)
-      _system/claude/CLAUDE.md         — refreshed project context + MEMORY.md reference
-      _system/cursor/rules.md          — Cursor AI rules file
-      _system/aicli/context.md         — compact block injected by aicli CLI into ALL providers
-      _system/aicli/copilot.md         — GitHub Copilot instructions
-      _system/aicli/code.md            — code intelligence: hotspots + file coupling
+      memory/claude/CLAUDE.md          — refreshed project context (Claude CLI auto-loads)
+      memory/cursor/rules.md           — Cursor AI rules file
+      memory/context.md                — compact block injected by aicli CLI into ALL providers
+      memory/copilot/instructions.md   — GitHub Copilot instructions
+      memory/code.md                   — code intelligence: hotspots + file coupling
 
     Copies to <code_dir>:
       <code_dir>/CLAUDE.md             → Claude CLI auto-loads
@@ -1009,8 +996,7 @@ async def generate_memory(project_name: str):
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
 
-    sys_dir = proj_dir / "_system"
-    _ensure_per_llm_dirs(sys_dir)
+    _ensure_per_llm_dirs(proj_dir)
 
     # Load config
     cfg: dict = {}
@@ -1023,7 +1009,7 @@ async def generate_memory(project_name: str):
 
     # Rotate history.jsonl if it exceeds the configured limit
     history_max_rows: int = int(cfg.get("history_max_rows", 500))
-    rotation = _rotate_history(sys_dir, max_rows=history_max_rows)
+    rotation = _rotate_history(pp.state_dir(project_name), max_rows=history_max_rows)
 
     ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
@@ -1060,8 +1046,8 @@ async def generate_memory(project_name: str):
 
     # Load project_state.json (also reads last_memory_run for incremental processing)
     state_data: dict = {}
-    state_path: Path | None = None
-    for p in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
+    state_path: Path = pp.project_state_path(project_name)
+    for p in [state_path, proj_dir / "project_state.json"]:
         if p.exists():
             try:
                 state_data = json.loads(p.read_text())
@@ -1069,16 +1055,14 @@ async def generate_memory(project_name: str):
                 break
             except Exception:
                 pass
-    if state_path is None:
-        state_path = sys_dir / "project_state.json"
 
     # last_memory_run: ISO ts of the previous /memory call — used for incremental ingest
     last_memory_run: str | None = state_data.get("last_memory_run")
 
     # Load PROJECT.md
     project_md = ""
-    if (proj_dir / "PROJECT.md").exists():
-        project_md = (proj_dir / "PROJECT.md").read_text()
+    if (proj_dir / "memory" / "PROJECT.md").exists():
+        project_md = (proj_dir / "memory" / "PROJECT.md").read_text()
 
     generated: list[str] = []
 
@@ -1142,7 +1126,7 @@ async def generate_memory(project_name: str):
             for k in ("key_decisions", "in_progress", "tech_stack", "project_summary")
         }
         # Persist updated project_state.json so get_project_context() reads fresh data below
-        _save_project_state(sys_dir, state_data)
+        _save_project_state(project_name, state_data)
 
     # ── 1. Refresh PROJECT.md sections from synthesis ─────────────────────────
     # Always update "Recent Work" and "Key Decisions" from fresh synthesis so
@@ -1162,7 +1146,7 @@ async def generate_memory(project_name: str):
         if age is None or age > 0:
             today = datetime.utcnow().strftime("%Y-%m-%d")
             try:
-                proj_md_path = proj_dir / "PROJECT.md"
+                proj_md_path = proj_dir / "memory" / "PROJECT.md"
                 if proj_md_path.exists():
                     content = proj_md_path.read_text()
                     lines = content.splitlines()
@@ -1209,13 +1193,12 @@ async def generate_memory(project_name: str):
                     f" ({h['commits']} commits{bug_note}, {h['lines']} lines)"
                 )
             hotspot_lines.append(
-                "\n_Full details: `_system/aicli/code.md`_"
+                "\n_Full details: `memory/code.md`_"
             )
             claude_md_content = claude_md_content.rstrip() + "\n" + "\n".join(hotspot_lines)
         if claude_md_content:
-            (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
-            (sys_dir / "CLAUDE.md").write_text(claude_md_content)
-        generated.append("_system/claude/CLAUDE.md")
+            pp.claude_md_path(project_name).write_text(claude_md_content)
+        generated.append("memory/claude/CLAUDE.md")
     except Exception:
         pass
 
@@ -1252,8 +1235,8 @@ async def generate_memory(project_name: str):
             cursor_lines.append(f"- [{date}] {q}")
 
     cursor_md = "\n".join(cursor_lines)
-    (sys_dir / "cursor" / "rules.md").write_text(cursor_md)
-    generated.append("_system/cursor/rules.md")
+    pp.cursor_rules_path(project_name).write_text(cursor_md)
+    generated.append("memory/cursor/rules.md")
 
     # ── 4. aicli/context.md — injected into ALL providers by aicli CLI ────────
     # This is what OpenAI, DeepSeek, Grok, Gemini, etc. receive before every prompt.
@@ -1295,8 +1278,8 @@ async def generate_memory(project_name: str):
             f"{(last.get('user_input') or '').strip()[:150].replace(chr(10), ' ')}"
         )
     aicli_context = "\n".join(aicli_lines)
-    (sys_dir / "aicli" / "context.md").write_text(aicli_context)
-    generated.append("_system/aicli/context.md")
+    pp.aicli_context_path(project_name).write_text(aicli_context)
+    generated.append("memory/context.md")
 
     # ── 5. GitHub Copilot instructions ────────────────────────────────────────
     copilot_lines = [
@@ -1316,8 +1299,8 @@ async def generate_memory(project_name: str):
         for d in state_data["key_decisions"]:
             copilot_lines.append(f"- {d}")
     copilot_md = "\n".join(copilot_lines)
-    (sys_dir / "aicli" / "copilot.md").write_text(copilot_md)
-    generated.append("_system/aicli/copilot.md")
+    pp.copilot_instructions_path(project_name).write_text(copilot_md)
+    generated.append("memory/copilot/instructions.md")
 
     # ── 5b. aicli/code.md — code intelligence (hotspots, file coupling) ───────
     try:
@@ -1327,8 +1310,8 @@ async def generate_memory(project_name: str):
             _mf_obj = _MF()
             _mf_ctx = _mf_obj._load_context(project_name)
         code_md_content = _mf_obj._render_code_md(_mf_ctx)
-        (sys_dir / "aicli" / "code.md").write_text(code_md_content)
-        generated.append("_system/aicli/code.md")
+        pp.code_md_path(project_name).write_text(code_md_content)
+        generated.append("memory/code.md")
         # Auto-suggest refactor tasks for hot files
         _mf_cfg = _mf_ctx.get("memory_config", {})
         if _mf_cfg.get("hotspot_suggest_work_item", True):
@@ -1367,7 +1350,7 @@ async def generate_memory(project_name: str):
     run_ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     state_data["last_memory_run"] = run_ts
     try:
-        state_path.write_text(json.dumps(state_data, indent=2))
+        _save_project_state(project_name, state_data)
     except Exception:
         pass
     # Bust memory-status cache so next load reflects the fresh run
@@ -1432,11 +1415,9 @@ async def memory_status(project_name: str, bust: bool = False):
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
 
-    sys_dir = proj_dir / "_system"
-
     # Load project_state.json for last_memory_run
     state_data: dict = {}
-    for sp in [sys_dir / "project_state.json", proj_dir / "project_state.json"]:
+    for sp in [pp.project_state_path(project_name), proj_dir / "project_state.json"]:
         if sp.exists():
             try:
                 state_data = json.loads(sp.read_text())
@@ -1458,7 +1439,7 @@ async def memory_status(project_name: str, bust: bool = False):
     # Count prompts in history.jsonl since last_memory_run
     total_prompts = 0
     prompts_since = 0
-    hist_file = sys_dir / "history.jsonl"
+    hist_file = pp.history_path(project_name)
     if hist_file.exists():
         for line in hist_file.read_text().splitlines():
             if not line.strip():
@@ -1533,34 +1514,39 @@ async def get_project(project_name: str):
         except Exception:
             pass
 
-    proj_md = proj_dir / "PROJECT.md"
+    proj_md = proj_dir / "memory" / "PROJECT.md"
     if proj_md.exists():
         data["project_md"] = proj_md.read_text()
 
-    # Check per-LLM location first, then legacy flat location
-    sys_dir = proj_dir / "_system"
-    claude_md_path = _find_claude_md(sys_dir)
-    if claude_md_path.exists():
-        data["claude_md"] = claude_md_path.read_text()
+    # Check new location first, then legacy flat location
+    claude_md_p = _find_claude_md(proj_dir)
+    if claude_md_p.exists():
+        data["claude_md"] = claude_md_p.read_text()
     elif (proj_dir / "CLAUDE.md").exists():
         data["claude_md"] = (proj_dir / "CLAUDE.md").read_text()
 
-    context_md = sys_dir / "CONTEXT.md"
+    context_md = pp.context_md_path(project_name)
     if context_md.exists():
         data["context_md"] = context_md.read_text()
     elif (proj_dir / "CONTEXT.md").exists():
         data["context_md"] = (proj_dir / "CONTEXT.md").read_text()
 
     # Include state snapshot files if present
-    for state_file in ("project_state.json", "dev_runtime_state.json"):
-        for base in [sys_dir, proj_dir]:
-            path = base / state_file
-            if path.exists():
-                try:
-                    data[state_file.replace(".json", "").replace("-", "_")] = json.loads(path.read_text())
-                    break
-                except Exception:
-                    pass
+    for state_file, state_path_fn in [
+        ("project_state.json", pp.project_state_path),
+        ("dev_runtime_state.json", pp.dev_runtime_state_path),
+    ]:
+        path = state_path_fn(project_name)
+        if path.exists():
+            try:
+                data[state_file.replace(".json", "").replace("-", "_")] = json.loads(path.read_text())
+            except Exception:
+                pass
+        elif (proj_dir / state_file).exists():
+            try:
+                data[state_file.replace(".json", "").replace("-", "_")] = json.loads((proj_dir / state_file).read_text())
+            except Exception:
+                pass
 
     return data
 

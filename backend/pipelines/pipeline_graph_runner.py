@@ -751,7 +751,7 @@ async def run_graph_workflow(
     # 3. Build LangGraph (resolve log_dir from workflow config or workspace default)
     log_dir = workflow.get("log_directory", "")
     if not log_dir and project:
-        log_dir = str(Path(settings.workspace_dir) / project / "pipeline_logs")
+        log_dir = str(Path(settings.workspace_dir) / project / "logs" / "pipeline")
     app, approval_names, cp = _build_langgraph(nodes, edges, run_id, project, log_dir=log_dir, pipeline_name=workflow.get("name", ""))
     _APP_REGISTRY[run_id] = (app, cp)
 

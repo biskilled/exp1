@@ -1,0 +1,80 @@
+name: "build_feature"
+version: "1.0"
+description: |
+  Sr. Architect → Web Developer → Code Reviewer pipeline for building new features.
+  Reviewer rejection loops back to Developer (up to max_rejection_retries times).
+
+stages:
+  - key: "architect"
+    role: "Sr. Architect"
+    description: "Design the feature: scope, affected modules, data flow, implementation steps"
+    task_prompt: |
+      You are designing a new feature for this project. Based on the user's request and the
+      current PROJECT.md, produce a concise design document covering:
+
+      1. **What to build** — clear scope, what is in/out
+      2. **Where it fits** — which modules are affected
+      3. **Data flow** — how data moves through the system
+      4. **New files needed** — list with one-line purpose
+      5. **Changes to existing files** — list with what changes and why
+      6. **Edge cases** — what could go wrong, how to handle it
+      7. **Implementation order** — numbered steps, each completable independently
+
+      Keep the design tight. No implementation code yet — just the architecture.
+      Output as structured markdown.
+    result_field: "design"
+
+  - key: "developer"
+    role: "Web Developer"
+    description: "Implement the Architect's spec; read before editing; verify after every change"
+    task_prompt: |
+      You are implementing the feature described in the design above.
+
+      Rules:
+      - Follow the design exactly — do not expand scope
+      - Write complete, working code
+      - Use existing patterns from the codebase (read existing files if needed)
+      - No placeholder comments like "# TODO: implement this"
+      - Add only the minimum necessary imports
+      - Match the existing code style
+      - If modifying an existing file, show the complete updated file
+
+      For each file, use this format:
+
+      ### path/to/file.py
+      [complete file content]
+
+      After all files, write a brief **Integration Notes** section.
+    result_field: "changes_made"
+
+  - key: "reviewer"
+    role: "Code Reviewer"
+    description: "Review against acceptance criteria; approve or request changes"
+    task_prompt: |
+      You are an expert code reviewer. Review the implementation above against these criteria:
+
+      1. **Correctness** — does it actually do what the design specifies?
+      2. **Error handling** — are edge cases handled?
+      3. **Security** — no shell injection, no hardcoded secrets, safe file operations
+      4. **Performance** — no unnecessary loops, no blocking I/O in hot paths
+      5. **Style** — type hints present, Path objects used
+      6. **Integration** — will it break existing code? Are imports correct?
+
+      Respond ONLY with valid JSON (no markdown wrapper):
+      {
+        "score": 8,
+        "approved": true,
+        "issues": ["Minor: ..."],
+        "strengths": ["Clean ..."],
+        "summary": "Assessment in one sentence."
+      }
+
+      Score 1-10. Approved if score >= 8 and no critical issues.
+    result_field: "review"
+
+on_rejection:
+  loops_back_to: "developer"
+  max_retries: 2
+
+on_completion:
+  save_memory: true

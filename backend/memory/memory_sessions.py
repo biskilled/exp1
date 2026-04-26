@@ -1,7 +1,7 @@
 """
 Session store — holds the per-turn message list sent to the LLM for context continuity.
 
-Each session is a JSON file at workspace/<project>/_system/sessions/<session_id>.json.
+Each session is a JSON file at workspace/<project>/sessions/<session_id>.json.
 This is Layer 2 (Working Memory) in the 5-layer memory architecture:
   - messages[] is the raw role/content list forwarded to the LLM on every turn
   - metadata holds session tags (phase, feature, bug_ref)
@@ -18,7 +18,7 @@ from pathlib import Path
 class SessionStore:
 
     def __init__(self, workspace_dir: Path, project: str):
-        self.sessions_dir = workspace_dir / project / "_system" / "sessions"
+        self.sessions_dir = workspace_dir / project / "sessions"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def create(self, metadata: dict | None = None) -> dict:

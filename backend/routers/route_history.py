@@ -142,15 +142,19 @@ def _project_dir(project: str | None = None) -> Path:
 
 
 def _load_unified_history(project: str | None, provider: str | None = None) -> list[dict]:
-    """Read workspace/{project}/_system/history.jsonl + all archived history_*.jsonl files."""
-    sys_dir = _project_dir(project) / "_system"
+    """Read workspace/{project}/history/history.jsonl + all archived history_*.jsonl files."""
+    hist_d    = _project_dir(project) / "history"
+    state_dir = _project_dir(project) / "state"  # legacy fallback
 
     # Collect all history files: current + archives (history_YYMMDDHHSS.jsonl)
     files: list[Path] = []
-    main = sys_dir / "history.jsonl"
+    main = hist_d / "history.jsonl"
+    if not main.exists():
+        main = state_dir / "history.jsonl"  # legacy fallback
     if main.exists():
         files.append(main)
-    for arch in sorted(sys_dir.glob("history_*.jsonl")):
+    # Archives in history/ (new) or state/ (legacy)
+    for arch in sorted(hist_d.glob("history_*.jsonl")) + sorted(state_dir.glob("history_*.jsonl")):
         files.append(arch)
 
     entries = []
@@ -379,7 +383,9 @@ async def commits_history(
                 return {"commits": rows, "project": p, "source": "db"}
 
     # Fallback: read commit_log.jsonl — no tag enrichment
-    log_path = _project_dir(project) / "_system" / "commit_log.jsonl"
+    log_path = _project_dir(project) / "history" / "commit_log.jsonl"
+    if not log_path.exists():
+        log_path = _project_dir(project) / "state" / "commit_log.jsonl"  # legacy fallback
     if not log_path.exists():
         return {"commits": [], "project": p, "source": "file"}
 
@@ -487,7 +493,9 @@ async def sync_commits(project: str | None = Query(None)):
 
     p = project or settings.active_project or "default"
     project_id = db.get_or_create_project_id(p)
-    log_path = _project_dir(project) / "_system" / "commit_log.jsonl"
+    log_path = _project_dir(project) / "history" / "commit_log.jsonl"
+    if not log_path.exists():
+        log_path = _project_dir(project) / "state" / "commit_log.jsonl"  # legacy fallback
     if not log_path.exists():
         return {"imported": 0, "project": p}
 
@@ -554,11 +562,11 @@ async def clean_noise(project: str | None = Query(None)):
     Safe to call repeatedly — idempotent. Also cleans history_*.jsonl archives.
     Returns counts of removed entries per file.
     """
-    p     = project or settings.active_project or "default"
-    sys_d = _project_dir(p) / "_system"
+    p      = project or settings.active_project or "default"
+    state_d = _project_dir(p) / "state"
     result: dict = {}
 
-    for hist in sorted(sys_d.glob("history*.jsonl")):
+    for hist in sorted(state_d.glob("history*.jsonl")):
         lines = [l for l in hist.read_text().splitlines() if l.strip()]
         clean: list[str] = []
         removed = 0
@@ -593,7 +601,7 @@ async def get_session_tags(project: str | None = Query(None)):
                     return {"project": p, "phase": row[0], "feature": row[1],
                             "bug_ref": row[2], "extra": row[3] or {}}
     # Fallback: session_tags.json
-    tags_path = _project_dir(project) / "_system" / "session_tags.json"
+    tags_path = _project_dir(project) / "state" / "session_tags.json"
     if tags_path.exists():
         try:
             return {"project": p, **json.loads(tags_path.read_text())}
@@ -623,7 +631,7 @@ async def put_session_tags(body: SessionTagsUpdate, project: str | None = Query(
     }
 
     # Always write JSON file as fallback (used by Claude CLI hook)
-    tags_path = _project_dir(project) / "_system" / "session_tags.json"
+    tags_path = _project_dir(project) / "state" / "session_tags.json"
     tags_path.parent.mkdir(parents=True, exist_ok=True)
     tags_path.write_text(_json.dumps(tags, indent=2))
 
@@ -646,7 +654,7 @@ async def get_session_phases(project: str | None = Query(None)):
     Used to persist phase for CLI / workflow sessions that have no JSON session file.
     """
     p = project or settings.active_project or "default"
-    phases_path = _project_dir(p) / "_system" / "session_phases.json"
+    phases_path = _project_dir(p) / "state" / "session_phases.json"
     if phases_path.exists():
         try:
             return json.loads(phases_path.read_text())
@@ -724,7 +732,9 @@ async def workflow_runs(
             logging.getLogger(__name__).warning(f"DB run query failed, falling back to files: {_dbe}")
 
     # Fallback: file-based run logs
-    runs_dir = _project_dir(project) / "runs"
+    runs_dir = _project_dir(project) / "pipelines" / "runs"
+    if not runs_dir.exists():
+        runs_dir = _project_dir(project) / "workflows" / "runs"  # legacy
     if not runs_dir.exists():
         return {"runs": []}
 
@@ -750,7 +760,7 @@ async def workflow_runs(
 @router.get("/runs/{filename}")
 async def get_run_detail(filename: str, project: str | None = Query(None)):
     """Get full run log detail."""
-    path = _project_dir(project) / "runs" / filename
+    path = _project_dir(project) / "workflows" / "runs" / filename
 
     if not path.exists():
         raise HTTPException(status_code=404, detail="Run log not found")
@@ -799,7 +809,7 @@ async def session_commits(
     p = project or settings.active_project or "default"
 
     # ── Try to resolve timestamps from a UI session file ─────────────────────
-    sessions_dir = Path(settings.workspace_dir) / p / "_system" / "sessions"
+    sessions_dir = Path(settings.workspace_dir) / p / "sessions"
     session_file = sessions_dir / f"{session_id}.json"
     created_at = updated_at = ""
     if session_file.exists():
@@ -853,7 +863,9 @@ async def session_commits(
                     commits.append(r)
     else:
         # Fallback: scan commit_log.jsonl
-        log_path = Path(settings.workspace_dir) / p / "_system" / "commit_log.jsonl"
+        log_path = Path(settings.workspace_dir) / p / "history" / "commit_log.jsonl"
+        if not log_path.exists():
+            log_path = Path(settings.workspace_dir) / p / "state" / "commit_log.jsonl"  # legacy
         if log_path.exists():
             for line in log_path.read_text().splitlines():
                 if not line.strip():

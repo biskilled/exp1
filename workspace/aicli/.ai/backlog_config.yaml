@@ -1,5 +1,0 @@
-# backlog_config.yaml — aicli project overrides
-# Prompts live in backend/prompts/backlog.yaml
-
-max_groups: 7
-max_use_cases: 0

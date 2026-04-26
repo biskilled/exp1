@@ -2,7 +2,7 @@
 Git router — status, credential setup, commit & push.
 
 All git operations run in the project's code_dir (resolved from project.yaml).
-Credentials (GitHub token) are stored in _system/.git_token (never in project.yaml).
+Credentials (GitHub token) are stored in state/.git_token (never in project.yaml).
 """
 
 import json
@@ -117,7 +117,7 @@ router = APIRouter()
 # ── Commit log helper ─────────────────────────────────────────────────────────
 
 def _write_commit_log(project_name: str, entry: dict) -> None:
-    """Append one JSON line to workspace/{project}/_system/commit_log.jsonl.
+    """Append one JSON line to workspace/{project}/state/commit_log.jsonl.
 
     Called from every commit-push code path — backend API, direct git fallback,
     and MCP tool — so the file becomes a single audit trail across all callers.
@@ -129,7 +129,7 @@ def _write_commit_log(project_name: str, entry: dict) -> None:
     try:
         if "ts" not in entry:
             entry["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        log_path = Path(settings.workspace_dir) / project_name / "_system" / "commit_log.jsonl"
+        log_path = Path(settings.workspace_dir) / project_name / "history" / "commit_log.jsonl"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a") as f:
             f.write(json.dumps(entry) + "\n")
@@ -142,7 +142,7 @@ def _write_commit_log(project_name: str, entry: dict) -> None:
 import re as _re
 _GEN_FILE_PAT = _re.compile(
     r'^\s*(CLAUDE\.md|\.cursorrules|MEMORY\.md|\.ai/|\.cursor/|\.github/copilot|'
-    r'workspace/.*/_system/|history\.jsonl|.*\.claude/memory)',
+    r'workspace/.*/state/|workspace/.*/memory/|workspace/.*/logs/|history\.jsonl|.*\.claude/memory)',
     _re.IGNORECASE,
 )
 
@@ -359,7 +359,7 @@ def _build_authed_url(repo_url: str, username: str, token: str) -> str:
 
 
 def _load_creds(project_name: str) -> dict:
-    token_file = _proj_dir(project_name) / "_system" / ".git_token"
+    token_file = _proj_dir(project_name) / "state" / ".git_token"
     if token_file.exists():
         try:
             return json.loads(token_file.read_text())
@@ -431,7 +431,7 @@ def _ensure_upstream(branch: str, code_dir: Path) -> None:
 # Patterns that must always be in .gitignore — credentials and private data.
 # Use **/ prefix so they match at ANY depth, not just the repo root.
 _MUST_IGNORE = [
-    "**/_system/",     # _system/ dir anywhere in the tree
+    "**/state/",       # state/ dir anywhere in the tree (runtime state files)
     "**/.git_token",   # token file anywhere
     "**/.env",
     "**/.env.*",
@@ -447,8 +447,8 @@ _MUST_IGNORE = [
 
 _GITIGNORE_DEFAULT = """\
 # ── Secrets & credentials (DO NOT REMOVE) ─────────────────────────────────────
-# **/ prefix matches at any depth (e.g. workspace/aicli/_system/.git_token)
-**/_system/
+# **/ prefix matches at any depth (e.g. workspace/aicli/state/.git_token)
+**/state/
 **/.git_token
 **/.env
 **/.env.*
@@ -547,11 +547,11 @@ def _untrack_secrets(code_dir: Path) -> list[str]:
     to_remove: list[str] = []
     for f in tracked:
         f_path   = Path(f)
-        parts    = f_path.parts        # e.g. ('workspace', 'aicli', '_system', '.git_token')
+        parts    = f_path.parts        # e.g. ('workspace', 'aicli', 'state', '.git_token')
         name     = f_path.name.lower() # filename only, e.g. '.git_token'
         parts_lc = {p.lower() for p in parts}
         if (
-            "_system"     in parts_lc   # _system/ anywhere in the path tree
+            "state"       in parts_lc   # state/ anywhere in the path tree
             or "secrets"      in parts_lc
             or "credentials"  in parts_lc
             or name == ".git_token"
@@ -661,7 +661,7 @@ async def oauth_device_poll(body: DevicePollRequest):
 
     # Persist credentials
     if body.project_name:
-        sys_dir = _proj_dir(body.project_name) / "_system"
+        sys_dir = _proj_dir(body.project_name) / "state"
         sys_dir.mkdir(parents=True, exist_ok=True)
         (sys_dir / ".git_token").write_text(json.dumps(
             {"token": token, "username": username, "auth_method": "oauth"}
@@ -800,7 +800,7 @@ async def setup_git(project_name: str, body: GitSetupRequest):
     if not code_dir.exists():
         raise HTTPException(status_code=404, detail=f"code_dir does not exist: {code_dir}")
 
-    sys_dir = proj_dir / "_system"
+    sys_dir = proj_dir / "state"
     sys_dir.mkdir(parents=True, exist_ok=True)
     actions: list[str] = []
 
@@ -834,7 +834,7 @@ async def setup_git(project_name: str, body: GitSetupRequest):
         (sys_dir / ".git_token").write_text(json.dumps(
             {"token": body.git_token, "username": body.git_username}
         ))
-        actions.append("Saved PAT to _system/.git_token")
+        actions.append("Saved PAT to state/.git_token")
 
     # Configure remote with PLAIN URL (credentials are never stored in .git/config;
     # they are injected at runtime via 'git -c remote.origin.url=<authed>' to avoid

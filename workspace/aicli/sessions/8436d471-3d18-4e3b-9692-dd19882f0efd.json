@@ -1,0 +1,17 @@
+{
+  "id": "8436d471-3d18-4e3b-9692-dd19882f0efd",
+  "created_at": "2026-03-09T02:02:29.627474",
+  "updated_at": "2026-03-15T22:47:47.427269",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Implementing relationship detection between features and bugs",
+      "ts": "2026-03-09T02:02:29.627940"
+    }
+  ],
+  "metadata": {
+    "tags": {
+      "phase": "testing"
+    }
+  }
+}

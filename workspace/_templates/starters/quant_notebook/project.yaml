@@ -1,6 +1,0 @@
-name: "{{PROJECT_NAME}}"
-description: "Quantitative trading / research project"
-code_dir: "../../{{PROJECT_NAME}}"
-default_provider: claude
-active_workflows:
-  - trading_strategy

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": "",
+  "mcp": {
+    "aicli": {
+      "type": "local",
+      "command": "python3.12",
+      "args": [
+        "{{AICLI_DIR}}/ui/mcp_server.py",
+        "--project",
+        "{{PROJECT_NAME}}",
+        "--backend",
+        "http://localhost:8000"
+      ]
+    }
+  }
+}

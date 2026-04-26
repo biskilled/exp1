@@ -3,7 +3,7 @@ workflow_runner.py — Sequential multi-agent workflow executor.
 
 Reads YAML definitions from workspace/{project}/workflows/{name}/workflow.yaml.
 Runs each step (agent) with the specified LLM, saving state after every step to:
-  workspace/{project}/_system/runs/{run_id}.json
+  workspace/{project}/runs/{run_id}.json
 
 Pause/resume pattern:
   After each step: status → 'waiting', background task exits.
@@ -36,7 +36,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 def _run_dir(project: str) -> Path:
-    return Path(settings.workspace_dir) / project / "_system" / "runs"
+    return Path(settings.workspace_dir) / project / "workflows" / "runs"
 
 def _run_path(project: str, run_id: str) -> Path:
     return _run_dir(project) / f"{run_id}.json"
@@ -299,9 +299,10 @@ def _load_prompt(step_spec: dict, project: str) -> str:
     if not prompt_path:
         return step_spec.get("role_prompt", "")
 
-    # Try relative to workspace/{project}/prompts/
+    # Try relative to workspace/{project}/workflows/prompts/ then project root
     for base in [
-        Path(settings.workspace_dir) / project / "prompts" / prompt_path,
+        Path(settings.workspace_dir) / project / "workflows" / "prompts" / prompt_path,
+        Path(settings.workspace_dir) / project / "prompts" / prompt_path,  # legacy fallback
         Path(settings.workspace_dir) / project / prompt_path,
     ]:
         if base.exists():

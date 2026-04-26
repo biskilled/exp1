@@ -305,7 +305,7 @@ class _Database:
 
     @staticmethod
     def _seed_agent_roles(conn) -> None:
-        """Upsert all agent roles from workspace/_templates/roles/*.yaml.
+        """Upsert all agent roles from workspace/_templates/pipelines/roles/*.yaml.
 
         Uses DO UPDATE so improved prompts take effect on server restart.
         """
@@ -320,7 +320,7 @@ class _Database:
 
     @staticmethod
     def _seed_roles_from_yaml(cur) -> None:
-        """Full UPSERT of agent roles from workspace/_templates/roles/*.yaml into DB.
+        """Full UPSERT of agent roles from workspace/_templates/pipelines/roles/*.yaml into DB.
 
         - Existing role (matched by client_id + project + name): ALL fields updated from YAML.
         - New role (not yet in DB): inserted fresh from YAML.
@@ -337,7 +337,7 @@ class _Database:
 
         templates_dir = (
             Path(__file__).parent.parent.parent
-            / "workspace" / "_templates" / "roles"
+            / "workspace" / "_templates" / "pipelines" / "roles"
         )
         if not templates_dir.exists():
             return

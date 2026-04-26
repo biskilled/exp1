@@ -1,17 +1,15 @@
-active_workflows:
-- build_feature
-- code_review
-- update_docs
-auto_commit_push: true
+description: AI-powered development CLI with multi-provider support
 code_dir: /Users/user/Documents/gdrive_cellqlick/2026/aicli
 default_provider: claude
-description: AI-powered development CLI with multi-provider support
+
+# Git
+auto_commit_push: true
 git_branch: master
 git_email: tal@biskilled.com
 git_username: biskilled
-github_client_id: Ov23ligfv0f2DBdvRdim
 github_repo: https://github.com/biskilled/exp1.git
-name: aicli
+
+# Work item classification
 work_items:
   classification:
     mode: manual          # manual | threshold
@@ -21,9 +19,16 @@ work_items:
       messages: 5000
       items: 500
 
+# History — conversation + commit history in workspace/history/
+# App logs (app.log / debug.log / error.log) live in ~/.aicli/logs/ with daily rotation.
+# Set LOG_DIR env var to change the app log location.
+history:
+  history_retention_days: 30       # delete rotated history_*.jsonl archives older than this
+
+# Memory file generation
 memory:
   claude_md_max_tokens: 8000        # CLAUDE.md hard cap; oldest "Recently Changed" rolls off first
-  cursorrules_max_tokens: 2000      # .cursorrules cap
+  cursorrules_max_tokens: 2000      # cursor/rules.md cap
   recent_work_max_entries: 30       # max symbols shown in "Recently Changed"
   hotspot_threshold: 5              # hotspot_score >= this → shown in CLAUDE.md + code.md
   hotspot_suggest_work_item: true   # auto-open refactor task for hotspot files

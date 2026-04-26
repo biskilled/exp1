@@ -1,0 +1,18 @@
+{
+  "id": "9ade71e4-b9a8-45a6-af82-eb3c0fc16e8b",
+  "created_at": "2026-02-25T19:44:08.460324",
+  "updated_at": "2026-02-25T19:44:10.285755",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Ask a question: hello, how are you ?",
+      "ts": "2026-02-25T19:44:08.460929"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello! I'm doing well, thank you for asking! \ud83d\ude0a\n\nHow are **you** doing today? Is there something I can help you with, or did you just want to chat? I'm happy to do either! \ud83d\ude42",
+      "ts": "2026-02-25T19:44:10.285746"
+    }
+  ],
+  "metadata": {}
+}

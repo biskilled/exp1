@@ -4,14 +4,16 @@ memory_files.py — Template-based LLM context file renderer.
 Renders all per-project context files from DB tables with NO LLM calls.
 Deterministic: same DB state → same output every time.
 
-Managed files (root):
-  {sys_dir}/claude/CLAUDE.md              — Claude CLI context (main)
-  {sys_dir}/cursor/rules.md               — Cursor rules
-  {sys_dir}/llm_prompts/compact.md        — Compact system prompt (GPT-4 / small window, ≤2000 tokens)
-  {sys_dir}/llm_prompts/full.md           — Full system prompt (Claude / Deepseek / Gemini)
-  {sys_dir}/llm_prompts/gemini_context.md — Gemini Files API upload context
-  {code_dir}/CLAUDE.md                    — copy to code root (auto-loaded by Claude CLI)
-  {code_dir}/.cursorrules                 — copy to code root (Cursor)
+Provider mapping is driven by _templates/memory/_providers.yaml.
+
+Managed files (memory/):
+  claude/CLAUDE.md        — full context  → code_dir/CLAUDE.md (Claude Code)
+  cursor/rules.md         — compact       → code_dir/.cursorrules (Cursor)
+  copilot/instructions.md — compact (=cursor/rules.md) → code_dir/.github/copilot-instructions.md
+  api/system_prompt.md    — compact, shared by ALL API providers
+  code.md                 — directory tree + hotspots + file coupling
+  GEMINI.md               — full (=CLAUDE.md) → code_dir/GEMINI.md (Gemini CLI)
+  AGENTS.md               — full (=CLAUDE.md) → code_dir/AGENTS.md  (Codex CLI)
 
 Trigger conditions:
   project_facts upsert → write_root_files()
@@ -30,6 +32,7 @@ import yaml as _yaml
 from core.database import db
 from core.config import settings
 from core.prompt_loader import prompts as _prompts
+from core import project_paths as pp
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +116,18 @@ class MemoryFiles:
         """Approximate token count (1 token ≈ 4 chars)."""
         return max(1, len(text) // 4)
 
+    # ── Providers config ──────────────────────────────────────────────────────
+
+    def _load_providers(self) -> dict:
+        """Load memory.yaml — maps CLI tools and API providers to context files."""
+        tpl_path = self._workspace() / "_templates" / "memory" / "memory.yaml"
+        try:
+            if tpl_path.exists():
+                return _yaml.safe_load(tpl_path.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            log.debug("_load_providers: %s", e)
+        return {}
+
     # ── Config loading ────────────────────────────────────────────────────────
 
     def _load_memory_config(self, project: str) -> dict:
@@ -141,7 +156,8 @@ class MemoryFiles:
         return Path(settings.workspace_dir)
 
     def _sys_dir(self, project: str) -> Path:
-        return self._workspace() / project / "_system"
+        """Backward-compat alias — returns memory_dir."""
+        return pp.memory_dir(project)
 
     def _code_dir(self, project: str) -> Optional[Path]:
         # Try pipeline helper first (reads project.yaml + settings)
@@ -679,7 +695,7 @@ class MemoryFiles:
         return out
 
     def _render_code_md(self, ctx: dict) -> str:
-        """Render _system/aicli/code.md — full code map for LLMs.
+        """Render code/code.md — full code map for LLMs.
 
         Sections:
           1. Project Structure  — ASCII directory tree (depth 3)
@@ -851,16 +867,11 @@ class MemoryFiles:
         Returns list of written file paths (relative to workspace).
         """
         ctx = self._load_context(project)
-        sys_dir = self._sys_dir(project)
         code_dir = self._code_dir(project)
         written: list[str] = []
 
         # Ensure directories exist
-        (sys_dir / "claude").mkdir(parents=True, exist_ok=True)
-        (sys_dir / "cursor").mkdir(parents=True, exist_ok=True)
-        (sys_dir / "llm_prompts").mkdir(parents=True, exist_ok=True)
-        (sys_dir / "openai").mkdir(parents=True, exist_ok=True)
-        (sys_dir / "aicli").mkdir(parents=True, exist_ok=True)
+        pp.ensure_project_dirs(project)
 
         def _write(path: Path, content: str) -> None:
             try:
@@ -870,28 +881,64 @@ class MemoryFiles:
             except Exception as e:
                 log.warning(f"write_root_files: failed to write {path}: {e}")
 
-        # Root CLAUDE.md
+        # Load provider mapping
+        providers = self._load_providers()
+        cli_tools = {t["id"]: t for t in providers.get("cli_tools", [])}
+
+        # ── Primary memory files ──────────────────────────────────────────────
         claude_content = self.render_root_claude_md(ctx)
-        _write(sys_dir / "claude" / "CLAUDE.md", claude_content)
-        _write(sys_dir / "CLAUDE.md", claude_content)  # backward compat
+        cursor_content = self.render_cursorrules(ctx)
+        api_content    = self.render_system_compact(ctx)
 
-        # Cursor rules
-        _write(sys_dir / "cursor" / "rules.md", self.render_cursorrules(ctx))
+        _write(pp.claude_md_path(project),              claude_content)
+        _write(pp.cursor_rules_path(project),           cursor_content)
+        _write(pp.copilot_instructions_path(project),   cursor_content)
+        _write(pp.api_system_prompt_path(project),      api_content)
 
-        # LLM system prompts
-        _write(sys_dir / "llm_prompts" / "compact.md",        self.render_system_compact(ctx))
-        _write(sys_dir / "llm_prompts" / "full.md",           self.render_system_full(ctx))
-        _write(sys_dir / "llm_prompts" / "gemini_context.md", self.render_gemini_context(ctx))
-        _write(sys_dir / "llm_prompts" / "openai.md",         self.render_openai_system(ctx))
-        _write(sys_dir / "openai" / "system_prompt.md",       self.render_openai_system(ctx))
+        # Mirror files for Gemini CLI and Codex CLI (same content as CLAUDE.md)
+        _write(pp.memory_dir(project) / "GEMINI.md", claude_content)
+        _write(pp.memory_dir(project) / "AGENTS.md", claude_content)
 
         # Code intelligence file
-        _write(sys_dir / "aicli" / "code.md", self._render_code_md(ctx))
+        _write(pp.code_md_path(project), self._render_code_md(ctx))
 
-        # Copy to code_dir
+        # ── Copy to code_dir (driven by providers config) ─────────────────────
         if code_dir and code_dir.exists():
-            _write(code_dir / "CLAUDE.md", claude_content)
-            _write(code_dir / ".cursorrules", self.render_cursorrules(ctx))
+            # Build content map: tier → content
+            content_map = {"claude_code": claude_content, "cursor": cursor_content}
+            for tool in providers.get("cli_tools", []):
+                copy_to = tool.get("copy_to_code_dir")
+                if not copy_to:
+                    continue
+                # Resolve content: own render or copy from source
+                src_id = tool.get("source") or tool["id"]
+                content = content_map.get(src_id)
+                if content is None:
+                    continue
+                dest = code_dir / copy_to
+                _write(dest, content)
+
+            # Fallback: always write CLAUDE.md and .cursorrules if providers.yaml missing
+            if not cli_tools:
+                _write(code_dir / "CLAUDE.md", claude_content)
+                _write(code_dir / ".cursorrules", cursor_content)
+
+        # Clean up old pipeline run logs and history archives
+        try:
+            log_cfg = self._load_memory_config(project)  # reuse existing loader (has project.yaml)
+            proj_yaml = self._workspace() / project / "project.yaml"
+            if proj_yaml.exists():
+                _pdata = _yaml.safe_load(proj_yaml.read_text(encoding="utf-8")) or {}
+                _lcfg = _pdata.get("logs", {})
+                _pipe_days = int(_lcfg.get("pipeline_retention_days", 14))
+                _hist_days = int(_lcfg.get("history_retention_days", 30))
+            else:
+                _pipe_days, _hist_days = 14, 30
+            _deleted = pp.cleanup_project_logs(project, pipeline_days=_pipe_days, history_days=_hist_days)
+            if _deleted:
+                log.info("write_root_files: cleaned %d stale log file(s) for '%s'", _deleted, project)
+        except Exception as _ce:
+            log.debug("write_root_files: log cleanup error: %s", _ce)
 
         # Auto-suggest refactor/decouple tasks from hotspot + coupling data
         mem_cfg = ctx.get("memory_config", {})
@@ -914,9 +961,8 @@ class MemoryFiles:
         if not content:
             return written
 
-        # Write to _system for archive
-        sys_dir = self._sys_dir(project)
-        sys_feature_path = sys_dir / "claude" / "features" / tag_name / "CLAUDE.md"
+        # Write to cli/claude/features/ for archive
+        sys_feature_path = pp.claude_dir(project) / "features" / tag_name / "CLAUDE.md"
         try:
             sys_feature_path.parent.mkdir(parents=True, exist_ok=True)
             sys_feature_path.write_text(content, encoding="utf-8")

@@ -1,0 +1,11 @@
+# Codex CLI MCP configuration
+# Copied to .codex/config.toml in your project root during `aicli create-project`.
+# https://github.com/openai/codex
+
+[mcp.aicli]
+command = "python3.12"
+args = [
+  "{{AICLI_DIR}}/ui/mcp_server.py",
+  "--project", "{{PROJECT_NAME}}",
+  "--backend", "http://localhost:8000"
+]

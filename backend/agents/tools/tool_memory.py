@@ -191,7 +191,9 @@ def _handle_search_memory(args: dict) -> str:
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
-            history_path = Path(workspace) / project / "_system" / "history.jsonl"
+            history_path = Path(workspace) / project / "history" / "history.jsonl"
+            if not history_path.exists():
+                history_path = Path(workspace) / project / "state" / "history.jsonl"  # legacy
             if history_path.exists():
                 query_lower = query.lower()
                 for line in reversed(history_path.read_text().splitlines()[-500:]):
@@ -256,7 +258,9 @@ def _handle_get_recent_history(args: dict) -> str:
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
-            history_path = Path(workspace) / project / "_system" / "history.jsonl"
+            history_path = Path(workspace) / project / "history" / "history.jsonl"
+            if not history_path.exists():
+                history_path = Path(workspace) / project / "state" / "history.jsonl"  # legacy
             if history_path.exists():
                 for line in reversed(history_path.read_text().splitlines()[-(limit * 2):]):
                     try:
@@ -308,7 +312,7 @@ def _handle_get_project_facts(args: dict) -> str:
         workspace = "workspace"
         if cfg_path.exists():
             workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
-        state_path = Path(workspace) / project / "_system" / "project_state.json"
+        state_path = Path(workspace) / project / "state" / "project_state.json"
         if state_path.exists():
             state = json.loads(state_path.read_text())
             facts = state.get("key_decisions", state.get("facts", {}))

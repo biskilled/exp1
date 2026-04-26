@@ -161,11 +161,11 @@ def _append_history(
 
 
 def _update_runtime_state(project: str, provider: str, prompt_preview: str, session_id: str, user_id: Optional[str] = None) -> None:
-    """Update _system/dev_runtime_state.json with the latest exchange metadata."""
+    """Update state/dev_runtime_state.json with the latest exchange metadata."""
     try:
-        sys_dir = Path(settings.workspace_dir) / project / "_system"
-        sys_dir.mkdir(parents=True, exist_ok=True)
-        state_path = sys_dir / "dev_runtime_state.json"
+        state_dir = Path(settings.workspace_dir) / project / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state_path = state_dir / "dev_runtime_state.json"
 
         existing: dict = {}
         if state_path.exists():
@@ -860,7 +860,9 @@ def _backfill_session_tags(
     Only keys explicitly passed (not None) are updated; None-valued keys are removed.
     """
     # 1. Rewrite matching entries in history.jsonl
-    hist_path = Path(settings.workspace_dir) / project / "_system" / "history.jsonl"
+    hist_path = Path(settings.workspace_dir) / project / "history" / "history.jsonl"
+    if not hist_path.exists():
+        hist_path = Path(settings.workspace_dir) / project / "state" / "history.jsonl"  # legacy
     if hist_path.exists():
         try:
             lines = hist_path.read_text().splitlines()
@@ -917,7 +919,7 @@ async def patch_session_tags(
     """Update the phase/feature/bug_ref tags stored in a session's metadata.
 
     For UI sessions: writes to the session JSON file.
-    For CLI/workflow sessions: writes to _system/session_phases.json as a fallback.
+    For CLI/workflow sessions: writes to state/session_phases.json as a fallback.
     In both cases, retroactively backfills phase onto all history.jsonl entries
     and DB rows (events, commits) for this session.
     """
@@ -939,7 +941,7 @@ async def patch_session_tags(
         return {"ok": True, "tags": tags}
 
     # CLI / workflow session — persist in session_phases.json
-    phases_path = Path(settings.workspace_dir) / p / "_system" / "session_phases.json"
+    phases_path = Path(settings.workspace_dir) / p / "state" / "session_phases.json"
     phases_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         existing: dict = json.loads(phases_path.read_text()) if phases_path.exists() else {}

@@ -1,0 +1,22 @@
+{
+  "id": "79785e76-91e8-4e46-970e-300592ee97ca",
+  "created_at": "2026-03-09T02:03:20.015298",
+  "updated_at": "2026-03-15T22:47:35.022743",
+  "messages": [
+    {
+      "role": "user",
+      "content": "brief test for event emission",
+      "ts": "2026-03-09T02:03:20.015557"
+    },
+    {
+      "role": "assistant",
+      "content": "## Brief Event Emission Test\n\n```javascript\nconst EventEmitter = require('events');\n\n// --- Setup ---\nconst emitter = new EventEmitter();\nconst results = [];\n\n// --- Listeners ---\nemitter.on('data', (payload) => results.push(payload));\nemitter.once('done', () => results.push('done'));\n\n// --- Emit ---\nemitter.emit('data', 'first');\nemitter.emit('data', 'second');\nemitter.emit('done');\nemitter.emit('done'); // should NOT push again (once)\n\n// --- Assert ---\nconsole.assert(results[0] === 'first',  '\u274c first event failed');\nconsole.assert(results[1] === 'second', '\u274c second event failed');\nconsole.assert(results[2] === 'done',   '\u274c done event failed');\nconsole.assert(results.length === 3,    '\u274c once fired more than once');\n\nconsole.log('\u2705 All assertions passed', results);\n```\n\n### Output\n```\n\u2705 All assertions passed [ 'first', 'second', 'done' ]\n```\n\n### What it covers\n\n| Check | Method |\n|---|---|\n| Event fires with payload | `.on()` |\n| Event fires multiple times | `.on()` |\n| Event fires **only once** | `.once()` |\n| Correct number of emissions | `results.length` |",
+      "ts": "2026-03-09T02:03:27.403808"
+    }
+  ],
+  "metadata": {
+    "tags": {
+      "phase": "discovery"
+    }
+  }
+}

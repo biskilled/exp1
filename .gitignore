@@ -48,3 +48,6 @@ workspace/**/_system/sessions/
 
 # aicli CLI runtime data (session store, message history)
 workspace/**/_system/aicli/sessions/
+
+# ── aicli secrets (auto-added) ────────────────────────────────
+**/state/
