@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 23:05 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 23:12 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-26] project fact was good summery of fact on the project (language, descision I have asked .. and suppose to be part of proj
 - [2026-04-26] yes
 - [2026-04-26] I would like to make more meaningfull name to the prompts files. for example commit - would be mem_mrr_coomits. or memor
 - [2026-04-26] memroy.yaml look like there are duplicate . this file suppose to use as main mapping for copy file and all managmenet do
 - [2026-04-26] Let me understand again , now after all the refactor - how PROJECT.md, CODE.md , CLOUADE.md and project_fact are generrt
+- [2026-04-26] the trade of is also spending more tokens as one every prompt - /memory will run ? there was config param in the aicli.y

@@ -1,3 +1,4 @@
+<!-- Last updated: 2026-04-26 23:12 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
@@ -98,3 +99,15 @@ Layer 4 — Work Items (mem_work_items)
 
 ---
 *Full context: see `state/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
+
+## Code Hotspots
+
+- `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
+- `backend/memory/memory_work_items.py` — score 16.0 (14 commits, 2621 lines)
+- `backend/routers/route_projects.py` — score 11.0 (9 commits, 1681 lines)
+- `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
+- `backend/core/db_migrations.py` — score 10.0 (8 commits, 3250 lines)
+- `backend/memory/memory_files.py` — score 10.0 (8 commits, 991 lines)
+- `backend/routers/route_work_items.py` — score 5.0 (5 commits, 461 lines)
+
+_Full details: `memory/code.md`_
