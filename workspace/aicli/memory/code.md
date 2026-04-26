@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-26 21:32 UTC -->
+<!-- Last updated: 2026-04-26 21:42 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -125,15 +125,17 @@ aicli/
 ├── workspace/
 │   ├── _templates/
 │   │   ├── documents/
-│   │   ├── logs/
+│   │   ├── history/
 │   │   ├── memory/
 │   │   ├── pipelines/
 │   │   ├── sessions/
 │   │   └── state/
 │   ├── aicli/
 │   │   ├── documents/
+│   │   ├── history/
 │   │   ├── logs/
 │   │   ├── memory/
+│   │   ├── pipelines/
 │   │   ├── sessions/
 │   │   ├── state/
 │   │   ├── workflows/
