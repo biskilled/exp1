@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-26 12:02 UTC -->
+<!-- Last updated: 2026-04-26 17:19 UTC -->
 # Code Intelligence: aicli
-_Generated: 2026-04-26 12:02 UTC_
+_Generated: 2026-04-26 17:19 UTC_
 
 ## Code Hotspots
 _Files with highest commit frequency. Consider refactoring._
@@ -11,6 +11,7 @@ _Files with highest commit frequency. Consider refactoring._
 | `backend/memory/memory_work_items.py` | 16.0 | 14 | 2621 | 0 | 2026-04-25 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/core/db_migrations.py` | 9.0 | 7 | 3197 | 0 | 2026-04-25 |
+| `backend/memory/memory_files.py` | 5.0 | 3 | 855 | 0 | 2026-04-26 |
 | `backend/routers/route_work_items.py` | 5.0 | 5 | 461 | 0 | 2026-04-24 |
 
 ## File Coupling

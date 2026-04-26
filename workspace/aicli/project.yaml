@@ -27,3 +27,4 @@ memory:
   recent_work_max_entries: 30       # max symbols shown in "Recently Changed"
   hotspot_threshold: 5              # hotspot_score >= this → shown in CLAUDE.md + code.md
   hotspot_suggest_work_item: true   # auto-open refactor task for hotspot files
+  coupling_threshold: 8             # co-change count >= this → suggest "Decouple" work item

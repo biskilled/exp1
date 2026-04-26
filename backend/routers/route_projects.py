@@ -1181,6 +1181,15 @@ async def generate_memory(project_name: str):
     # ── 2. CLAUDE.md — regenerate from PROJECT.md + state_data ───────────────
     # PROJECT.md was just refreshed above, so get_project_context() will pick
     # up the latest "Recent Work" and "Key Decisions" sections automatically.
+    # Load hotspot/coupling data early so we can append to CLAUDE.md.
+    _mf_ctx: dict = {}
+    try:
+        from memory.memory_files import MemoryFiles as _MF_cls
+        _mf_obj = _MF_cls()
+        _mf_ctx = _mf_obj._load_context(project_name)
+    except Exception as _e:
+        log.debug("generate_memory: _load_context failed: %s", _e)
+
     claude_md_content = ""
     try:
         ctx_result = await get_project_context(project_name, save=True)
@@ -1188,6 +1197,22 @@ async def generate_memory(project_name: str):
         # Prepend last-updated comment so every CLAUDE.md is timestamped
         if claude_md_content and not claude_md_content.startswith("<!-- Last updated"):
             claude_md_content = f"<!-- Last updated: {ts} -->\n{claude_md_content}"
+        # Append hotspot section if data available
+        hotspots = _mf_ctx.get("hotspots") or []
+        if hotspots and claude_md_content:
+            mem_cfg = _mf_ctx.get("memory_config", {})
+            hotspot_lines = ["\n## Code Hotspots", ""]
+            for h in hotspots[:10]:
+                bug_note = f", {h['bug_commits']} bug fixes" if h.get("bug_commits") else ""
+                hotspot_lines.append(
+                    f"- `{h['file']}` — score {h['score']}"
+                    f" ({h['commits']} commits{bug_note}, {h['lines']} lines)"
+                )
+            hotspot_lines.append(
+                "\n_Full details: `_system/aicli/code.md`_"
+            )
+            claude_md_content = claude_md_content.rstrip() + "\n" + "\n".join(hotspot_lines)
+        if claude_md_content:
             (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
             (sys_dir / "CLAUDE.md").write_text(claude_md_content)
         generated.append("_system/claude/CLAUDE.md")
@@ -1300,15 +1325,18 @@ async def generate_memory(project_name: str):
 
     # ── 5b. aicli/code.md — code intelligence (hotspots, file coupling) ───────
     try:
-        from memory.memory_files import MemoryFiles as _MF
-        _mf = _MF()
-        _mf_ctx = _mf._load_context(project_name)
-        code_md_content = _mf._render_code_md(_mf_ctx)
+        # _mf_obj / _mf_ctx loaded above (step 2); fall back to fresh load if failed
+        if not _mf_ctx:
+            from memory.memory_files import MemoryFiles as _MF
+            _mf_obj = _MF()
+            _mf_ctx = _mf_obj._load_context(project_name)
+        code_md_content = _mf_obj._render_code_md(_mf_ctx)
         (sys_dir / "aicli" / "code.md").write_text(code_md_content)
         generated.append("_system/aicli/code.md")
         # Auto-suggest refactor tasks for hot files
-        if _mf_ctx.get("memory_config", {}).get("hotspot_suggest_work_item", True):
-            _mf._suggest_hotspot_work_items(project_name, _mf_ctx.get("hotspots", []))
+        _mf_cfg = _mf_ctx.get("memory_config", {})
+        if _mf_cfg.get("hotspot_suggest_work_item", True):
+            _mf_obj._suggest_hotspot_work_items(project_name, _mf_ctx.get("hotspots", []), _mf_cfg)
     except Exception as _e:
         log.warning("generate_memory: code.md generation failed: %s", _e)
 

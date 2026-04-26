@@ -3155,6 +3155,31 @@ def m061_rebuild_backlog_links(conn) -> None:
     log.info("m061: mem_backlog_links rebuilt with client_id, user_id, tag_name, use_case_id, is_llm")
 
 
+def m079_wi_user_status_to_text(conn) -> None:
+    """Convert mem_work_items.user_status from SMALLINT to TEXT.
+
+    Mapping: 0→'open', 1→'pending', 2→'in-progress', 3→'review', 4→'blocked', 5→'done'.
+    Also converts user_importance SMALLINT → TEXT: 0→'low', 1→'medium', 2→'high'.
+    This aligns the DB with all backend code that treats these fields as string labels.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ALTER COLUMN user_status TYPE TEXT
+              USING CASE user_status
+                WHEN 0 THEN 'open'
+                WHEN 1 THEN 'pending'
+                WHEN 2 THEN 'in-progress'
+                WHEN 3 THEN 'review'
+                WHEN 4 THEN 'blocked'
+                WHEN 5 THEN 'done'
+                ELSE 'open'
+              END
+        """)
+    conn.commit()
+    log.info("m079: mem_work_items.user_status converted SMALLINT→TEXT")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3221,4 +3246,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m076_wi_merged_into", m076_wi_merged_into),
     ("m077_commit_history", m077_commit_history),
     ("m078_drop_planner_tags", m078_drop_planner_tags),
+    ("m079_wi_user_status_to_text", m079_wi_user_status_to_text),
 ]
