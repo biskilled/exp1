@@ -459,3 +459,120 @@ async def reopen_use_case(project: str, item_id: str):
     pid = _pid(project)
     wi  = _wi(project)
     return wi.reopen_use_case(item_id, pid)
+
+
+@router.post("/{project}/{item_id}/run-pipeline")
+async def run_wi_pipeline(project: str, item_id: str, background_tasks: BackgroundTasks):
+    """Run the 4-agent pipeline (PM→Architect→Developer→Reviewer) on an approved open work item.
+
+    Validation:
+      - Item must be approved (wi_id IS NOT NULL / approved_at IS NOT NULL)
+      - Item must not be done or deleted
+      - If item has a parent use case, that parent must also be approved
+
+    The pipeline runs asynchronously. Results (acceptance_criteria, implementation_plan)
+    are written back to the work item when done. pipeline_status tracks progress.
+    """
+    pid  = _pid(project)
+    wi   = _wi(project)
+
+    # Fetch the item
+    item = wi.get_one(item_id, pid)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Work item {item_id} not found")
+
+    # Validate: must be approved
+    if not item.get("approved_at") and not item.get("wi_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Work item must be approved (wi_id assigned) before running the pipeline. "
+                   "Approve it in the Work Items UI first.",
+        )
+
+    # Validate: must not be done or deleted
+    if item.get("user_status") == "done":
+        raise HTTPException(status_code=400, detail="Work item is already done.")
+    if item.get("deleted_at"):
+        raise HTTPException(status_code=400, detail="Work item has been deleted.")
+
+    # Validate: if has parent, parent must be approved
+    parent_name = None
+    if item.get("wi_parent_id"):
+        parent = wi.get_one(item["wi_parent_id"], pid)
+        if parent and not parent.get("approved_at"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Parent use case '{parent.get('name')}' must be approved before running pipeline on its children.",
+            )
+        parent_name = (parent or {}).get("name")
+
+    # Build task description from work item
+    task_lines = [f"Work item: {item['wi_id']} — {item['name']}"]
+    if item.get("summary"):
+        task_lines.append(f"Description: {item['summary']}")
+    if parent_name:
+        task_lines.append(f"Parent use case: {parent_name}")
+    task = "\n".join(task_lines)
+
+    # Mark as running
+    wi.update(item_id, pid, {"pipeline_status": "running"})
+
+    # Run pipeline in background
+    background_tasks.add_task(_run_pipeline_bg, project, item_id, pid, task, wi)
+
+    return {
+        "work_item_id": item_id,
+        "wi_id": item.get("wi_id"),
+        "pipeline_status": "running",
+        "task": task,
+        "message": "Pipeline started. Results will be written to acceptance_criteria and implementation_plan.",
+    }
+
+
+async def _run_pipeline_bg(project: str, item_id: str, pid: int, task: str, wi) -> None:
+    """Background task: run the agents pipeline and save results to mem_work_items."""
+    import httpx as _httpx
+    import logging as _log
+
+    _logger = _log.getLogger(__name__)
+    try:
+        async with _httpx.AsyncClient(timeout=300) as client:
+            resp = await client.post(
+                "http://127.0.0.1:8000/agents/run-pipeline",
+                json={"pipeline": "standard", "task": task, "project": project},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+        # Extract acceptance_criteria from PM stage structured output
+        pm_out = result.get("stage_details", {}).get("project_manager", {}).get("structured_output") or {}
+        ac_raw = pm_out.get("acceptance_criteria") or pm_out.get("acceptance_criteria_text", "")
+        if isinstance(ac_raw, list):
+            acceptance_criteria = "\n".join(f"- {c}" for c in ac_raw)
+        else:
+            acceptance_criteria = str(ac_raw)
+
+        # Extract implementation_plan from Architect stage structured output
+        arch_out = result.get("stage_details", {}).get("architect", {}).get("structured_output") or {}
+        impl_plan = (
+            arch_out.get("implementation_plan")
+            or arch_out.get("approach")
+            or arch_out.get("plan", "")
+        )
+        if isinstance(impl_plan, list):
+            impl_plan = "\n".join(str(s) for s in impl_plan)
+
+        wi.update(item_id, pid, {
+            "acceptance_criteria": acceptance_criteria,
+            "implementation_plan": str(impl_plan),
+            "pipeline_status": "done",
+            "pipeline_run_id": result.get("run_id"),
+        })
+        _logger.info("run_wi_pipeline: done for %s — run_id=%s", item_id, result.get("run_id"))
+
+    except Exception as exc:
+        _logger.error("run_wi_pipeline: error for %s: %s", item_id, exc)
+        try:
+            wi.update(item_id, pid, {"pipeline_status": "error"})
+        except Exception:
+            pass

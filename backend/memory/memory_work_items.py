@@ -1008,6 +1008,43 @@ class MemoryWorkItems:
         where = " AND ".join(conditions) if conditions else "TRUE"
         return self._list_items(pid, where=where)
 
+    def get_one(self, item_id: str, pid: int) -> Optional[dict]:
+        """Return a single work item by UUID (including deleted items)."""
+        if not db.is_available():
+            return None
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT w.id::text, w.wi_id, w.wi_type, w.item_level, w.name, w.summary,
+                                  w.deliveries, w.delivery_type,
+                                  w.score_importance, w.score_status,
+                                  w.user_importance, w.user_status,
+                                  w.mrr_ids, w.wi_parent_id::text,
+                                  p.wi_id AS wi_parent_wi_id,
+                                  w.tags, w.approved_at, w.created_at, w.updated_at,
+                                  w.start_date, w.due_date, w.completed_at, w.deleted_at,
+                                  w.acceptance_criteria, w.implementation_plan,
+                                  w.pipeline_status, w.pipeline_run_id
+                           FROM mem_work_items w
+                           LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
+                           WHERE w.project_id=%s AND w.id=%s::uuid""",
+                        (pid, item_id),
+                    )
+                    cols = [d[0] for d in cur.description]
+                    row = cur.fetchone()
+            if not row:
+                return None
+            d = dict(zip(cols, row))
+            for key in ("approved_at", "created_at", "updated_at", "start_date",
+                        "due_date", "completed_at", "deleted_at"):
+                if d.get(key):
+                    d[key] = d[key].isoformat() if hasattr(d[key], "isoformat") else str(d[key])
+            return d
+        except Exception as e:
+            log.warning("get_one error: %s", e)
+            return None
+
     def _list_items(self, pid: int, where: str = "TRUE") -> list[dict]:
         if not db.is_available():
             return []
@@ -1023,7 +1060,9 @@ class MemoryWorkItems:
                                    p.wi_id AS wi_parent_wi_id,
                                    w.tags,
                                    w.approved_at, w.created_at, w.updated_at,
-                                   w.start_date, w.due_date, w.completed_at
+                                   w.start_date, w.due_date, w.completed_at,
+                                   w.acceptance_criteria, w.implementation_plan,
+                                   w.pipeline_status, w.pipeline_run_id
                             FROM mem_work_items w
                             LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
                             WHERE w.project_id=%s AND {where} AND w.deleted_at IS NULL
@@ -1634,6 +1673,9 @@ class MemoryWorkItems:
             "user_importance", "user_status",
             "wi_type", "wi_parent_id",
             "due_date", "start_date",
+            # pipeline output fields (written by run-pipeline endpoint)
+            "acceptance_criteria", "implementation_plan",
+            "pipeline_status", "pipeline_run_id",
         }
         updates = {k: v for k, v in fields.items() if k in allowed}
         if not updates:

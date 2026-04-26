@@ -3180,6 +3180,35 @@ def m079_wi_user_status_to_text(conn) -> None:
     log.info("m079: mem_work_items.user_status converted SMALLINT→TEXT")
 
 
+def m080_wi_pipeline_columns(conn) -> None:
+    """Add pipeline output columns to mem_work_items.
+
+    Enables the 4-agent pipeline (PM→Architect→Developer→Reviewer) to write
+    structured results back to approved open work items under an approved use case.
+
+    New columns:
+      acceptance_criteria TEXT  — AI-generated acceptance criteria (from PM stage)
+      implementation_plan TEXT  — AI-generated plan (from Architect stage)
+      pipeline_status TEXT      — NULL | 'running' | 'done' | 'error'
+      pipeline_run_id TEXT      — pr_graph_runs reference (for tracing)
+    """
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mem_work_items
+              ADD COLUMN IF NOT EXISTS acceptance_criteria TEXT    NOT NULL DEFAULT '',
+              ADD COLUMN IF NOT EXISTS implementation_plan TEXT    NOT NULL DEFAULT '',
+              ADD COLUMN IF NOT EXISTS pipeline_status     TEXT,
+              ADD COLUMN IF NOT EXISTS pipeline_run_id     TEXT
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_wi_pipeline_status
+              ON mem_work_items(project_id, pipeline_status)
+             WHERE pipeline_status IS NOT NULL
+        """)
+    conn.commit()
+    log.info("m080: mem_work_items — added acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3247,4 +3276,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m077_commit_history", m077_commit_history),
     ("m078_drop_planner_tags", m078_drop_planner_tags),
     ("m079_wi_user_status_to_text", m079_wi_user_status_to_text),
+    ("m080_wi_pipeline_columns", m080_wi_pipeline_columns),
 ]

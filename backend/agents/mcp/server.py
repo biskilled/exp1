@@ -311,17 +311,18 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="run_work_item_pipeline",
             description=(
-                "Run Haiku AI summarise on a use_case work item: rewrites the summary and reorders "
-                "child items by importance. Saves result as a draft version. "
-                "Provide either work_item_id (UUID) or work_item_name. "
-                "Only use_case items support this — for features/bugs/tasks use search_work_items."
+                "Run the 4-agent pipeline (PM → Architect → Developer → Reviewer) on an approved open "
+                "work item (feature/bug/task) that is under an approved use case. "
+                "The pipeline writes acceptance_criteria and implementation_plan back to the item. "
+                "Requirements: item must be approved (has wi_id like BU0001), user_status != 'done', "
+                "and parent use_case must also be approved. Pipeline runs in background."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "work_item_id":   {"type": "string", "description": "UUID of the use_case work item"},
-                    "work_item_name": {"type": "string", "description": "Name of the use_case (alternative to ID)"},
-                    "category":       {"type": "string", "description": "wi_type filter when looking up by name (default: use_case)"},
+                    "work_item_id":   {"type": "string", "description": "UUID of the approved open work item (feature/bug/task)"},
+                    "work_item_name": {"type": "string", "description": "Name of the work item (alternative to ID)"},
+                    "category":       {"type": "string", "description": "wi_type to filter by when looking up by name (default: feature)"},
                     "project":        {"type": "string"},
                 },
             },
@@ -641,20 +642,27 @@ async def _dispatch(name: str, args: dict) -> Any:
         }
 
     elif name == "run_work_item_pipeline":
-        # Calls ai-summarise on a use_case: Haiku rewrites summary + reorders children
-        wi_id = args.get("work_item_id")
-        if not wi_id:
+        # Triggers 4-agent pipeline (PM→Architect→Developer→Reviewer) on an approved open work item.
+        # Item must be approved + open; if it has a parent use_case, that parent must also be approved.
+        wi_uuid = args.get("work_item_id")
+        if not wi_uuid:
             wname = args.get("work_item_name", "")
-            cat = args.get("category", "use_case")
+            cat = args.get("category", "feature")
             if not wname:
-                raise ValueError("Provide work_item_id or work_item_name")
+                raise ValueError("Provide work_item_id (UUID) or work_item_name")
             data = await _get(f"/wi/{project}", {"wi_type": cat})
             matches = [w for w in data.get("items", []) if w["name"].lower() == wname.lower()]
             if not matches:
-                raise ValueError(f"Work item '{wname}' not found (wi_type={cat})")
-            wi_id = matches[0]["id"]
-        result = await _post(f"/wi/{project}/{wi_id}/ai-summarise", {})
-        return {"work_item_id": wi_id, "status": result.get("status", "triggered"), "project": project}
+                raise ValueError(f"Work item '{wname}' not found (wi_type={cat}). Try list_work_items first.")
+            wi_uuid = matches[0]["id"]
+        result = await _post(f"/wi/{project}/{wi_uuid}/run-pipeline", {})
+        return {
+            "work_item_id": wi_uuid,
+            "wi_id": result.get("wi_id"),
+            "pipeline_status": result.get("pipeline_status"),
+            "message": result.get("message"),
+            "project": project,
+        }
 
     elif name == "get_item_by_number":
         # Look up by wi_id string (e.g. BU0001, FE0002, UC0001)
@@ -679,6 +687,9 @@ async def _dispatch(name: str, args: dict) -> Any:
             "parent_id": wi.get("wi_parent_id"),
             "parent_wi_id": wi.get("wi_parent_wi_id"),
             "summary": wi.get("summary", ""),
+            "acceptance_criteria": wi.get("acceptance_criteria", ""),
+            "implementation_plan": wi.get("implementation_plan", ""),
+            "pipeline_status": wi.get("pipeline_status"),
             "due_date": wi.get("due_date"),
             "created_at": wi.get("created_at"),
             "updated_at": wi.get("updated_at"),
