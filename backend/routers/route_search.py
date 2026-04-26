@@ -1,8 +1,11 @@
 """
 search.py — Tagged context search + semantic (embedding) search.
 
-/search/tagged  — tag-filtered prompts from mem_mrr_prompts
-/search/semantic — cosine similarity over mem_ai_events + mem_ai_work_items (pgvector)
+/search/tagged   — tag-filtered prompts from mem_mrr_prompts
+/search/semantic — cosine similarity over mem_work_items (pgvector, embedding VECTOR(1536))
+
+Note: mem_ai_events was dropped (migration m078+). Semantic search now only covers
+mem_work_items rows that have been embedded via POST /memory/{project}/embed-prompts.
 """
 from __future__ import annotations
 
@@ -104,15 +107,15 @@ class SemanticSearchRequest(BaseModel):
 
 @router.post("/semantic")
 async def semantic_search(body: SemanticSearchRequest, user=Depends(get_optional_user)):
-    """Cosine-similarity search over mem_ai_events + mem_ai_work_items.
+    """Cosine-similarity search over mem_work_items (pgvector).
 
-    Embeds the query with text-embedding-3-small, then queries both tables
-    using pgvector <=> operator.  Results from both tables are merged and
-    re-ranked by score before returning.
+    Embeds the query with text-embedding-3-small, then queries mem_work_items
+    using the pgvector <=> operator.
 
-    source_types filter values:
-      mem_ai_events  → "commit" | "prompt_batch" | "session_summary" | "item" | "message"
-      mem_ai_work_items → "work_item"
+    Only items that have been embedded appear in results (run
+    POST /memory/{project}/embed-prompts to populate embeddings).
+
+    source_types: "work_item" (default and only supported value)
     """
     if not db.is_available():
         raise HTTPException(503, "PostgreSQL required for semantic search")
@@ -138,102 +141,59 @@ async def semantic_search(body: SemanticSearchRequest, user=Depends(get_optional
         with db.conn() as conn:
             with conn.cursor() as cur:
 
-                # ── mem_ai_events ──────────────────────────────────────────────
-                want_events = (
-                    not body.source_types
-                    or any(s != "work_item" for s in body.source_types)
-                )
-                if want_events:
-                    event_types_filter = ""
-                    params_ev: list = [vs, project_id, vs]
+                # ── mem_work_items (only table with embeddings now) ────────────
+                phase_filter = ""
+                params: list = [vs, project_id, vs]
 
-                    allowed_event_types = [
-                        s for s in (body.source_types or [])
-                        if s != "work_item"
-                    ] if body.source_types else []
-
-                    if allowed_event_types:
-                        placeholders = ",".join("%s" for _ in allowed_event_types)
-                        event_types_filter = f"AND e.event_type IN ({placeholders})"
-                        params_ev.extend(allowed_event_types)
-
-                    phase_filter = ""
+                if body.phase:
+                    phase_filter = "AND w.tags->>'phase' = %s"
+                    params.insert(-1, body.phase)  # before the trailing vs
+                    params = [vs, project_id]
                     if body.phase:
-                        phase_filter = "AND e.tags->>'phase' = %s"
-                        params_ev.append(body.phase)
+                        params.append(body.phase)
+                    params.append(vs)
 
-                    feature_filter = ""
-                    if body.feature:
-                        feature_filter = "AND e.tags->>'feature' = %s"
-                        params_ev.append(body.feature)
+                # Rebuild params cleanly
+                params = [vs, project_id]
+                extra_filters = ""
+                if body.phase:
+                    extra_filters += " AND w.tags->>'phase' = %s"
+                    params.append(body.phase)
+                if body.feature:
+                    extra_filters += " AND w.tags->>'feature' = %s"
+                    params.append(body.feature)
+                params.append(vs)
+                params.append(limit)
 
-                    params_ev.append(limit * 2)
-
-                    cur.execute(
-                        f"""SELECT e.id::text,
-                                   e.event_type AS source_type,
-                                   left(COALESCE(e.content, e.summary, ''), 150) AS title,
-                                   COALESCE(e.summary, left(e.content, 300)) AS snippet,
-                                   e.created_at,
-                                   e.tags,
-                                   e.session_id::text,
-                                   1 - (e.embedding <=> %s::vector) AS score
-                            FROM mem_ai_events e
-                            WHERE e.project_id = %s
-                              AND e.embedding IS NOT NULL
-                              {event_types_filter}
-                              {phase_filter}
-                              {feature_filter}
-                            ORDER BY e.embedding <=> %s::vector
-                            LIMIT %s""",
-                        params_ev,
-                    )
-                    for row in cur.fetchall():
-                        results.append({
-                            "id":          row[0],
-                            "source_type": row[1],
-                            "title":       row[2] or "",
-                            "snippet":     row[3] or "",
-                            "created_at":  row[4].isoformat() if row[4] else None,
-                            "tags":        row[5] or {},
-                            "session_id":  row[6],
-                            "score":       round(float(row[7] or 0), 4),
-                        })
-
-                # ── mem_ai_work_items ──────────────────────────────────────────
-                want_wi = (
-                    not body.source_types
-                    or "work_item" in body.source_types
+                cur.execute(
+                    f"""SELECT w.id::text,
+                               w.wi_type AS source_type,
+                               w.name AS title,
+                               left(COALESCE(w.summary, ''), 300) AS snippet,
+                               w.created_at,
+                               w.tags,
+                               1 - (w.embedding <=> %s::vector) AS score
+                        FROM mem_work_items w
+                        WHERE w.project_id = %s
+                          AND w.embedding IS NOT NULL
+                          AND w.deleted_at IS NULL
+                          AND (w.completed_at IS NULL OR w.completed_at > NOW() - INTERVAL '30 days')
+                          {extra_filters}
+                        ORDER BY w.embedding <=> %s::vector
+                        LIMIT %s""",
+                    params,
                 )
-                if want_wi:
-                    cur.execute(
-                        """SELECT w.id::text,
-                                  'work_item' AS source_type,
-                                  w.name_ai AS title,
-                                  COALESCE(w.summary_ai, left(w.desc_ai, 300)) AS snippet,
-                                  w.created_at,
-                                  w.tags,
-                                  NULL AS session_id,
-                                  1 - (w.embedding <=> %s::vector) AS score
-                           FROM mem_ai_work_items w
-                           WHERE w.project_id = %s
-                             AND w.embedding IS NOT NULL
-                             AND (w.deleted_at IS NULL)
-                           ORDER BY w.embedding <=> %s::vector
-                           LIMIT %s""",
-                        (vs, project_id, vs, limit * 2),
-                    )
-                    for row in cur.fetchall():
-                        results.append({
-                            "id":          row[0],
-                            "source_type": "work_item",
-                            "title":       row[2] or "",
-                            "snippet":     row[3] or "",
-                            "created_at":  row[4].isoformat() if row[4] else None,
-                            "tags":        row[5] or {},
-                            "session_id":  None,
-                            "score":       round(float(row[7] or 0), 4),
-                        })
+                for row in cur.fetchall():
+                    results.append({
+                        "id":          row[0],
+                        "source_type": row[1] or "work_item",
+                        "title":       row[2] or "",
+                        "snippet":     row[3] or "",
+                        "created_at":  row[4].isoformat() if row[4] else None,
+                        "tags":        row[5] or {},
+                        "session_id":  None,
+                        "score":       round(float(row[6] or 0), 4),
+                    })
 
     except Exception as exc:
         raise HTTPException(500, str(exc))

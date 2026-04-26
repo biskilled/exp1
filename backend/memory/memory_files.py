@@ -54,6 +54,19 @@ _SQL_ACTIVE_WORK_ITEMS = """
     LIMIT 20
 """
 
+# user_status is a smallint: 0=open, 1=pending, 2=in-progress, 3=review, 4=blocked, 5=done
+_WI_STATUS_LABELS: dict[int, str] = {
+    0: "open", 1: "pending", 2: "in-progress", 3: "review", 4: "blocked", 5: "done",
+}
+
+_SQL_COUPLING_HIGH = """
+    SELECT file_a, file_b, co_change_count
+    FROM mem_mrr_commits_file_coupling
+    WHERE project_id = %s AND co_change_count >= %s
+    ORDER BY co_change_count DESC
+    LIMIT 10
+"""
+
 _SQL_RECENTLY_CHANGED = """
     SELECT c.commit_hash_short, c.created_at::date AS commit_date,
            cc.file_path, cc.symbol_type, cc.class_name, cc.method_name,
@@ -166,9 +179,13 @@ class MemoryFiles:
                     # Active work items (use_case/feature — drives "Active Features" section)
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
                     for wi_id, wi_name, wi_type, user_status, due_date in cur.fetchall():
+                        status_label = (
+                            _WI_STATUS_LABELS.get(user_status, "open")
+                            if user_status is not None else "open"
+                        )
                         ctx["active_tags"].append({
                             "name":        wi_name,
-                            "status":      user_status or wi_type or "open",
+                            "status":      status_label,
                             "description": "",
                             "due_date":    due_date.isoformat() if due_date else None,
                         })
@@ -665,7 +682,11 @@ class MemoryFiles:
         return "\n".join(lines)
 
     def _suggest_hotspot_work_items(self, project: str, hotspots: list[dict]) -> int:
-        """Open a 'refactor' task for each hotspot file that has no existing open/active item."""
+        """Open a refactor task for each hotspot file that has no existing open/active item.
+
+        user_status is a smallint: 0=open, 2=in-progress, 5=done.
+        Only creates items for files with no existing non-done entry.
+        """
         if not hotspots or not db.is_available():
             return 0
         project_id = db.get_or_create_project_id(project)
@@ -676,24 +697,54 @@ class MemoryFiles:
                     for h in hotspots:
                         file_name = Path(h["file"]).name
                         wi_name = f"Refactor {file_name} (hotspot)"
+                        # Skip if open/in-progress item already exists
                         cur.execute(
                             "SELECT 1 FROM mem_work_items "
                             "WHERE project_id=%s AND name=%s "
-                            "AND deleted_at IS NULL AND completed_at IS NULL LIMIT 1",
+                            "AND deleted_at IS NULL AND completed_at IS NULL "
+                            "AND (user_status IS NULL OR user_status < 5) LIMIT 1",
                             (project_id, wi_name),
                         )
                         if cur.fetchone():
                             continue
                         cur.execute(
                             "INSERT INTO mem_work_items "
-                            "(wi_id, project_id, name, wi_type, summary, user_status, score_importance) "
-                            "VALUES (gen_random_uuid(), %s, %s, 'task', %s, 'open', 2)",
+                            "(project_id, name, wi_type, summary, user_status, score_importance) "
+                            "VALUES (%s, %s, 'task', %s, 0, 2)",
                             (
                                 project_id,
                                 wi_name,
                                 f"File `{h['file']}` has hotspot_score={h['score']} "
                                 f"({h['commits']} commits, {h['lines']} lines). "
                                 "Consider splitting into smaller modules.",
+                            ),
+                        )
+                        created += 1
+                    # Auto-suggest decoupling for highly co-changed file pairs
+                    coupling_threshold = 8
+                    cur.execute(_SQL_COUPLING_HIGH, (project_id, coupling_threshold))
+                    for file_a, file_b, count in cur.fetchall():
+                        name_a, name_b = Path(file_a).name, Path(file_b).name
+                        wi_name = f"Decouple {name_a} ↔ {name_b}"
+                        cur.execute(
+                            "SELECT 1 FROM mem_work_items "
+                            "WHERE project_id=%s AND name=%s "
+                            "AND deleted_at IS NULL AND completed_at IS NULL "
+                            "AND (user_status IS NULL OR user_status < 5) LIMIT 1",
+                            (project_id, wi_name),
+                        )
+                        if cur.fetchone():
+                            continue
+                        cur.execute(
+                            "INSERT INTO mem_work_items "
+                            "(project_id, name, wi_type, summary, user_status, score_importance) "
+                            "VALUES (%s, %s, 'task', %s, 0, 1)",
+                            (
+                                project_id,
+                                wi_name,
+                                f"`{file_a}` and `{file_b}` were committed together "
+                                f"{count} times. Consider extracting shared logic or "
+                                "clarifying their interface boundary.",
                             ),
                         )
                         created += 1
