@@ -77,6 +77,10 @@ log = logging.getLogger(__name__)
 # Absolute path to the aicli root dir (backend/routers/projects.py → 3 levels up)
 _AICLI_DIR = Path(__file__).parent.parent.parent
 
+# Engine template files for new project setup — NOT per-project files.
+# These live in backend/memory/templates/ (not in workspace/_templates/).
+_MEMORY_TEMPLATES = Path(__file__).parent.parent / "memory" / "templates"
+
 # 60-second in-process cache for memory-status (avoids scanning history.jsonl on every tab open)
 _MEMORY_STATUS_CACHE: dict[str, tuple[float, dict]] = {}   # project → (timestamp, result)
 _MEMORY_STATUS_TTL = 60.0  # seconds
@@ -326,16 +330,17 @@ async def create_project(body: NewProject):
         yaml.dump(proj_config, default_flow_style=False, allow_unicode=True)
     )
 
-    # ── Merge _templates/memory/ → project/memory/ ───────────────────────────
-    # Copies hooks, _CLAUDE.md, _mcp.json, _settings.json, providers.yaml etc.
-    memory_tpl = ws / "_templates" / "memory"
-    if memory_tpl.exists():
-        memory_dest = dest_dir / "memory"
-        for src_file in memory_tpl.rglob("*"):
+    # ── Copy per-project hooks from _templates/memory/claude/hooks/ ─────────────
+    # Only hooks are per-project (users may customize which are active).
+    # Engine template files (_mcp.json, _settings.json, _CLAUDE.md) live in
+    # backend/memory/templates/ and are rendered directly below.
+    hooks_tpl = ws / "_templates" / "memory" / "claude" / "hooks"
+    if hooks_tpl.exists():
+        hooks_dest = dest_dir / "memory" / "claude" / "hooks"
+        hooks_dest.mkdir(parents=True, exist_ok=True)
+        for src_file in hooks_tpl.iterdir():
             if src_file.is_file():
-                rel = src_file.relative_to(memory_tpl)
-                dst_file = memory_dest / rel
-                dst_file.parent.mkdir(parents=True, exist_ok=True)
+                dst_file = hooks_dest / src_file.name
                 if not dst_file.exists():
                     shutil.copy2(str(src_file), str(dst_file))
 
@@ -343,9 +348,9 @@ async def create_project(body: NewProject):
     setup_results: dict = {}
     if body.code_dir:
         code_path = Path(body.code_dir)
-        mcp_tpl_path = dest_dir / "memory" / "_mcp.json"
-        settings_tpl_path = dest_dir / "memory" / "claude" / "_settings.json"
-        claude_seed_path = dest_dir / "memory" / "claude" / "_CLAUDE.md"
+        mcp_tpl_path = _MEMORY_TEMPLATES / "_mcp.json"
+        settings_tpl_path = _MEMORY_TEMPLATES / "claude" / "_settings.json"
+        claude_seed_path = _MEMORY_TEMPLATES / "claude" / "_CLAUDE.md"
 
         def _render_tpl(tpl_file: Path) -> str:
             return (tpl_file.read_text()

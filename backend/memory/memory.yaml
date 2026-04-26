@@ -1,0 +1,193 @@
+# memory.yaml — Canonical mapping for all aicli memory files.
+#
+# Single source of truth for:
+#   1. CLI tools   — which context file each tool reads and where it is copied
+#   2. API providers — which system prompt file is injected before each API call
+#   3. Managed files — every file the memory system writes, with trigger and source
+#
+# This file lives in backend/memory/ (engine code).
+# It is NOT copied to individual projects — all projects share this one file.
+# Loaded by: memory_files.py:_load_providers()
+#
+# Content tiers:
+#   full    — CLAUDE.md-depth context (hotspots, key decisions, active features, recently changed)
+#   compact — .cursorrules depth (stack, conventions, active features only, ≤2000 tokens)
+#
+# Copy logic in write_root_files():
+#   source: claude_code  → render memory/claude/CLAUDE.md, copy to code_dir/<copy_to_code_dir>
+#   source: cursor       → render memory/cursor/rules.md, copy to code_dir/<copy_to_code_dir>
+#   source: claude_code  (with different copy_to_code_dir) → alias for same content, different dest
+
+# ── CLI tools ────────────────────────────────────────────────────────────────
+
+cli_tools:
+  - id: claude_code
+    name: "Claude Code"
+    description: "Anthropic Claude Code CLI — reads CLAUDE.md from project root"
+    tier: full
+    memory_file: claude/CLAUDE.md      # generated in memory/
+    copy_to_code_dir: CLAUDE.md        # destination relative to code_dir
+    mcp_template: _mcp.json            # template in backend/memory/templates/
+    mcp_dest: .mcp.json
+
+  - id: gemini_cli
+    name: "Gemini CLI"
+    description: "Google Gemini CLI — reads GEMINI.md from project root"
+    tier: full
+    source: claude_code                # same content as claude_code
+    memory_file: claude/CLAUDE.md
+    copy_to_code_dir: GEMINI.md
+    mcp_template: null
+
+  - id: codex_cli
+    name: "OpenAI Codex CLI"
+    description: "OpenAI Codex CLI — reads AGENTS.md from project root"
+    tier: full
+    source: claude_code                # same content as claude_code
+    memory_file: claude/CLAUDE.md
+    copy_to_code_dir: AGENTS.md
+    mcp_template: _codex.toml
+    mcp_dest: .codex/config.toml
+
+  - id: cursor
+    name: "Cursor"
+    description: "Cursor IDE — reads .cursorrules and .cursor/rules/*.mdrules"
+    tier: compact
+    memory_file: cursor/rules.md       # generated in memory/
+    copy_to_code_dir: .cursorrules
+    mcp_template: _mcp.json
+    mcp_dest: .cursor/mcp.json
+
+  - id: copilot
+    name: "GitHub Copilot"
+    description: "GitHub Copilot — reads .github/copilot-instructions.md"
+    tier: compact
+    source: cursor                     # same compact content as cursor
+    memory_file: cursor/rules.md
+    copy_to_code_dir: .github/copilot-instructions.md
+    mcp_template: null
+
+  - id: opencode
+    name: "OpenCode"
+    description: "OpenCode AI CLI — instructions embedded in opencode.json"
+    tier: compact
+    source: cursor
+    memory_file: cursor/rules.md
+    copy_to_code_dir: null
+    mcp_template: _opencode.json
+    mcp_dest: opencode.json
+
+# ── API providers ─────────────────────────────────────────────────────────────
+# All providers share one compact system prompt: memory/api/system_prompt.md
+# Pass this file as the `system` parameter before every API call.
+
+api_providers:
+  - id: claude_api
+    name: "Claude API"
+    description: "Anthropic Claude API (claude-opus-*, claude-sonnet-*, etc.)"
+    system_prompt_file: api/system_prompt.md
+
+  - id: openai_api
+    name: "OpenAI API"
+    description: "OpenAI GPT-4o, o1, o3, etc."
+    system_prompt_file: api/system_prompt.md
+
+  - id: gemini_api
+    name: "Gemini API"
+    description: "Google Gemini API (gemini-2.0-flash, gemini-1.5-pro, etc.)"
+    system_prompt_file: api/system_prompt.md
+    note: "For large-context tasks, also upload memory/code.md via the Files API"
+
+  - id: grok_api
+    name: "Grok API"
+    description: "xAI Grok API (grok-3, etc.)"
+    system_prompt_file: api/system_prompt.md
+
+  - id: deepseek_api
+    name: "DeepSeek API"
+    description: "DeepSeek API (deepseek-chat, deepseek-reasoner)"
+    system_prompt_file: api/system_prompt.md
+
+# ── Managed files ─────────────────────────────────────────────────────────────
+# Every file the aicli memory system writes, with trigger and source.
+#
+# Triggers:
+#   hook    — written by session-stop or tag-change hook → MemoryFiles.write_root_files()
+#   /memory — written by POST /projects/{project}/memory → generate_memory()
+#   both    — written by either path
+
+managed_files:
+
+  # ── Full-context LLM context files ──────────────────────────────────────────
+  - path: memory/claude/CLAUDE.md
+    description: "Full context — Stack, Key Decisions, In Progress, Active Features, Recently Changed"
+    trigger: both
+    generator: MemoryFiles.render_root_claude_md()
+    source: project_state.json + mem_work_items + mem_mrr_commits
+    copies_to:
+      - CLAUDE.md          # code_dir — Claude Code reads this
+      - GEMINI.md          # code_dir — Gemini CLI reads this
+      - AGENTS.md          # code_dir — Codex CLI reads this
+
+  # ── Compact context files ────────────────────────────────────────────────────
+  - path: memory/cursor/rules.md
+    description: "Compact AI coding rules — Stack, Key Decisions, In Progress, Active Features"
+    trigger: both
+    generator: MemoryFiles.render_cursorrules() [hook] | generate_memory() inline [/memory]
+    source: project_state.json + mem_work_items
+    copies_to:
+      - .cursorrules                       # code_dir — Cursor legacy root file
+      - .github/copilot-instructions.md    # code_dir — GitHub Copilot
+
+  - path: memory/api/system_prompt.md
+    description: "Compact system prompt injected by aicli CLI before every API call (all providers)"
+    trigger: both
+    generator: MemoryFiles.render_system_compact()
+    source: project_state.json + mem_work_items
+
+  # ── Code map ─────────────────────────────────────────────────────────────────
+  - path: memory/code.md
+    description: "Directory tree + active items + recently changed symbols + hotspots + file coupling"
+    trigger: /memory
+    generator: MemoryFiles._render_code_md()
+    source: code_dir filesystem + mem_mrr_commits_code + mem_mrr_commits_file_stats + mem_mrr_commits_file_coupling
+
+  # ── Project documentation ────────────────────────────────────────────────────
+  - path: memory/PROJECT.md
+    description: "Living project docs — user-managed sections + auto-updated sections on each /memory run"
+    trigger: /memory
+    auto_sections:
+      - Recent Work       # from synthesis.in_progress
+      - Key Decisions     # from synthesis.key_decisions
+      - Project Facts     # from synthesis.project_facts (optional)
+    source: user edits + mem_project_state.yaml:project_synthesis (Haiku)
+
+  # ── State files ───────────────────────────────────────────────────────────────
+  - path: state/project_state.json
+    description: "Structured synthesis — key_decisions, in_progress, tech_stack, project_summary, project_facts"
+    trigger: /memory
+    generator: _save_project_state()
+    source: mem_project_state.yaml:project_synthesis (Haiku)
+
+  - path: state/session_tags.json
+    description: "Active session tags — phase, feature, bug_ref"
+    trigger: PATCH /projects/{project}/session-tags
+    source: user input via API
+
+  # ── Engine template files (backend/memory/templates/) ─────────────────────────
+  # These are rendered once per project at creation time (POST /projects).
+  # Source: backend/memory/templates/ — NOT per-project files.
+  - path: memory/_mcp.json
+    description: "MCP server config template — rendered to code_dir/.mcp.json and .cursor/mcp.json"
+    trigger: project creation
+    template_source: backend/memory/templates/_mcp.json
+
+  - path: memory/claude/_settings.json
+    description: "Claude Code settings template — rendered to code_dir/.claude/settings.local.json"
+    trigger: project creation
+    template_source: backend/memory/templates/claude/_settings.json
+
+  - path: memory/claude/CLAUDE.md
+    description: "Seed CLAUDE.md — written once at project creation, replaced on first /memory run"
+    trigger: project creation
+    template_source: backend/memory/templates/claude/_CLAUDE.md

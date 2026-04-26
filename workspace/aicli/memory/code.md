@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-26 22:24 UTC -->
+<!-- Last updated: 2026-04-26 22:39 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -46,13 +46,12 @@ aicli/
 │   │   ├── pipeline_graph_runner.py
 │   │   └── pipeline_runner.py
 │   ├── prompts/
-│   │   ├── commit.yaml
-│   │   ├── conflict_detection.yaml
-│   │   ├── memory_files.yaml
-│   │   ├── memory_synthesis.yaml
-│   │   ├── misc.yaml
-│   │   ├── react_base.yaml
-│   │   └── work_items.yaml
+│   │   ├── agent_react.yaml
+│   │   ├── mem_context_files.yaml
+│   │   ├── mem_mrr_commits.yaml
+│   │   ├── mem_project_state.yaml
+│   │   ├── mem_session_tags.yaml
+│   │   └── mem_work_items.yaml
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── route_admin.py
@@ -225,8 +224,8 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_work_items.py` | 16.0 | 14 | 2621 | 0 | 2026-04-25 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/core/db_migrations.py` | 10.0 | 8 | 3250 | 0 | 2026-04-26 |
+| `backend/routers/route_projects.py` | 10.0 | 8 | 1676 | 0 | 2026-04-26 |
 | `backend/memory/memory_files.py` | 9.0 | 7 | 988 | 0 | 2026-04-26 |
-| `backend/routers/route_projects.py` | 9.0 | 7 | 1673 | 0 | 2026-04-26 |
 | `backend/routers/route_work_items.py` | 5.0 | 5 | 461 | 0 | 2026-04-24 |
 
 ## File Coupling

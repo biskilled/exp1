@@ -4,7 +4,7 @@ memory_files.py — Template-based LLM context file renderer.
 Renders all per-project context files from DB tables with NO LLM calls.
 Deterministic: same DB state → same output every time.
 
-Provider mapping is driven by _templates/memory/_providers.yaml.
+Provider mapping is driven by backend/memory/memory.yaml (engine config, not per-project).
 
 Managed files (memory/):
   claude/CLAUDE.md        — full context  → code_dir/CLAUDE.md (Claude Code)
@@ -120,11 +120,14 @@ class MemoryFiles:
     # ── Providers config ──────────────────────────────────────────────────────
 
     def _load_providers(self) -> dict:
-        """Load memory.yaml — maps CLI tools and API providers to context files."""
-        tpl_path = self._workspace() / "_templates" / "memory" / "memory.yaml"
+        """Load memory.yaml — canonical map of CLI tools, API providers, and managed files.
+
+        Reads from backend/memory/memory.yaml (engine code, not per-project workspace).
+        """
+        canon_path = Path(__file__).parent / "memory.yaml"
         try:
-            if tpl_path.exists():
-                return _yaml.safe_load(tpl_path.read_text(encoding="utf-8")) or {}
+            if canon_path.exists():
+                return _yaml.safe_load(canon_path.read_text(encoding="utf-8")) or {}
         except Exception as e:
             log.debug("_load_providers: %s", e)
         return {}
