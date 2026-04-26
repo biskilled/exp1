@@ -1,25 +1,25 @@
-<!-- Last updated: 2026-04-26 22:49 UTC -->
+<!-- Last updated: 2026-04-26 23:05 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
 
 ## Key Architectural Decisions
 
-- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ stores project state and memory files
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_ai_* tables for events, tags, facts, work items, features
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ removed (stale); _system/ removed (replaced by cli/ structure)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_mrr_* and mem_work_items tables
 - JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects
 - LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
 - Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
-- Claude Haiku dual-layer memory synthesis generating 5 output files with LLM response summarization + auto-tag suggestions
-- Async DAG workflow executor via asyncio.gather with loop-back and max_iterations cap; Cytoscape visualization with 2-pane approval panel
-- 4-layer memory architecture: ephemeral session → mem_mrr_* raw capture → mem_ai_events LLM digests + embeddings → mem_ai_work_items/project_facts
-- Smart chunking: per-class/function (Python/JS/TS), per-section (Markdown), per-file (diffs); commit deduplication by hash
-- Database schema as single source of truth (db_schema.sql) with m001-m076 migration framework; INT PKs canonical order (id → client_id → project_id → user_id → created_at → updated_at → embedding)
-- Work Items vs Use Cases separation: Work Items tab shows pending AI-classified items; Use Cases tab displays approved items with due dates, completion validation, auto-markdown generation
-- Use Case lifecycle: due dates (calendar MM/DD/YY or day offset), completion validation (all descendants validated), completed_at timestamp, MD file auto-move to documents/completed/ on completion
-- Drag-and-drop parent-child linking and merge functionality for work items with type validation (same-type only) and undo support via stored reverse API call closure
-- Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
-- Template workspace refactor: _templates/ reorganized into cli/pipelines/hooks subdirectories with per-provider hooks; aicli/ folder synced with template changes
+- Memory synthesis: Claude Haiku dual-layer generating 5 output files (PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md, recent_work.md) via /memory endpoint
+- Workspace structure: cli/{claude,mcp}/ for hooks/configs; pipelines/{prompts,samples}/ for workflows; documents/ for project files; state/ for runtime state
+- Memory files managed by memory.yaml: canonical single source in backend/memory/ (not duplicated); templates in backend/memory/templates/
+- Token-limited memory files: project.yaml config (claude_md_max_tokens, cursorrules_max_tokens, etc.) controls /memory output sizing
+- Work Items vs Use Cases: items tab shows pending AI-classified items; use cases tab displays hierarchy with due dates, completion validation, auto-markdown
+- Drag-and-drop parent-child/merge in Work Items and Use Cases via unconditional e.preventDefault() + document.elementFromPoint() target detection
+- Undo button as persistent toolbar button (not popup): stores reverse API call closure capturing original parent_id before link
+- Code.md structure: public symbols (classes/methods/functions) + file coupling/hotspot tables; single source for all LLM context (Claude/Cursor)
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: replaces need for mem_code_symbols; updated per commit; partial index optimization
+- Project facts deprecated: mem_ai_project_facts no longer auto-populated; facts extracted inline from memory synthesis; conflict_detection merged into mem_project_state.yaml
 
 ---
 
@@ -87,7 +87,7 @@ Layer 3 — Structured Artifacts (mem_ai_project_facts)
 Layer 4 — Work Items (mem_work_items)
 
 
-*See PROJECT.md for full documentation (292 lines total)*
+*See PROJECT.md for full documentation (309 lines total)*
 
 ## Recent Work (last 5 prompts)
 

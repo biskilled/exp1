@@ -34,7 +34,9 @@ session:
 # MEMORY BATCH SYSTEM
 # ------------------------------------------------------------------
 memory:
-  batch_size: 3        # generate pr_memory_events digest every N prompts in a session
+  batch_size: 10       # run /memory synthesis every N prompts in a session (0 = disabled)
+                       # cost: ~$0.001 (1 Haiku call) per trigger
+                       # e.g. 10 prompts ≈ 10-20 min of work; keeps project_state.json fresh
   auto_snapshot: false # auto-trigger feature snapshot when lifecycle→done
 
 # ------------------------------------------------------------------

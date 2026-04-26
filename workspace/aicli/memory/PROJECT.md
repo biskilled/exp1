@@ -284,9 +284,26 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Drag-and-drop parent-child/merge in Use Cases fixed via unconditional e.preventDefault() and document.elementFromPoint(e.clientX, e.clientY) target detection; relatedTarget=null bug on drop resolved
-- Undo button implementation as persistent toolbar button in Work Items and Use Cases; stores reverse API call closure capturing original parent_id before link
-- MD file generation aligned with use case structure: recursive CTE fetches all descendants, separate sections for Requirements/Completed/Open Items, no HTML comments, plain text timestamps
-- Completed section added to left sidebar under Planning group (Work Items/Use Cases/Documents/Completed); complete_use_case() validates all descendants done, moves MD to documents/completed/
-- Backend hardcoded string removal — localhost references in main.js, api.js to be replaced with dynamic config from aicli.yaml; centralizing backend URL configuration across frontend
-- UI code optimization and refactoring — removing duplicate/unused code, cleaning hardcoded strings, consolidating initialization methods across work_items.js and use_cases.js
+- Backend prompt refactoring: all LLM prompts migrated from hardcoded strings to YAML files under backend/memory/ (mem_*.yaml by domain table name)
+- Frontend hardcoded string removal: localhost references in main.js, api.js replaced with dynamic config from aicli.yaml
+- UI code optimization: removing duplicate/unused code across work_items.js, use_cases.js; consolidating initialization methods
+- Memory file generation validation: ensuring PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md persist to workspace after /memory run; adding integrity checks
+- Project facts migration: determining if facts should be re-enabled via /memory or remain deprecated; conflict_detection fully merged into mem_project_state.yaml
+
+## Key Decisions
+
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ removed (stale); _system/ removed (replaced by cli/ structure)
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_mrr_* and mem_work_items tables
+- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects
+- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
+- Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
+- Memory synthesis: Claude Haiku dual-layer generating 5 output files (PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md, recent_work.md) via /memory endpoint
+- Workspace structure: cli/{claude,mcp}/ for hooks/configs; pipelines/{prompts,samples}/ for workflows; documents/ for project files; state/ for runtime state
+- Memory files managed by memory.yaml: canonical single source in backend/memory/ (not duplicated); templates in backend/memory/templates/
+- Token-limited memory files: project.yaml config (claude_md_max_tokens, cursorrules_max_tokens, etc.) controls /memory output sizing
+- Work Items vs Use Cases: items tab shows pending AI-classified items; use cases tab displays hierarchy with due dates, completion validation, auto-markdown
+- Drag-and-drop parent-child/merge in Work Items and Use Cases via unconditional e.preventDefault() + document.elementFromPoint() target detection
+- Undo button as persistent toolbar button (not popup): stores reverse API call closure capturing original parent_id before link
+- Code.md structure: public symbols (classes/methods/functions) + file coupling/hotspot tables; single source for all LLM context (Claude/Cursor)
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: replaces need for mem_code_symbols; updated per commit; partial index optimization
+- Project facts deprecated: mem_ai_project_facts no longer auto-populated; facts extracted inline from memory synthesis; conflict_detection merged into mem_project_state.yaml

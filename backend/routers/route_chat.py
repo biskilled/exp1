@@ -531,8 +531,22 @@ def _get_batch_size(project: str) -> int:
 
 
 async def _generate_memory_batch(project: str, session_id: str, n: int) -> None:
-    """Placeholder: prompt batch digest handled by work items classification pipeline."""
-    pass
+    """Run /memory synthesis every N prompts (fire-and-forget from hook-prompt endpoint).
+
+    Calls generate_memory() directly in-process rather than an HTTP round-trip.
+    Runs silently — errors are logged at debug level so they never block prompt flow.
+    Cost: ~1 Haiku call (~$0.001) per batch. Controlled by aicli.yaml memory.batch_size.
+    """
+    try:
+        import logging as _log
+        _log.getLogger(__name__).info(
+            "[batch_memory] triggering /memory for project=%s after %d prompts", project, n
+        )
+        from routers.route_projects import generate_memory
+        await generate_memory(project)
+    except Exception as e:
+        import logging as _log
+        _log.getLogger(__name__).debug("[batch_memory] error for %s: %s", project, e)
 
 
 async def _check_backlog_threshold(project: str, source_type: str) -> None:
@@ -643,11 +657,12 @@ async def hook_log_prompt(project: str, body: HookLogRequest):
                      _json.dumps(hook_tags), src_value, ts, _ADMIN_UID),
                 )
 
-        # Fire memory batch digest every N prompts (fire-and-forget)
-        count = _count_session_prompts(project, body.session_id)
+        # Fire /memory synthesis every N prompts (fire-and-forget, controlled by aicli.yaml memory.batch_size)
         batch_size = _get_batch_size(project)
-        if count > 0 and count % batch_size == 0:
-            asyncio.create_task(_generate_memory_batch(project, body.session_id, batch_size))
+        if batch_size > 0:
+            count = _count_session_prompts(project, body.session_id)
+            if count > 0 and count % batch_size == 0:
+                asyncio.create_task(_generate_memory_batch(project, body.session_id, batch_size))
 
         # Backlog threshold check — fire-and-forget after each prompt stored
         asyncio.create_task(_check_backlog_threshold(project, "prompts"))
