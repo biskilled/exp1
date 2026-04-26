@@ -1,0 +1,87 @@
+# mem_project_state.yaml — LLM prompts for project state synthesis and fact conflict resolution.
+#
+# Covers two related concerns that both write to project-level state:
+#   1. project_synthesis  — Haiku synthesis of development history → project_state.json
+#   2. conflict_detection — Resolves conflicts when a fact key already exists in mem_ai_project_facts
+#
+# ── project_synthesis ────────────────────────────────────────────────────────────────────────────
+# Loaded at call-time in route_projects._synthesize_with_llm() so prompt edits
+# take effect without a backend restart.
+#
+# Variables interpolated at runtime (Python .format() style):
+#   {project_name}  — project slug
+#   {current_state} — JSON of current tech_stack / key_decisions / in_progress
+#   {prior_block}   — prior synthesis block (empty string if none)
+#   {proj_intro}    — first paragraph of PROJECT.md (≤600 chars)
+#   {entity_block}  — active features/bugs/tasks summary (empty if none)
+#   {history_len}   — number of history entries
+#   {history_text}  — formatted prompt/response pairs (oldest→newest)
+#
+# ── conflict_detection ──────────────────────────────────────────────────────────────────────────
+# Loaded via prompt_loader (key: conflict_detection).
+# Used by memory_promotion.py when a new fact value conflicts with an existing one
+# in mem_ai_project_facts.
+
+- key: project_synthesis
+  name: Project State Synthesis
+  description: "Haiku synthesis — extracts key_decisions, tech_stack, in_progress, project_facts from development history → project_state.json"
+  model: haiku
+  max_tokens: 2000
+  system: |
+    You are analyzing development history for project "{project_name}".
+
+    Current structured state:
+    {current_state}
+
+    {prior_block}
+    Project intro (from PROJECT.md):
+    {proj_intro}
+
+    {entity_block}
+    Development history ({history_len} entries, oldest→newest):
+    {history_text}
+
+    Return ONLY valid JSON (no markdown fences) with exactly these fields:
+    {{
+      "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],
+      "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],
+      "tech_stack": {{"component": "technology or version"}},
+      "project_summary": "2-3 sentence description of what this project is and its current state.",
+      "project_facts": {{
+        "stack": {{"key": "value"}},
+        "pattern": {{"key": "value"}},
+        "convention": {{"key": "value"}},
+        "constraint": {{"key": "value"}}
+      }}
+    }}
+
+    Rules:
+    - key_decisions: permanent facts (tech choices, auth approach, architecture patterns)
+    - in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)
+    - tech_stack: return ONLY the canonical set (~15 most relevant entries). Do not duplicate keys. Replace stale entries.
+    - project_facts: optional structured facts by category. Each category is a flat key→value map. Omit empty categories. Max 5 entries per category.
+    - Return ONLY valid JSON, no explanation outside the JSON.
+
+- key: conflict_detection
+  name: Conflict Detection
+  description: "Resolves conflicts between old and new values for the same project fact key in mem_ai_project_facts (supersede/merge/flag)"
+  model: haiku
+  max_tokens: 300
+  system: |
+    You are a project memory conflict resolver.
+    Given an old fact value and a new fact value for the same key, decide the correct resolution.
+
+    Resolution types:
+      supersede  — new value completely replaces the old (old is stale/wrong)
+      merge      — both values are partially correct; provide a merged_value combining them
+      flag       — values are contradictory and require human review
+
+    Return JSON only:
+    {
+      "conflict": true|false,
+      "conflicting_fact_key": "fact key name",
+      "resolution": "supersede|merge|flag",
+      "merged_value": "combined value (only for merge resolution, else null)",
+      "reasoning": "one sentence explaining the decision"
+    }
+    No preamble, no markdown fences.

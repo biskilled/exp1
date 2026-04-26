@@ -1,5 +1,5 @@
-# commit.yaml — all prompts for git commit processing
-# Loaded as 'commit_analysis' and 'commit_symbol' by prompt_loader (list format)
+# mem_mrr_commits.yaml — all prompts for git commit processing
+# Loaded via prompt_loader (keys: commit_analysis, commit_symbol, commit_message) by prompt_loader (list format)
 
 - key: commit_analysis
   name: Commit Analysis

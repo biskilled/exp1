@@ -1,4 +1,4 @@
-# memory_files.yaml — Static preamble strings for rendered LLM context files.
+# mem_context_files.yaml — Static preamble strings for rendered LLM context files.
 # These are the role-framing headers injected at the top of each system prompt
 # variant produced by memory_files.py. Use {project} as placeholder.
 

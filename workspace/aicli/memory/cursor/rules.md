@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 22:10 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 22:24 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-26] Lets start with step 1 - simplifiy. .ai folder under aiCli - I think it is not required and can be deleted. I am not sur
 - [2026-04-26] I do see tha under aiCli there is a workflow folder while in _tamplte it called pipeline. change the name to pipelines a
 - [2026-04-26] Are session_state and session_tags used ?
 - [2026-04-26] I would like to understand how project facts is populated ? it is not part of /memory ? can you check what /memory is po
 - [2026-04-26] project fact was good summery of fact on the project (language, descision I have asked .. and suppose to be part of proj
+- [2026-04-26] yes

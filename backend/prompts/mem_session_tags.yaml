@@ -1,4 +1,4 @@
-# misc.yaml — Miscellaneous one-off LLM prompts
+# mem_session_tags.yaml — Session tagging prompts
 # Loaded as individual keys by prompt_loader.
 
 - key: tag_suggestion

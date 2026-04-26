@@ -820,15 +820,18 @@ async def _synthesize_with_llm(
 
         # Load prompt from YAML file (hot-reloadable — no restart needed)
         _prompt_tpl = None
-        _prompt_file = Path(__file__).parent.parent / "prompts" / "memory_synthesis.yaml"
+        _prompt_file = Path(__file__).parent.parent / "prompts" / "mem_project_state.yaml"
         if _prompt_file.exists():
             try:
                 import yaml as _yaml
-                _prompt_tpl = (_yaml.safe_load(_prompt_file.read_text()) or {}).get("prompt", "")
+                entries = _yaml.safe_load(_prompt_file.read_text()) or []
+                if isinstance(entries, list):
+                    entry = next((e for e in entries if e.get("key") == "project_synthesis"), None)
+                    _prompt_tpl = (entry or {}).get("system", "")
             except Exception:
                 pass
         if not _prompt_tpl:
-            # Minimal inline fallback — prefer editing memory_synthesis.yaml
+            # Minimal inline fallback — prefer editing mem_project_state.yaml
             _prompt_tpl = (
                 'You are analyzing development history for project "{project_name}".\n\n'
                 "Current structured state:\n{current_state}\n\n"

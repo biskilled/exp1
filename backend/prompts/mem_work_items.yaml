@@ -1,4 +1,4 @@
-# work_items.yaml — Classification prompt + category config for the work items pipeline.
+# mem_work_items.yaml — Classification prompt + category config for the work items pipeline.
 #
 # ── TRIGGER ──────────────────────────────────────────────────────────────────
 # Manual only (default mode):

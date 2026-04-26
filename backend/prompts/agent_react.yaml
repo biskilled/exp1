@@ -1,4 +1,4 @@
-# react_base.yaml — ReAct system prompt fragments for agent.py
+# agent_react.yaml — ReAct system prompt fragments for agent.py
 # Loaded as 'react_pipeline_base' and 'react_suffix' by prompt_loader.
 
 - key: react_pipeline_base
