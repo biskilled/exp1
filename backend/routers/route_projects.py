@@ -871,7 +871,7 @@ async def _synthesize_with_llm(
                     break
 
         parsed: dict = json.loads(content)
-        required = {"key_decisions", "in_progress", "tech_stack", "memory_digest", "project_summary"}
+        required = {"key_decisions", "in_progress", "tech_stack", "project_summary"}
         if not required.issubset(parsed.keys()):
             return None
         return parsed
@@ -1139,6 +1139,17 @@ async def generate_memory(project_name: str):
         if synthesis.get("key_decisions"):
             kd_body = "\n".join(f"- {d}" for d in synthesis["key_decisions"]) + "\n"
             _update_project_md_section(proj_dir, "Key Decisions", kd_body)
+        if synthesis.get("project_facts"):
+            pf = synthesis["project_facts"]
+            pf_lines: list[str] = []
+            for cat, facts in sorted(pf.items()):
+                if facts:
+                    pf_lines.append(f"### {cat.title()}")
+                    for k, v in facts.items():
+                        pf_lines.append(f"- **{k}**: {v}")
+                    pf_lines.append("")
+            if pf_lines:
+                _update_project_md_section(proj_dir, "Project Facts", "\n".join(pf_lines))
     else:
         # No synthesis (no API key) — still bump the date so the file isn't
         # treated as stale on the next check.

@@ -22,6 +22,7 @@ Trigger conditions:
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -197,6 +198,18 @@ class MemoryFiles:
             "memory_config":    mem_cfg,
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
+
+        # Load project_state.json — must run regardless of DB availability so
+        # hook-triggered renders still get Stack & Key Decisions sections.
+        state_data: dict = {}
+        try:
+            state_path = pp.project_state_path(project)
+            if state_path.exists():
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        ctx["state_data"] = state_data
+
         if not db.is_available():
             return ctx
 
@@ -344,15 +357,29 @@ class MemoryFiles:
                 lines.append(f"- {d}/")
             lines.append("")
 
-        # Stack & Architecture
-        stack_cats = ("stack", "pattern")
-        stack_facts = []
-        for cat in stack_cats:
-            stack_facts.extend(ctx["facts_by_cat"].get(cat, []))
-        if stack_facts:
+        # Stack & Architecture — from project_state.json (authoritative after /memory run)
+        state_data = ctx.get("state_data", {})
+        tech_stack = state_data.get("tech_stack", {})
+        if tech_stack:
             lines += ["## Stack & Architecture", ""]
-            for key, val in stack_facts:
-                lines.append(f"- **{key}**: {val}")
+            for k, v in list(tech_stack.items())[:15]:
+                lines.append(f"- **{k}**: {v}")
+            lines.append("")
+
+        # Key Architectural Decisions — from project_state.json
+        key_decisions = state_data.get("key_decisions", [])
+        if key_decisions:
+            lines += ["## Key Architectural Decisions", ""]
+            for d in key_decisions[:15]:
+                lines.append(f"- {d}")
+            lines.append("")
+
+        # In Progress — from project_state.json
+        in_progress = state_data.get("in_progress", [])
+        if in_progress:
+            lines += ["## In Progress", ""]
+            for item in in_progress[:6]:
+                lines.append(f"- {item}")
             lines.append("")
 
         # Active Features / Use Cases
@@ -362,30 +389,6 @@ class MemoryFiles:
                 due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
                 desc = f" — {tag['description']}" if tag.get("description") else ""
                 lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
-            lines.append("")
-
-        # Conventions
-        conv_facts = ctx["facts_by_cat"].get("convention", [])
-        if conv_facts:
-            lines += ["## Conventions & Decisions", ""]
-            for key, val in conv_facts:
-                lines.append(f"- **{key}**: {val}")
-            lines.append("")
-
-        # Constraints
-        const_facts = ctx["facts_by_cat"].get("constraint", [])
-        if const_facts:
-            lines += ["## Constraints", ""]
-            for key, val in const_facts:
-                lines.append(f"- **{key}**: {val}")
-            lines.append("")
-
-        # Client Requirements
-        client_facts = ctx["facts_by_cat"].get("client", [])
-        if client_facts:
-            lines += ["## Client Requirements", ""]
-            for key, val in client_facts:
-                lines.append(f"- **{key}**: {val}")
             lines.append("")
 
         # Code Hotspots
@@ -471,25 +474,20 @@ class MemoryFiles:
         project = ctx["project"]
         lines = [f"<!-- Last updated: {ctx['ts']} -->", f"## Project: {project}", ""]
 
-        stack = ctx["facts_by_cat"].get("stack", [])
-        if stack:
+        state_data = ctx.get("state_data", {})
+
+        tech_stack = state_data.get("tech_stack", {})
+        if tech_stack:
             lines += ["## Stack", ""]
-            for key, val in stack[:8]:
-                lines.append(f"{key}: {val}")
+            for k, v in list(tech_stack.items())[:8]:
+                lines.append(f"{k}: {v}")
             lines.append("")
 
-        patterns = ctx["facts_by_cat"].get("pattern", [])
-        if patterns:
-            lines += ["## Patterns in Use", ""]
-            for key, val in patterns[:6]:
-                lines.append(f"{key}: {val}")
-            lines.append("")
-
-        conventions = ctx["facts_by_cat"].get("convention", [])
-        if conventions:
-            lines += ["## Coding Conventions", ""]
-            for key, val in conventions[:8]:
-                lines.append(f"{key}: {val}")
+        key_decisions = state_data.get("key_decisions", [])
+        if key_decisions:
+            lines += ["## Key Decisions", ""]
+            for d in key_decisions[:8]:
+                lines.append(f"- {d}")
             lines.append("")
 
         # Active features (concise)
@@ -499,11 +497,11 @@ class MemoryFiles:
                 lines.append(f"{tag['name']}: {tag['description'][:80]}")
             lines.append("")
 
-        constraints = ctx["facts_by_cat"].get("constraint", [])
-        if constraints:
-            lines += ["## Never Do", ""]
-            for _, val in constraints[:5]:
-                lines.append(f"- {val}")
+        in_progress = state_data.get("in_progress", [])
+        if in_progress:
+            lines += ["## In Progress", ""]
+            for item in in_progress[:4]:
+                lines.append(f"- {item}")
             lines.append("")
 
         lines.append(f"_Last updated: {ctx['ts']}_")

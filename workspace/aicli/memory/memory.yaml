@@ -100,3 +100,101 @@ api_providers:
     name: "DeepSeek API"
     description: "DeepSeek API (deepseek-chat, deepseek-reasoner)"
     system_prompt_file: api/system_prompt.md
+
+# ── Managed files manifest ─────────────────────────────────────────────────────
+# All files written by the aicli memory system, with trigger conditions and sources.
+# "trigger: hook" = written by session-stop / tag-change hook (MemoryFiles.write_root_files)
+# "trigger: /memory" = written by POST /projects/{project}/memory (generate_memory)
+# "trigger: both" = written by both paths
+
+managed_files:
+  # ── Full-context files (CLAUDE.md depth) ────────────────────────────────────
+  - path: memory/claude/CLAUDE.md
+    description: "Full context for Claude Code CLI — Stack, Key Decisions, In Progress, Active Features, Recently Changed"
+    trigger: both
+    source: project_state.json + mem_work_items + mem_mrr_commits
+    generator: MemoryFiles.render_root_claude_md()
+    copies_to: CLAUDE.md  # relative to code_dir
+
+  - path: memory/claude/CLAUDE.md
+    description: "Gemini CLI full context — same content as CLAUDE.md"
+    trigger: both
+    source: same as claude_code
+    copies_to: GEMINI.md  # relative to code_dir
+
+  - path: memory/claude/CLAUDE.md
+    description: "Codex CLI full context — same content as CLAUDE.md"
+    trigger: both
+    source: same as claude_code
+    copies_to: AGENTS.md  # relative to code_dir
+
+  # ── Compact files (Cursor depth) ────────────────────────────────────────────
+  - path: memory/cursor/rules.md
+    description: "Cursor AI coding rules — Stack, Key Decisions, Active Features, In Progress"
+    trigger: both
+    source: project_state.json + mem_work_items
+    generator: MemoryFiles.render_cursorrules() [hook] | generate_memory() inline [/memory]
+    copies_to: .cursorrules  # relative to code_dir
+
+  - path: memory/cursor/rules.md
+    description: "GitHub Copilot instructions — same content as cursor/rules.md"
+    trigger: both
+    source: same as cursor
+    copies_to: .github/copilot-instructions.md  # relative to code_dir
+
+  # ── Shared API system prompt ─────────────────────────────────────────────────
+  - path: memory/api/system_prompt.md
+    description: "Compact system prompt for all API providers (Claude/OpenAI/Gemini/Grok/DeepSeek)"
+    trigger: both
+    source: project_state.json + mem_work_items
+    generator: MemoryFiles.render_system_compact()
+
+  # ── Code map ─────────────────────────────────────────────────────────────────
+  - path: memory/code.md
+    description: "Directory tree + active work items + recently changed symbols + hotspots + file coupling"
+    trigger: /memory
+    source: code_dir filesystem + mem_mrr_commits_code + mem_mrr_commits_file_stats + mem_mrr_commits_file_coupling
+    generator: MemoryFiles._render_code_md()
+
+  # ── Project documentation ────────────────────────────────────────────────────
+  - path: memory/PROJECT.md
+    description: "Living project documentation — user-managed sections + auto-updated sections"
+    trigger: /memory
+    source: user edits (<!-- user-managed -->) + LLM synthesis (<!-- auto-updated by /memory -->)
+    auto_sections:
+      - Recent Work      # from synthesis.in_progress
+      - Key Decisions    # from synthesis.key_decisions
+      - Project Facts    # from synthesis.project_facts (optional)
+
+  # ── State files (not LLM context, but written by memory system) ──────────────
+  - path: state/project_state.json
+    description: "Structured synthesis output — key_decisions, in_progress, tech_stack, project_summary"
+    trigger: /memory
+    source: LLM synthesis (_synthesize_with_llm → Haiku)
+    generator: _save_project_state()
+
+  - path: state/session_tags.json
+    description: "Active session tags — phase, feature, bug_ref"
+    trigger: /tags POST (set_session_tags)
+    source: user input via API
+
+  # ── MCP/tool config files ────────────────────────────────────────────────────
+  - path: memory/_mcp.json
+    description: "Claude Code / Cursor MCP server config template"
+    trigger: project creation
+    copies_to: .mcp.json  # relative to code_dir
+
+  - path: memory/_codex.toml
+    description: "Codex CLI MCP config template"
+    trigger: project creation
+    copies_to: .codex/config.toml  # relative to code_dir
+
+  - path: memory/_opencode.json
+    description: "OpenCode config template"
+    trigger: project creation
+    copies_to: opencode.json  # relative to code_dir
+
+  - path: memory/memory.yaml
+    description: "This file — maps all CLI tools, API providers, and managed files"
+    trigger: never (static template; copied from _templates/memory/memory.yaml on project creation)
+    source: _templates/memory/memory.yaml

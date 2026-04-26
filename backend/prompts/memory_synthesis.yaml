@@ -32,11 +32,18 @@ prompt: |
     "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],
     "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],
     "tech_stack": {{"component": "technology or version"}},
-    "project_summary": "2-3 sentence description of what this project is and its current state."
+    "project_summary": "2-3 sentence description of what this project is and its current state.",
+    "project_facts": {{
+      "stack": {{"key": "value"}},
+      "pattern": {{"key": "value"}},
+      "convention": {{"key": "value"}},
+      "constraint": {{"key": "value"}}
+    }}
   }}
 
   Rules:
   - key_decisions: permanent facts (tech choices, auth approach, architecture patterns)
   - in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)
   - tech_stack: return ONLY the canonical set (~15 most relevant entries). Do not duplicate keys. Replace stale entries.
+  - project_facts: optional structured facts by category. Each category is a flat key→value map. Omit empty categories. Max 5 entries per category.
   - Return ONLY valid JSON, no explanation outside the JSON.
