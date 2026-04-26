@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 17:18 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 17:38 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-26] Before I continue , I would like to refactor the code as there wae ltos of changes. first is backend - all llm prompts t
 - [2026-04-26] I am going throw your sujjestion in the aiCli memory -  - optimise claude.md and all memroy files - it must be confgiure
 - [2026-04-26] ok. just to confim - there is no mem_ai_event. currently there is code.md file
 - [2026-04-26] I wpuld you to fix that as both file are imprtant - file_soupling and file_stats. Also can you check what is file_coupli
 - [2026-04-26] Can you review on that : 1. is it required - would embedding any commit and prompt will help memory? 2. when is it used 
+- [2026-04-26] where is the code.md file saved ? I dont see that file anywhere ? Also you mention about mirror table embedding (promts,

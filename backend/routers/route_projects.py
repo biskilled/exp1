@@ -1351,11 +1351,17 @@ async def generate_memory(project_name: str):
         code_path = code_path.resolve()
         if code_path.exists() and code_path.is_dir():
             skipped_copy = False
+            code_md_content_local = ""
+            try:
+                code_md_content_local = (sys_dir / "aicli" / "code.md").read_text()
+            except Exception:
+                pass
             for src_content, dest_rel, make_parents in [
                 (claude_md_content, "CLAUDE.md", False),
                 (cursor_md, ".cursor/rules/aicli.mdrules", True),
                 (copilot_md, ".github/copilot-instructions.md", True),
                 (ai_rules_md, ".ai/rules.md", True),
+                (code_md_content_local, ".aicli/code.md", True),
             ]:
                 if not src_content:
                     continue
