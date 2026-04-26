@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 18:21 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 17:58 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -78,8 +78,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
+- [2026-04-26] I wpuld you to fix that as both file are imprtant - file_soupling and file_stats. Also can you check what is file_coupli
 - [2026-04-26] Can you review on that : 1. is it required - would embedding any commit and prompt will help memory? 2. when is it used 
 - [2026-04-26] where is the code.md file saved ? I dont see that file anywhere ? Also you mention about mirror table embedding (promts,
 - [2026-04-26] Did you update the aiCli_memory with latest changes ?
 - [2026-04-26] I think there is a bit if confustion. is .aiCli required ? all data suppose to be under aiCli workspace (including code.
-- [2026-04-26] code.md not suppose to have all project strucure - folder , classes, method - use cases. this file not suppose to be ali

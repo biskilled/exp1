@@ -144,12 +144,25 @@ class MemoryFiles:
         return self._workspace() / project / "_system"
 
     def _code_dir(self, project: str) -> Optional[Path]:
+        # Try pipeline helper first (reads project.yaml + settings)
         try:
-            from gitops.git import get_project_code_dir
+            from pipelines.pipeline_git import get_project_code_dir
             cd = get_project_code_dir(project)
-            return Path(cd) if cd else None
+            if cd:
+                return Path(cd)
         except Exception:
-            return None
+            pass
+        # Fallback: read project.yaml directly from workspace
+        try:
+            proj_yaml = self._workspace() / project / "project.yaml"
+            if proj_yaml.exists():
+                cfg = _yaml.safe_load(proj_yaml.read_text()) or {}
+                cd = cfg.get("code_dir")
+                if cd:
+                    return Path(cd)
+        except Exception:
+            pass
+        return None
 
     # ── Data loading ──────────────────────────────────────────────────────────
 
@@ -260,10 +273,11 @@ class MemoryFiles:
         except Exception:
             pass
 
-        # Code structure (top-level dirs)
+        # Code structure (top-level dirs) + store resolved code_dir in ctx
         try:
             code_dir = self._code_dir(project)
             if code_dir and code_dir.exists():
+                ctx["code_dir"] = code_dir
                 _SKIP = {
                     "__pycache__", "node_modules", "venv", ".git", "dist",
                     "build", ".venv", "old",
@@ -272,8 +286,8 @@ class MemoryFiles:
                     p.name for p in code_dir.iterdir()
                     if p.is_dir() and not p.name.startswith(".") and p.name not in _SKIP
                 )[:20]
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("_load_context code_dir error: %s", e)
 
         return ctx
 
@@ -631,30 +645,100 @@ class MemoryFiles:
 
         return "\n".join(lines)
 
+    # dirs/files to skip when building the directory tree
+    _TREE_SKIP: frozenset[str] = frozenset({
+        "__pycache__", "node_modules", ".git", "dist", "build",
+        ".venv", "venv", "old", ".DS_Store", "*.pyc",
+    })
+
+    def _render_dir_tree(self, root: Path, max_depth: int = 3) -> list[str]:
+        """Return lines of an ASCII directory tree, depth-limited."""
+        out: list[str] = [root.name + "/"]
+
+        def _walk(path: Path, prefix: str, depth: int) -> None:
+            if depth > max_depth:
+                return
+            try:
+                entries = sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+            except PermissionError:
+                return
+            entries = [
+                e for e in entries
+                if e.name not in self._TREE_SKIP and not e.name.startswith(".")
+            ]
+            for i, entry in enumerate(entries):
+                is_last = i == len(entries) - 1
+                connector = "└── " if is_last else "├── "
+                label = entry.name + ("/" if entry.is_dir() else "")
+                out.append(f"{prefix}{connector}{label}")
+                if entry.is_dir():
+                    child_prefix = prefix + ("    " if is_last else "│   ")
+                    _walk(entry, child_prefix, depth + 1)
+
+        _walk(root, "", 1)
+        return out
+
     def _render_code_md(self, ctx: dict) -> str:
-        """Render _system/aicli/code.md — code structure, hotspots, file coupling."""
+        """Render _system/aicli/code.md — full code map for LLMs.
+
+        Sections:
+          1. Project Structure  — ASCII directory tree (depth 3)
+          2. Active Work Items  — open/in-progress features and use-cases
+          3. Recently Changed   — last 20 symbol-level changes from commits
+          4. Code Hotspots      — files with highest commit frequency
+          5. File Coupling      — tightly co-changed file pairs
+        """
         project = ctx["project"]
         ts = ctx["ts"]
-        lines = [
+        lines: list[str] = [
             f"<!-- Last updated: {ts} -->",
-            f"# Code Intelligence: {project}",
-            f"_Generated: {ts}_",
+            f"# Code Map: {project}",
+            f"_Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_",
             "",
         ]
 
-        # Top-level structure
-        if ctx.get("code_structure"):
-            lines += ["## Top-Level Structure", ""]
-            for d in ctx["code_structure"]:
-                lines.append(f"- `{d}/`")
+        # ── 1. Project Structure ──────────────────────────────────────────────
+        code_dir = ctx.get("code_dir") or self._code_dir(project)
+        if code_dir and code_dir.exists():
+            lines += ["## Project Structure", "", "```"]
+            lines += self._render_dir_tree(code_dir, max_depth=3)
+            lines += ["```", ""]
+
+        # ── 2. Active Work Items ──────────────────────────────────────────────
+        active_tags = ctx.get("active_tags") or []
+        if active_tags:
+            lines += ["## Active Work Items", ""]
+            for t in active_tags:
+                status = t.get("status") or "open"
+                due = f"  _(due {t['due_date']})_" if t.get("due_date") else ""
+                wi_type = t.get("type") or ""
+                type_tag = f" `{wi_type}`" if wi_type else ""
+                lines.append(f"- **[{status}]**{type_tag} {t['name']}{due}")
             lines.append("")
 
-        # Hotspot table
+        # ── 3. Recently Changed Symbols ───────────────────────────────────────
+        recent = ctx.get("recently_changed") or []
+        if recent:
+            lines += [
+                "## Recently Changed",
+                "_Last 20 symbol-level changes (class / method / function)._",
+                "",
+                "| Symbol | Change | Commit | Summary |",
+                "|--------|--------|--------|---------|",
+            ]
+            for r in recent[:20]:
+                summary = (r.get("summary") or "").replace("|", "\\|")[:70]
+                lines.append(
+                    f"| `{r['label']}` | {r['change']} | `{r['hash']}` | {summary} |"
+                )
+            lines.append("")
+
+        # ── 4. Code Hotspots ──────────────────────────────────────────────────
         hotspots = ctx.get("hotspots") or []
         if hotspots:
             lines += [
                 "## Code Hotspots",
-                "_Files with highest commit frequency. Consider refactoring._",
+                "_Files with highest commit frequency — candidates for refactoring._",
                 "",
                 "| File | Score | Commits | Lines | Bug Fixes | Last Changed |",
                 "|------|-------|---------|-------|-----------|--------------|",
@@ -665,10 +749,8 @@ class MemoryFiles:
                     f" | {h['lines']} | {h['bug_commits']} | {h['last_changed']} |"
                 )
             lines.append("")
-        else:
-            lines += ["## Code Hotspots", "", "_No files above hotspot threshold yet._", ""]
 
-        # Coupling table
+        # ── 5. File Coupling ──────────────────────────────────────────────────
         coupling = ctx.get("coupling") or []
         if coupling:
             lines += [
@@ -682,7 +764,7 @@ class MemoryFiles:
                 lines.append(f"| `{c['file_a']}` | `{c['file_b']}` | {c['count']} |")
             lines.append("")
 
-        lines += ["---", f"_Generated by aicli. Run `/memory` to refresh._"]
+        lines += ["---", "_Generated by aicli. Run `/memory` to refresh._"]
         return "\n".join(lines)
 
     def _suggest_hotspot_work_items(

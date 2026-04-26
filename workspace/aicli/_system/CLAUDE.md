@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-26 17:49 UTC -->
+<!-- Last updated: 2026-04-26 18:21 UTC -->
 # Senior Python Architect — aicli
 
 You are a senior Python software architect with deep expertise in:
@@ -128,8 +128,8 @@ Layer 4 — Work Items (mem_work_items)
 - `backend/memory/memory_work_items.py` — score 16.0 (14 commits, 2621 lines)
 - `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
 - `backend/core/db_migrations.py` — score 10.0 (8 commits, 3250 lines)
+- `backend/routers/route_projects.py` — score 7.0 (5 commits, 1676 lines)
 - `backend/memory/memory_files.py` — score 6.0 (4 commits, 862 lines)
-- `backend/routers/route_projects.py` — score 6.0 (4 commits, 1687 lines)
 - `backend/routers/route_work_items.py` — score 5.0 (5 commits, 461 lines)
 
 _Full details: `_system/aicli/code.md`_
