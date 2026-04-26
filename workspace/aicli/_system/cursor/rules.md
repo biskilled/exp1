@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 11:25 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-26 11:44 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -75,11 +75,3 @@ _Last updated: 2026-04-26_
 - Drag-and-drop parent-child linking and merge functionality for work items with type validation (same-type only) and undo support via stored reverse API call closure
 - Text selection enabled across UI for clipboard copy-paste; undo button in Work Items and Use Cases toolbars as persistent button (not popup)
 - Template workspace refactor: _templates/ reorganized into cli/pipelines/hooks subdirectories with per-provider hooks; aicli/ folder synced with template changes
-
-## Recent Context (last 5 changes)
-
-- [2026-04-25] I would like to have a recreate / full update the aiCli_memory file, as I am not sure it is updted with latest changes. 
-- [2026-04-25] I would like to speak about the commit based on the prevoius prompts -  The goal is have optimsed overview of all code .
-- [2026-04-25] I think the table you sujjest - mem_code_symbols looks qute similar to mem_mrr_commits_code which can be used (there are
-- [2026-04-25] yes. who update the code.md file also what process check missing commits or building that code.md file from scratch ? ca
-- [2026-04-26] Before I continue , I would like to refactor the code as there wae ltos of changes. first is backend - all llm prompts t

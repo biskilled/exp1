@@ -20,3 +20,10 @@ work_items:
       commits: 1000
       messages: 5000
       items: 500
+
+memory:
+  claude_md_max_tokens: 8000        # CLAUDE.md hard cap; oldest "Recently Changed" rolls off first
+  cursorrules_max_tokens: 2000      # .cursorrules cap
+  recent_work_max_entries: 30       # max symbols shown in "Recently Changed"
+  hotspot_threshold: 5              # hotspot_score >= this → shown in CLAUDE.md + code.md
+  hotspot_suggest_work_item: true   # auto-open refactor task for hotspot files

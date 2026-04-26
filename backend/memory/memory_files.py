@@ -20,11 +20,12 @@ Trigger conditions:
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+import yaml as _yaml
 
 from core.database import db
 from core.config import settings
@@ -64,6 +65,22 @@ _SQL_RECENTLY_CHANGED = """
     LIMIT 200
 """
 
+_SQL_HOTSPOTS = """
+    SELECT file_path, hotspot_score, commit_count, current_lines, bug_commit_count, last_changed_at
+    FROM mem_mrr_commits_file_stats
+    WHERE project_id = %s AND hotspot_score >= %s
+    ORDER BY hotspot_score DESC
+    LIMIT 20
+"""
+
+_SQL_COUPLING = """
+    SELECT file_a, file_b, co_change_count
+    FROM mem_mrr_commits_file_coupling
+    WHERE project_id = %s AND co_change_count >= 3
+    ORDER BY co_change_count DESC
+    LIMIT 10
+"""
+
 
 # ── MemoryFiles ────────────────────────────────────────────────────────────────
 
@@ -72,6 +89,34 @@ class MemoryFiles:
     Renders and writes all LLM context files from DB tables.
     No LLM calls — pure template rendering.
     """
+
+    # ── Token helpers ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _tokens(text: str) -> int:
+        """Approximate token count (1 token ≈ 4 chars)."""
+        return max(1, len(text) // 4)
+
+    # ── Config loading ────────────────────────────────────────────────────────
+
+    def _load_memory_config(self, project: str) -> dict:
+        """Load memory size config from project.yaml, with defaults."""
+        defaults = {
+            "claude_md_max_tokens": 8000,
+            "cursorrules_max_tokens": 2000,
+            "recent_work_max_entries": 30,
+            "hotspot_threshold": 5,
+            "hotspot_suggest_work_item": True,
+        }
+        try:
+            proj_yaml = self._workspace() / project / "project.yaml"
+            if proj_yaml.exists():
+                data = _yaml.safe_load(proj_yaml.read_text(encoding="utf-8")) or {}
+                mem = data.get("memory", {})
+                return {**defaults, **mem}
+        except Exception:
+            pass
+        return defaults
 
     # ── Path helpers ──────────────────────────────────────────────────────────
 
@@ -93,6 +138,7 @@ class MemoryFiles:
 
     def _load_context(self, project: str) -> dict:
         """Load all DB data needed for rendering."""
+        mem_cfg = self._load_memory_config(project)
         ctx: dict = {
             "project":          project,
             "facts_by_cat":     {},      # category → [(key, value)]
@@ -100,6 +146,9 @@ class MemoryFiles:
             "recently_changed": [],      # recently changed symbols from commits
             "project_summary":  "",      # first lines from PROJECT.md
             "code_structure":   [],      # top-level dirs in code_dir
+            "hotspots":         [],      # high-score files from mem_mrr_commits_file_stats
+            "coupling":         [],      # tightly-coupled file pairs
+            "memory_config":    mem_cfg,
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
         if not db.is_available():
@@ -149,6 +198,29 @@ class MemoryFiles:
                         ctx["recently_changed"] = list(seen.values())[:50]
                     except Exception as e:
                         log.debug(f"_load_context recently_changed error: {e}")
+
+                    # Code hotspots + file coupling
+                    try:
+                        threshold = mem_cfg.get("hotspot_threshold", 5)
+                        cur.execute(_SQL_HOTSPOTS, (project_id, threshold))
+                        ctx["hotspots"] = [
+                            {
+                                "file":        row[0],
+                                "score":       row[1],
+                                "commits":     row[2],
+                                "lines":       row[3] or 0,
+                                "bug_commits": row[4] or 0,
+                                "last_changed": row[5].date().isoformat() if row[5] else "",
+                            }
+                            for row in cur.fetchall()
+                        ]
+                        cur.execute(_SQL_COUPLING, (project_id,))
+                        ctx["coupling"] = [
+                            {"file_a": row[0], "file_b": row[1], "count": row[2]}
+                            for row in cur.fetchall()
+                        ]
+                    except Exception as e:
+                        log.debug(f"_load_context hotspots error: {e}")
 
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
@@ -203,7 +275,12 @@ class MemoryFiles:
     def render_root_claude_md(self, ctx: dict) -> str:
         """Render root CLAUDE.md — Claude CLI auto-loads this."""
         project = ctx["project"]
-        lines = [f"# {project}", ""]
+        ts = ctx["ts"]
+        mem_cfg = ctx.get("memory_config", {})
+        max_tokens = mem_cfg.get("claude_md_max_tokens", 8000)
+        max_recent = mem_cfg.get("recent_work_max_entries", 30)
+
+        lines = [f"<!-- Last updated: {ts} -->", f"# {project}", ""]
 
         # Project summary (from PROJECT.md)
         if ctx.get("project_summary"):
@@ -236,22 +313,6 @@ class MemoryFiles:
                 lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
             lines.append("")
 
-        # Recently Changed
-        recent = ctx.get("recently_changed") or []
-        if recent:
-            lines += [f"## Recently Changed (last commits)", ""]
-            shown = recent[:30]
-            for item in shown:
-                summary_part = f" — {item['summary']}" if item.get("summary") else ""
-                lines.append(
-                    f"- `{item['label']}` — {item['change']} in {item['hash']}{summary_part}"
-                )
-            if len(recent) > 30:
-                lines.append(f"(+ {len(recent) - 30} more — see git log)")
-            lines.append("")
-        else:
-            lines += ["## Recently Changed", "", "(no commit history indexed yet)", ""]
-
         # Conventions
         conv_facts = ctx["facts_by_cat"].get("convention", [])
         if conv_facts:
@@ -276,13 +337,53 @@ class MemoryFiles:
                 lines.append(f"- **{key}**: {val}")
             lines.append("")
 
-        # Memory reference footer
-        lines += [
+        # Code Hotspots
+        hotspots = ctx.get("hotspots") or []
+        if hotspots:
+            lines += ["## Code Hotspots", ""]
+            for h in hotspots[:10]:
+                bug_note = f", {h['bug_commits']} bug fixes" if h.get("bug_commits") else ""
+                lines.append(
+                    f"- `{h['file']}` — score {h['score']}"
+                    f" ({h['commits']} commits{bug_note}, {h['lines']} lines)"
+                )
+            lines.append("")
+
+        # Footer (reserved space; placed after recently changed below)
+        footer = [
             "---",
             "_Auto-generated by aicli memory system. Run `/memory` to refresh._",
-            f"_Last updated: {ctx['ts']}_",
+            f"_Last updated: {ts}_",
         ]
 
+        # Recently Changed — token-budget aware (oldest entries roll off first)
+        recent = ctx.get("recently_changed") or []
+        if recent:
+            header_lines = [f"## Recently Changed (last commits)", ""]
+            current_text = "\n".join(lines + header_lines + footer)
+            budget = max_tokens - self._tokens(current_text) - 20  # 20 token margin
+
+            shown: list[str] = []
+            for item in recent[:max_recent]:
+                summary_part = f" — {item['summary']}" if item.get("summary") else ""
+                entry = f"- `{item['label']}` — {item['change']} in {item['hash']}{summary_part}"
+                if budget - self._tokens(entry) < 0:
+                    break
+                shown.append(entry)
+                budget -= self._tokens(entry)
+
+            lines += header_lines + shown
+            rolled = len(recent) - len(shown)
+            if rolled > 0:
+                lines.append(
+                    f"_({rolled} older {'entry' if rolled == 1 else 'entries'} rolled off"
+                    " — run `git log` for full history)_"
+                )
+            lines.append("")
+        else:
+            lines += ["## Recently Changed", "", "(no commit history indexed yet)", ""]
+
+        lines += footer
         return "\n".join(lines)
 
     def render_feature_claude_md(self, project: str, tag_name: str) -> str:
@@ -317,7 +418,7 @@ class MemoryFiles:
     def render_cursorrules(self, ctx: dict) -> str:
         """Render .cursorrules — kept under 2000 tokens."""
         project = ctx["project"]
-        lines = [f"## Project: {project}", ""]
+        lines = [f"<!-- Last updated: {ctx['ts']} -->", f"## Project: {project}", ""]
 
         stack = ctx["facts_by_cat"].get("stack", [])
         if stack:
@@ -354,6 +455,7 @@ class MemoryFiles:
                 lines.append(f"- {val}")
             lines.append("")
 
+        lines.append(f"_Last updated: {ctx['ts']}_")
         return "\n".join(lines)
 
     def render_system_compact(self, ctx: dict) -> str:
@@ -365,7 +467,7 @@ class MemoryFiles:
                "Respect all project facts below. Never contradict them unless explicitly asked.\n"
                "When working on a specific feature, ask for its snapshot before making decisions."
         ).format(project=project)
-        lines = _preamble.split("\n") + [""]
+        lines = [f"<!-- Last updated: {ctx['ts']} -->"] + _preamble.split("\n") + [""]
 
         # Stack (max 5)
         stack = (
@@ -397,7 +499,7 @@ class MemoryFiles:
                "Respect all project facts below. Never contradict them unless explicitly asked.\n"
                "When working on a specific feature, ask for its snapshot before making decisions."
         ).format(project=project)
-        lines = _preamble.split("\n") + [""]
+        lines = [f"<!-- Last updated: {ctx['ts']} -->"] + _preamble.split("\n") + [""]
 
         # All fact categories
         cat_labels = {
@@ -438,7 +540,7 @@ class MemoryFiles:
             or "You are an AI assistant helping develop the **{project}** project.\n"
                "Follow project conventions exactly. Do not introduce new dependencies without approval."
         ).format(project=project)
-        lines = _preamble.split("\n") + [""]
+        lines = [f"<!-- Last updated: {ctx['ts']} -->"] + _preamble.split("\n") + [""]
 
         stack = (
             ctx["facts_by_cat"].get("stack", []) +
@@ -481,6 +583,7 @@ class MemoryFiles:
         project = ctx["project"]
         ts = ctx["ts"]
         lines = [
+            f"<!-- Last updated: {ts} -->",
             f"# Project Context: {project}",
             f"# Generated: {ts}",
             "",
@@ -507,9 +610,101 @@ class MemoryFiles:
 
         return "\n".join(lines)
 
+    def _render_code_md(self, ctx: dict) -> str:
+        """Render _system/aicli/code.md — code structure, hotspots, file coupling."""
+        project = ctx["project"]
+        ts = ctx["ts"]
+        lines = [
+            f"<!-- Last updated: {ts} -->",
+            f"# Code Intelligence: {project}",
+            f"_Generated: {ts}_",
+            "",
+        ]
+
+        # Top-level structure
+        if ctx.get("code_structure"):
+            lines += ["## Top-Level Structure", ""]
+            for d in ctx["code_structure"]:
+                lines.append(f"- `{d}/`")
+            lines.append("")
+
+        # Hotspot table
+        hotspots = ctx.get("hotspots") or []
+        if hotspots:
+            lines += [
+                "## Code Hotspots",
+                "_Files with highest commit frequency. Consider refactoring._",
+                "",
+                "| File | Score | Commits | Lines | Bug Fixes | Last Changed |",
+                "|------|-------|---------|-------|-----------|--------------|",
+            ]
+            for h in hotspots:
+                lines.append(
+                    f"| `{h['file']}` | {h['score']} | {h['commits']}"
+                    f" | {h['lines']} | {h['bug_commits']} | {h['last_changed']} |"
+                )
+            lines.append("")
+        else:
+            lines += ["## Code Hotspots", "", "_No files above hotspot threshold yet._", ""]
+
+        # Coupling table
+        coupling = ctx.get("coupling") or []
+        if coupling:
+            lines += [
+                "## File Coupling",
+                "_Files frequently committed together — likely tightly coupled._",
+                "",
+                "| File A | File B | Co-changes |",
+                "|--------|--------|------------|",
+            ]
+            for c in coupling:
+                lines.append(f"| `{c['file_a']}` | `{c['file_b']}` | {c['count']} |")
+            lines.append("")
+
+        lines += ["---", f"_Generated by aicli. Run `/memory` to refresh._"]
+        return "\n".join(lines)
+
+    def _suggest_hotspot_work_items(self, project: str, hotspots: list[dict]) -> int:
+        """Open a 'refactor' task for each hotspot file that has no existing open/active item."""
+        if not hotspots or not db.is_available():
+            return 0
+        project_id = db.get_or_create_project_id(project)
+        created = 0
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    for h in hotspots:
+                        file_name = Path(h["file"]).name
+                        wi_name = f"Refactor {file_name} (hotspot)"
+                        cur.execute(
+                            "SELECT 1 FROM mem_work_items "
+                            "WHERE project_id=%s AND name=%s "
+                            "AND deleted_at IS NULL AND completed_at IS NULL LIMIT 1",
+                            (project_id, wi_name),
+                        )
+                        if cur.fetchone():
+                            continue
+                        cur.execute(
+                            "INSERT INTO mem_work_items "
+                            "(wi_id, project_id, name, wi_type, summary, user_status, score_importance) "
+                            "VALUES (gen_random_uuid(), %s, %s, 'task', %s, 'open', 2)",
+                            (
+                                project_id,
+                                wi_name,
+                                f"File `{h['file']}` has hotspot_score={h['score']} "
+                                f"({h['commits']} commits, {h['lines']} lines). "
+                                "Consider splitting into smaller modules.",
+                            ),
+                        )
+                        created += 1
+                conn.commit()
+        except Exception as e:
+            log.warning(f"_suggest_hotspot_work_items error: {e}")
+        return created
+
     # ── Writers ───────────────────────────────────────────────────────────────
 
-    def write_root_files(self, project: str) -> list[str]:
+    def write_root_files(self, project: str, suggest_hotspots: bool = False) -> list[str]:
         """
         Render and write all root-level context files.
         Returns list of written file paths (relative to workspace).
@@ -524,6 +719,7 @@ class MemoryFiles:
         (sys_dir / "cursor").mkdir(parents=True, exist_ok=True)
         (sys_dir / "llm_prompts").mkdir(parents=True, exist_ok=True)
         (sys_dir / "openai").mkdir(parents=True, exist_ok=True)
+        (sys_dir / "aicli").mkdir(parents=True, exist_ok=True)
 
         def _write(path: Path, content: str) -> None:
             try:
@@ -548,10 +744,21 @@ class MemoryFiles:
         _write(sys_dir / "llm_prompts" / "openai.md",         self.render_openai_system(ctx))
         _write(sys_dir / "openai" / "system_prompt.md",       self.render_openai_system(ctx))
 
+        # Code intelligence file
+        _write(sys_dir / "aicli" / "code.md", self._render_code_md(ctx))
+
         # Copy to code_dir
         if code_dir and code_dir.exists():
             _write(code_dir / "CLAUDE.md", claude_content)
             _write(code_dir / ".cursorrules", self.render_cursorrules(ctx))
+
+        # Auto-suggest refactor tasks for hotspot files (only during /memory POST)
+        if suggest_hotspots and ctx.get("memory_config", {}).get("hotspot_suggest_work_item", True):
+            hotspots = ctx.get("hotspots", [])
+            if hotspots:
+                created = self._suggest_hotspot_work_items(project, hotspots)
+                if created:
+                    log.info(f"MemoryFiles: created {created} hotspot refactor task(s) for '{project}'")
 
         return written
 
@@ -590,8 +797,8 @@ class MemoryFiles:
         return written
 
     def write_all_files(self, project: str) -> list[str]:
-        """Write root files + all active feature files."""
-        written = self.write_root_files(project)
+        """Write root files + all active feature files. Called by /memory POST."""
+        written = self.write_root_files(project, suggest_hotspots=True)
         for tag_name in self.get_active_feature_tags(project):
             written.extend(self.write_feature_files(project, tag_name))
         return written

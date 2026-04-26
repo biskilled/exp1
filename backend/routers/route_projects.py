@@ -997,6 +997,7 @@ async def generate_memory(project_name: str):
       _system/cursor/rules.md          — Cursor AI rules file
       _system/aicli/context.md         — compact block injected by aicli CLI into ALL providers
       _system/aicli/copilot.md         — GitHub Copilot instructions
+      _system/aicli/code.md            — code intelligence: hotspots + file coupling
 
     Copies to <code_dir>:
       <code_dir>/CLAUDE.md             → Claude CLI auto-loads
@@ -1184,6 +1185,11 @@ async def generate_memory(project_name: str):
     try:
         ctx_result = await get_project_context(project_name, save=True)
         claude_md_content = ctx_result.get("claude_md", "")
+        # Prepend last-updated comment so every CLAUDE.md is timestamped
+        if claude_md_content and not claude_md_content.startswith("<!-- Last updated"):
+            claude_md_content = f"<!-- Last updated: {ts} -->\n{claude_md_content}"
+            (sys_dir / "claude" / "CLAUDE.md").write_text(claude_md_content)
+            (sys_dir / "CLAUDE.md").write_text(claude_md_content)
         generated.append("_system/claude/CLAUDE.md")
     except Exception:
         pass
@@ -1291,6 +1297,20 @@ async def generate_memory(project_name: str):
     copilot_md = "\n".join(copilot_lines)
     (sys_dir / "aicli" / "copilot.md").write_text(copilot_md)
     generated.append("_system/aicli/copilot.md")
+
+    # ── 5b. aicli/code.md — code intelligence (hotspots, file coupling) ───────
+    try:
+        from memory.memory_files import MemoryFiles as _MF
+        _mf = _MF()
+        _mf_ctx = _mf._load_context(project_name)
+        code_md_content = _mf._render_code_md(_mf_ctx)
+        (sys_dir / "aicli" / "code.md").write_text(code_md_content)
+        generated.append("_system/aicli/code.md")
+        # Auto-suggest refactor tasks for hot files
+        if _mf_ctx.get("memory_config", {}).get("hotspot_suggest_work_item", True):
+            _mf._suggest_hotspot_work_items(project_name, _mf_ctx.get("hotspots", []))
+    except Exception as _e:
+        log.warning("generate_memory: code.md generation failed: %s", _e)
 
     # ── 6. Copy to code_dir ───────────────────────────────────────────────────
     copied_to: list[str] = []
