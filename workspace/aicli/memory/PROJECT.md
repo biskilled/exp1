@@ -284,26 +284,27 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Backend prompt refactoring: all LLM prompts migrated from hardcoded strings to YAML files under backend/memory/ (mem_*.yaml by domain table name)
-- Frontend hardcoded string removal: localhost references in main.js, api.js replaced with dynamic config from aicli.yaml
-- UI code optimization: removing duplicate/unused code across work_items.js, use_cases.js; consolidating initialization methods
-- Memory file generation validation: ensuring PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md persist to workspace after /memory run; adding integrity checks
-- Project facts migration: determining if facts should be re-enabled via /memory or remain deprecated; conflict_detection fully merged into mem_project_state.yaml
+- MCP tool restoration: route_entities.py missing (only .pyc cache); create_entity, sync_github_issues, other work item tools broken; /work-items URL not registered in main.py
+- Backend prompt refactoring: ensure all LLM prompts use YAML templates under backend/memory/mem_*.yaml; verify project_state.json populates correct context for /memory
+- Frontend hardcoded string removal: ensure all localhost references removed; validate dynamic config loading from aicli.yaml for backend URLs
+- Memory file persistence validation: ensure PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md persist to workspace after /memory; add integrity checks for token limit enforcement
+- Code.md generation completeness: verify all public symbols from commits are included; confirm file coupling and hotspot tables populated correctly; test is_latest BOOLEAN index
+- Embedding audit: confirm mem_work_items VECTOR(1536) populated for semantic search; evaluate if mem_mrr_commits + mem_mrr_prompts embeddings needed for MCP context or semantic history search
 
 ## Key Decisions
 
-- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ removed (stale); _system/ removed (replaced by cli/ structure)
-- Dual storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small) for semantic search; unified mem_mrr_* and mem_work_items tables
-- JWT authentication (python-jose + bcrypt) with DEV_MODE toggle; hierarchical Clients → Users → Projects
-- LLM provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) as independent modules in agents/providers/ with send(prompt, system) → str contract
-- Electron desktop UI: Vanilla JS + xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development
-- Memory synthesis: Claude Haiku dual-layer generating 5 output files (PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md, recent_work.md) via /memory endpoint
+- Engine/workspace separation: aicli/ backend + CLI; workspace/ per-project content; .ai/ and _system/ removed (replaced by cli/ structure)
 - Workspace structure: cli/{claude,mcp}/ for hooks/configs; pipelines/{prompts,samples}/ for workflows; documents/ for project files; state/ for runtime state
-- Memory files managed by memory.yaml: canonical single source in backend/memory/ (not duplicated); templates in backend/memory/templates/
-- Token-limited memory files: project.yaml config (claude_md_max_tokens, cursorrules_max_tokens, etc.) controls /memory output sizing
-- Work Items vs Use Cases: items tab shows pending AI-classified items; use cases tab displays hierarchy with due dates, completion validation, auto-markdown
-- Drag-and-drop parent-child/merge in Work Items and Use Cases via unconditional e.preventDefault() + document.elementFromPoint() target detection
-- Undo button as persistent toolbar button (not popup): stores reverse API call closure capturing original parent_id before link
-- Code.md structure: public symbols (classes/methods/functions) + file coupling/hotspot tables; single source for all LLM context (Claude/Cursor)
-- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: replaces need for mem_code_symbols; updated per commit; partial index optimization
-- Project facts deprecated: mem_ai_project_facts no longer auto-populated; facts extracted inline from memory synthesis; conflict_detection merged into mem_project_state.yaml
+- Dual storage: PostgreSQL 15+ with pgvector (1536-dim) for semantic search; unified mem_mrr_* and mem_work_items tables; mem_ai_events dropped
+- Memory system: /memory endpoint generates 5 files (PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md, recent_work.md) from project_state.json + database; token-limited by project.yaml config
+- Memory files managed by backend/memory/memory.yaml: canonical single source (not duplicated in _templates); templates in backend/memory/templates/
+- Code.md structure: public symbols (classes/methods/functions) + file coupling/hotspot tables with is_latest BOOLEAN pattern; single source for all LLM context
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: replaces need for separate code_symbols table; updated per commit; partial index optimization
+- Project facts deprecated: mem_ai_project_facts no longer auto-populated during /memory; facts extracted inline from memory synthesis; conflict_detection merged into mem_project_state.yaml
+- Work Items + Use Cases: items tab shows pending AI-classified items; use cases tab displays hierarchy with due dates, completion validation, auto-markdown generation
+- Drag-and-drop parent-child/merge: unconditional e.preventDefault() + document.elementFromPoint() target detection (same implementation for both Work Items and Use Cases)
+- Undo as persistent toolbar button: stores reverse API call closure capturing original parent_id before link modification; works for both linking and partial merge
+- JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients → Users → Projects
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract
+- Backend prompts: all LLM prompts migrated to YAML files under backend/memory/mem_*.yaml (named by table domain); templates in backend/memory/templates/
+- Electron desktop UI: Vanilla JS with xterm.js + Monaco editor + Cytoscape.js; Vite dev server for local development; hardcoded localhost removed
