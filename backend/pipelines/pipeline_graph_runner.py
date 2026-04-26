@@ -921,18 +921,7 @@ async def resume_graph_workflow(
 
 
 def _fire_background(run_id: str, project: str) -> None:
-    """Fire-and-forget: embed node outputs + refresh project memory.
-
-    Both tasks are wrapped so unhandled exceptions are logged (not surfaced as
-    "Task exception was never retrieved" warnings).
-    """
-    async def _safe_embed():
-        try:
-            from memory.memory_embedding import embed_node_outputs
-            await embed_node_outputs(run_id, project)
-        except Exception as _e:
-            log.debug(f"Background embed failed (non-critical): {_e}")
-
+    """Fire-and-forget: refresh project memory after a pipeline run."""
     async def _refresh_memory():
         try:
             import httpx
@@ -942,11 +931,6 @@ def _fire_background(run_id: str, project: str) -> None:
             log.debug(f"Background memory refresh done for project={project}")
         except Exception as _e:
             log.debug(f"Background memory refresh failed (non-critical): {_e}")
-
-    try:
-        asyncio.create_task(_safe_embed())
-    except Exception:
-        pass
 
     try:
         asyncio.create_task(_refresh_memory())

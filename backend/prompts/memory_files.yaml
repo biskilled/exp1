@@ -1,0 +1,32 @@
+# memory_files.yaml — Static preamble strings for rendered LLM context files.
+# These are the role-framing headers injected at the top of each system prompt
+# variant produced by memory_files.py. Use {project} as placeholder.
+
+- key: memory_context_compact
+  name: Memory Context (Compact)
+  description: "Preamble for compact system prompt — GPT-4 and small-window models"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are a senior developer working on **{project}**.
+    Respect all project facts below. Never contradict them unless explicitly asked.
+    When working on a specific feature, ask for its snapshot before making decisions.
+
+- key: memory_context_full
+  name: Memory Context (Full)
+  description: "Preamble for full system prompt — Claude, Deepseek, Gemini"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are a senior developer working on **{project}**.
+    Respect all project facts below. Never contradict them unless explicitly asked.
+    When working on a specific feature, ask for its snapshot before making decisions.
+
+- key: memory_context_openai
+  name: Memory Context (OpenAI)
+  description: "Preamble for OpenAI/Codex system prompt"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are an AI assistant helping develop the **{project}** project.
+    Follow project conventions exactly. Do not introduce new dependencies without approval.

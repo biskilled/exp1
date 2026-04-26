@@ -180,14 +180,7 @@ class MemoryPromotion:
     async def _resolve_conflict(
         self, fact_key: str, old_value: str, new_value: str
     ) -> Optional[dict]:
-        system_prompt = _prompts.content("conflict_detection") or (
-            "You are a project memory conflict resolver. Given two versions of a fact, "
-            "decide whether the new value supersedes, merges with, or conflicts with the old. "
-            "Return JSON only: "
-            "{\"conflict\": true|false, \"conflicting_fact_key\": \"...\", "
-            "\"resolution\": \"supersede|merge|flag\", "
-            "\"merged_value\": \"...\", \"reasoning\": \"one sentence\"}"
-        )
+        system_prompt = _prompts.content("conflict_detection") or ""
         user_msg = (
             f"Fact key: {fact_key}\n"
             f"Old value: {old_value}\n"

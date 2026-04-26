@@ -479,11 +479,6 @@ async def patch_commit(commit_hash: str, body: CommitPatch, project: str | None 
     return {"ok": True, "commit_hash": commit_hash}
 
 
-async def _embed_commits_background(project: str, commit_hashes: list[str]) -> None:
-    """Placeholder: commit batch embedding removed; backlog handles digestion via MemoryBacklog."""
-    pass
-
-
 @router.post("/commits/sync")
 async def sync_commits(project: str | None = Query(None)):
     """Import commit_log.jsonl → commits table. Idempotent (UPSERT on commit_hash)."""
@@ -548,10 +543,6 @@ async def sync_commits(project: str | None = Query(None)):
         with conn.cursor() as cur:
             execute_values(cur, _SQL_BATCH_UPSERT, rows)
             inserted = cur.rowcount
-
-    # Fire process_commit() for each new commit (fire-and-forget background tasks)
-    hashes = [r[1] for r in rows]  # commit_hash is index 1 in each tuple
-    asyncio.create_task(_embed_commits_background(p, hashes))
 
     return {"imported": inserted, "project": p}
 

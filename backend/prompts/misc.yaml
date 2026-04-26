@@ -1,0 +1,10 @@
+# misc.yaml — Miscellaneous one-off LLM prompts
+# Loaded as individual keys by prompt_loader.
+
+- key: tag_suggestion
+  name: Tag Suggestion
+  description: "Suggests 2-3 relevant work-item tags from recent developer prompts"
+  model: haiku
+  max_tokens: 150
+  system: |
+    You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.

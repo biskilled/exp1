@@ -1553,10 +1553,14 @@ async def _generate_commit_message(
         "Reply with ONLY the commit message, no quotes or explanation.\n\n"
         + "\n\n".join(context_parts)
     )
+    _commit_system = (
+        _prompts.content("commit_message")
+        or "You write short, professional git commit messages."
+    )
     try:
         result = await call_claude(
             messages=[{"role": "user", "content": prompt}],
-            system="You write short, professional git commit messages.",
+            system=_commit_system,
             api_key=api_key,
         )
         msg = result.get("content", "").strip().split("\n")[0].strip('"\'')

@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-25_
+_Last updated: 2026-04-26_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
@@ -28,12 +28,12 @@ No more copy-pasting context. No more re-explaining your architecture.
 |---|------|--------|
 | 1 | **Shared LLM memory** — Claude Code, aicli CLI, Cursor all read the same knowledge base | ✓ Implemented |
 | 2 | **Backlog pipeline** — Mirror → Backlog digest → User review → Use case files | ✓ Implemented |
-| 3 | **Planner** — User-managed tag hierarchy linked to use case files | ✓ Implemented |
+| 3 | **Work Items** — AI-classified backlog items (open → active → done) backed by `mem_work_items` | ✓ Implemented |
 | 4 | **Auto-deploy** — Stop hook → auto_commit_push.sh after every Claude Code session | ✓ Hooks |
 | 5 | **Billing & usage** — Multi-user, server keys, balance, markup, coupons | ✓ Implemented |
 | 6 | **Multi-LLM workflows** — Graph DAG: design → review → develop → test | ✓ Implemented |
 | 7 | **Semantic search** — pgvector cosine similarity over events | ✓ Implemented |
-| 8 | **Feature snapshots** — Haiku-generated requirements/design per planner tag | ✓ Implemented |
+| 8 | **Role YAML** — All agent roles + pipelines defined in `workspace/_templates/` (no inline Python) | ✓ Refactored |
 | 9 | **MCP server** — 10 tools: search_memory, get_project_state, tags, backlog | ✓ Implemented |
 
 ---
@@ -57,10 +57,10 @@ Layer 2 — AI Events (mem_ai_events)
 Layer 3 — Structured Artifacts (mem_ai_project_facts)
   Durable facts ("uses pgvector", "auth is JWT")
 
-Layer 4 — User Taxonomy (planner_tags)
-  Human-owned hierarchy: features, bugs, tasks, phases
-  file_ref → links to use case .md files
-  ← USER OWNS THIS — AI suggests, user confirms
+Layer 4 — Work Items (mem_work_items)
+  AI-classified + user-reviewed: wi_type (use_case/feature/bug/task)
+  user_status: open → active → done; due_date; score_importance
+  ← USER REVIEWS — AI classifies, user confirms/edits
 ```
 
 ### Backlog Pipeline (5 steps)
@@ -75,7 +75,7 @@ Step 2 — Backlog:       backlog_config.yaml drives 2-call LLM digest
 Step 3 — User review:   Backlog tab — approve (x), reject (-), add tag
 Step 4 — Merge:         POST /memory/{p}/work-items processes approved entries
            → creates/updates documents/use_cases/{slug}.md
-           → links planner_tag.file_ref → use case file
+           → upserts mem_work_items row (wi_type, name, summary)
 Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
 ```
 
@@ -84,7 +84,7 @@ Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
 ```
 POST /projects/aicli/memory
   ├── Flush all pending mirror rows → backlog.md
-  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + planner_tags
+  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + mem_work_items
   └── Top events → .claude/memory/top_events.md
 ```
 
@@ -110,8 +110,6 @@ aicli/                          ← Engine (code)
 │   │   ├── route_git.py        ← /git (commit-push, status, pull, commit-store)
 │   │   ├── route_history.py    ← /history (commits, prompts, sessions, sync)
 │   │   ├── route_chat.py       ← /chat (SSE streaming, hook-log)
-│   │   ├── route_tags.py       ← /tags (planner_tags CRUD, deliveries, merge)
-│   │   ├── route_entities.py   ← /entities (session tags, event tagging)
 │   │   ├── route_search.py     ← /search (semantic search via pgvector)
 │   │   ├── route_agents.py     ← /agents (run, run-pipeline, roles)
 │   │   ├── route_agent_roles.py← /agent-roles (CRUD + versioning)
@@ -125,8 +123,7 @@ aicli/                          ← Engine (code)
 │   │   ├── memory_mirroring.py ← INSERT mem_mrr_* rows; tag operations
 │   │   ├── memory_embedding.py ← Haiku digest + OpenAI embed → mem_ai_events
 │   │   ├── memory_backlog.py   ← Backlog pipeline; run_work_items(); use case files
-│   │   ├── memory_promotion.py ← Feature snapshots; fact conflicts
-│   │   ├── memory_tagging.py   ← planner_tags CRUD
+│   │   ├── memory_promotion.py ← Fact conflict detection (conflict_detection.yaml)
 │   │   ├── memory_files.py     ← Template render → CLAUDE.md / .cursorrules
 │   │   ├── memory_sessions.py  ← Layer 2: JSON sessions for LLM message continuity
 │   │   └── memory_code_parser.py← tree-sitter symbol extraction for commits
@@ -134,19 +131,26 @@ aicli/                          ← Engine (code)
 │   │   ├── providers/          ← Claude, OpenAI, DeepSeek, Gemini, Grok adapters
 │   │   └── tools/              ← Agent tool implementations (search, git, memory)
 │   ├── data/                   ← Runtime data (api_keys.json, pricing.json)
-│   └── prompts/                ← System prompts (prompts.yaml + .md files)
-│       └── memory/             ← commit_digest, prompt_batch_digest, session_end_synthesis…
+│   └── prompts/                ← LLM system prompts (YAML — no inline Python strings)
+│       ├── commit.yaml         ← commit_analysis, commit_symbol, commit_message
+│       ├── react_base.yaml     ← react_pipeline_base, react_suffix (agent.py)
+│       ├── misc.yaml           ← tag_suggestion
+│       ├── memory_files.yaml   ← memory_context_compact/full/openai
+│       ├── conflict_detection.yaml ← fact conflict resolver
+│       └── work_items.yaml     ← work item extraction/promotion prompts
 ├── ui/
 │   ├── electron/               ← Electron shell (BrowserWindow, xterm.js)
 │   └── frontend/               ← Vanilla JS (no framework)
-│       ├── views/              ← chat.js, entities.js, backlog.js, pipeline.js…
+│       ├── views/              ← chat.js, backlog.js, work_items.js, pipeline.js…
 │       └── utils/api.js        ← Unified fetch wrapper
 ├── cli/                        ← Interactive REPL (prompt_toolkit + rich)
 ├── workspace/                  ← CONTENT (per-project, version-controlled)
 │   ├── _templates/
-│   │   ├── backlog_config.yaml ← Default backlog pipeline config (copied to .ai/ on first run)
-│   │   ├── use_case_template.md← Template for new use case files
-│   │   └── hooks/              ← Canonical hook scripts
+│   │   ├── roles/              ← Agent role YAMLs (11 roles — seeded to DB on startup)
+│   │   ├── pipelines/          ← Pipeline YAMLs (standard, build_feature, code_review…)
+│   │   ├── cli/claude/hooks/   ← Canonical hook scripts (copy to _system/hooks/)
+│   │   ├── backlog_config.yaml ← Default backlog config (copied to .ai/ on first run)
+│   │   └── use_case_template.md← Template for new use case files
 │   └── aicli/
 │       ├── PROJECT.md          ← This file
 │       ├── project.yaml        ← Project config (code_dir, git settings)
@@ -180,12 +184,10 @@ aicli/                          ← Engine (code)
 | `mng_session_tags` | Active phase/feature/bug tags per project |
 | `mng_agent_roles` | LLM personas (name, system_prompt, model, react) |
 | `mng_agent_role_versions` | Role audit log |
-| `mng_tags_categories` | Planner tag categories (feature/bug/task/phase) |
+### `mem_work_items` — Work item backlog (Layer 4)
+Columns: `wi_id UUID PK, project_id, name, wi_type (use_case/feature/bug/task), summary, user_status (open/active/done), due_date, score_importance, completed_at, deleted_at`
 
-### `planner_tags` — User-managed tag hierarchy (1 table)
-Columns: `id, name, category_id, parent_id, creator, description, requirements, acceptance_criteria, action_items, deliveries JSONB, status, priority, due_date, file_ref, created_at, updated_at`
-
-`file_ref` links a tag to its use case file: `documents/use_cases/{slug}.md`
+`wi_type` and `user_status` are user-editable; `score_importance` is AI-assigned.
 
 ### `mem_mrr_*` — Layer 1: Raw capture (4 tables)
 | Table | Key columns |
@@ -203,9 +205,6 @@ Columns: `id, name, category_id, parent_id, creator, description, requirements, 
 |-------|---------|-------------|
 | `mem_ai_events` | Digested + embedded events | id, project_id, event_type, source_id, tags, summary, embedding |
 | `mem_ai_project_facts` | Durable project facts | id, project_id, fact_key, fact_value, valid_until |
-
-### `mem_backlog_links` — Permanent backlog→use case mapping
-`ref_id, project_id, tag_id, use_case_slug, source_type, created_at`
 
 ### `pr_*` — Graph workflows (6 tables)
 `pr_graph_workflows` | `pr_graph_nodes` | `pr_graph_edges` | `pr_graph_runs` | `pr_graph_node_results` | `pr_seq_counters`
@@ -250,17 +249,20 @@ Auto-created from `workspace/_templates/backlog_config.yaml` on first run.
 ### UI Tab Structure
 ```
 sidebar tabs:
-  summary  → views/summary.js        PROJECT.md viewer/editor
-  chat     → views/chat.js           SSE streaming + tag bar + session-commit footer
-  backlog  → views/backlog.js        Inbox review (approve/reject/tag)
-  planner  → views/entities.js       Category list + tag table + use case file preview
-  pipeline → views/pipeline.js       Memory pipeline monitoring dashboard
-  history  → views/history.js        Chat | Commits | Runs sub-tabs
-  workflow → views/workflow.js        YAML workflow editor
-  graph    → views/graph_workflow.js  DAG graph editor (Cytoscape.js)
-  files    → views/code.js           Folder tree + file viewer
-  settings → views/settings.js       Billing, backend URL, theme
-  admin    → views/admin.js          Users / pricing / api-keys / usage (admin only)
+  summary   → views/summary.js       PROJECT.md viewer/editor
+  chat      → views/chat.js          SSE streaming + tag bar + session-commit footer
+  roles     → views/prompts.js       Agent role CRUD (reads mng_agent_roles)
+  code      → views/code.js          Folder tree + file viewer
+  pipelines → views/graph_workflow.js DAG graph editor + pipeline runner
+  dashboard → views/pipeline.js      Memory pipeline monitoring dashboard
+  history   → views/history.js       Chat | Commits | Runs sub-tabs
+  settings  → views/settings.js      Billing, backend URL, theme
+  admin     → views/admin.js         Users / pricing / api-keys / usage (admin only)
+  --- Planning group ---
+  backlog   → views/work_items.js    Work Items inbox (approve/reject/tag)
+  use_cases → views/work_items.js    Approved use cases with due dates
+  documents → views/documents.js     Document browser
+  completed → views/work_items.js    Completed use cases
 ```
 
 ---
@@ -268,8 +270,8 @@ sidebar tabs:
 ## In Progress ◷
 
 - **Backlog pipeline** — 2-step LLM digest (grouping + summary), user review, use case file merge
-- **Use case files** — documents/use_cases/{slug}.md with Events section; system-managed EVENTS_START/END markers
-- **Planner simplification** — tag list + use case file_ref; no work items; all detail managed in .md files
+- **Work Items lifecycle** — open → active → done with due dates, completion validation, MD file auto-move
+- **Prompt YAML consolidation** — all LLM prompts in `backend/prompts/*.yaml`; no inline Python strings
 
 ## Planned ○
 

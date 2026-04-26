@@ -1,3 +1,4 @@
+# Canonical pipelines: workspace/_templates/pipelines/build_feature.yaml
 name: trading_strategy
 description: "Research trading strategy: hypothesis → implementation → backtest analysis"
 max_iterations: 2

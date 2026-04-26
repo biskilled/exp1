@@ -28,6 +28,7 @@ from typing import Optional
 
 from core.database import db
 from core.config import settings
+from core.prompt_loader import prompts as _prompts
 
 log = logging.getLogger(__name__)
 
@@ -358,12 +359,13 @@ class MemoryFiles:
     def render_system_compact(self, ctx: dict) -> str:
         """Compact system prompt — for GPT-4 and other small-window models (≤2000 tokens)."""
         project = ctx["project"]
-        lines = [
-            f"You are a senior developer working on **{project}**.",
-            "Respect all project facts below. Never contradict them unless explicitly asked.",
-            "When working on a specific feature, ask for its snapshot before making decisions.",
-            "",
-        ]
+        _preamble = (
+            _prompts.content("memory_context_compact")
+            or "You are a senior developer working on **{project}**.\n"
+               "Respect all project facts below. Never contradict them unless explicitly asked.\n"
+               "When working on a specific feature, ask for its snapshot before making decisions."
+        ).format(project=project)
+        lines = _preamble.split("\n") + [""]
 
         # Stack (max 5)
         stack = (
@@ -389,12 +391,13 @@ class MemoryFiles:
     def render_system_full(self, ctx: dict) -> str:
         """Full system prompt — for Claude, Deepseek, Gemini (large context window)."""
         project = ctx["project"]
-        lines = [
-            f"You are a senior developer working on **{project}**.",
-            "Respect all project facts below. Never contradict them unless explicitly asked.",
-            "When working on a specific feature, ask for its snapshot before making decisions.",
-            "",
-        ]
+        _preamble = (
+            _prompts.content("memory_context_full")
+            or "You are a senior developer working on **{project}**.\n"
+               "Respect all project facts below. Never contradict them unless explicitly asked.\n"
+               "When working on a specific feature, ask for its snapshot before making decisions."
+        ).format(project=project)
+        lines = _preamble.split("\n") + [""]
 
         # All fact categories
         cat_labels = {
@@ -430,11 +433,12 @@ class MemoryFiles:
         Keep under 2000 tokens.
         """
         project = ctx["project"]
-        lines = [
-            f"You are an AI assistant helping develop the **{project}** project.",
-            "Follow project conventions exactly. Do not introduce new dependencies without approval.",
-            "",
-        ]
+        _preamble = (
+            _prompts.content("memory_context_openai")
+            or "You are an AI assistant helping develop the **{project}** project.\n"
+               "Follow project conventions exactly. Do not introduce new dependencies without approval."
+        ).format(project=project)
+        lines = _preamble.split("\n") + [""]
 
         stack = (
             ctx["facts_by_cat"].get("stack", []) +

@@ -32,3 +32,11 @@
   system: |
     You are a code analyst. Given a changed symbol (class/method/function) and its diff,
     write a 1-sentence summary of what changed and why. Be concise.
+
+- key: commit_message
+  name: Commit Message
+  description: "Generates a short single-line git commit message from changed files and diff"
+  model: haiku
+  max_tokens: 80
+  system: |
+    You write short, professional git commit messages.

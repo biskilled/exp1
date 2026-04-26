@@ -13,7 +13,6 @@ import { renderDocuments } from './views/documents.js';
 import { renderGraphWorkflow, destroyGraphWorkflow } from './views/graph_workflow.js';
 import { renderSettings } from './views/settings.js';
 import { HistoryView } from './views/history.js';
-import { renderEntities } from './views/entities.js';
 import { renderPipeline, destroyPipeline } from './views/pipeline.js';
 import { renderWorkItems as renderBacklog, destroyWorkItems as destroyBacklog,
          renderUseCases, destroyUseCases, renderCompleted } from './views/work_items.js';
@@ -61,7 +60,6 @@ function renderHistory(container) {
 const PROJECT_TABS = [
   { id: 'summary',  icon: '📄', label: 'Summary'  },
   { id: 'chat',     icon: '◉',  label: 'Chat'     },
-  { id: 'planner',  icon: '◎',  label: 'Planner'  },
   { id: 'prompts',  icon: '≡',  label: 'Roles'    },
   { id: 'code',      icon: '</>',label: 'Code'      },
   { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
@@ -566,7 +564,6 @@ export function navigateTo(viewId, opts = {}) {
       break;
     case 'summary':  renderSummary(view, proj?.name);         break;
     case 'chat':     renderChat(view);                        break;
-    case 'planner':  renderEntities(view);                    break;
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':      renderCode(view, proj?.name, proj);           break;
     case 'documents': renderDocuments(view, proj?.name, opts);       break;
@@ -600,7 +597,7 @@ export async function openProject(name) {
     project.system_prompt = project.context_md || project.claude_md || project.project_md || '';
     setState({ currentProject: project });
     addRecentProject(name);
-    // Pre-warm tag cache so chat picker + planner have zero-latency data
+    // Pre-warm tag cache so chat picker has zero-latency data
     loadTagCache(name).catch(() => {});
 
     // Update titlebar — clear the "Opening…" state

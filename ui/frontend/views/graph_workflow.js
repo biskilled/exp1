@@ -697,62 +697,51 @@ async function _newWorkflow() {
 
 // ── Template menu ─────────────────────────────────────────────────────────────
 
-const PIPELINE_TEMPLATES = [
+// PIPELINE_TEMPLATES loaded dynamically from GET /agents/pipelines
+// (see _loadPipelineTemplates()). Fallback for offline mode:
+const _FALLBACK_TEMPLATES = [
   {
-    key: 'pm_dev_reviewer',
-    label: 'PM → Dev → Reviewer',
-    description: 'Standard feature pipeline with approval gate',
+    key: 'standard', label: 'PM → Architect → Dev → Reviewer',
+    description: 'Full 4-agent work item pipeline',
     nodes: [
       { name: 'Product Manager', stateless: false,
-        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'spec.md',type:'md'}],
-        role_prompt: 'You are a senior product manager. Produce a detailed spec document.' },
-      { name: 'Developer', stateless: false,
-        inputs: [{name:'spec.md',type:'md'}], outputs: [{name:'code',type:'code'}],
-        role_prompt: 'You are a senior software engineer. Implement the spec.' },
-      { name: 'Reviewer', stateless: true,
-        inputs: [{name:'code',type:'code'},{name:'spec.md',type:'md'}],
-        outputs: [{name:'feedback.md',type:'feedback'},{name:'approved',type:'score'}],
-        role_prompt: 'You are a code reviewer. Review with fresh eyes.' },
-    ],
-    edges: [{ from: 0, to: 1 }, { from: 1, to: 2 }],
-  },
-  {
-    key: 'pm_arch_dev_reviewer',
-    label: 'PM → Architect → Dev → Reviewer',
-    description: 'Full 4-agent work item pipeline (same as Planner ▶ Run)',
-    nodes: [
-      { name: 'Product Manager', stateless: false,
-        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'spec.md',type:'md'}],
-        role_prompt: 'You are a senior product manager. Produce a detailed spec document.' },
-      { name: 'Architect', stateless: false,
-        inputs: [{name:'spec.md',type:'md'}], outputs: [{name:'arch.md',type:'md'}],
-        role_prompt: 'You are a Senior Architect. Write a technical implementation plan.' },
-      { name: 'Developer', stateless: false,
-        inputs: [{name:'arch.md',type:'md'}], outputs: [{name:'code',type:'code'}],
-        role_prompt: 'You are a senior software engineer. Implement the architecture plan.' },
-      { name: 'Reviewer', stateless: true,
-        inputs: [{name:'code',type:'code'}], outputs: [{name:'score',type:'score'}],
-        role_prompt: 'You are a code reviewer. Score the code 1-10.' },
+        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'spec.md',type:'md'}], role_prompt: '' },
+      { name: 'Sr. Architect', stateless: false,
+        inputs: [{name:'spec.md',type:'md'}], outputs: [{name:'arch.md',type:'md'}], role_prompt: '' },
+      { name: 'Web Developer', stateless: false,
+        inputs: [{name:'arch.md',type:'md'}], outputs: [{name:'code',type:'code'}], role_prompt: '' },
+      { name: 'Code Reviewer', stateless: true,
+        inputs: [{name:'code',type:'code'}], outputs: [{name:'score',type:'score'}], role_prompt: '' },
     ],
     edges: [{ from: 0, to: 1 }, { from: 1, to: 2 }, { from: 2, to: 3 }],
   },
-  {
-    key: 'dev_tester',
-    label: 'Dev → Tester',
-    description: 'Simple code generation + test scoring',
-    nodes: [
-      { name: 'Developer', stateless: false,
-        inputs: [{name:'prompt',type:'prompt'}], outputs: [{name:'code',type:'code'}],
-        role_prompt: 'You are a senior software engineer. Write the code.' },
-      { name: 'Tester', stateless: false,
-        inputs: [{name:'code',type:'code'}], outputs: [{name:'score',type:'score'}],
-        role_prompt: 'You are a QA engineer. Test the code and provide a score out of 100.' },
-    ],
-    edges: [{ from: 0, to: 1 }],
-  },
 ];
+let _pipelineTemplates = null;
 
-function _showTemplateMenu(evt) {
+async function _loadPipelineTemplates() {
+  if (_pipelineTemplates) return _pipelineTemplates;
+  try {
+    const pipelines = await api.listPipelines();
+    _pipelineTemplates = pipelines.map(p => ({
+      key:         p.name,
+      label:       p.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      description: (p.description || '').split('\n')[0].trim(),
+      nodes: (p.stages || []).map((s, i) => ({
+        name:       s.role || s.key,
+        stateless:  s.key === 'reviewer',
+        inputs:     i === 0 ? [{name:'prompt',type:'prompt'}] : [{name:'input',type:'md'}],
+        outputs:    [{name: s.result_field || 'output', type: i === (p.stages.length - 1) ? 'score' : 'md'}],
+        role_prompt: '',
+      })),
+      edges: (p.stages || []).slice(0, -1).map((_, i) => ({ from: i, to: i + 1 })),
+    }));
+  } catch {
+    _pipelineTemplates = _FALLBACK_TEMPLATES;
+  }
+  return _pipelineTemplates;
+}
+
+async function _showTemplateMenu(evt) {
   const existing = document.getElementById('_gw-tmpl-menu');
   if (existing) { existing.remove(); return; }
 
@@ -764,8 +753,12 @@ function _showTemplateMenu(evt) {
   menu.style.cssText = `position:fixed;z-index:2000;background:var(--bg1);border:1px solid var(--border);
     border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.18);padding:0.4rem 0;min-width:260px;
     left:${rect.left}px;top:${(rect.bottom || 50) + 4}px`;
+  menu.innerHTML = `<div style="padding:0.5rem 0.85rem;color:var(--muted);font-size:0.75rem">Loading…</div>`;
+  document.body.appendChild(menu);
 
-  PIPELINE_TEMPLATES.forEach(tmpl => {
+  const templates = await _loadPipelineTemplates();
+  menu.innerHTML = '';
+  templates.forEach(tmpl => {
     const item = document.createElement('div');
     item.style.cssText = 'padding:0.5rem 0.85rem;cursor:pointer;';
     item.innerHTML = `
@@ -778,7 +771,6 @@ function _showTemplateMenu(evt) {
     menu.appendChild(item);
   });
 
-  document.body.appendChild(menu);
   setTimeout(() => document.addEventListener('click', function h() {
     menu.remove(); document.removeEventListener('click', h);
   }), 0);

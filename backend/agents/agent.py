@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from core.logger import get_logger
+from core.prompt_loader import prompts
 
 log = get_logger(__name__)
 
@@ -34,7 +35,7 @@ _CTX_CAP = 3000  # chars per prior-node output injected into user message
 # ── ReAct base injected into EVERY pipeline agent system prompt ────────────────
 # Role-specific content (job, must-nots, output format) lives in each YAML.
 # This base is prepended by run_pipeline() automatically.
-_REACT_SYSTEM_BASE = """\
+_REACT_SYSTEM_BASE: str = prompts.content("react_pipeline_base") or """\
 You are an aicli AI agent. You operate in a strict ReAct loop.
 
 ## ReAct Rules
@@ -62,7 +63,7 @@ You are an aicli AI agent. You operate in a strict ReAct loop.
 """
 
 # ── Simpler suffix used for run() (non-pipeline) ──────────────────────────────
-_REACT_SUFFIX = """\
+_REACT_SUFFIX: str = prompts.content("react_suffix") or """\
 ## Reasoning Format
 
 When using tools, follow this pattern:

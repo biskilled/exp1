@@ -1,3 +1,4 @@
+# Canonical pipeline: workspace/_templates/pipelines/code_review.yaml
 name: code_review
 description: "Auto code review for FastAPI changes"
 max_iterations: 1

@@ -1,3 +1,4 @@
+# Canonical pipeline: workspace/_templates/pipelines/build_feature.yaml
 name: build_feature
 description: "Design FastAPI feature → Implement → Review"
 max_iterations: 3

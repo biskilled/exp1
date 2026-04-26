@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from core.config import settings
 from core.database import db
+from core.prompt_loader import prompts as _prompts
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
@@ -928,10 +929,14 @@ async def _suggest_tags(
         )
         _log.info("[suggest_tags] Calling Haiku for project=%s, entries=%d", project, len(entries))
         client = anthropic.AsyncAnthropic(api_key=key)
+        _tag_system = (
+            _prompts.content("tag_suggestion")
+            or "You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown."
+        )
         response = await client.messages.create(
             model=settings.haiku_model,
             max_tokens=150,
-            system="You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.",
+            system=_tag_system,
             messages=[{"role": "user", "content": prompt}],
         )
         text = (response.content[0].text if response.content else "").strip()
