@@ -844,6 +844,13 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
 
         Returns an error dict if validation fails, else None.
         Sets updates['_date_conflict_resolved'] = True when a conflict is auto-resolved.
+
+        Rules:
+        - Setting due_date: auto-sets start_date=today if not provided.
+        - Child due_date (when updating) cannot exceed parent's due_date.
+        - Re-parenting to a UC: validates child's *existing* due_date against the UC's due_date.
+        - Re-parenting to same-type non-UC: sets child start_date = parent's due_date
+          (sequential dependency); auto-pulls parent back 1 day if child would have no window.
         """
         # Setting due_date (not clearing) → also set start_date = today
         if updates.get("due_date"):
@@ -861,7 +868,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                 if new_due > parent_row[0]:
                     return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
 
-        # Re-parent: same-type check + auto-set start_date from new parent
+        # Re-parent: type check + date constraints from new parent
         if updates.get("wi_parent_id"):
             cur.execute(
                 "SELECT wi_type, due_date FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
@@ -870,6 +877,10 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
             np = cur.fetchone()
             if np and np[0] != "use_case" and np[0] != wi_type:
                 return {"error": f"cannot link items of different types ({wi_type} ≠ {np[0]})"}
+            # Re-parenting to a UC: validate child's existing due_date doesn't exceed new UC's due_date
+            if np and np[0] == "use_case" and np[1] and current_due_date and current_due_date > np[1]:
+                return {"error": f"due_date ({current_due_date}) cannot be after parent UC due_date ({np[1]})"}
+            # Re-parenting to same-type non-UC: child starts after parent (sequential dependency)
             if np and np[0] != "use_case" and np[1]:
                 parent_due = np[1]
                 updates["start_date"] = str(parent_due)
@@ -891,8 +902,9 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
 
         Date cascade rules:
         - Setting due_date also auto-sets start_date=today (unless start_date provided).
-        - Child due_date cannot exceed parent UC due_date.
-        - Re-parenting to a non-UC item sets child start_date = parent's due_date.
+        - Child due_date (when updating) cannot exceed parent's due_date.
+        - Re-parenting to a UC: child's existing due_date must not exceed the UC's due_date.
+        - Re-parenting to a non-UC item: child start_date = parent's due_date (sequential).
         - Setting UC due_date caps all active children whose due_date exceeds the new value.
         """
         allowed = {

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 13:11 UTC -->
+<!-- Last updated: 2026-04-27 13:12 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 

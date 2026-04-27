@@ -302,30 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Code quality audit: verify all large modules (<1500 lines), SQL queries optimized (no N+1), recursive CTEs bounded (depth <20), no unused dead code, method complexity manageable.
-- Memory files convergence: ensure both /memory POST path (get_project_context) and commit/work-item trigger path (render_root_claude_md) use same DB queries for in_progress items and acceptance_criteria display.
-- Work item embedding refresh: verify re-embedding occurs on name/summary/description edits for approved items only; confirm embedding NOT triggered for unapproved drafts (cost optimization).
-- Prompt consolidation: all 14 LLM calls mapped to YAML keys in {command_memory, command_work_items, event_commit, event_hook_context, misc}.yaml; validate no inline prompts remain in route code.
-- MCP tool dispatch completeness: verify all 14 tools (search_memory, get_project_state, get_one_work_item, etc.) properly route to backend endpoints; confirm create_entity correctly maps category→wi_type.
-- Performance bottlenecks: PROJECT.md load >60s likely due to large commit history or inefficient aggregation in /memory endpoint; profile get_project_context() queries; evaluate if code.md semantic indexing would help /search/semantic for architecture queries.
+- Code quality audit: verify all modules <1500 lines, SQL queries optimized (no N+1), recursive CTEs bounded (depth <20), no dead code, method complexity manageable.
+- Memory files convergence: ensure both /memory POST (get_project_context) and commit/work-item trigger (render_root_claude_md) use same DB queries for in_progress items and acceptance_criteria display.
+- Work item embedding refresh: verify re-embedding occurs on name/summary/description edits for approved items only; confirm NOT triggered for unapproved drafts.
+- Prompt consolidation: all 14 LLM calls mapped to YAML keys; validate no inline prompts remain in route code.
+- Performance bottleneck: PROJECT.md load >60s likely due to large commit history or inefficient aggregation; profile get_project_context() queries.
+- MCP tool dispatch completeness: verify all 14 tools route correctly to backend endpoints; confirm create_entity maps category→wi_type.
 
 ## Key Decisions
 
-- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state. No .ai/ or _system/ folders.
-- Memory files (PROJECT.md, CODE.md, CLAUDE.md, cursorrules.md, recent_work.md) generated ONLY by POST /memory endpoint from project_state.json + database; token-limited by project.yaml config block.
+- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state. No .ai/, _system/, or .ai/ folders.
+- Memory files (PROJECT.md, CODE.md, CLAUDE.md, cursor/rules, api/) generated ONLY by POST /memory endpoint from project_state.json + database queries; token-limited by project.yaml config. Not copied to projects.
 - backend/memory/memory.yaml is canonical single source for file mapping; templates in backend/memory/templates/; memory.yaml itself is NOT copied to projects (internal logic only).
-- Code.md structure: public symbols (classes/methods/functions) + file coupling/hotspot tables with is_latest BOOLEAN pattern; generated from mem_mrr_commits_code table per commit + refreshed post-commit via sync_code_structure().
-- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: replaces separate code_symbols table; updated per commit; unbounded recursive CTEs capped at depth 20.
-- Work Items unified hierarchy: wi_parent_id links features/bugs/tasks to use_case parents; approved items (user_status != 'open') trigger 4-agent pipeline (PM→Architect→Developer→Reviewer) with acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id columns.
-- Approved work items only are embedded (pgvector, 1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items table only.
-- JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients→Users→Projects (no org-level structure).
+- code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit + refreshed post-commit via sync_code_structure().
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit.
+- Work Items unified hierarchy: wi_parent_id links features/bugs/tasks to use_case parents; approved items trigger 4-agent pipeline (PM→Architect→Developer→Reviewer) with acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id columns.
+- Approved work items ONLY are embedded (pgvector, 1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
+- JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients→Users→Projects.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
 - All backend LLM prompts in YAML files under backend/memory/prompts/: command_memory.yaml (/memory), command_work_items.yaml (/wi classify), event_commit.yaml (post-commit), event_hook_context.yaml (hook synthesis), misc.yaml (inline prompts).
-- 4-agent pipeline for approved work items: pm_analysis, architect_plan, dev_implementation, reviewer_validation columns; triggered when use_case parent is approved and wi_status='open'.
-- project_state.json generated ONLY by POST /memory endpoint; drives all 11 memory file outputs; no other code path writes it.
-- MCP tools rewired to REST: create_entity→POST /wi/{project}, list_work_items→GET /wi/{project}, sync_github_issues→PATCH /wi/{project}, get_file_history→GET /memory/{project}/file-history.
 - Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5, score_importance=5; user must approve to update user_status to 'done'.
-- Code refactoring: memory_work_items.py split into _wi_helpers.py (225 lines, module functions), _wi_classify.py (360 lines, classification), _wi_markdown.py (485 lines, markdown generation); unbounded CTEs protected with depth <20 limits; N+1 queries replaced with batch operations.
+- project_state.json generated ONLY by POST /memory endpoint; drives all 5 memory file outputs; no other code path writes it.
+- MCP tools rewired to REST: create_entity→POST /wi/{project}, list_work_items→GET /wi/{project}, sync_github_issues→PATCH /wi/{project}, get_file_history→GET /memory/{project}/file-history.
+- Code refactoring: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (485 lines); recursive CTEs bounded at depth 20; N+1 queries replaced with batch operations.
+- Recursive CTE safety: all 6 unbounded CTEs (descendants, tree, approve_all, etc.) capped with depth < 20; token counting uses len(text) // 4 for accuracy.
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
