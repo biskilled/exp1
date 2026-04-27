@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Production readiness: verified memory files provide good project structure view, work items/use cases function correctly, code quality acceptable; critical bug (duplicate _write_root_files_with_ctx stub shadowing real implementation) causing /memory POST to silently fail has been fixed.
-- UI enhancements for work item transparency: added _waitingBadge() showing 'X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing 'X days open' for approved use cases, so users understand approval status and age.
-- Hotspot recency weighting: hotspot scores now decay using 180-day half-life formula in both parser and memory_files queries to prioritize recently-changed files.
-- Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns in commit messages auto-set score_status=5 and score_importance=5 for user approval.
-- Database query optimization: eliminated N+1 hotspot existence checks via batch WHERE name = ANY(%s); _update_item_tags refactored to use executemany instead of N separate execute calls; token counting standardized to len(text) // 4.
-- Code split and refactoring completion: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py; _load_context() split into _query_db_into_ctx() and _parse_project_md(); all files verified < 1500 lines with no circular imports.
+- Production readiness: verified memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; code quality acceptable after refactoring; critical bug (duplicate _write_root_files_with_ctx stub) fixed.
+- UI enhancements for work item transparency: added _waitingBadge() showing 'X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing 'X days open' for approved use cases.
+- Hotspot recency weighting: hotspot scores decay using 180-day half-life formula in both parser and memory_files queries to prioritize recently-changed files.
+- Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns auto-set score_status=5 and score_importance=5 for user approval.
+- Code quality optimization: eliminated N+1 hotspot checks via batch WHERE name = ANY(%s); token counting standardized to len(text) // 4; unbounded CTEs bounded to depth < 20.
+- Code refactoring completion: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py; _load_context() split into _query_db_into_ctx() and _parse_project_md(); all verified < 1500 lines with no circular imports.
 
 ## Key Decisions
 
