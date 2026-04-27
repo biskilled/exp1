@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 02:16 UTC -->
+<!-- Last updated: 2026-04-27 02:30 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -35,6 +35,9 @@ aicli/
 │   ├── memory/
 │   │   ├── templates/
 │   │   ├── __init__.py
+│   │   ├── _wi_classify.py
+│   │   ├── _wi_helpers.py
+│   │   ├── _wi_markdown.py
 │   │   ├── memory.yaml
 │   │   ├── memory_code_parser.py
 │   │   ├── memory_files.py

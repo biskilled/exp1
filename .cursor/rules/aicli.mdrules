@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 02:15 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 02:29 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-27_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-27] can you do all recoomedation ? just to confirm on embed code.md - is it mean you remove the embedding per commit / per f
 - [2026-04-27] I would like to run the last prompt again -  first clear up the aiCli_memory.md file (you can see what you did for this 
 - [2026-04-27] can you fix all reccomendations ?
 - [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10 prompts) che
 - [2026-04-27] why memory_work_item is so big ?
+- [2026-04-27] Ok do that (classify and markdown) and also there other 2 recoomendation you gave bofore
