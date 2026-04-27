@@ -319,11 +319,11 @@ These are injected into the Haiku classify prompt, giving the LLM awareness of w
 | # | Gap | Component | Impact |
 |---|---|---|---|
 | 1 | **`mem_mrr_items` and `mem_mrr_messages` are never populated** — classify has no meeting-note or Slack context | Layer 1 | Medium — LLM misses non-code decisions if team doesn't use commit messages + Claude Code exclusively |
-| 2 | **No commit→item auto-closure** — "fixes BU0012" in commit msg does not set `user_status=done` | Work Items | Medium — requires manual update; easy to miss |
+| 2 | **No commit→item auto-closure** — "fixes BU0012" in commit msg does not set `user_status=done` | Work Items | **FIXED** — `_close_items_from_commit()` in route_git.py: score_status=5, score_importance=5, user_status='review' |
 | 3 | **Project facts lag behind code** — `mem_ai_project_facts` only updated on manual `/memory` run; architectural changes not auto-detected from commits | Layer 2 | Medium — stale facts between `/memory` runs |
-| 4 | **`project_state.json` synthesis not triggered after commits** — key_decisions may be weeks old if user doesn't run `/memory` | Memory Files | Medium — CLAUDE.md tech_stack / key_decisions can lag |
+| 4 | **`project_state.json` synthesis not triggered after commits** — key_decisions may be weeks old if user doesn't run `/memory` | Memory Files | **FIXED** — `_post_commit_synthesis()` in route_git.py: Haiku synthesis runs in background after every commit |
 | 5 | **Hotspot work items only suggested on `/memory`** — `_suggest_hotspot_work_items()` not called from commit pipeline | Work Items | Low — refactor suggestions appear slowly |
-| 6 | **`sync_github_issues` MCP tool is a dead stub** — returns error; wastes tool-list space | MCP | Low — remove from tool list |
+| 6 | **`sync_github_issues` MCP dispatch is a dead stub** — returns error; wastes handler space | MCP | **FIXED** — dispatch branch removed from server.py |
 | 7 | **No overdue items section in CLAUDE.md** — requires MCP call with `due_date_before` | Memory Files | Low — now possible via MCP but not auto-surfaced |
 
 ---

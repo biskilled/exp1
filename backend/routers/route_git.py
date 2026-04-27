@@ -219,6 +219,109 @@ async def _check_backlog_threshold(project: str, source_type: str) -> None:
         log.debug(f"_check_backlog_threshold({source_type}) error: {e}")
 
 
+# Pattern: "fixes BU0012", "closes FE0001", "resolve TA0003" (case-insensitive)
+_COMMIT_CLOSES_RE = _re.compile(
+    r'\b(?:fix(?:es|ed)?|clos(?:e|es|ed)|resolv(?:e|es|ed))\s+([A-Z]{2}\d{4})\b',
+    _re.IGNORECASE,
+)
+
+
+def _close_items_from_commit(project_id: int, commit_msg: str) -> int:
+    """Parse commit message for work item references and mark them for review.
+
+    Sets score_status=5 (done, high confidence) and score_importance=5 (high visibility)
+    so the item appears at the top of the user's review list — one-click approval.
+    user_status is set to 'review' (not done) so the user still confirms explicitly.
+
+    Skips items already done or in review. Returns count of items updated.
+    """
+    refs = list({m.group(1).upper() for m in _COMMIT_CLOSES_RE.finditer(commit_msg)})
+    if not refs or not db.is_available():
+        return 0
+    updated = 0
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                for wi_id in refs:
+                    cur.execute(
+                        """UPDATE mem_work_items
+                           SET score_status = 5,
+                               score_importance = 5,
+                               user_status = 'review',
+                               updated_at = NOW()
+                           WHERE project_id = %s
+                             AND wi_id = %s
+                             AND deleted_at IS NULL
+                             AND completed_at IS NULL
+                             AND user_status NOT IN ('done', 'review')""",
+                        (project_id, wi_id),
+                    )
+                    if cur.rowcount:
+                        log.info("Commit closes %s → set score=5/review (pending user confirm)", wi_id)
+                        updated += cur.rowcount
+            conn.commit()
+    except Exception as exc:
+        log.debug("_close_items_from_commit error: %s", exc)
+    return updated
+
+
+async def _post_commit_synthesis(project: str) -> None:
+    """Re-run project_state.json synthesis after a commit so key_decisions stay current.
+
+    Loads the last 15 commits as history, calls the same Haiku project_synthesis prompt
+    used by POST /memory, and writes a fresh project_state.json.
+    Silent no-op if the API key is missing or any step fails.
+    """
+    try:
+        from routers.route_projects import _synthesize_with_llm
+        from core import project_paths as pp
+        import json as _json
+
+        if not db.is_available():
+            return
+
+        project_id = db.get_or_create_project_id(project)
+        # Load recent 15 commits as lightweight history entries
+        history: list[dict] = []
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT commit_msg, summary, created_at::text, commit_type
+                       FROM mem_mrr_commits
+                       WHERE project_id=%s
+                       ORDER BY created_at DESC LIMIT 15""",
+                    (project_id,),
+                )
+                for msg, summary, ts, ctype in cur.fetchall():
+                    history.append({
+                        "user_input": f"[commit/{ctype or 'chore'}] {msg}",
+                        "output": summary or "",
+                        "ts": ts,
+                        "source": "git",
+                    })
+        history.reverse()  # oldest first for synthesis prompt
+
+        # Load current project_state.json and PROJECT.md
+        state_path = pp.project_state_path(project)
+        state_data = _json.loads(state_path.read_text()) if state_path.exists() else {}
+        proj_md_path = pp.memory_dir(project) / "PROJECT.md"
+        project_md = proj_md_path.read_text() if proj_md_path.exists() else ""
+
+        result = await _synthesize_with_llm(
+            project_name=project,
+            history=history,
+            state_data=state_data,
+            project_md=project_md,
+            prior_synthesis=state_data,
+        )
+        if result:
+            state_data.update(result)
+            state_path.write_text(_json.dumps(state_data, indent=2))
+            log.debug("_post_commit_synthesis: updated project_state.json for '%s'", project)
+    except Exception as exc:
+        log.debug("_post_commit_synthesis error for '%s': %s", project, exc)
+
+
 def _extract_commit_code_background(project: str, commit_hash: str) -> None:
     """Run tree-sitter symbol extraction and insert rows into mem_mrr_commits_code."""
     import asyncio
@@ -230,7 +333,23 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
         from memory.memory_code_parser import extract_commit_code
         loop.run_until_complete(extract_commit_code(project, commit_hash))
         _finish_run(run_id, "ok", 1, 1, t0)
-        # Refresh all root context files (CLAUDE.md, .cursorrules, code.md, etc.)
+
+        # Auto-close work items referenced in the commit message (e.g. "fixes BU0012")
+        if p_id:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT commit_msg FROM mem_mrr_commits WHERE commit_hash=%s",
+                        (commit_hash,),
+                    )
+                    row = cur.fetchone()
+            if row and row[0]:
+                _close_items_from_commit(p_id, row[0])
+
+        # Update project_state.json with fresh Haiku synthesis (best-effort)
+        loop.run_until_complete(_post_commit_synthesis(project))
+
+        # Refresh all root context files with fresh project_state.json
         from memory.memory_files import MemoryFiles
         MemoryFiles().write_root_files(project)
     except Exception as e:

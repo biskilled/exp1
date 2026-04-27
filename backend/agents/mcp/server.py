@@ -613,12 +613,6 @@ async def _dispatch(name: str, args: dict) -> Any:
             "note": "Item created as unapproved. Approve in the Work Items UI to assign a wi_id (BU0001, etc.).",
         }
 
-    elif name == "sync_github_issues":
-        return {
-            "error": "sync_github_issues is not implemented in the current backend.",
-            "suggestion": "Import issues manually via POST /wi/{project} or use the Work Items classify pipeline.",
-        }
-
     elif name == "list_work_items":
         # Fetch from /wi/{project} (mem_work_items table)
         params: dict = {}
