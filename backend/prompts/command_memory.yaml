@@ -1,0 +1,149 @@
+# command_memory.yaml — All LLM prompts used when the /memory command runs.
+#
+# ── WHEN /memory IS CALLED ───────────────────────────────────────────────────
+#
+# Stage 1: project_synthesis (route_projects._synthesize_with_llm)
+#   Model: Haiku | Input: recent history + PROJECT.md + current project_state.json
+#   Output: project_state.json (key_decisions, in_progress, tech_stack, project_facts)
+#
+# Stage 2: conflict_detection (memory_promotion.py — called during fact extraction)
+#   Model: Haiku | Input: old fact value vs new fact value for same key
+#   Output: resolution type + merged value → written to mem_ai_project_facts
+#
+# Stage 3: tag_suggestion (route_projects._synthesize_with_llm — appended to response)
+#   Model: Haiku | Input: recent 5 developer prompts
+#   Output: JSON array of 2-3 suggested feature/phase tags
+#
+# Stage 4: memory_context_* (memory_files.py — preamble injected into rendered files)
+#   Model: n/a (static preamble, not an LLM call)
+#   Output: prepended to CLAUDE.md / cursorrules / openai context files
+#
+# ── HARDCODED PATH ───────────────────────────────────────────────────────────
+# route_projects.py loads this file directly by path (not via prompt_loader).
+# All other keys are loaded via prompt_loader.content("<key>").
+#
+# ── VARIABLES (project_synthesis) ───────────────────────────────────────────
+#   {project_name}  — project slug
+#   {current_state} — JSON of current tech_stack / key_decisions / in_progress
+#   {prior_block}   — prior synthesis block (empty string if none)
+#   {proj_intro}    — first paragraph of PROJECT.md (≤600 chars)
+#   {entity_block}  — active features/bugs/tasks summary (empty if none)
+#   {history_len}   — number of history entries
+#   {history_text}  — formatted prompt/response pairs (oldest→newest)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 1: Project State Synthesis
+# Called by: route_projects._synthesize_with_llm()
+# ─────────────────────────────────────────────────────────────────────────────
+- key: project_synthesis
+  name: Project State Synthesis
+  description: "Haiku synthesis — extracts key_decisions, tech_stack, in_progress, project_facts from development history → project_state.json"
+  model: haiku
+  max_tokens: 2000
+  system: |
+    You are analyzing development history for project "{project_name}".
+
+    Current structured state:
+    {current_state}
+
+    {prior_block}
+    Project intro (from PROJECT.md):
+    {proj_intro}
+
+    {entity_block}
+    Development history ({history_len} entries, oldest→newest):
+    {history_text}
+
+    Return ONLY valid JSON (no markdown fences) with exactly these fields:
+    {{
+      "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],
+      "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],
+      "tech_stack": {{"component": "technology or version"}},
+      "project_summary": "2-3 sentence description of what this project is and its current state.",
+      "project_facts": {{
+        "stack": {{"key": "value"}},
+        "pattern": {{"key": "value"}},
+        "convention": {{"key": "value"}},
+        "constraint": {{"key": "value"}}
+      }}
+    }}
+
+    Rules:
+    - key_decisions: permanent facts (tech choices, auth approach, architecture patterns)
+    - in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)
+    - tech_stack: return ONLY the canonical set (~15 most relevant entries). Do not duplicate keys. Replace stale entries.
+    - project_facts: optional structured facts by category. Each category is a flat key→value map. Omit empty categories. Max 5 entries per category.
+    - Return ONLY valid JSON, no explanation outside the JSON.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 2: Conflict Detection
+# Called by: memory_promotion.py when a new fact conflicts with existing one
+# ─────────────────────────────────────────────────────────────────────────────
+- key: conflict_detection
+  name: Conflict Detection
+  description: "Resolves conflicts between old and new values for the same project fact key in mem_ai_project_facts (supersede/merge/flag)"
+  model: haiku
+  max_tokens: 300
+  system: |
+    You are a project memory conflict resolver.
+    Given an old fact value and a new fact value for the same key, decide the correct resolution.
+
+    Resolution types:
+      supersede  — new value completely replaces the old (old is stale/wrong)
+      merge      — both values are partially correct; provide a merged_value combining them
+      flag       — values are contradictory and require human review
+
+    Return JSON only:
+    {
+      "conflict": true|false,
+      "conflicting_fact_key": "fact key name",
+      "resolution": "supersede|merge|flag",
+      "merged_value": "combined value (only for merge resolution, else null)",
+      "reasoning": "one sentence explaining the decision"
+    }
+    No preamble, no markdown fences.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 3: Tag Suggestion
+# Called by: route_projects._synthesize_with_llm() — suggests tags from recent prompts
+# ─────────────────────────────────────────────────────────────────────────────
+- key: tag_suggestion
+  name: Tag Suggestion
+  description: "Suggests 2-3 relevant work-item tags from recent developer prompts"
+  model: haiku
+  max_tokens: 150
+  system: |
+    You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 4: Memory Context File Preambles
+# Used by: memory_files.py — prepended to rendered context files (no LLM call)
+# ─────────────────────────────────────────────────────────────────────────────
+- key: memory_context_compact
+  name: Memory Context (Compact)
+  description: "Preamble for compact system prompt — GPT-4 and small-window models"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are a senior developer working on **{project}**.
+    Respect all project facts below. Never contradict them unless explicitly asked.
+    When working on a specific feature, ask for its snapshot before making decisions.
+
+- key: memory_context_full
+  name: Memory Context (Full)
+  description: "Preamble for full system prompt — Claude, Deepseek, Gemini"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are a senior developer working on **{project}**.
+    Respect all project facts below. Never contradict them unless explicitly asked.
+    When working on a specific feature, ask for its snapshot before making decisions.
+
+- key: memory_context_openai
+  name: Memory Context (OpenAI)
+  description: "Preamble for OpenAI/Codex system prompt"
+  model: haiku
+  max_tokens: 50
+  system: |
+    You are an AI assistant helping develop the **{project}** project.
+    Follow project conventions exactly. Do not introduce new dependencies without approval.

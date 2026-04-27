@@ -46,7 +46,7 @@ from memory.memory_code_parser import get_file_hotspots
 log = logging.getLogger(__name__)
 
 # ── Prompt path ───────────────────────────────────────────────────────────────
-_WI_PROMPTS_PATH = Path(__file__).parent.parent / "prompts" / "mem_work_items.yaml"
+_WI_PROMPTS_PATH = Path(__file__).parent.parent / "prompts" / "command_work_items.yaml"
 
 # ── Table map ─────────────────────────────────────────────────────────────────
 _TABLE: dict[str, str] = {

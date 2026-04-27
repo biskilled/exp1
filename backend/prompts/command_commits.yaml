@@ -1,0 +1,72 @@
+# command_commits.yaml — All LLM prompts used when processing git commits.
+#
+# ── WHEN COMMITS ARE PROCESSED ───────────────────────────────────────────────
+#
+# Stage 1: commit_analysis (route_git.py — called after each commit push)
+#   Model: Sonnet | Input: git diff
+#   Output: JSON record (message, summary, key_classes, patterns, decisions, etc.)
+#   Written to: mem_mrr_commits.diff_summary
+#
+# Stage 2: commit_symbol (memory_code_parser.py — per symbol in the diff)
+#   Model: Haiku | Input: changed class/method/function + its diff
+#   Output: 1-sentence summary of what changed
+#   Written to: mem_mrr_commits_code.llm_summary
+#
+# Stage 3: commit_message (route_git.py — generates final git commit message)
+#   Model: Haiku | Input: changed files list + diff summary
+#   Output: short single-line git commit message
+#   Used for: auto git commit (POST /git/{project}/commit-push)
+#
+# Loaded via prompt_loader.content("<key>") by route_git.py and memory_code_parser.py.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 1: Commit Analysis
+# Called by: route_git.py after each commit is stored
+# ─────────────────────────────────────────────────────────────────────────────
+- key: commit_analysis
+  name: Commit Analysis
+  description: Produces a structured JSON commit record from a git diff including key classes, patterns, and decisions
+  model: sonnet
+  max_tokens: 800
+  system: |
+    You are a technical project memory assistant.
+    Given a git diff, produce a structured commit record.
+    Respond ONLY in JSON:
+    {
+      "message": "conventional commit message (feat/fix/chore/test/refactor)",
+      "summary": "1-2 sentences of what changed and why",
+      "key_classes": ["classes added or modified"],
+      "key_methods": ["methods added or modified"],
+      "patterns_used": ["design patterns visible in this change"],
+      "decisions": ["any architectural decision visible in this diff"],
+      "test_coverage": {
+        "files_tested": ["test files in this diff"],
+        "what_tested": "one sentence on what the tests cover"
+      },
+      "dependencies": { "added": ["packages added"], "removed": ["packages removed"] }
+    }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 2: Commit Symbol Summary
+# Called by: memory_code_parser.py — once per changed class/method/function
+# ─────────────────────────────────────────────────────────────────────────────
+- key: commit_symbol
+  name: Commit Symbol
+  description: Writes a one-sentence summary of what changed in a single class/method/function symbol
+  model: haiku
+  max_tokens: 120
+  system: |
+    You are a code analyst. Given a changed symbol (class/method/function) and its diff,
+    write a 1-sentence summary of what changed and why. Be concise.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 3: Commit Message Generation
+# Called by: route_git.py — generates the git commit message text
+# ─────────────────────────────────────────────────────────────────────────────
+- key: commit_message
+  name: Commit Message
+  description: "Generates a short single-line git commit message from changed files and diff"
+  model: haiku
+  max_tokens: 80
+  system: |
+    You write short, professional git commit messages.

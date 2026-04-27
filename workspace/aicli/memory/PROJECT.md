@@ -42,50 +42,52 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ```
 Layer 1 — Raw Capture (mem_mrr_*)
-  ├── mem_mrr_prompts        raw prompt/response pairs (session-tagged)
+  ├── mem_mrr_prompts        raw prompt/response pairs (session-tagged, all in DB)
   ├── mem_mrr_commits        git commits (hash, msg, tags, diff_summary)
   ├── mem_mrr_commits_code   per-symbol diffs (tree-sitter: class, method, file)
+  ├── mem_mrr_commits_file_stats   hotspot scores per file
+  ├── mem_mrr_commits_file_coupling  co-change pairs
   ├── mem_mrr_items          document/meeting items
   └── mem_mrr_messages       Slack/chat messages
 
-Layer 2 — AI Events (mem_ai_events)
-  Haiku digest + OpenAI embedding (text-embedding-3-small, 1536-dim)
-  event_type: prompt_batch | commit | session_summary | item | workflow
-  source_id: batch_{hash8}_{tagfp8} for commits; last prompt UUID for prompt batches
-  Tags: only user-intent {phase, feature, bug, source} stored
+Layer 2 — Structured Artifacts (mem_ai_project_facts)
+  Durable facts extracted by /memory → project_state.json
+  ("uses pgvector", "auth is JWT") — updated by project_synthesis Haiku call
 
-Layer 3 — Structured Artifacts (mem_ai_project_facts)
-  Durable facts ("uses pgvector", "auth is JWT")
-
-Layer 4 — Work Items (mem_work_items)
-  AI-classified + user-reviewed: wi_type (use_case/feature/bug/task)
-  user_status: open → active → done; due_date; score_importance
-  ← USER REVIEWS — AI classifies, user confirms/edits
+Layer 3 — Work Items (mem_work_items)
+  AI-classified + user-reviewed: wi_type (use_case/feature/bug/task/requirement)
+  user_status TEXT: open → pending → in-progress → review → done
+  wi_id: AI0001 (draft) → UC0001/FE0001/BU0001/TA0001 (approved)
+  Approved items: embedding VECTOR(1536) computed; wi_parent_id links children to use_case
 ```
 
-### Backlog Pipeline (5 steps)
+### Work Item Classification Pipeline
 
 ```
-Step 1 — Raw capture:   mem_mrr_* (no LLM)
-Step 2 — Backlog:       backlog_config.yaml drives 2-call LLM digest
-           per source type:
-           call 1 — grouping_prompt  (clusters N rows by topic)
-           call 2 — summary_prompt   (per group → requirements + action items)
-           → documents/backlog.md (append-only)
-Step 3 — User review:   Backlog tab — approve (x), reject (-), add tag
-Step 4 — Merge:         POST /memory/{p}/work-items processes approved entries
-           → creates/updates documents/use_cases/{slug}.md
-           → upserts mem_work_items row (wi_type, name, summary)
-Step 5 — Use case LLM:  refreshes Open items with AI score 0-5
+POST /wi/{project}/classify
+  1. Delete AI draft rows (wi_id LIKE 'AI%')
+  2. Fetch unprocessed mem_mrr_* rows (wi_id IS NULL)
+  3. Token-bound batches → Claude Haiku (command_work_items.yaml)
+  4. Save drafts: use_cases (AI0001) + children (AI0002…)
+  5. User reviews in Planner UI (approve/reject)
+  6. Approve → real ID assigned (US/FE/BU/TA) + embedding computed
 ```
 
-### How `/memory` syncs context
+### How `/memory` syncs context files
 
 ```
-POST /projects/aicli/memory
-  ├── Flush all pending mirror rows → backlog.md
-  ├── Write CLAUDE.md / .cursorrules / context.md from DB facts + mem_work_items
-  └── Top events → .claude/memory/top_events.md
+POST /projects/{project}/memory
+  1. project_synthesis  — Claude Haiku reads recent prompts → project_state.json
+                          (command_memory.yaml: project_synthesis key)
+  2. write_root_files() — MemoryFiles renders all context files from project_state.json + DB:
+       memory/claude/CLAUDE.md     (token-limited)
+       memory/cursor/rules.md
+       memory/openai/compact.md + full.md
+       memory/context.md           (shared injection)
+       memory/code.md              (hotspots + coupling tables)
+  3. tag_suggestion     — Claude Haiku suggests 2-3 tags from recent prompts
+                          (command_memory.yaml: tag_suggestion key)
+  No history.jsonl — all history is in mem_mrr_prompts (DB)
 ```
 
 ---
@@ -121,23 +123,21 @@ aicli/                          ← Engine (code)
 │   │   └── route_files.py      ← /files (code directory browser)
 │   ├── memory/                 ← Memory pipeline classes
 │   │   ├── memory_mirroring.py ← INSERT mem_mrr_* rows; tag operations
-│   │   ├── memory_embedding.py ← Haiku digest + OpenAI embed → mem_ai_events
 │   │   ├── memory_backlog.py   ← Backlog pipeline; run_work_items(); use case files
-│   │   ├── memory_promotion.py ← Fact conflict detection (conflict_detection.yaml)
-│   │   ├── memory_files.py     ← Template render → CLAUDE.md / .cursorrules
-│   │   ├── memory_sessions.py  ← Layer 2: JSON sessions for LLM message continuity
-│   │   └── memory_code_parser.py← tree-sitter symbol extraction for commits
+│   │   ├── memory_work_items.py← Work item classification + approval pipeline
+│   │   ├── memory_promotion.py ← Fact conflict detection → mem_ai_project_facts
+│   │   ├── memory_files.py     ← Deterministic render → CLAUDE.md, context files (no LLM)
+│   │   ├── memory_sessions.py  ← JSON sessions for LLM message continuity
+│   │   └── memory_code_parser.py← tree-sitter symbol extraction → mem_mrr_commits_code
 │   ├── agents/                 ← LLM agent pipeline
 │   │   ├── providers/          ← Claude, OpenAI, DeepSeek, Gemini, Grok adapters
 │   │   └── tools/              ← Agent tool implementations (search, git, memory)
 │   ├── data/                   ← Runtime data (api_keys.json, pricing.json)
 │   └── prompts/                ← LLM system prompts (YAML — no inline Python strings)
-│       ├── commit.yaml         ← commit_analysis, commit_symbol, commit_message
-│       ├── react_base.yaml     ← react_pipeline_base, react_suffix (agent.py)
-│       ├── misc.yaml           ← tag_suggestion
-│       ├── memory_files.yaml   ← memory_context_compact/full/openai
-│       ├── conflict_detection.yaml ← fact conflict resolver
-│       └── work_items.yaml     ← work item extraction/promotion prompts
+│       ├── command_memory.yaml     ← /memory: project_synthesis, conflict_detection, tag_suggestion, memory_context_*
+│       ├── command_commits.yaml    ← /git: commit_analysis, commit_symbol, commit_message
+│       ├── command_work_items.yaml ← /wi/classify: classification, summarise, categories
+│       └── agent_react.yaml        ← agents: react_pipeline_base, react_suffix
 ├── ui/
 │   ├── electron/               ← Electron shell (BrowserWindow, xterm.js)
 │   └── frontend/               ← Vanilla JS (no framework)
