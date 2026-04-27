@@ -163,3 +163,80 @@ Does NOT show: summary, acceptance_criteria, implementation_plan.
 3. All context files (CLAUDE.md, cursorrules, etc.) re-rendered from updated `project_state.json`
 
 Between `/memory` runs, CLAUDE.md reflects the last cached `project_state.json`.
+
+---
+
+## Embedding & MCP Strategy
+
+### What is currently embedded
+
+| What | Model | When | Table / Column |
+|------|-------|------|----------------|
+| Approved work items | OpenAI text-embedding-3-small | On approve | `mem_work_items.embedding VECTOR(1536)` |
+| Approved items (on edit) | OpenAI text-embedding-3-small | When name/summary/deliveries change | Same column |
+| Unapproved draft items | OpenAI text-embedding-3-small | Manual `/embed` only | Same column |
+
+### What is NOT embedded (gaps)
+
+| What | Why it matters | Status |
+|------|---------------|--------|
+| `code.md` / symbol diffs | Would let Claude search for relevant code | ✗ Not indexed — file only |
+| `project_state.json` | Architectural decisions, tech stack | ✗ Not indexed — file only |
+| `mem_ai_project_facts` | Durable facts ("uses pgvector") | ✗ Table sparse; no embedding column |
+| `mem_mrr_prompts` | Full conversation history | ✗ Not embedded by default |
+| `mem_mrr_commits.diff_summary` | What changed and why | ✗ Not embedded |
+
+### Semantic search scope
+
+`POST /search/semantic` → embeds query with OpenAI → pgvector cosine over **`mem_work_items.embedding` only**.
+No code, no facts, no commit history in search results.
+
+### MCP tools inventory (14 tools)
+
+| Tool | Endpoint | Data source |
+|------|----------|-------------|
+| `search_memory` | `POST /search/semantic` | `mem_work_items.embedding` (pgvector) |
+| `get_project_state` | reads disk | `workspace/{p}/state/project_state.json` |
+| `get_recent_history` | `mem_mrr_prompts` | Last N prompts from DB |
+| `get_commits` | `mem_mrr_commits` | Last N commits from DB |
+| `get_tagged_context` | events by tag | prompts + commits filtered by phase/feature |
+| `get_session_tags` | `mng_session_tags` | Current phase + feature tags |
+| `set_session_tags` | `mng_session_tags` | Updates session phase/feature |
+| `create_entity` | `POST /wi/{project}` | Creates draft work item |
+| `list_work_items` | `GET /wi/{project}` | Active work items |
+| `sync_github_issues` | `PATCH /wi/{project}` | Imports GitHub issues as items |
+| `run_work_item_pipeline` | `POST /wi/{project}/{id}/pipeline` | 4-agent pipeline |
+| `get_db_schema` | reads DB | Table schema |
+| `get_roles` | reads YAML | Agent roles from `_templates/pipelines/roles/` |
+| `commit_push` | `POST /git/{project}/commit-push` | git commit + push |
+
+---
+
+## Other LLM Methods (not covered above)
+
+| Method | File | Trigger | LLM | Input → Output |
+|--------|------|---------|-----|----------------|
+| `_haiku()` (symbol summary) | `memory/memory_code_parser.py:741` | Auto, background after every commit | Haiku (120 tok) | Changed symbol diff ≤1000 chars → description stored in `mem_mrr_commits_code.llm_summary` |
+| `_suggest_feature_tag()` | `routers/route_chat.py:395` | Auto, on every developer chat prompt | Haiku (60 tok) | 30 feature names + first 400 chars of prompt → `{"feature": "name"}` → updates `mng_session_tags` |
+| `ai_summarise_uc()` | `memory/memory_work_items.py:1394` | Manual — `POST /wi/{project}/{id}/summarise` | Haiku (2000 tok) | Use case + all child items → rewrites summary + re-orders children |
+| `_call_haiku()` in route_memory.py | `routers/route_memory.py:157` | **Never called** — dead code | — | — |
+
+---
+
+## Suggestions
+
+### Improve file updates
+- **Render age into CLAUDE.md** — show `project_state.json` `last_updated` date so LLMs know how stale context is.
+- **Auto-regenerate on commit** — `write_root_files()` currently only runs on `/memory`; trigger it after each commit so hotspot section stays current (already partly done via `write_code_md()`).
+- **Include `summary` in active items** — CLAUDE.md active features show only `wi_id + name`; adding one-line summary would give LLMs actionable context.
+
+### Improve work items
+- **`/wi reclassify <id>`** — re-run Haiku classification on a single item when its summary drifts from the original events.
+- **`score_status` auto-sync** — when user sets `user_status = 'done'`, automatically set `score_status = 5`; reduces divergence between the two fields.
+- **Link new events to approved items** — `mrr_ids` is only populated at approve time; edits and new commits related to the same feature are never linked back.
+
+### Improve MCP / embedding / methods
+- **Embed `mem_mrr_commits.diff_summary`** — would let `search_memory` return relevant commits alongside work items.
+- **Embed code symbols** — store `mem_mrr_commits_code.llm_summary` embeddings; enable code-aware search (`"how does auth work?"`).
+- **Move `_suggest_feature_tag` prompt to `misc.yaml`** — currently an inline string in `route_chat.py`; should be configurable like all other prompts.
+- **Remove dead `_call_haiku` in `route_memory.py`** — defined but never called; adds noise.

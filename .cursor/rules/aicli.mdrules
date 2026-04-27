@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 00:35 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 00:40 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-27_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-27] I would like to follow the llm prompts under the prompt folder. can you rename command_memory yaml file for all llm prom
 - [2026-04-27] is there is /commit command ? Also you mention code.md is created by command_memory . it is not supposed to update file 
 - [2026-04-27] why you rename the yaml to command_commit if there is no command ? this yaml manage after commit event no ?
 - [2026-04-27] The current project_state stored fact like 5-layer memory architecture with /memory endpoint + LLM synthesis via Haiku o
 - [2026-04-27] Again, please clear all aiCli_memory.md as it is too long and start to explain from scratch all memory mechanism.  for c
+- [2026-04-27] Do the same for work_item - is well sumerrised to use cases, items types (feature, bug, taks) item score (no started- im
