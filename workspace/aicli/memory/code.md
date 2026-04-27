@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 13:37 UTC -->
+<!-- Last updated: 2026-04-27 14:04 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -221,9 +221,9 @@ _Files with highest commit frequency — candidates for refactoring._
 | File | Score | Commits | Lines | Bug Fixes | Last Changed |
 |------|-------|---------|-------|-----------|--------------|
 | `backend/memory/memory_code_parser.py` | 58.9626 | 2 | 788 | 0 | 2026-04-22 |
-| `backend/memory/memory_work_items.py` | 27.0 | 25 | 1372 | 0 | 2026-04-27 |
+| `backend/memory/memory_work_items.py` | 28.0 | 26 | 1377 | 0 | 2026-04-27 |
 | `backend/memory/memory_files.py` | 19.0 | 17 | 1179 | 0 | 2026-04-27 |
-| `backend/routers/route_projects.py` | 16.0 | 14 | 1821 | 0 | 2026-04-27 |
+| `backend/routers/route_projects.py` | 17.0 | 15 | 1693 | 0 | 2026-04-27 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `backend/core/db_migrations.py` | 11.0 | 9 | 3280 | 0 | 2026-04-26 |
@@ -241,11 +241,11 @@ _Files frequently committed together — likely tightly coupled._
 | `backend/memory/memory_work_items.py` | `backend/routers/route_work_items.py` | 7 |
 | `backend/memory/memory_files.py` | `backend/routers/route_projects.py` | 7 |
 | `backend/core/db_migrations.py` | `backend/memory/memory_work_items.py` | 7 |
-| `backend/memory/memory_files.py` | `backend/memory/memory_work_items.py` | 6 |
 | `backend/agents/mcp/server.py` | `backend/memory/memory_work_items.py` | 6 |
+| `backend/memory/memory_files.py` | `backend/memory/memory_work_items.py` | 6 |
 | `backend/agents/mcp/server.py` | `backend/memory/memory_files.py` | 5 |
 | `backend/memory/memory_files.py` | `backend/routers/route_git.py` | 5 |
-| `backend/core/db_migrations.py` | `backend/routers/route_work_items.py` | 4 |
+| `backend/memory/memory_work_items.py` | `backend/routers/route_projects.py` | 4 |
 | `backend/routers/route_work_items.py` | `ui/frontend/views/work_items.js` | 4 |
 
 ---
