@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 22:28 UTC -->
+<!-- Last updated: 2026-04-27 22:31 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -161,9 +161,11 @@ aicli/
 │       ├── CLAUDE.md
 │       ├── PROJECT.md
 │       └── project.yaml
+├── AGENTS.md
 ├── aicli.yaml
 ├── aicli_memory.md
 ├── CLAUDE.md
+├── GEMINI.md
 ├── MEMORY.md
 ├── pyproject.toml
 ├── README.md

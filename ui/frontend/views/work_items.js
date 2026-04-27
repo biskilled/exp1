@@ -1516,6 +1516,7 @@ function _renderUseCases() {
           <button class="wi-edit-arrow" data-action="rename-pop"
                   data-id="${uc.id}" data-current-name="${_esc(uc.name || '')}" data-is-uc="true"
                   title="Rename use case">▾</button>
+          ${_openDaysBadge(uc.approved_at)}
           <span style="flex:1"></span>
           ${uc.due_date
             ? _dueBadge(uc.due_date, uc.start_date)
@@ -1531,7 +1532,7 @@ function _renderUseCases() {
         <div class="wi-uc-card-body" id="body-${uc.id}">
           <div class="wi-uc-dates">
             <span>Created: ${fmt(uc.created_at)}</span>
-            <span>Approved: ${fmt(uc.approved_at)}</span>
+            <span>Approved: ${fmt(uc.approved_at)}${uc.approved_at ? ` · <strong>${_daysAgo(uc.approved_at)}d open</strong>` : ''}</span>
             <span>Updated: ${fmt(uc.updated_at)}</span>
             <span style="flex:1"></span>
             ${evChips ? `<div class="wi-uc-event-chips">
@@ -1641,7 +1642,8 @@ function _renderUcItem(item, depth = 0) {
                 data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
                 title="Change status">▾</button>
         ${isPending
-          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
+          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>
+             ${_waitingBadge(item.created_at)}`
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
         ${_hotspotBadge(item._hotspot_files)}
@@ -1691,6 +1693,34 @@ function _renderUcItem(item, depth = 0) {
       </div>
     </div>
   `;
+}
+
+// ── Age / waiting helpers ──────────────────────────────────────────────────────
+
+/** Returns whole days elapsed since an ISO date string, or null if no date. */
+function _daysAgo(isoDate) {
+  if (!isoDate) return null;
+  return Math.max(0, Math.floor((Date.now() - new Date(isoDate)) / 86400000));
+}
+
+/** Orange/red badge shown on pending items: "⏳ 5d waiting" */
+function _waitingBadge(createdAt) {
+  const d = _daysAgo(createdAt);
+  if (d === null) return '';
+  const color = d > 7 ? '#ef4444' : d > 3 ? '#f59e0b' : '#9ca3af';
+  return `<span title="Waiting for approval · created ${createdAt ? createdAt.slice(0,10) : '?'}"
+    style="font-size:0.65rem;color:${color};white-space:nowrap;padding:1px 5px;
+    background:${color}18;border-radius:3px;border:1px solid ${color}44;line-height:1.6">⏳ ${d}d waiting</span>`;
+}
+
+/** Neutral badge shown on approved use cases: "📂 12d open" */
+function _openDaysBadge(approvedAt) {
+  const d = _daysAgo(approvedAt);
+  if (d === null) return '';
+  const color = d > 30 ? '#ef4444' : d > 14 ? '#f59e0b' : '#6b7280';
+  return `<span title="Open since ${approvedAt ? approvedAt.slice(0,10) : '?'}"
+    style="font-size:0.65rem;color:${color};white-space:nowrap;padding:1px 5px;
+    background:${color}18;border-radius:3px;border:1px solid ${color}44;line-height:1.6">📂 ${d}d open</span>`;
 }
 
 // ── Due date helpers ──────────────────────────────────────────────────────────
@@ -2318,9 +2348,10 @@ function _renderItemCard(item, rank) {
                 data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
                 title="Change status">▾</button>
 
-        <!-- ID -->
+        <!-- ID + waiting badge for pending items -->
         ${isPending
-          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>`
+          ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>
+             ${_waitingBadge(item.created_at)}`
           : `<span class="wi-id">${_esc(item.wi_id)}</span>`
         }
 

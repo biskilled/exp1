@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-27 22:28 UTC -->
+<!-- Last updated: 2026-04-27 22:31 UTC -->
 # aicli
-_2026-04-27 22:28 UTC | Memory synced: 2026-04-27_
+_2026-04-27 22:31 UTC | Memory synced: 2026-04-27_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -40,32 +40,32 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry + 4-agent pipeline (PM→Architect→Developer→Reviewer)
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry + 4-agent pipeline
 - **memory_synthesis**: Claude Haiku (project_state.json) + 5 output files with pgvector embeddings for approved work items only
 - **chunking**: Smart: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs) via tree-sitter
-- **mcp**: Stdio MCP server with 14 tools (search_memory, get_project_state, tags, backlog, create_entity, list_work_items, etc.)
+- **mcp**: Stdio MCP server with 14 tools (search_memory, get_project_state, tags, backlog, create_entity, etc.)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **database_migrations**: PostgreSQL with m001-m080 framework (m080 adds 4-agent pipeline columns)
+- **database_migrations**: PostgreSQL m001-m080+ framework (m080 adds 4-agent pipeline columns)
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) for per-symbol diffs and hotspot detection
 
 ## Key Architectural Decisions
 
-- Memory architecture: 3 layers — raw captures (mem_mrr_*: prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings ONLY for approved items).
-- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from this single JSON.
+- Memory architecture: 3-layer design — raw captures (mem_mrr_*: prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings for approved items only).
+- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from this single JSON source.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task) and wi_parent_id linking children to use_case parents; wi_id format: AI0001 (unapproved draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
 - Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory via unified get_project_context() path; stores llm_summary per symbol in mem_mrr_commits_code.
 - Embeddings: ONLY approved work items (wi_id: UC/FE/BU/TA) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts never embed; /search/semantic searches work_items only.
 - Work item re-embedding: triggered automatically only on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 via regex 'fixes BU0012' pattern.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
-- MCP server: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity→POST /wi/, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, etc.); stdio server in agents/mcp/server.py.
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified interface for all multi-LLM workflows.
+- MCP server: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity→POST /wi/, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items); stdio server in agents/mcp/server.py.
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified interface for multi-LLM workflows.
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; stored in mem_work_items columns acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id.
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
 - Database optimization: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot existence checks use single WHERE name = ANY(%s); token counting: len(text) // 4.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files (CLAUDE.md, SETTINGS.json, etc.); memory.yaml is internal engine only, not copied to projects.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines.
-- Memory file convergence: unified get_project_context() path for /memory POST and commit/work-item triggers; all 5 output files regenerated from single DB source; _load_context() splits DB queries (_query_db_into_ctx) and PROJECT.md parsing (_parse_project_md) to eliminate double file-read.
+- File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files (CLAUDE.md, SETTINGS.json); memory.yaml is internal engine only, not copied to projects.
+- Memory file convergence: unified get_project_context() path for /memory POST and commit/work-item triggers; all 5 output files regenerated from single DB source; _load_context() splits DB queries and PROJECT.md parsing to eliminate double file-read.
+- Date cascade validation: _apply_date_rules() prevents re-parenting work items to use cases with earlier due_dates; added depth check when only wi_parent_id changes to catch silent data inconsistency.
 
 ## In Progress
 
@@ -125,4 +125,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-27 22:28 UTC_
+_Last updated: 2026-04-27 22:31 UTC_
