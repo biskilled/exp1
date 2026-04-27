@@ -199,24 +199,147 @@ class MemoryFiles:
 
     # ── Data loading ──────────────────────────────────────────────────────────
 
+    def _query_db_into_ctx(self, cur, project_id: int, mem_cfg: dict, ctx: dict) -> None:
+        """Run all DB queries that populate ctx — called inside an open cursor."""
+        # Project facts grouped by category
+        cur.execute(_SQL_FACTS, (project_id,))
+        for cat, key, val in cur.fetchall():
+            ctx["facts_by_cat"].setdefault(cat, []).append((key, val))
+
+        # Active work items (use_case/feature — drives "Active Features" section)
+        cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
+        for wi_id, wi_name, wi_type, user_status, due_date, summary, ac, impl_plan in cur.fetchall():
+            status_label = (
+                _WI_STATUS_LABELS.get(user_status, "open")
+                if user_status is not None else "open"
+            )
+            ctx["active_tags"].append({
+                "name":                wi_name,
+                "wi_id":               wi_id or "",
+                "wi_type":             wi_type or "",
+                "status":              status_label,
+                "description":         (summary or "").strip(),
+                "acceptance_criteria": (ac or "").strip(),
+                "implementation_plan": (impl_plan or "").strip(),
+                "due_date":            due_date.isoformat() if due_date else None,
+            })
+
+        # In-progress items
+        try:
+            cur.execute(_SQL_IN_PROGRESS_ITEMS, (project_id,))
+            ctx["in_progress_items"] = [
+                {"wi_id": r[0] or "", "name": r[1] or "", "type": r[2] or "",
+                 "due": r[3].isoformat() if r[3] else None}
+                for r in cur.fetchall()
+            ]
+        except Exception as e:
+            log.debug("_query_db_into_ctx in_progress error: %s", e)
+
+        # Recently changed symbols (deduplicated, most recent first)
+        try:
+            cur.execute(_SQL_RECENTLY_CHANGED, (project_id,))
+            seen: dict = {}
+            for hash_short, _dt, fp, _stype, cls, meth, change, sym_summary in cur.fetchall():
+                key = (fp, cls or "", meth or "")
+                if key not in seen:
+                    label = f"{cls}.{meth}" if (cls and meth) else (cls or meth or fp)
+                    seen[key] = {
+                        "label":   label,
+                        "file":    fp,
+                        "change":  change or "modified",
+                        "hash":    hash_short or "",
+                        "summary": (sym_summary or "")[:80],
+                    }
+            ctx["recently_changed"] = list(seen.values())[:50]
+        except Exception as e:
+            log.debug("_query_db_into_ctx recently_changed error: %s", e)
+
+        # Code hotspots + file coupling
+        try:
+            threshold = mem_cfg.get("hotspot_threshold", 5)
+            cur.execute(_SQL_HOTSPOTS, (project_id, threshold))
+            ctx["hotspots"] = [
+                {
+                    "file":        row[0],
+                    "score":       row[1],
+                    "commits":     row[2],
+                    "lines":       row[3] or 0,
+                    "bug_commits": row[4] or 0,
+                    "last_changed": row[5].date().isoformat() if row[5] else "",
+                }
+                for row in cur.fetchall()
+            ]
+            cur.execute(_SQL_COUPLING, (project_id, 3))
+            ctx["coupling"] = [
+                {"file_a": row[0], "file_b": row[1], "count": row[2]}
+                for row in cur.fetchall()
+            ]
+        except Exception as e:
+            log.debug("_query_db_into_ctx hotspots error: %s", e)
+
+    def _parse_project_md(self, project: str, ctx: dict) -> None:
+        """Read PROJECT.md once and populate project_summary, conventions, deprecated_phrases."""
+        import re as _re_md
+        _SUMMARY_SECTIONS = {"Vision", "Core Goals"}
+        _CONV_SECTIONS    = {"Conventions", "Coding Standards", "Coding Conventions", "Development Standards"}
+        try:
+            proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
+            if not proj_md_path.exists():
+                return
+            md_text = proj_md_path.read_text(encoding="utf-8")
+            summary_parts: list[str] = []
+            deprecated_phrases: list[str] = []
+
+            for _section in md_text.split("\n## ")[1:]:
+                _heading = _section.split("\n")[0].strip()
+                _body_lines = [l for l in _section.splitlines()[1:] if not l.startswith("<!--")]
+
+                if _heading in _SUMMARY_SECTIONS:
+                    _body = "\n".join(l for l in _body_lines if l)
+                    if _body.strip():
+                        summary_parts.append(f"## {_heading}\n{_body.strip()}")
+
+                elif _heading in _CONV_SECTIONS:
+                    ctx["conventions"] = "\n".join(_body_lines).strip()[:800]
+
+                elif _heading == "Deprecated":
+                    for _line in _body_lines:
+                        _m = _re_md.match(r'^-?\s*(.+)', _line.lstrip())
+                        if _m:
+                            _phrase = _m.group(1).strip()
+                            if _phrase:
+                                deprecated_phrases.append(_phrase.lower())
+
+            ctx["project_summary"] = "\n\n".join(summary_parts)[:1200]
+            # Fallback: first prose paragraph if no named sections found
+            if not ctx["project_summary"]:
+                body = md_text.split("\n## ")[0]
+                prose = [
+                    l for l in body.splitlines()
+                    if l and not l.startswith(("#", ">", "<!--", "_", "```", "|"))
+                ]
+                ctx["project_summary"] = " ".join(prose[:3])[:300]
+            ctx["deprecated_phrases"] = deprecated_phrases
+        except Exception as e:
+            log.debug("_parse_project_md error: %s", e)
+
     def _load_context(self, project: str) -> dict:
-        """Load all DB data needed for rendering."""
+        """Load all DB data and PROJECT.md content needed for rendering."""
         mem_cfg = self._load_memory_config(project)
         ctx: dict = {
             "project":          project,
-            "facts_by_cat":     {},      # category → [(key, value)]
-            "active_tags":      [],      # list of dicts from mem_work_items (use_case/feature)
-            "recently_changed": [],      # recently changed symbols from commits
-            "project_summary":  "",      # first lines from PROJECT.md
-            "code_structure":   [],      # top-level dirs in code_dir
-            "hotspots":         [],      # high-score files from mem_mrr_commits_file_stats
-            "coupling":         [],      # tightly-coupled file pairs
+            "facts_by_cat":     {},
+            "active_tags":      [],
+            "recently_changed": [],
+            "project_summary":  "",
+            "code_structure":   [],
+            "hotspots":         [],
+            "coupling":         [],
             "memory_config":    mem_cfg,
             "ts":               datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         }
 
-        # Load project_state.json — must run regardless of DB availability so
-        # hook-triggered renders still get Stack & Key Decisions sections.
+        # Load project_state.json (runs even when DB is unavailable)
         state_data: dict = {}
         try:
             state_path = pp.project_state_path(project)
@@ -226,174 +349,31 @@ class MemoryFiles:
             pass
         ctx["state_data"] = state_data
 
-        if not db.is_available():
-            return ctx
+        # DB queries (single connection for all queries)
+        if db.is_available():
+            project_id = db.get_or_create_project_id(project)
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        self._query_db_into_ctx(cur, project_id, mem_cfg, ctx)
+            except Exception as e:
+                log.warning("MemoryFiles._load_context DB error for '%s': %s", project, e)
 
-        project_id = db.get_or_create_project_id(project)
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    # Project facts grouped by category
-                    cur.execute(_SQL_FACTS, (project_id,))
-                    for cat, key, val in cur.fetchall():
-                        ctx["facts_by_cat"].setdefault(cat, []).append((key, val))
+        # PROJECT.md — read once for summary, conventions, deprecated phrases
+        self._parse_project_md(project, ctx)
 
-                    # Active work items (use_case/feature — drives "Active Features" section)
-                    cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for wi_id, wi_name, wi_type, user_status, due_date, summary, ac, impl_plan in cur.fetchall():
-                        status_label = (
-                            _WI_STATUS_LABELS.get(user_status, "open")
-                            if user_status is not None else "open"
-                        )
-                        ctx["active_tags"].append({
-                            "name":                 wi_name,
-                            "wi_id":                wi_id or "",
-                            "wi_type":              wi_type or "",
-                            "status":               status_label,
-                            "description":          (summary or "").strip(),
-                            "acceptance_criteria":  (ac or "").strip(),
-                            "implementation_plan":  (impl_plan or "").strip(),
-                            "due_date":             due_date.isoformat() if due_date else None,
-                        })
-
-                    # In-progress work items — from DB user_status field (accurate, not LLM-derived)
-                    try:
-                        cur.execute(_SQL_IN_PROGRESS_ITEMS, (project_id,))
-                        ctx["in_progress_items"] = [
-                            {
-                                "wi_id": r[0] or "",
-                                "name":  r[1] or "",
-                                "type":  r[2] or "",
-                                "due":   r[3].isoformat() if r[3] else None,
-                            }
-                            for r in cur.fetchall()
-                        ]
-                    except Exception as e:
-                        log.debug(f"_load_context in_progress_items error: {e}")
-
-                    # Recently changed symbols (deduplicated, most recent first)
-                    try:
-                        cur.execute(_SQL_RECENTLY_CHANGED, (project_id,))
-                        seen: dict = {}
-                        for hash_short, date, fp, stype, cls, meth, change, summary in cur.fetchall():
-                            key = (fp, cls or "", meth or "")
-                            if key not in seen:
-                                if cls and meth:
-                                    label = f"{cls}.{meth}"
-                                elif cls:
-                                    label = cls
-                                elif meth:
-                                    label = meth
-                                else:
-                                    label = fp
-                                seen[key] = {
-                                    "label":   label,
-                                    "file":    fp,
-                                    "change":  change or "modified",
-                                    "hash":    hash_short or "",
-                                    "summary": (summary or "")[:80],
-                                }
-                        ctx["recently_changed"] = list(seen.values())[:50]
-                    except Exception as e:
-                        log.debug(f"_load_context recently_changed error: {e}")
-
-                    # Code hotspots + file coupling
-                    try:
-                        threshold = mem_cfg.get("hotspot_threshold", 5)
-                        cur.execute(_SQL_HOTSPOTS, (project_id, threshold))
-                        ctx["hotspots"] = [
-                            {
-                                "file":        row[0],
-                                "score":       row[1],
-                                "commits":     row[2],
-                                "lines":       row[3] or 0,
-                                "bug_commits": row[4] or 0,
-                                "last_changed": row[5].date().isoformat() if row[5] else "",
-                            }
-                            for row in cur.fetchall()
-                        ]
-                        cur.execute(_SQL_COUPLING, (project_id, 3))
-                        ctx["coupling"] = [
-                            {"file_a": row[0], "file_b": row[1], "count": row[2]}
-                            for row in cur.fetchall()
-                        ]
-                    except Exception as e:
-                        log.debug(f"_load_context hotspots error: {e}")
-
-        except Exception as e:
-            log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
-
-        # Project summary from PROJECT.md — extract Vision + Core Goals sections
-        try:
-            proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
-            if proj_md_path.exists():
-                md_text = proj_md_path.read_text(encoding="utf-8")
-                _wanted = {"Vision", "Core Goals"}
-                _parts: list[str] = []
-                for _section in md_text.split("\n## ")[1:]:
-                    _heading = _section.split("\n")[0].strip()
-                    if _heading in _wanted:
-                        # Strip HTML comments (<!-- user-managed --> etc.)
-                        _body = "\n".join(
-                            l for l in _section.splitlines()[1:]
-                            if l and not l.startswith("<!--")
-                        )
-                        if _body.strip():
-                            _parts.append(f"## {_heading}\n{_body.strip()}")
-                ctx["project_summary"] = "\n\n".join(_parts)[:1200]
-                # Fallback: first paragraph if no sections found
-                if not ctx["project_summary"]:
-                    body = md_text.split("\n## ")[0]
-                    summary_lines = [
-                        l for l in body.splitlines()
-                        if l and not l.startswith(("#", ">", "<!--", "_", "```", "|"))
-                    ]
-                    ctx["project_summary"] = " ".join(summary_lines[:3])[:300]
-        except Exception:
-            pass
-
-        # Coding conventions + Deprecated section — read from PROJECT.md
-        try:
-            proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
-            if proj_md_path.exists():
-                _md = proj_md_path.read_text(encoding="utf-8")
-                _conv_wanted = {"Conventions", "Coding Standards", "Coding Conventions", "Development Standards"}
-                deprecated_phrases: list[str] = []
-                for _section in _md.split("\n## ")[1:]:
-                    _heading = _section.split("\n")[0].strip()
-                    if _heading in _conv_wanted:
-                        _body = "\n".join(l for l in _section.splitlines()[1:] if not l.startswith("<!--"))
-                        ctx["conventions"] = _body.strip()[:800]
-                    elif _heading == "Deprecated":
-                        # Each non-empty line is a phrase; key_decisions containing it are suppressed
-                        import re as _re_dep
-                        for _line in _section.splitlines()[1:]:
-                            _m = _re_dep.match(r'^-?\s*(.+)', _line.lstrip())
-                            if _m:
-                                _phrase = _m.group(1).strip()
-                                if _phrase and not _phrase.startswith("<!--"):
-                                    deprecated_phrases.append(_phrase.lower())
-                ctx["deprecated_phrases"] = deprecated_phrases
-        except Exception:
-            pass
-
-        # Fallback: populate facts_by_cat from project_state.json project_facts
-        # when mem_ai_project_facts table is empty (common — table rarely auto-populated)
+        # Fallback: populate facts_by_cat from project_state.json when table is empty
         if not ctx["facts_by_cat"]:
-            pf = state_data.get("project_facts", {})
-            for cat, kvs in pf.items():
+            for cat, kvs in state_data.get("project_facts", {}).items():
                 if isinstance(kvs, dict):
                     ctx["facts_by_cat"][cat] = list(kvs.items())
 
-        # Code structure (top-level dirs) + store resolved code_dir in ctx
+        # Code structure (top-level dirs)
         try:
             code_dir = self._code_dir(project)
             if code_dir and code_dir.exists():
                 ctx["code_dir"] = code_dir
-                _SKIP = {
-                    "__pycache__", "node_modules", "venv", ".git", "dist",
-                    "build", ".venv", "old",
-                }
+                _SKIP = {"__pycache__", "node_modules", "venv", ".git", "dist", "build", ".venv", "old"}
                 ctx["code_structure"] = sorted(
                     p.name for p in code_dir.iterdir()
                     if p.is_dir() and not p.name.startswith(".") and p.name not in _SKIP

@@ -831,6 +831,61 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
             log.warning(f"reject({item_id}) error: {e}")
             return {"error": str(e)}
 
+    def _apply_date_rules(
+        self,
+        cur,
+        pid: int,
+        wi_type: str,
+        parent_id: Optional[str],
+        current_due_date,
+        updates: dict,
+    ) -> Optional[dict]:
+        """Validate + apply date cascade rules, mutating `updates` in place.
+
+        Returns an error dict if validation fails, else None.
+        Sets updates['_date_conflict_resolved'] = True when a conflict is auto-resolved.
+        """
+        # Setting due_date (not clearing) → also set start_date = today
+        if updates.get("due_date"):
+            updates.setdefault("start_date", str(date.today()))
+
+        # Child due_date cannot exceed parent UC's due_date
+        if updates.get("due_date") and wi_type != "use_case" and parent_id:
+            cur.execute(
+                "SELECT due_date FROM mem_work_items WHERE id=%s::uuid",
+                (parent_id,),
+            )
+            parent_row = cur.fetchone()
+            if parent_row and parent_row[0]:
+                new_due = date.fromisoformat(updates["due_date"])
+                if new_due > parent_row[0]:
+                    return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
+
+        # Re-parent: same-type check + auto-set start_date from new parent
+        if updates.get("wi_parent_id"):
+            cur.execute(
+                "SELECT wi_type, due_date FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                (updates["wi_parent_id"], pid),
+            )
+            np = cur.fetchone()
+            if np and np[0] != "use_case" and np[0] != wi_type:
+                return {"error": f"cannot link items of different types ({wi_type} ≠ {np[0]})"}
+            if np and np[0] != "use_case" and np[1]:
+                parent_due = np[1]
+                updates["start_date"] = str(parent_due)
+                # Auto-resolve: child would have no work window → pull parent back 1 day
+                if current_due_date and current_due_date <= parent_due:
+                    new_parent_due = parent_due - timedelta(days=1)
+                    cur.execute(
+                        "UPDATE mem_work_items SET due_date=%s, updated_at=NOW() "
+                        "WHERE id=%s::uuid AND project_id=%s",
+                        (str(new_parent_due), updates["wi_parent_id"], pid),
+                    )
+                    updates["start_date"] = str(new_parent_due)
+                    updates["_date_conflict_resolved"] = True
+
+        return None
+
     def update(self, item_id: str, pid: int, fields: dict) -> dict:
         """Update editable fields on a work item.
 
@@ -873,46 +928,14 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                         return {"error": "item not found"}
                     wi_type, parent_id, current_due_date = row
 
-                    # When due_date is set (not cleared) → also set start_date = today
-                    if "due_date" in updates and updates["due_date"]:
-                        updates.setdefault("start_date", str(date.today()))
-
-                    # Validate child due_date <= parent UC due_date
-                    if "due_date" in updates and updates["due_date"] and wi_type != "use_case" and parent_id:
-                        cur.execute(
-                            "SELECT due_date FROM mem_work_items WHERE id=%s::uuid",
-                            (parent_id,)
-                        )
-                        parent_row = cur.fetchone()
-                        if parent_row and parent_row[0]:
-                            new_due = date.fromisoformat(updates["due_date"])
-                            if new_due > parent_row[0]:
-                                return {"error": f"due_date cannot be after parent due_date ({parent_row[0]})"}
-
-                    # Re-parent: validate same type for non-UC parents; set start_date
+                    # Apply date rules (validation + cascade); may modify `updates` in place
                     date_conflict_resolved = False
-                    if "wi_parent_id" in updates and updates["wi_parent_id"]:
-                        cur.execute(
-                            "SELECT wi_type, due_date FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
-                            (updates["wi_parent_id"], pid)
-                        )
-                        np = cur.fetchone()
-                        # Same-type check only when reparenting to a non-UC item
-                        if np and np[0] != "use_case" and np[0] != wi_type:
-                            return {"error": f"cannot link items of different types ({wi_type} ≠ {np[0]})"}
-                        if np and np[0] != "use_case" and np[1]:
-                            parent_due = np[1]  # date object from DB
-                            updates["start_date"] = str(parent_due)
-                            # Conflict: child has no work window (start_date >= due_date)
-                            if current_due_date and current_due_date <= parent_due:
-                                new_parent_due = parent_due - timedelta(days=1)
-                                cur.execute(
-                                    "UPDATE mem_work_items SET due_date=%s, updated_at=NOW() "
-                                    "WHERE id=%s::uuid AND project_id=%s",
-                                    (str(new_parent_due), updates["wi_parent_id"], pid)
-                                )
-                                updates["start_date"] = str(new_parent_due)
-                                date_conflict_resolved = True
+                    date_err = self._apply_date_rules(
+                        cur, pid, wi_type, parent_id, current_due_date, updates
+                    )
+                    if date_err:
+                        return date_err
+                    date_conflict_resolved = updates.pop("_date_conflict_resolved", False)
 
                     # Apply main UPDATE
                     set_clause = ", ".join(f"{k}=%s" for k in updates)

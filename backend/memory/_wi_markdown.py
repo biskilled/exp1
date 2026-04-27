@@ -170,11 +170,17 @@ class _MarkdownMixin:
             log.warning(f"get_md({item_id}) error: {e}")
             return ""
 
+    # Matches: #### WKID — title  (em-dash U+2014, en-dash U+2013, or spaced hyphen)
+    _ITEM_HEADER_RE = re.compile(r'^#{3,4}\s+(\S+)\s+[—–][ \t]*(.+?)\s*$')
+    # Section breaks that flush the current item accumulator
+    _SECTION_BREAK_RE = re.compile(r'^(#{1,3} |---)')
+
     @staticmethod
     def _parse_md_items(content: str) -> dict[str, dict]:
         """Parse #### WKID — title blocks from MD content.
 
         Returns {wi_id: {'name': str, 'summary': str}}.
+        Accepts em-dash (—), en-dash (–); tolerates 3 or 4 leading hashes.
         """
         items: dict[str, dict] = {}
         current_id: Optional[str] = None
@@ -182,43 +188,41 @@ class _MarkdownMixin:
         current_lines: list[str] = []
         skip_type_line: bool = False
 
+        def _flush() -> None:
+            nonlocal current_id, current_lines, skip_type_line
+            if current_id:
+                items[current_id] = {
+                    "name": current_name,
+                    "summary": "\n".join(current_lines).strip(),
+                }
+            current_id = None
+            current_lines = []
+            skip_type_line = False
+
         for line in content.splitlines():
-            if line.startswith("## ") or line.startswith("---"):
-                if current_id:
-                    items[current_id] = {
-                        "name": current_name,
-                        "summary": "\n".join(current_lines).strip(),
-                    }
-                current_id = None
-                current_lines = []
-                skip_type_line = False
+            # Section break: ## / ### / --- flush the current item
+            if _MarkdownMixin._SECTION_BREAK_RE.match(line):
+                _flush()
                 continue
-            m = re.match(r'^#### (\S+) — (.+)$', line)
+            # Item header: #### WKID — name
+            m = _MarkdownMixin._ITEM_HEADER_RE.match(line)
             if m:
-                if current_id:
-                    items[current_id] = {
-                        "name": current_name,
-                        "summary": "\n".join(current_lines).strip(),
-                    }
+                _flush()
                 current_id   = m.group(1)
-                current_name = m.group(2).strip()
-                current_lines = []
+                current_name = m.group(2)
                 skip_type_line = True
                 continue
             if skip_type_line:
-                if re.match(r'^\*\w+\*$', line.strip()):
+                # Skip the `*type_label*` line rendered immediately after the header
+                if re.match(r'^\*\w[\w ]*\*$', line.strip()):
                     skip_type_line = False
                     continue
-                if line.strip() == "":
+                if not line.strip():
                     skip_type_line = False
             if current_id:
                 current_lines.append(line)
 
-        if current_id:
-            items[current_id] = {
-                "name": current_name,
-                "summary": "\n".join(current_lines).strip(),
-            }
+        _flush()
         return items
 
     def save_md(self, item_id: str, pid: int, content: str) -> dict:

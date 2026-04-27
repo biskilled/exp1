@@ -436,10 +436,8 @@ async def _dispatch(name: str, args: dict) -> Any:
     project = args.get("project") or PROJECT
 
     if name == "search_memory":
-        # Search BOTH work items (mem_work_items) AND project facts (mem_ai_project_facts)
-        # then merge results ranked by score for true cross-domain semantic search.
-        import urllib.parse as _up
-        limit = args.get("limit", 10)
+        # Search both work items AND project facts in parallel, merge by score.
+        limit = int(args.get("limit", 10))
         wi_result, facts_result = await asyncio.gather(
             _post("/search/semantic", {
                 "query":   args["query"],
@@ -448,18 +446,20 @@ async def _dispatch(name: str, args: dict) -> Any:
                 "phase":   args.get("phase"),
                 "feature": args.get("feature"),
             }),
-            _get(f"/search/facts?"
-                 f"query={_up.quote(args['query'])}&project={_up.quote(project)}&limit={limit}"),
+            _get("/search/facts", {
+                "query":   args["query"],
+                "project": project,
+                "limit":   limit,
+            }),
             return_exceptions=True,
         )
-        wi_hits = wi_result.get("results", []) if isinstance(wi_result, dict) else []
+        wi_hits   = wi_result.get("results", [])   if isinstance(wi_result, dict)    else []
         fact_hits = facts_result.get("results", []) if isinstance(facts_result, dict) else []
-        # Tag source type for clarity
         for h in wi_hits:
             h.setdefault("source", "work_item")
         for h in fact_hits:
             h.setdefault("source", "project_fact")
-            h.setdefault("title", h.get("fact_key", ""))
+            h.setdefault("title",   h.get("fact_key",   ""))
             h.setdefault("snippet", h.get("fact_value", ""))
         merged = sorted(wi_hits + fact_hits, key=lambda r: r.get("score", 0), reverse=True)[:limit]
         return {"query": args["query"], "project": project, "total": len(merged), "results": merged}
