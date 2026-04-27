@@ -51,11 +51,15 @@ _SQL_ACTIVE_WORK_ITEMS = """
     SELECT wi_id, name, wi_type, user_status, due_date
     FROM mem_work_items
     WHERE project_id = %s
-      AND wi_type IN ('use_case', 'feature')
+      AND wi_type IN ('use_case', 'feature', 'bug', 'task')
       AND deleted_at IS NULL
       AND completed_at IS NULL
       AND approved_at IS NOT NULL
-    ORDER BY score_importance DESC NULLS LAST, created_at DESC
+      AND user_status NOT IN ('done', 'blocked')
+    ORDER BY
+      CASE wi_type WHEN 'bug' THEN 0 WHEN 'use_case' THEN 1 WHEN 'feature' THEN 2 ELSE 3 END,
+      score_importance DESC NULLS LAST,
+      created_at DESC
     LIMIT 20
 """
 

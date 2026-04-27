@@ -97,6 +97,53 @@ Search = `POST /search/semantic` → pgvector cosine similarity over `mem_work_i
 
 ---
 
+## Work Items — Gap Analysis
+
+### Classification quality
+
+| Aspect | State | Notes |
+|--------|-------|-------|
+| Use case grouping | ✓ | Haiku creates use_cases (item_level=3) then children linked via wi_parent_id |
+| Item types | ✓ | use_case / feature / bug / task / policy / requirement — from YAML prompt |
+| score_importance (0-5) | ✓ | AI-assigned: 0=trivial, 5=critical/blocking |
+| score_status (0-5) | ✓ | AI completeness: 0=not started, 5=done |
+| user_status (TEXT) | ✓ | User-managed: open→pending→in-progress→review→done |
+| User tags (phase/feature) | ✓ | Event tags flow into items via `_update_item_tags()`; classification prompt uses tag priority |
+
+**Two parallel status fields** — `score_status` (int, AI assessment) and `user_status` (TEXT, user set) can diverge. No sync between them. By design: AI scores the completeness; user manages the workflow status.
+
+### Approved items — what is well-defined
+
+| Field | Populated on approve | Re-populated on update |
+|-------|---------------------|----------------------|
+| `wi_id` (US0001, FE0001…) | ✓ | Never changes |
+| `approved_at` | ✓ | Never changes |
+| `embedding` VECTOR(1536) | ✓ (OpenAI) | ✓ **Now re-embeds on name/summary/deliveries change** |
+| `mrr_ids` linked events | ✓ (mem_mrr_* rows tagged) | Not updated on edit |
+| `acceptance_criteria` | Via `/wi pipeline` (PM agent) | Yes (pipeline re-run) |
+| `implementation_plan` | Via `/wi pipeline` (Architect) | Yes (pipeline re-run) |
+| use_case `.md` file | ✓ on use_case approve | On `/wi/{id}/md/refresh` |
+
+### What appears in CLAUDE.md "Active Features"
+
+Query: approved + not deleted + not completed + user_status NOT in (done, blocked).
+Types: use_case, feature, bug, task — sorted bugs first, then by score_importance.
+Shows: `wi_id`, `name`, `[status]`, `due_date`.
+Does NOT show: summary, acceptance_criteria, implementation_plan.
+
+### Conflict / consistency
+
+| Scenario | Handled? |
+|----------|----------|
+| Child due_date > parent due_date | ✓ Blocked at update |
+| UC due_date changed → cascade to children | ✓ Auto-cascade |
+| Re-parent to wrong type | ✓ Blocked (same type only) |
+| Re-classify after edits (semantic drift) | ✗ No — embedding stale until edit triggers re-embed |
+| Two users edit same item concurrently | ✗ No optimistic lock — last write wins |
+| score_status vs user_status out of sync | By design — two separate fields |
+
+---
+
 ## Gaps & Fixes (applied 2026-04-27)
 
 | # | Issue | Fix |
@@ -104,7 +151,10 @@ Search = `POST /search/semantic` → pgvector cosine similarity over `mem_work_i
 | 1 | Unapproved AI draft items (AI0001) appeared in CLAUDE.md "Active Features" | Added `AND approved_at IS NOT NULL` to `_SQL_ACTIVE_WORK_ITEMS` |
 | 2 | PROJECT.md Vision/Goals not in CLAUDE.md (only 300 char title) | `_load_context` now extracts Vision + Core Goals sections (≤1200 chars) |
 | 3 | `mem_ai_project_facts` table empty — project facts section never rendered | Fallback: populate `facts_by_cat` from `project_state.json → project_facts` when DB table is empty |
-| 4 | Stale key_decisions accumulated and never cleared | Synthesis now: PROJECT.md is authoritative; LLM output replaces (not appends) key_decisions |
+| 4 | Stale key_decisions accumulated and never cleared | Synthesis: PROJECT.md is authoritative; LLM output replaces (not appends) key_decisions |
+| 5 | `user_status` stored as `'0'` (int cast to text) at classify time | Changed to `'open'` literal string in `_insert_wi()` |
+| 6 | Editing name/summary of approved item left embedding stale | `update()` now re-embeds when name/summary/deliveries/delivery_type changes |
+| 7 | CLAUDE.md showed only use_case + feature, not bugs/tasks | `_SQL_ACTIVE_WORK_ITEMS` now includes bug + task, sorted bugs first |
 
 ## How New Requirements Override Old Ones
 

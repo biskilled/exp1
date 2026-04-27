@@ -194,7 +194,7 @@ def _insert_wi(cur, item: dict, pid: int, parent_id: Optional[str]) -> str:
             score_imp,
             score_st,
             score_imp,  # user_importance defaults to AI score
-            score_st,   # user_status defaults to AI score
+            "open",     # user_status always starts as 'open' (TEXT after m079)
             json.dumps(item.get("mrr_ids") or {}),
             parent_id if parent_id else None,
             temp_wi_id,
@@ -1764,6 +1764,29 @@ class MemoryWorkItems:
                 result["cascaded_children"] = cascade_count
             if date_conflict_resolved:
                 result["date_conflict_resolved"] = True
+
+            # Re-embed if semantic content changed (name, summary, deliveries, delivery_type)
+            _embed_fields = {"name", "summary", "deliveries", "delivery_type"}
+            if _embed_fields & set(updates.keys()):
+                try:
+                    with db.conn() as _conn:
+                        with _conn.cursor() as _cur:
+                            _cur.execute(
+                                "SELECT name, wi_type, summary, deliveries, delivery_type, approved_at "
+                                "FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
+                                (item_id, pid),
+                            )
+                            _row = _cur.fetchone()
+                    if _row and _row[5]:  # only re-embed if approved
+                        _embed_work_item(item_id, {
+                            "name": _row[0] or "", "wi_type": _row[1] or "",
+                            "summary": _row[2] or "", "deliveries": _row[3] or "",
+                            "delivery_type": _row[4] or "",
+                        })
+                        result["re_embedded"] = True
+                except Exception as _e:
+                    log.debug(f"update: re-embed skipped for {item_id}: {_e}")
+
             return result
         except Exception as e:
             log.warning(f"update({item_id}) error: {e}")
