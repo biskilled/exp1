@@ -730,3 +730,48 @@ async def get_workflow_templates(project: str):
             log.debug(f"get_workflow_templates workflows query error: {e}")
 
     return {"templates": templates, "workflows": workflows}
+
+
+@router.get("/{project}/hotspots")
+async def get_hotspots(
+    project: str,
+    limit: int = Query(20, ge=1, le=100),
+    min_score: float = Query(1.0, ge=0.0),
+):
+    """Return files ranked by hotspot_score from mem_mrr_commits_file_stats.
+
+    Used by MCP get_hotspots tool and the UI code intelligence panel.
+    """
+    _require_db()
+    project_id = db.get_or_create_project_id(project)
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT file_path, hotspot_score, commit_count, current_lines,
+                              bug_commit_count, last_changed_at
+                       FROM mem_mrr_commits_file_stats
+                       WHERE project_id = %s AND hotspot_score >= %s
+                       ORDER BY hotspot_score DESC
+                       LIMIT %s""",
+                    (project_id, min_score, limit),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        log.warning("get_hotspots error for '%s': %s", project, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "project": project,
+        "hotspots": [
+            {
+                "file_path":       r[0],
+                "hotspot_score":   r[1],
+                "commit_count":    r[2],
+                "current_lines":   r[3] or 0,
+                "bug_commit_count": r[4] or 0,
+                "last_changed_at": r[5].isoformat() if r[5] else None,
+            }
+            for r in rows
+        ],
+    }

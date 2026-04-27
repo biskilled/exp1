@@ -209,3 +209,81 @@ async def semantic_search(body: SemanticSearchRequest, user=Depends(get_optional
         "results": results,
     }
 
+
+# ── Project-facts semantic search ─────────────────────────────────────────────
+
+@router.get("/facts")
+async def search_facts(
+    query: str = Query(..., description="Natural language search query"),
+    project: str = Query("", description="Project name"),
+    limit: int = Query(10, ge=1, le=50),
+    category: Optional[str] = Query(None, description="Filter by category: stack|pattern|convention|constraint|general|code"),
+    user=Depends(get_optional_user),
+):
+    """Cosine-similarity search over mem_ai_project_facts (pgvector).
+
+    Searches embeddings of project facts, including the code_structure document
+    embedded from code.md. Returns fact_key + fact_value + category.
+    """
+    if not db.is_available():
+        raise HTTPException(503, "PostgreSQL required for semantic search")
+
+    project = project or settings.active_project or "default"
+    limit = min(limit, 50)
+
+    try:
+        from agents.tools.tool_memory import _embed_sync, _vec_str
+        vec = _embed_sync(query)
+    except Exception:
+        vec = None
+
+    if not vec:
+        raise HTTPException(400, "Embedding unavailable — check OpenAI API key in settings")
+
+    vs = _vec_str(vec)
+    project_id = db.get_or_create_project_id(project)
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                extra = ""
+                params: list = [vs, project_id]
+                if category:
+                    extra = "AND f.category = %s"
+                    params.append(category)
+                params += [vs, limit]
+                cur.execute(
+                    f"""SELECT f.id::text, f.fact_key, LEFT(f.fact_value, 500),
+                               f.category, f.created_at,
+                               1 - (f.embedding <=> %s::vector) AS score
+                        FROM mem_ai_project_facts f
+                        WHERE f.project_id = %s
+                          AND f.embedding IS NOT NULL
+                          AND f.valid_until IS NULL
+                          AND f.conflict_status IS DISTINCT FROM 'pending_review'
+                          {extra}
+                        ORDER BY f.embedding <=> %s::vector
+                        LIMIT %s""",
+                    params,
+                )
+                results = [
+                    {
+                        "id":         r[0],
+                        "fact_key":   r[1],
+                        "fact_value": r[2],
+                        "category":   r[3] or "general",
+                        "created_at": r[4].isoformat() if r[4] else None,
+                        "score":      round(float(r[5] or 0), 4),
+                    }
+                    for r in cur.fetchall()
+                ]
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+    return {
+        "query":   query,
+        "project": project,
+        "total":   len(results),
+        "results": results,
+    }
+

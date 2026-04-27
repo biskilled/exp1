@@ -994,6 +994,113 @@ async def sync_workspace_projects():
     synced = await _sync_workspace_projects()
     return {"synced": synced, "count": len(synced)}
 
+async def _auto_populate_project_facts(
+    project_name: str,
+    project_id: int,
+    project_md: str,
+    synthesis: dict | None,
+) -> int:
+    """Extract stable key=value facts from PROJECT.md + synthesis and upsert to mem_ai_project_facts.
+
+    Uses Haiku to extract 5-10 durable facts (tech choices, patterns, constraints).
+    Expires all previous auto-generated facts before inserting fresh ones.
+    Returns count of facts inserted.
+    """
+    if not db.is_available():
+        return 0
+    try:
+        import anthropic as _ant
+        from agents.tools.tool_memory import _embed_sync, _vec_str
+    except ImportError:
+        return 0
+    try:
+        key = settings.anthropic_api_key
+        if not key:
+            return 0
+        text_for_llm = ""
+        if project_md:
+            text_for_llm += project_md[:3000]
+        if synthesis:
+            if synthesis.get("tech_stack"):
+                text_for_llm += "\n\n## Tech Stack (from synthesis)\n"
+                for k, v in synthesis["tech_stack"].items():
+                    text_for_llm += f"- {k}: {v}\n"
+            if synthesis.get("key_decisions"):
+                text_for_llm += "\n## Key Decisions (from synthesis)\n"
+                for d in synthesis["key_decisions"]:
+                    text_for_llm += f"- {d}\n"
+        if not text_for_llm.strip():
+            return 0
+        client = _ant.AsyncAnthropic(api_key=key)
+        resp = await client.messages.create(
+            model=settings.haiku_model,
+            max_tokens=400,
+            system=(
+                "You extract stable project facts as JSON. "
+                "Respond ONLY with a JSON array of objects, each with keys: "
+                "fact_key (snake_case, no spaces), fact_value (concise string), category "
+                "(one of: stack, pattern, convention, constraint, general). "
+                "Extract 5-10 facts that would help an LLM understand the project architecture. "
+                "No explanation, no markdown — pure JSON array only."
+            ),
+            messages=[{"role": "user", "content": (
+                f"Extract stable project facts from this context:\n\n{text_for_llm[:3000]}"
+            )}],
+        )
+        raw = (resp.content[0].text if resp.content else "").strip()
+        import re as _re
+        m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        if not m:
+            return 0
+        facts = json.loads(m.group())
+        if not isinstance(facts, list):
+            return 0
+        facts = [
+            f for f in facts
+            if isinstance(f, dict) and f.get("fact_key") and f.get("fact_value")
+        ][:12]
+        if not facts:
+            return 0
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                # Expire previous auto-generated facts (non-code category)
+                cur.execute(
+                    "UPDATE mem_ai_project_facts SET valid_until = NOW() "
+                    "WHERE project_id = %s AND valid_until IS NULL AND category <> 'code'",
+                    (project_id,),
+                )
+                inserted = 0
+                for f in facts:
+                    fk = str(f["fact_key"])[:120]
+                    fv = str(f["fact_value"])[:500]
+                    cat = f.get("category", "general")
+                    if cat not in ("stack", "pattern", "convention", "constraint", "general"):
+                        cat = "general"
+                    embedding = _embed_sync(f"{fk}: {fv}")
+                    vec = _vec_str(embedding) if embedding else None
+                    if vec:
+                        cur.execute(
+                            "INSERT INTO mem_ai_project_facts "
+                            "(project_id, fact_key, fact_value, category, embedding) "
+                            "VALUES (%s, %s, %s, %s, %s::vector)",
+                            (project_id, fk, fv, cat, vec),
+                        )
+                    else:
+                        cur.execute(
+                            "INSERT INTO mem_ai_project_facts "
+                            "(project_id, fact_key, fact_value, category) "
+                            "VALUES (%s, %s, %s, %s)",
+                            (project_id, fk, fv, cat),
+                        )
+                    inserted += 1
+            conn.commit()
+        log.info("_auto_populate_project_facts: inserted %d facts for '%s'", inserted, project_name)
+        return inserted
+    except Exception as e:
+        log.debug("_auto_populate_project_facts error for '%s': %s", project_name, e)
+        return 0
+
+
 @router.post("/{project_name}/memory")
 async def generate_memory(project_name: str):
     """Generate per-LLM memory files and copy to code_dir.
@@ -1341,12 +1448,22 @@ async def generate_memory(project_name: str):
         code_md_content = _mf_obj._render_code_md(_mf_ctx)
         pp.code_md_path(project_name).write_text(code_md_content)
         generated.append("memory/code.md")
+        # Embed code.md for MCP search_facts
+        _mf_obj._embed_code_md(project_name)
         # Auto-suggest refactor tasks for hot files
         _mf_cfg = _mf_ctx.get("memory_config", {})
         if _mf_cfg.get("hotspot_suggest_work_item", True):
             _mf_obj._suggest_hotspot_work_items(project_name, _mf_ctx.get("hotspots", []), _mf_cfg)
     except Exception as _e:
         log.warning("generate_memory: code.md generation failed: %s", _e)
+
+    # ── 5c. Auto-populate project facts from PROJECT.md + synthesis ───────────
+    if db.is_available():
+        try:
+            _facts_pid = db.get_or_create_project_id(project_name)
+            await _auto_populate_project_facts(project_name, _facts_pid, project_md, synthesis)
+        except Exception as _fe:
+            log.debug("generate_memory: _auto_populate_project_facts failed: %s", _fe)
 
     # ── 6. Copy to code_dir ───────────────────────────────────────────────────
     copied_to: list[str] = []

@@ -496,6 +496,31 @@ class MemoryWorkItems:
                                 if hs:
                                     commit["_hotspot_files"] = hs
 
+                    # Attach per-symbol LLM summaries to commits for richer classify context
+                    if commit_hashes:
+                        cur.execute(
+                            """SELECT commit_hash, file_path, class_name, method_name,
+                                      LEFT(llm_summary, 120) AS llm_summary
+                               FROM mem_mrr_commits_code
+                               WHERE commit_hash = ANY(%s)
+                                 AND llm_summary IS NOT NULL AND llm_summary <> ''
+                               ORDER BY commit_hash, file_path
+                               LIMIT 300""",
+                            (commit_hashes,),
+                        )
+                        hash_to_symbols: dict[str, list[dict]] = {}
+                        for chash, fpath, cls, meth, sym_sum in cur.fetchall():
+                            hash_to_symbols.setdefault(chash, []).append({
+                                "file_path": fpath,
+                                "class_name": cls or "",
+                                "method_name": meth or "",
+                                "summary": sym_sum or "",
+                            })
+                        for commit in result["commits"]:
+                            syms = hash_to_symbols.get(commit["commit_hash"])
+                            if syms:
+                                commit["_symbol_summaries"] = syms
+
                     # Messages
                     cur.execute(
                         """SELECT id::text, platform, channel,
@@ -617,6 +642,15 @@ class MemoryWorkItems:
                         f"changes={h['change_count']} bug_commits={h['bug_commit_count']} "
                         f"lines={h['current_lines']} reverts={h['revert_count']}"
                     )
+            symbols = c.get("_symbol_summaries") or []
+            if symbols:
+                lines.append("  [CHANGED SYMBOLS]")
+                for s in symbols[:8]:
+                    if s.get("method_name"):
+                        label = f"{s['class_name']}.{s['method_name']}" if s.get("class_name") else s["method_name"]
+                    else:
+                        label = s.get("class_name") or s.get("file_path", "")
+                    lines.append(f"    {label}: {s['summary'][:120]}")
             lines.append("")
 
         for m in group.get("messages", []):

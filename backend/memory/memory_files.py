@@ -49,7 +49,8 @@ _SQL_FACTS = """
 
 _SQL_ACTIVE_WORK_ITEMS = """
     SELECT wi_id, name, wi_type, user_status, due_date,
-           LEFT(COALESCE(summary, ''), 100)
+           LEFT(COALESCE(summary, ''), 100),
+           LEFT(COALESCE(acceptance_criteria, ''), 150)
     FROM mem_work_items
     WHERE project_id = %s
       AND wi_type IN ('use_case', 'feature', 'bug', 'task')
@@ -62,6 +63,18 @@ _SQL_ACTIVE_WORK_ITEMS = """
       score_importance DESC NULLS LAST,
       created_at DESC
     LIMIT 20
+"""
+
+_SQL_IN_PROGRESS_ITEMS = """
+    SELECT wi_id, name, wi_type, due_date
+    FROM mem_work_items
+    WHERE project_id = %s
+      AND user_status = 'in-progress'
+      AND deleted_at IS NULL
+      AND completed_at IS NULL
+      AND approved_at IS NOT NULL
+    ORDER BY score_importance DESC NULLS LAST, updated_at DESC
+    LIMIT 10
 """
 
 # user_status is TEXT after m079 migration: 'open'|'pending'|'in-progress'|'review'|'blocked'|'done'
@@ -233,19 +246,35 @@ class MemoryFiles:
 
                     # Active work items (use_case/feature — drives "Active Features" section)
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for wi_id, wi_name, wi_type, user_status, due_date, summary in cur.fetchall():
+                    for wi_id, wi_name, wi_type, user_status, due_date, summary, ac in cur.fetchall():
                         status_label = (
                             _WI_STATUS_LABELS.get(user_status, "open")
                             if user_status is not None else "open"
                         )
                         ctx["active_tags"].append({
-                            "name":        wi_name,
-                            "wi_id":       wi_id or "",
-                            "wi_type":     wi_type or "",
-                            "status":      status_label,
-                            "description": (summary or "").strip(),
-                            "due_date":    due_date.isoformat() if due_date else None,
+                            "name":                 wi_name,
+                            "wi_id":                wi_id or "",
+                            "wi_type":              wi_type or "",
+                            "status":               status_label,
+                            "description":          (summary or "").strip(),
+                            "acceptance_criteria":  (ac or "").strip(),
+                            "due_date":             due_date.isoformat() if due_date else None,
                         })
+
+                    # In-progress work items — from DB user_status field (accurate, not LLM-derived)
+                    try:
+                        cur.execute(_SQL_IN_PROGRESS_ITEMS, (project_id,))
+                        ctx["in_progress_items"] = [
+                            {
+                                "wi_id": r[0] or "",
+                                "name":  r[1] or "",
+                                "type":  r[2] or "",
+                                "due":   r[3].isoformat() if r[3] else None,
+                            }
+                            for r in cur.fetchall()
+                        ]
+                    except Exception as e:
+                        log.debug(f"_load_context in_progress_items error: {e}")
 
                     # Recently changed symbols (deduplicated, most recent first)
                     try:
@@ -328,6 +357,21 @@ class MemoryFiles:
         except Exception:
             pass
 
+        # Coding conventions — read from PROJECT.md ## Conventions or ## Coding Standards section
+        try:
+            proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
+            if proj_md_path.exists():
+                _md = proj_md_path.read_text(encoding="utf-8")
+                _conv_wanted = {"Conventions", "Coding Standards", "Coding Conventions", "Development Standards"}
+                for _section in _md.split("\n## ")[1:]:
+                    _heading = _section.split("\n")[0].strip()
+                    if _heading in _conv_wanted:
+                        _body = "\n".join(l for l in _section.splitlines()[1:] if not l.startswith("<!--"))
+                        ctx["conventions"] = _body.strip()[:800]
+                        break
+        except Exception:
+            pass
+
         # Fallback: populate facts_by_cat from project_state.json project_facts
         # when mem_ai_project_facts table is empty (common — table rarely auto-populated)
         if not ctx["facts_by_cat"]:
@@ -379,6 +423,7 @@ class MemoryFiles:
         max_recent = mem_cfg.get("recent_work_max_entries", 30)
 
         # Context age — show when project_state.json was last synced
+        state_data = ctx.get("state_data", {})
         state_last_run = state_data.get("last_memory_run") or state_data.get("last_updated", "")
         age_note = f" | Memory synced: {state_last_run[:10]}" if state_last_run else ""
         lines = [f"<!-- Last updated: {ts} -->", f"# {project}", f"_{ts}{age_note}_", ""]
@@ -395,7 +440,6 @@ class MemoryFiles:
             lines.append("")
 
         # Stack & Architecture — from project_state.json (authoritative after /memory run)
-        state_data = ctx.get("state_data", {})
         tech_stack = state_data.get("tech_stack", {})
         if tech_stack:
             lines += ["## Stack & Architecture", ""]
@@ -411,11 +455,18 @@ class MemoryFiles:
                 lines.append(f"- {d}")
             lines.append("")
 
-        # In Progress — from project_state.json
-        in_progress = state_data.get("in_progress", [])
-        if in_progress:
+        # In Progress — DB user_status='in-progress' (fallback to LLM-derived if DB empty)
+        in_progress_db = ctx.get("in_progress_items", [])
+        if in_progress_db:
             lines += ["## In Progress", ""]
-            for item in in_progress[:6]:
+            for item in in_progress_db:
+                due = f" (due {item['due']})" if item.get("due") else ""
+                wi_id_part = f"`{item['wi_id']}` " if item.get("wi_id") else ""
+                lines.append(f"- {wi_id_part}{item['name']}{due}")
+            lines.append("")
+        elif state_data.get("in_progress"):
+            lines += ["## In Progress", ""]
+            for item in state_data["in_progress"][:6]:
                 lines.append(f"- {item}")
             lines.append("")
 
@@ -427,6 +478,8 @@ class MemoryFiles:
                 desc = f" — {tag['description']}" if tag.get("description") else ""
                 wi_id_part = f"`{tag['wi_id']}` " if tag.get("wi_id") else ""
                 lines.append(f"- {wi_id_part}`{tag['name']}` [{tag['status']}]{desc}{due}")
+                if tag.get("acceptance_criteria") and tag.get("wi_type") == "use_case":
+                    lines.append(f"  _AC: {tag['acceptance_criteria']}_")
             lines.append("")
 
         # Code Hotspots
@@ -768,7 +821,11 @@ class MemoryFiles:
                 lines.append(f"- **[{status}]**{type_tag} {t['name']}{due}")
             lines.append("")
 
-        # ── 3. Recently Changed Symbols ───────────────────────────────────────
+        # ── 3. Coding Conventions ─────────────────────────────────────────────
+        if ctx.get("conventions"):
+            lines += ["## Coding Conventions", "", ctx["conventions"], ""]
+
+        # ── 4. Recently Changed Symbols ───────────────────────────────────────
         recent = ctx.get("recently_changed") or []
         if recent:
             lines += [
@@ -818,6 +875,53 @@ class MemoryFiles:
 
         lines += ["---", "_Generated by aicli. Run `/memory` to refresh._"]
         return "\n".join(lines)
+
+    def _embed_code_md(self, project: str) -> bool:
+        """Embed code.md into mem_ai_project_facts for semantic search via MCP.
+
+        Expires the previous code_structure fact and inserts a fresh one.
+        No-ops silently if DB is unavailable or embedding imports fail.
+        """
+        if not db.is_available():
+            return False
+        try:
+            from agents.tools.tool_memory import _embed_sync, _vec_str
+        except ImportError:
+            return False
+
+        code_md_path = pp.code_md_path(project)
+        if not code_md_path.exists():
+            return False
+        content = code_md_path.read_text(encoding="utf-8")
+        if not content.strip():
+            return False
+
+        embedding = _embed_sync(content[:8000])
+        if not embedding:
+            return False
+
+        project_id = db.get_or_create_project_id(project)
+        vec = _vec_str(embedding)
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE mem_ai_project_facts SET valid_until = NOW() "
+                        "WHERE project_id = %s AND fact_key = 'code_structure' AND valid_until IS NULL",
+                        (project_id,),
+                    )
+                    cur.execute(
+                        "INSERT INTO mem_ai_project_facts "
+                        "(project_id, fact_key, fact_value, category, embedding) "
+                        "VALUES (%s, 'code_structure', %s, 'code', %s::vector)",
+                        (project_id, content[:4000], vec),
+                    )
+                conn.commit()
+            log.debug("_embed_code_md: embedded code.md for '%s'", project)
+            return True
+        except Exception as e:
+            log.debug("_embed_code_md error for '%s': %s", project, e)
+            return False
 
     def _suggest_hotspot_work_items(
         self, project: str, hotspots: list[dict], mem_cfg: Optional[dict] = None
@@ -998,6 +1102,9 @@ class MemoryFiles:
             created = self._suggest_hotspot_work_items(project, ctx.get("hotspots", []), mem_cfg)
             if created:
                 log.info(f"MemoryFiles: created {created} hotspot/coupling task(s) for '{project}'")
+
+        # Embed code.md for semantic search via MCP search_facts
+        self._embed_code_md(project)
 
         return written
 

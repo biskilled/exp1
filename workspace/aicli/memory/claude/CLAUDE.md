@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 01:12 UTC -->
+<!-- Last updated: 2026-04-27 01:17 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
@@ -103,12 +103,13 @@ Layer 3 — Work Items (mem_work_items)
 ## Code Hotspots
 
 - `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
-- `backend/memory/memory_work_items.py` — score 18.0 (16 commits, 2593 lines)
+- `backend/memory/memory_work_items.py` — score 19.0 (17 commits, 2663 lines)
+- `backend/memory/memory_files.py` — score 13.0 (11 commits, 1042 lines)
 - `backend/routers/route_projects.py` — score 13.0 (11 commits, 1691 lines)
-- `backend/memory/memory_files.py` — score 12.0 (10 commits, 1031 lines)
 - `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
 - `backend/core/db_migrations.py` — score 11.0 (9 commits, 3280 lines)
-- `backend/routers/route_work_items.py` — score 6.0 (6 commits, 578 lines)
-- `backend/routers/route_git.py` — score 5.0 (3 commits, 1578 lines)
+- `backend/routers/route_work_items.py` — score 7.0 (7 commits, 594 lines)
+- `backend/routers/route_git.py` — score 6.0 (4 commits, 1578 lines)
+- `backend/routers/route_chat.py` — score 5.0 (3 commits, 975 lines)
 
 _Full details: `memory/code.md`_
