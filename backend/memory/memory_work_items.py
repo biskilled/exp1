@@ -422,10 +422,18 @@ class MemoryWorkItems:
     # ── Pending events fetch ───────────────────────────────────────────────────
 
     def _fetch_pending_events(self, pid: int) -> dict:
-        """Return all pending (wi_id IS NULL) rows from every mem_mrr_* table."""
+        """Return all pending (wi_id IS NULL) rows from every mem_mrr_* table.
+
+        Applies a configurable event horizon (project.yaml work_items.event_horizon_days,
+        default 90) to exclude very old events from classification. This prevents stale
+        prompts/commits from re-creating outdated work items on each classify() run.
+        """
         result: dict[str, list[dict]] = {
             "prompts": [], "commits": [], "messages": [], "items": []
         }
+        if not db.is_available():
+            return result
+        horizon_days = int(self._config().get("event_horizon_days", 90))
         if not db.is_available():
             return result
         try:
@@ -439,9 +447,10 @@ class MemoryWorkItems:
                                   tags, created_at
                            FROM mem_mrr_prompts
                            WHERE project_id=%s AND wi_id IS NULL
+                             AND created_at > NOW() - INTERVAL '1 day' * %s
                            ORDER BY created_at ASC
                            LIMIT 200""",
-                        (pid,),
+                        (pid, horizon_days),
                     )
                     cols = [d[0] for d in cur.description]
                     for row in cur.fetchall():
@@ -459,9 +468,10 @@ class MemoryWorkItems:
                                   c.commit_type
                            FROM mem_mrr_commits c
                            WHERE c.project_id=%s AND c.wi_id IS NULL
+                             AND c.created_at > NOW() - INTERVAL '1 day' * %s
                            ORDER BY c.created_at ASC
                            LIMIT 100""",
-                        (pid,),
+                        (pid, horizon_days),
                     )
                     cols = [d[0] for d in cur.description]
                     commit_hashes: list[str] = []
@@ -528,9 +538,10 @@ class MemoryWorkItems:
                                   tags, created_at
                            FROM mem_mrr_messages
                            WHERE project_id=%s AND wi_id IS NULL
+                             AND created_at > NOW() - INTERVAL '1 day' * %s
                            ORDER BY created_at ASC
                            LIMIT 50""",
-                        (pid,),
+                        (pid, horizon_days),
                     )
                     cols = [d[0] for d in cur.description]
                     for row in cur.fetchall():
@@ -1835,6 +1846,7 @@ class MemoryWorkItems:
 
         Useful when summary has drifted from its original events — refreshes
         wi_type, score_importance, and score_status without touching user_status.
+        Passes user_status to Haiku so score_status reflects actual progress.
         Returns the updated fields.
         """
         if not db.is_available():
@@ -1843,16 +1855,25 @@ class MemoryWorkItems:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT name, wi_type, summary, deliveries, delivery_type, approved_at "
+                        "SELECT name, wi_type, summary, deliveries, delivery_type, "
+                        "approved_at, user_status "
                         "FROM mem_work_items WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
                         (item_id, pid),
                     )
                     row = cur.fetchone()
             if not row:
                 return {"error": "item not found"}
-            name, wi_type, summary, deliveries, delivery_type, approved_at = row
+            name, wi_type, summary, deliveries, delivery_type, approved_at, user_status = row
         except Exception as e:
             return {"error": str(e)}
+
+        # Map user_status to score_status hint so Haiku aligns AI score with reality
+        _status_score_hint = {
+            "open": "0 (not started)", "pending": "1 (acknowledged)",
+            "in-progress": "2-3 (actively being worked on)", "review": "4 (nearly complete)",
+            "done": "5 (fully done)", "blocked": "1 (blocked/not progressing)",
+        }
+        status_hint = _status_score_hint.get(user_status or "open", "unknown")
 
         system = (
             "You are a work item classifier for a software project. "
@@ -1860,12 +1881,13 @@ class MemoryWorkItems:
             '{"wi_type": "use_case|feature|bug|task|requirement", '
             '"score_importance": 0-5, "score_status": 0-5}\n\n'
             "score_importance: 0=trivial, 5=critical/blocking\n"
-            "score_status: 0=not started, 5=fully done\n"
+            "score_status: 0=not started, 5=fully done — align with the user_status hint provided\n"
             "Return no other text."
         )
         user_msg = (
             f"Name: {name or ''}\n"
             f"Current type: {wi_type or ''}\n"
+            f"User status: {user_status or 'open'} (score_status hint: {status_hint})\n"
             f"Summary: {(summary or '')[:500]}\n"
             f"Deliveries: {(deliveries or '')[:300]}"
         )

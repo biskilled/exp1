@@ -94,44 +94,22 @@ async def list_tools() -> list[mcp_types.Tool]:
         mcp_types.Tool(
             name="search_memory",
             description=(
-                "Semantic search across the project's full knowledge base: "
-                "chat history, role prompts, commit summaries, code chunks, and design docs. "
-                "Optionally filter by phase or feature tag to scope the search. "
-                "Use this when you need to recall past decisions, understand a feature history, "
-                "or find relevant context before starting work."
+                "Semantic search across approved work items AND project facts (architecture, "
+                "conventions, code structure). Searches both mem_work_items and mem_ai_project_facts "
+                "and returns merged results ranked by relevance. "
+                "Use to recall past decisions, find related features/bugs, or understand project policies."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Natural language search query"},
-                    "limit": {"type": "integer", "default": 10},
-                    "source_types": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Filter by source: history, role, commit, doc, node_output",
-                    },
-                    "language": {"type": "string", "description": "Filter by language: python, javascript, …"},
-                    "doc_type": {"type": "string", "description": "Filter by doc type: role, commit, …"},
-                    "file_path": {"type": "string", "description": "Filter to a specific file path (substring)"},
-                    "chunk_types": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Filter by chunk type: summary, function, class, section, file_diff, full",
-                    },
+                    "query":   {"type": "string", "description": "Natural language search query"},
+                    "limit":   {"type": "integer", "default": 10},
                     "phase": {
                         "type": "string",
                         "enum": _PHASES,
-                        "description": "Restrict results to history recorded during this phase",
+                        "description": "Restrict work item results to this phase tag",
                     },
-                    "feature": {"type": "string", "description": "Restrict results to a specific feature tag"},
-                    "entity_name": {
-                        "type": "string",
-                        "description": "Restrict results to embeddings tagged with this entity value name (e.g. 'auth', 'UI dropbox'). Tags must be backfilled via /memory.",
-                    },
-                    "entity_category": {
-                        "type": "string",
-                        "description": "Restrict results to embeddings tagged with this entity category (e.g. 'bug', 'feature', 'task').",
-                    },
+                    "feature": {"type": "string", "description": "Restrict work item results to this feature tag"},
                     "project": {"type": "string"},
                 },
                 "required": ["query"],
@@ -455,6 +433,26 @@ async def list_tools() -> list[mcp_types.Tool]:
                 "required": ["tag_name"],
             },
         ),
+        mcp_types.Tool(
+            name="get_file_history",
+            description=(
+                "Return recent symbol-level changes for a specific file. "
+                "Answers 'what changed in file X recently?' using per-commit, per-symbol LLM summaries. "
+                "Use before editing a file to understand its recent churn and what was modified."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "File path substring to search, e.g. 'route_git.py' or 'memory_files'",
+                    },
+                    "limit":   {"type": "integer", "default": 30, "description": "Max commits to return"},
+                    "project": {"type": "string"},
+                },
+                "required": ["file_path"],
+            },
+        ),
     ]
 
 
@@ -474,20 +472,33 @@ async def _dispatch(name: str, args: dict) -> Any:
     project = args.get("project") or PROJECT
 
     if name == "search_memory":
-        return await _post("/search/semantic", {
-            "query": args["query"],
-            "project": project,
-            "limit": args.get("limit", 10),
-            "source_types": args.get("source_types"),
-            "language": args.get("language"),
-            "doc_type": args.get("doc_type"),
-            "file_path": args.get("file_path"),
-            "chunk_types": args.get("chunk_types"),
-            "phase": args.get("phase"),
-            "feature": args.get("feature"),
-            "entity_name": args.get("entity_name"),
-            "entity_category": args.get("entity_category"),
-        })
+        # Search BOTH work items (mem_work_items) AND project facts (mem_ai_project_facts)
+        # then merge results ranked by score for true cross-domain semantic search.
+        import urllib.parse as _up
+        limit = args.get("limit", 10)
+        wi_result, facts_result = await asyncio.gather(
+            _post("/search/semantic", {
+                "query":   args["query"],
+                "project": project,
+                "limit":   limit,
+                "phase":   args.get("phase"),
+                "feature": args.get("feature"),
+            }),
+            _get(f"/search/facts?"
+                 f"query={_up.quote(args['query'])}&project={_up.quote(project)}&limit={limit}"),
+            return_exceptions=True,
+        )
+        wi_hits = wi_result.get("results", []) if isinstance(wi_result, dict) else []
+        fact_hits = facts_result.get("results", []) if isinstance(facts_result, dict) else []
+        # Tag source type for clarity
+        for h in wi_hits:
+            h.setdefault("source", "work_item")
+        for h in fact_hits:
+            h.setdefault("source", "project_fact")
+            h.setdefault("title", h.get("fact_key", ""))
+            h.setdefault("snippet", h.get("fact_value", ""))
+        merged = sorted(wi_hits + fact_hits, key=lambda r: r.get("score", 0), reverse=True)[:limit]
+        return {"query": args["query"], "project": project, "total": len(merged), "results": merged}
 
     elif name == "get_project_state":
         proj, tags = await asyncio.gather(
@@ -824,6 +835,15 @@ async def _dispatch(name: str, args: dict) -> Any:
         }
         qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
         return await _get(f"/tags/context?{qs}")
+
+    elif name == "get_file_history":
+        import urllib.parse as _up
+        params = {
+            "file_path": args["file_path"],
+            "limit": str(args.get("limit", 30)),
+        }
+        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
+        return await _get(f"/memory/{_up.quote(project)}/file-history?{qs}")
 
     elif name == "get_db_schema":
         p = project

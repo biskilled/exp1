@@ -308,6 +308,13 @@ async def create_project(body: NewProject):
     # Ensure standard project dirs (memory/, state/, logs/, sessions/, workflows/)
     _ensure_per_llm_dirs(dest_dir)
 
+    # Seed PROJECT.md from template if it doesn't exist yet
+    proj_md_tpl = ws / "_templates" / "memory" / "PROJECT.md"
+    proj_md_dest = dest_dir / "memory" / "PROJECT.md"
+    if proj_md_tpl.exists() and not proj_md_dest.exists():
+        proj_md_dest.parent.mkdir(parents=True, exist_ok=True)
+        proj_md_dest.write_text(_render(proj_md_tpl.read_text(encoding="utf-8")))
+
     # Write project.yaml
     enabled_providers = [p for p, flag in [
         ("openai", body.openai_support), ("deepseek", body.deepseek_support),
@@ -1061,6 +1068,22 @@ async def _auto_populate_project_facts(
         ][:12]
         if not facts:
             return 0
+        # Normalize keys: lowercase + snake_case to prevent near-duplicate keys
+        # (e.g. "Database" vs "database" vs "database_engine" all normalized consistently)
+        def _norm_key(k: str) -> str:
+            k = k.lower().strip()
+            k = _re.sub(r"[^a-z0-9]+", "_", k)
+            return k[:80].strip("_")
+
+        seen_keys: set[str] = set()
+        deduped: list[dict] = []
+        for f in facts:
+            nk = _norm_key(str(f["fact_key"]))
+            if nk and nk not in seen_keys:
+                seen_keys.add(nk)
+                deduped.append({**f, "_norm_key": nk})
+        facts = deduped
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Expire previous auto-generated facts (non-code category)
@@ -1071,7 +1094,7 @@ async def _auto_populate_project_facts(
                 )
                 inserted = 0
                 for f in facts:
-                    fk = str(f["fact_key"])[:120]
+                    fk = f.get("_norm_key") or str(f["fact_key"])[:120]
                     fv = str(f["fact_value"])[:500]
                     cat = f.get("category", "general")
                     if cat not in ("stack", "pattern", "convention", "constraint", "general"):
@@ -1298,11 +1321,12 @@ async def generate_memory(project_name: str):
             except Exception:
                 pass
 
-    # ── 2. CLAUDE.md — regenerate from PROJECT.md + state_data ───────────────
-    # PROJECT.md was just refreshed above, so get_project_context() will pick
-    # up the latest "Recent Work" and "Key Decisions" sections automatically.
-    # Load hotspot/coupling data early so we can append to CLAUDE.md.
+    # ── 2. CLAUDE.md — single render path via MemoryFiles.render_root_claude_md ─
+    # Load context (reads fresh project_state.json just saved above + DB tables).
+    # This is the SAME renderer used by the commit/work-item trigger path, so both
+    # paths now produce identical output.
     _mf_ctx: dict = {}
+    _mf_obj = None
     try:
         from memory.memory_files import MemoryFiles as _MF_cls
         _mf_obj = _MF_cls()
@@ -1312,31 +1336,13 @@ async def generate_memory(project_name: str):
 
     claude_md_content = ""
     try:
-        ctx_result = await get_project_context(project_name, save=True)
-        claude_md_content = ctx_result.get("claude_md", "")
-        # Prepend last-updated comment so every CLAUDE.md is timestamped
-        if claude_md_content and not claude_md_content.startswith("<!-- Last updated"):
-            claude_md_content = f"<!-- Last updated: {ts} -->\n{claude_md_content}"
-        # Append hotspot section if data available
-        hotspots = _mf_ctx.get("hotspots") or []
-        if hotspots and claude_md_content:
-            mem_cfg = _mf_ctx.get("memory_config", {})
-            hotspot_lines = ["\n## Code Hotspots", ""]
-            for h in hotspots[:10]:
-                bug_note = f", {h['bug_commits']} bug fixes" if h.get("bug_commits") else ""
-                hotspot_lines.append(
-                    f"- `{h['file']}` — score {h['score']}"
-                    f" ({h['commits']} commits{bug_note}, {h['lines']} lines)"
-                )
-            hotspot_lines.append(
-                "\n_Full details: `memory/code.md`_"
-            )
-            claude_md_content = claude_md_content.rstrip() + "\n" + "\n".join(hotspot_lines)
+        if _mf_obj and _mf_ctx:
+            claude_md_content = _mf_obj.render_root_claude_md(_mf_ctx)
         if claude_md_content:
             pp.claude_md_path(project_name).write_text(claude_md_content)
         generated.append("memory/claude/CLAUDE.md")
-    except Exception:
-        pass
+    except Exception as _e:
+        log.warning("generate_memory: CLAUDE.md render failed: %s", _e)
 
     # ── 3. cursor/rules.md — Cursor AI coding rules ───────────────────────────
     # Cursor reads .cursor/rules/*.mdrules — keep focused on coding conventions.

@@ -50,7 +50,8 @@ _SQL_FACTS = """
 _SQL_ACTIVE_WORK_ITEMS = """
     SELECT wi_id, name, wi_type, user_status, due_date,
            LEFT(COALESCE(summary, ''), 100),
-           LEFT(COALESCE(acceptance_criteria, ''), 150)
+           LEFT(COALESCE(acceptance_criteria, ''), 150),
+           LEFT(COALESCE(implementation_plan, ''), 200)
     FROM mem_work_items
     WHERE project_id = %s
       AND wi_type IN ('use_case', 'feature', 'bug', 'task')
@@ -246,7 +247,7 @@ class MemoryFiles:
 
                     # Active work items (use_case/feature — drives "Active Features" section)
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for wi_id, wi_name, wi_type, user_status, due_date, summary, ac in cur.fetchall():
+                    for wi_id, wi_name, wi_type, user_status, due_date, summary, ac, impl_plan in cur.fetchall():
                         status_label = (
                             _WI_STATUS_LABELS.get(user_status, "open")
                             if user_status is not None else "open"
@@ -258,6 +259,7 @@ class MemoryFiles:
                             "status":               status_label,
                             "description":          (summary or "").strip(),
                             "acceptance_criteria":  (ac or "").strip(),
+                            "implementation_plan":  (impl_plan or "").strip(),
                             "due_date":             due_date.isoformat() if due_date else None,
                         })
 
@@ -470,6 +472,10 @@ class MemoryFiles:
                 lines.append(f"- {item}")
             lines.append("")
 
+        # Coding Conventions — from PROJECT.md ## Conventions section
+        if ctx.get("conventions"):
+            lines += ["## Coding Conventions", "", ctx["conventions"], ""]
+
         # Active Features / Use Cases
         if ctx["active_tags"]:
             lines += ["## Active Features", ""]
@@ -480,6 +486,8 @@ class MemoryFiles:
                 lines.append(f"- {wi_id_part}`{tag['name']}` [{tag['status']}]{desc}{due}")
                 if tag.get("acceptance_criteria") and tag.get("wi_type") == "use_case":
                     lines.append(f"  _AC: {tag['acceptance_criteria']}_")
+                if tag.get("implementation_plan") and tag.get("status") == "in-progress":
+                    lines.append(f"  _Plan: {tag['implementation_plan'][:180]}_")
             lines.append("")
 
         # Code Hotspots
@@ -816,9 +824,13 @@ class MemoryFiles:
             for t in active_tags:
                 status = t.get("status") or "open"
                 due = f"  _(due {t['due_date']})_" if t.get("due_date") else ""
-                wi_type = t.get("type") or ""
+                wi_type = t.get("wi_type") or t.get("type") or ""
                 type_tag = f" `{wi_type}`" if wi_type else ""
                 lines.append(f"- **[{status}]**{type_tag} {t['name']}{due}")
+                if t.get("acceptance_criteria") and wi_type == "use_case":
+                    lines.append(f"  _AC: {t['acceptance_criteria']}_")
+                if t.get("implementation_plan") and status == "in-progress":
+                    lines.append(f"  _Plan: {t['implementation_plan'][:200]}_")
             lines.append("")
 
         # ── 3. Coding Conventions ─────────────────────────────────────────────
@@ -1012,6 +1024,7 @@ class MemoryFiles:
             dest = pp.code_md_path(project)
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(self._render_code_md(ctx), encoding="utf-8")
+            self._embed_code_md(project)
             return True
         except Exception as e:
             log.warning(f"write_code_md({project}): {e}")

@@ -267,6 +267,23 @@ sidebar tabs:
 
 ---
 
+## Conventions
+
+<!-- user-managed — edit freely; this section feeds directly into code.md and CLAUDE.md -->
+
+- **Python style**: Python 3.12+; type hints on all new functions; no `from X import *`
+- **Imports**: stdlib → third-party → local; each group alphabetically sorted
+- **Async**: use `async`/`await` throughout FastAPI routes; no blocking calls in async context
+- **DB access**: always use `db.conn()` context manager (psycopg2 pool); parameterized queries only
+- **Error handling**: log with `log.warning()` for expected errors, `log.exception()` for unexpected; return 422/404 from routes, never 500 for known cases
+- **Naming**: `snake_case` for Python; `camelCase` for JS; `UPPER_SNAKE` for module-level constants
+- **LLM prompts**: all prompts in `backend/prompts/*.yaml`; load via `prompt_loader.prompts.content(key)`; never inline strings
+- **Work items**: `user_status` is TEXT (`open|pending|in-progress|review|blocked|done`); `wi_type` is TEXT (`use_case|feature|bug|task|requirement`)
+- **No dead code**: remove unused imports, functions, and variables immediately; don't leave `# TODO` comments for more than one session
+- **Tests**: add a smoke-test curl command in PR description for any new endpoint
+
+---
+
 ## In Progress ◷
 
 - **Backlog pipeline** — 2-step LLM digest (grouping + summary), user review, use case file merge

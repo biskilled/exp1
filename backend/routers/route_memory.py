@@ -775,3 +775,62 @@ async def get_hotspots(
             for r in rows
         ],
     }
+
+
+@router.get("/{project}/file-history")
+async def get_file_history(
+    project: str,
+    file_path: str = Query(..., description="File path substring to search (e.g. 'route_git.py')"),
+    limit: int = Query(30, ge=1, le=200),
+):
+    """Return recent symbol-level changes for a specific file from mem_mrr_commits_code.
+
+    Used by MCP get_file_history tool — answers "what changed in file X recently?"
+    Returns commits touching the file, with per-symbol llm_summary.
+    """
+    _require_db()
+    project_id = db.get_or_create_project_id(project)
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT c.commit_hash_short, c.commit_msg, c.created_at::date,
+                              cc.file_path, cc.symbol_type, cc.class_name, cc.method_name,
+                              cc.file_change, cc.llm_summary
+                       FROM mem_mrr_commits c
+                       JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
+                       WHERE c.project_id = %s
+                         AND cc.file_path ILIKE %s
+                       ORDER BY c.created_at DESC
+                       LIMIT %s""",
+                    (project_id, f"%{file_path}%", limit),
+                )
+                rows = cur.fetchall()
+    except Exception as e:
+        log.warning("get_file_history error for '%s': %s", project, e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Group by commit for cleaner output
+    commits: dict = {}
+    for hash_short, msg, date, fpath, stype, cls, meth, change, summary in rows:
+        if hash_short not in commits:
+            commits[hash_short] = {
+                "commit": hash_short,
+                "message": msg or "",
+                "date": date.isoformat() if date else None,
+                "symbols": [],
+            }
+        label = f"{cls}.{meth}" if cls and meth else (cls or meth or fpath)
+        commits[hash_short]["symbols"].append({
+            "file_path":   fpath,
+            "symbol":      label,
+            "change":      change or "modified",
+            "llm_summary": (summary or "")[:150],
+        })
+
+    return {
+        "project":    project,
+        "file_path":  file_path,
+        "total_commits": len(commits),
+        "commits":    list(commits.values()),
+    }
