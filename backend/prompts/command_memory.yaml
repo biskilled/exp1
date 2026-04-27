@@ -97,20 +97,11 @@
     }
     No preamble, no markdown fences.
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STAGE 3: Tag Suggestion
-# Called by: route_projects._synthesize_with_llm() — suggests tags from recent prompts
-# ─────────────────────────────────────────────────────────────────────────────
-- key: tag_suggestion
-  name: Tag Suggestion
-  description: "Suggests 2-3 relevant work-item tags from recent developer prompts"
-  model: haiku
-  max_tokens: 150
-  system: |
-    You are a JSON API. Respond with a valid JSON array only. No explanation, no preamble, no markdown.
+# NOTE: tag_suggestion prompt lives in misc.yaml (canonical key).
+# Called by route_projects._synthesize_with_llm() → prompts.content("tag_suggestion")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STAGE 4: Memory Context File Preambles
+# STAGE 3: Memory Context File Preambles
 # Used by: memory_files.py — prepended to rendered context files (no LLM call)
 # ─────────────────────────────────────────────────────────────────────────────
 - key: memory_context_compact

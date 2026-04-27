@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 02:36 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 09:27 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -9,7 +9,7 @@ _Last updated: 2026-04-27_
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
 > - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
 >   You can still edit them; `/memory` will merge its output in without discarding your additions.
-> - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this docum
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
 
 ## Tech Stack
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-27_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-27] can you fix all reccomendations ?
 - [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10 prompts) che
 - [2026-04-27] why memory_work_item is so big ?
 - [2026-04-27] Ok do that (classify and markdown) and also there other 2 recoomendation you gave bofore
 - [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10 prompts) che
+- [2026-04-27] can you fix all  items  - in memeory just 1,2. for 3- not approved can be change totaly by user so better not to show. w

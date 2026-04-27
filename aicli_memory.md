@@ -1,227 +1,349 @@
-# aicli Memory System Audit
-_Last updated: 2026-04-27 | Goal: shared LLM memory layer — any LLM can pick up context instantly_
+# aicli Memory System — System Audit
+_Last updated: 2026-04-27 | Goal: shared LLM memory layer — any LLM picks up project context instantly_
 
 ---
 
-## 1. Memory Files — Do LLMs get real, current project understanding?
+## 1. System Overview — How Data Flows
 
-### code.md
+```
+User/Git Actions                Layer 1 Raw Capture
+─────────────────               ───────────────────────────────────────────────────────────
+Claude Code stop hook     ────► mem_mrr_prompts   (prompt + response, tags JSONB)
+git push (post-commit)    ────► mem_mrr_commits    (hash, msg, tags)
+                                    │
+                                    └──► [background] extract_commit_code()
+                                              mem_mrr_commits_code   (per-symbol: class/method/file)
+                                              mem_mrr_commits_file_stats  (hotspot score per file)
+                                              mem_mrr_commits_file_coupling  (co-change pairs)
+Manual API only           ────► mem_mrr_items    (documents, meetings) ← EMPTY in practice
+Manual API only           ────► mem_mrr_messages (Slack/chat)          ← EMPTY in practice
 
-| Item | State |
-|------|-------|
-| Triggered on commit push | ✓ Background after every git push |
-| Triggered on `/memory` POST | ✓ Explicit call |
-| Triggered on session start | ✗ Only `write_root_files()` runs (CLAUDE.md / .cursorrules) — `code.md` NOT refreshed |
-| Dir tree structure | ✓ Depth-3 ASCII tree with `_TREE_SKIP` filter |
-| Recently Changed symbols | ✓ Last 20 symbols (class/method/file level) |
-| Code hotspots table | ✓ score, commits, lines, bug_fixes, last_changed |
-| Active work items + AC | ✓ Shown for use_cases; implementation_plan for in-progress |
-| Coding conventions | ✓ From `## Conventions` in PROJECT.md |
-| **GAP: stale between commits** | Mid-session code changes (not yet committed) are invisible to code.md |
-| **GAP: missing role/architecture narrative** | Describes what changed, not how the system is structured conceptually |
+                 Layer 3 Work Items (classify → approve)
+                 ─────────────────────────────────────────────────────────────────
+POST /wi/classify         reads mem_mrr_* (wi_id IS NULL) → Haiku → draft mem_work_items (wi_id=AI0001…)
+User approves in UI       draft → approved (wi_id=BU0001 etc) → embed → MD file written
 
-### PROJECT.md
+                 Layer 2 Project Facts (only on /memory POST)
+                 ──────────────────────────────────────────────────────────────────
+POST /memory/{project}    Haiku synthesis → project_state.json (key_decisions, tech_stack)
+                          → mem_ai_project_facts (sparse; code.md embed stored here)
+                          → MemoryFiles.write_all_files() → all context files
 
-| Item | State |
-|------|-------|
-| Vision + Core Goals | ✓ User-managed, shown in CLAUDE.md project summary |
-| Conventions section | ✓ Feeds code.md + cursorrules |
-| Auto-updated: Recent Work / Key Decisions | ✓ Haiku synthesis on each `/memory` run |
-| Path fixed | ✓ `workspace/{p}/memory/PROJECT.md` (was wrong in previous version) |
-| **GAP: architectural overrides not tracked** | If "we switched from JSONL to DB", old layer descriptions persist until user manually rewrites Vision section |
-| **GAP: key_decisions capped at 15** | Old decisions stay in the list — no pruning of superseded decisions |
-| **GAP: no staleness warning** | CLAUDE.md shows "last updated" but doesn't flag stale PROJECT.md (e.g. 30+ days) |
-
-### project_state.json (tech_stack, key_decisions)
-
-| Item | State |
-|------|-------|
-| Replaced on each `/memory` run | ✓ Full rewrite from Haiku synthesis |
-| Feeds CLAUDE.md directly | ✓ |
-| **GAP: no delta between runs** | Can't tell what changed since last synthesis — no history of decisions |
-
-### project_facts (`mem_ai_project_facts`)
-
-| Item | State |
-|------|-------|
-| Auto-populated on `/memory` | ✓ 5-10 Haiku-extracted facts (stack/pattern/convention/constraint) |
-| Stale facts expired before insert | ✓ `valid_until = NOW()` for non-code category |
-| Embed batch fix | ✓ All facts embedded BEFORE DB connection opens (fixed this session) |
-| Key normalization | ✓ Snake_case + lowercase dedup |
-| **GAP: facts extracted from PROJECT.md, not from live code** | If codebase changed but PROJECT.md not updated, facts are stale |
-| **GAP: no contradiction detection across runs** | "uses_database=PostgreSQL" + "uses_database=SQLite" can both exist in different fact rows if keys differ slightly |
-| **GAP: category=code only from code.md embed** | No structured "architecture fact" (e.g. layer count) auto-extracted |
-
-### Approved work items in CLAUDE.md
-
-| Item | State |
-|------|-------|
-| Top 12 non-done items (bug-first) | ✓ Shown in CLAUDE.md |
-| In-progress items shown | ✓ `user_status='in-progress'` |
-| AC shown for use_cases | ✓ |
-| Implementation plan shown | ✓ First 180 chars for in-progress |
-| **GAP: pending (unapproved, wi_id LIKE 'AI%') items not shown** | LLM has no awareness of AI-classified but not yet approved items |
-
-### CLAUDE.md overall completeness
-
-| Item | State |
-|------|-------|
-| Project summary | ✓ From PROJECT.md Vision + Core Goals |
-| Tech stack | ✓ From project_state.json synthesis |
-| Key decisions | ✓ Up to 15 from synthesis |
-| In-progress items | ✓ DB-primary |
-| Recently changed symbols | ✓ Token-budget aware rolloff |
-| Code hotspots | ✓ Score-filtered |
-| Active features | ✓ Top 12 approved |
-| Coding conventions | ✓ From `## Conventions` |
-| **MISSING: "what has changed architecturally"** | No diff between past and current project structure — LLM can't detect drift |
-| **MISSING: pending items** | New AI-classified items invisible until user approves |
+                 Context File Outputs (memory_files.py — no LLM, deterministic)
+                 ─────────────────────────────────────────────────────────────────
+After every commit        write_root_files() → CLAUDE.md, .cursorrules, code.md, GEMINI.md, AGENTS.md
+                              + _embed_code_md() → mem_ai_project_facts(fact_key='code_structure')
+On /memory POST           write_all_files() → all files above + feature CLAUDE.md files
+Session start hook        /memory/regenerate?scope=root → write_root_files() (same as after commit)
+```
 
 ---
 
-## 2. Work Item Flows
+## 2. LLM Prompts — Complete Inventory
 
-### Classification (events → items)
+All prompts are in `backend/prompts/*.yaml`, loaded via `core/prompt_loader.py`.
+No inline prompt strings remain in Python.
 
-| Item | State |
-|------|-------|
-| All source types time-bounded (event_horizon_days) | ✓ Fixed |
-| Commit symbol summaries in prompt | ✓ `llm_summary` per class/method |
-| Hotspot files flagged in prompt | ✓ `_hotspot_files` attached |
-| Commit + prompt queries merged | ✓ Single `mem_mrr_commits_code` query |
-| Max use cases cap | ✓ Default 8, configurable |
-| AI draft rows cleared before each run | ✓ `wi_id LIKE 'AI%'` purge |
-| **GAP: implementation_plan not in reclassify context** | 4-agent pipeline output not fed back into classify() |
-| **GAP: commit_type (fix/feat/refactor) not auto-detected** | Can't distinguish "this commit fixed BU0012" from "introduced regression" |
-| **GAP: no link from commit → resolved work item** | Code that closes a bug doesn't auto-update `user_status` |
+| Prompt Key | File | Model | Max Tokens | Trigger | Input | Output |
+|---|---|---|---|---|---|---|
+| `project_synthesis` | command_memory.yaml | Haiku | 2000 | POST /memory | Recent history + PROJECT.md + current state | project_state.json (key_decisions, tech_stack, in_progress, project_summary) |
+| `conflict_detection` | command_memory.yaml | Haiku | 300 | POST /memory → MemoryPromotion | Old fact value + new fact value | resolution type + merged value → mem_ai_project_facts |
+| `tag_suggestion` | misc.yaml | Haiku | 100 | POST /memory (route_projects) | Recent 5 developer prompts | `{"phase":"...", "feature":"..."}` → shown in /memory response |
+| `feature_auto_detect` | misc.yaml | Haiku | 60 | POST /chat/hook-log | List of existing features + new prompt | `{"feature":"..."}` → auto-sets session feature tag |
+| `memory_context_compact` | command_memory.yaml | n/a (static) | — | write_all_files() → compact/cursor files | n/a | Preamble injected into .cursorrules, copilot instructions |
+| `memory_context_full` | command_memory.yaml | n/a (static) | — | write_all_files() → CLAUDE.md | n/a | Preamble injected into CLAUDE.md, GEMINI.md, AGENTS.md |
+| `memory_context_openai` | command_memory.yaml | n/a (static) | — | write_all_files() → api/system_prompt.md | n/a | Preamble for OpenAI/API system prompt |
+| `commit_analysis` | event_commit.yaml | Haiku | varies | POST /git/commit-store | Commit hash + message + diff | Tags (phase, feature, bug_ref) + summary |
+| `commit_symbol` | event_commit.yaml | Haiku | varies | extract_commit_code() background | Per-symbol diff snippet | llm_summary per class/method |
+| `commit_message` | event_commit.yaml | Haiku | varies | POST /git/commit-push | Staged diff | Generated commit message |
+| `react_pipeline_base` | agent_react.yaml | n/a (static) | — | agents/agent.py startup | n/a | System prompt prefix for all pipeline agents |
+| `react_suffix` | agent_react.yaml | n/a (static) | — | agents/agent.py (run mode) | n/a | Shorter ReAct format for non-pipeline agent.run() |
+| _(classify)_ | command_work_items.yaml | Haiku | 4000 | POST /wi/classify | Batched event texts (prompts + commits + items, ~6000 tokens/batch) | JSON array of work items with wi_type, score, parent |
+| _(summarise)_ | command_work_items.yaml | Haiku | 2000 | POST /wi/{id}/summarise | UC name + current children list | new_summary + reordered children |
+| _(reclassify)_ | command_work_items.yaml | Haiku | 120 | POST /wi/{id}/reclassify | Current item name/summary/status | wi_type + score_importance + score_status |
 
-### Work item scores & status
+**Total LLM calls**: ~6 active Haiku call paths; 3 static preambles (no LLM call); all logged to `mng_usage_logs`.
 
-| Item | State |
-|------|-------|
-| `user_status` TEXT (m079) | ✓ `open/pending/in-progress/review/blocked/done` |
-| `score_status` auto-5 when user marks done | ✓ |
-| Re-embed on content change (approved only) | ✓ name/summary/deliveries/delivery_type |
-| `acceptance_criteria` now in embed text | ✓ Fixed this session |
-| **GAP: pending item update → no embed** | If user edits a pending (AI-draft) item's summary, it's never embedded |
-| **GAP: overdue items** | `due_date < today AND status < done` — no MCP tool or CLAUDE.md section surfaces these |
-
-### Commit / code changes → intelligence
-
-| Item | State |
-|------|-------|
-| File hotspot scores | ✓ `mem_mrr_commits_file_stats` updated after each commit |
-| File coupling detection | ✓ `mem_mrr_commits_file_coupling` with configurable threshold |
-| Symbol-level summaries | ✓ Haiku per class/method per commit |
-| code.md refresh after commit | ✓ Background |
-| code.md embed after commit | ✓ `_embed_code_md()` called |
-| `diff_summary` per commit | ✓ Stored in `mem_mrr_commits` |
-| **GAP: no commit→item closure** | Commit message "fixes BU0012" doesn't auto-close the bug item |
-| **GAP: hotspot suggest work items** | `_suggest_hotspot_work_items()` creates tasks, but runs only on `/memory` — not on high-hotspot commits |
-
-### Approved items — quality & recency
-
-| Item | State |
-|------|-------|
-| Approve triggers embed | ✓ |
-| Approve triggers MD refresh for use_cases | ✓ `refresh_md()` called in `approve()` |
-| Update triggers re-embed (approved + semantic field change) | ✓ |
-| Tags merged from source events | ✓ `_update_item_tags()` + `_rollup_uc_tags()` |
-| **GAP: no "last activity" on items** | `updated_at` is updated but no event log — can't tell "this bug was last discussed 3 months ago" |
-| **GAP: work item ↔ commit two-way link weak** | `mrr_ids.commits` links item to commits, but `mem_mrr_commits.wi_id` is set — however searching "all commits for this item" requires a JOIN that no MCP tool exposes |
+**Issue found & fixed**: `tag_suggestion` was defined in both `misc.yaml` (full prompt) and `command_memory.yaml` (empty stub). Since files sort alphabetically, `misc.yaml` was winning silently. Stub removed from `command_memory.yaml`.
 
 ---
 
-## 3. Embedding / MCP Strategy
+## 3. Memory Layers — Current State
 
-### What is embedded
+### Layer 1: Raw Capture (`mem_mrr_*`)
 
-| Data | Model | Trigger | State |
-|------|-------|---------|-------|
-| code.md as single doc | text-embedding-3-small | `write_root_files`, `write_code_md`, `/memory` | ✓ |
-| Approved work items (name+type+summary+deliveries+AC) | text-embedding-3-small | approve + content edit | ✓ |
-| project_facts (all categories) | text-embedding-3-small | `/memory` POST (batch, outside DB conn) | ✓ fixed |
-| Per-commit diffs | — | Never | Correct — noisy, low ROI |
-| Per-symbol embeddings | — | Never | Low ROI vs code.md re-embed |
-| Pending (unapproved) work items | — | Never | **GAP** |
+| Table | Populated By | Event | Used For |
+|---|---|---|---|
+| `mem_mrr_prompts` | Claude Code stop hook → POST /chat/hook-log | Every session end | Work item classification source |
+| `mem_mrr_commits` | git post-commit hook → POST /git/commit-store | Every git push | Classification + commit_analysis LLM |
+| `mem_mrr_commits_code` | extract_commit_code() background | After each commit | code.md rendering (hotspots, symbols) |
+| `mem_mrr_commits_file_stats` | extract_commit_code() background | After each commit | hotspot_score, bug_commit_count |
+| `mem_mrr_commits_file_coupling` | extract_commit_code() background | After each commit | File co-change coupling detection |
+| `mem_mrr_items` | Manual POST /items | Never in practice | Intended for meeting notes / docs — **EMPTY** |
+| `mem_mrr_messages` | Manual POST /messages | Never in practice | Intended for Slack/chat — **EMPTY** |
 
-**Embedding strategy assessment**: Re-embedding the full code.md on each commit is the right call. It gives one searchable "code map" chunk instead of thousands of fragmented symbol rows. Token cost is fixed (8000 chars ≈ 2000 tokens per embed call).
+**Assessment**: The two active sources (prompts + commits) are well-captured and auto-tagged. `mem_mrr_items` and `mem_mrr_messages` are unused — classify prompt context is prompt+commit only.
 
-### MCP tools (16 tools)
+### Layer 2: Project Facts (`mem_ai_project_facts`)
 
-| Tool | Useful? | Can answer |
-|------|---------|-----------|
-| `search_memory` | ✓ | Semantic search across work items + facts (code_structure chunk) |
-| `get_project_state` | ✓ | Tech stack, key decisions, session tags, in-progress |
-| `get_recent_history` | ✓ | Last N prompts with phase/feature filter |
-| `get_commits` | ✓ | Recent commits + tags |
-| `get_tagged_context` | ✓ | All events for a phase/feature |
-| `list_work_items` | ✓ | Open bugs/features/tasks with status |
-| `get_item_by_number` | ✓ | Full details for one item |
-| `create_entity` | ✓ | Create unapproved item |
-| `run_work_item_pipeline` | ✓ | Trigger 4-agent PM→Dev→Reviewer |
-| `set_session_tags` / `get_session_tags` | ✓ | Track phase/feature context |
-| `commit_push` | ✓ | Cursor sessions |
-| `get_roles` | ✓ | Agent role definitions |
-| `get_db_schema` | ✓ | Static schema reference |
-| `search_work_items` | **STILL PRESENT** | Redundant with `search_memory` — should be removed |
-| `get_file_history` | ✓ | Per-file symbol-level changes (dispatch added) |
-| **MISSING: `get_hotspots`** | — | No dedicated tool; LLM must guess via `search_memory` |
-| **MISSING: date filter on `list_work_items`** | — | Can't ask "what's overdue" or "due this week" |
-| **MISSING: `get_item_history`** | — | Can't ask "all commits that touched bug BU0012" |
+**Structure**: `fact_key`, `fact_value`, `category` (stack/pattern/convention/constraint/general/code), `embedding VECTOR(1536)`, `valid_until`
 
-### Can MCP answer key project questions?
+**Written by**:
+1. POST /memory → `_auto_populate_project_facts()` — extracts 5-10 facts from PROJECT.md + Haiku synthesis (batch-embedded outside DB connection ✓ fixed this session)
+2. `_embed_code_md()` — stores code.md snapshot as `fact_key='code_structure'` category='code' for semantic search
+
+**Assessment**: Facts are sparse in practice. The key LLM context comes from `project_state.json` (also written by /memory), not from this table. The `code_structure` fact is the most useful — it makes the full code map searchable via MCP `search_memory`.
+
+### Layer 3: Work Items (`mem_work_items`)
+
+**Lifecycle**: raw event → [classify] → draft (wi_id=AI0001) → [approve] → approved (wi_id=BU0001)
+
+**Approved items embed**: `_embed_work_item()` includes name + wi_type + summary + deliveries + delivery_type + acceptance_criteria (added this session ✓).
+**Re-embed trigger**: approve() + update() when semantic fields changed.
+**Markdown file**: Written to `workspace/{project}/documents/use_cases/{slug}.md` on approval.
+
+**Assessment**: Well-structured. Approve/embed/MD chain is solid. Score (`score_importance`, `score_status`) is LLM-assigned at classify time, user-read-only at approve time.
+
+---
+
+## 4. Component Analysis
+
+### 4A. code.md — Is it well-defined and well-triggered?
+
+**Content**: Dir tree (depth 3) + recently changed symbols (class/method from mem_mrr_commits_code) + hotspot files table (score, commits, lines, bugs) + coupling pairs table.
+
+**Trigger chain**:
+```
+git push → POST /git/commit-store
+   → extract_commit_code() [background thread]
+       → mem_mrr_commits_code (tree-sitter per-symbol)
+       → mem_mrr_commits_file_stats (hotspot recompute)
+       → write_root_files() → code.md [written]
+           → _embed_code_md() → mem_ai_project_facts[code_structure] [embedded]
+```
+**Session start**: hook calls `POST /memory/regenerate?scope=root` → same `write_root_files()` path.
+**On /memory**: `write_all_files()` → same path.
+
+**Assessment**: ✓ Well-triggered. code.md is always current after each commit AND embedded for semantic search. The "code.md not refreshed on session start" gap from the previous audit was already fixed.
+
+**Gap**: code.md shows recently-changed symbols and hotspots but does **not** include a list of all module/class public APIs (only what changed in recent commits). An LLM reading code.md knows what's hot but not the full project interface.
+
+### 4B. PROJECT.md — Is it well-maintained?
+
+**Content**: Vision + Core Goals (user-managed) + Conventions + Recent Work + Key Decisions (both auto-updated by /memory).
+
+**New this session**: `## Deprecated` section — user lists superseded decisions; they are filtered from CLAUDE.md key_decisions automatically.
+
+**Assessment**: ✓ Vision and Core Goals are static (user-managed). Key Decisions auto-update on /memory. The Deprecated mechanism prevents stale architecture from polluting LLM context. The main gap is that Key Decisions come from Haiku synthesis over *prompts* — not from direct code reading — so they lag behind code changes that haven't been discussed.
+
+### 4C. Project Facts (`mem_ai_project_facts`) — Are they updated and non-duplicate?
+
+**Current state**: Facts are upserted on each /memory run. `valid_until=NOW()` marks old facts stale before inserting new ones (per category). Key normalization (snake_case + dedup) prevents exact duplicates.
+
+**Assessment**: Works for explicit `/memory` runs. Facts are NOT auto-updated on commits — if you switch from JSONL to DB without running `/memory`, the facts stay stale. The conflict_detection LLM prompt handles contradictions when a new fact contradicts an existing one, but it only runs during `/memory` synthesis.
+
+**Gap**: No auto-trigger for fact refresh after architectural changes (only prompts can detect them).
+
+### 4D. Approved Work Items — Are they well-used?
+
+**Shown in CLAUDE.md**: Top 12 approved (non-done), bug-type first. In-progress items shown separately with due dates. Acceptance_criteria shown for use_cases.
+
+**Embed**: Full text embedding (name + summary + deliveries + AC) on approve + re-embed on update.
+
+**Assessment**: ✓ Well-used. Both the human-readable CLAUDE.md section and the semantic search embedding are populated. The `_embed_work_item` now includes acceptance_criteria (fixed this session ✓).
+
+### 4E. Unapproved/Draft Work Items — Are they visible?
+
+**Current state**: AI-draft items (wi_id LIKE 'AI%') are NOT shown in CLAUDE.md or embedded. User must open the Work Items UI to see them.
+
+**Rationale** (confirmed with user): These items can be entirely user-replaced, so showing them to LLM is noise. Only the count *could* be surfaced. Decision: do not show unreviewed items.
+
+**Assessment**: ✓ Correct behavior. The classify() run purges all AI drafts before regenerating — so CLAUDE.md is never polluted with potentially-wrong AI classifications.
+
+### 4F. Architectural Overrides — Are old decisions replaced?
+
+**Mechanism**: `## Deprecated` section in PROJECT.md (added this session ✓). User adds phrases; `_load_context()` parses them; renderers filter `key_decisions` containing those phrases.
+
+**Also**: `project_synthesis` Haiku prompt explicitly says "PROJECT.md is authoritative — replace stale decisions" so fresh /memory runs naturally supersede old entries.
+
+**Assessment**: ✓ Both mechanisms in place. The `## Deprecated` gives instant suppression without needing a /memory run.
+
+### 4G. CLAUDE.md — Does it have complete, current project understanding?
+
+**Sections rendered deterministically from DB**:
+- Key Architectural Decisions (from project_state.json synthesis)
+- Project Documentation (from PROJECT.md Vision + Core Goals)
+- Code Hotspots (from mem_mrr_commits_file_stats)
+- Recently Changed symbols (from mem_mrr_commits_code)
+- Active Features/Work Items (from mem_work_items, approved only)
+- In Progress items (from mem_work_items user_status='in-progress')
+- Coding Conventions (from PROJECT.md ## Conventions)
+- Tech Stack (from project_state.json)
+
+**Assessment**: ✓ Well-structured. All sections have clear DB sources with token-budget rolloff (oldest symbols dropped first). The main gap is "Recent Work" shows old prompt summaries that aren't refreshed frequently.
+
+---
+
+## 5. Work Item Flows
+
+### Classification Trigger
+```
+Events piling up in mem_mrr_* (wi_id IS NULL)
+    → Manual: POST /wi/classify
+    → Auto (threshold mode): route_git.py + route_chat.py check unprocessed token counts
+      (prompts: 2000 tokens, commits: 1000, messages: 5000, items: 500)
+    → Haiku batch (6000 tokens/batch) → JSON array of work items
+    → Draft rows: use_cases first (AI0001), children linked via wi_parent_id
+```
+
+### Approve Chain
+```
+User approves in UI
+    → Assign real wi_id (US0001/BU0001/FE0001/TA0001)
+    → _embed_work_item() → VECTOR(1536) stored
+    → Tag mem_mrr_* rows with real wi_id (marks events as processed)
+    → _write_md_file() → documents/use_cases/{slug}.md written
+    → write_root_files() triggered → CLAUDE.md refreshed
+```
+
+### Score System
+| Field | Set By | Meaning |
+|---|---|---|
+| `score_importance` | Haiku at classify time (1-5) | How important this item is |
+| `score_status` | Haiku at classify time (1=not started, 3=in progress, 5=done) | LLM-estimated progress |
+| `user_status` | User explicitly in UI | Authoritative status (open/pending/in-progress/review/blocked/done) |
+
+`score_status` is supplementary — `user_status` is the source of truth for CLAUDE.md and MCP queries.
+
+### Commit → Work Item Link
+When a commit is stored, `_extract_commit_type()` parses the message for conventional prefixes (fix/feat/refactor). The `wi_id` on `mem_mrr_commits` gets set to the related work item on classification/approval. However, "fixes BU0012" in a commit message does **not** auto-resolve the bug — user must manually update `user_status`.
+
+**Gap**: No auto-closure from commit messages.
+
+### Code Events → Classification Context
+`_ClassifyMixin._load_existing_context()` fetches:
+- Recent hotspot file names (from mem_mrr_commits_file_stats)
+- Per-symbol llm_summaries (from mem_mrr_commits_code, last 20 symbols)
+These are injected into the Haiku classify prompt, giving the LLM awareness of which files are changing and what the code-level changes mean.
+
+**Assessment**: ✓ Code changes feed directly into classification quality. File hotspots and symbol summaries are used.
+
+---
+
+## 6. Embedding / MCP Strategy
+
+### What Is Embedded
+
+| Data | When | Table | Used For |
+|---|---|---|---|
+| Approved work items | approve() + re-embed on update | mem_work_items.embedding | search_memory (semantic) + search/semantic endpoint |
+| code.md snapshot | write_root_files() after every commit + /memory | mem_ai_project_facts (code_structure) | search_memory("code structure") |
+| Project facts | /memory POST → batch outside DB conn (fixed ✓) | mem_ai_project_facts | search_memory (facts/conventions) |
+
+**Not embedded** (correct):
+- Raw prompts/commits (too noisy, too many tokens)
+- Per-symbol diffs (code.md re-embed covers this at file-map level)
+- Draft (unapproved) work items (cost + noise)
+
+**Assessment**: ✓ Strategy is sound. One searchable "code map" chunk re-embedded on every commit is better than thousands of fragmented symbol rows. Approved work items are the right granularity for semantic search.
+
+### MCP Tools (16 registered)
+
+| Tool | Endpoint | Useful? | Notes |
+|---|---|---|---|
+| `search_memory` | GET /search/semantic | ✓ | Semantic over work items + code_structure + facts |
+| `get_project_state` | GET /projects/{p}/state | ✓ | Tech stack, key decisions, in-progress |
+| `get_recent_history` | GET /history/{p} | ✓ | Last N prompts with phase/feature filter |
+| `get_commits` | GET /history/{p}/commits | ✓ | Tagged commits |
+| `get_tagged_context` | GET /history/{p}/tagged | ✓ | All events for a phase or feature |
+| `list_work_items` | GET /wi/{p} | ✓ | Filter by type, status, `due_date_before` (added ✓) |
+| `get_item_by_number` | GET /wi/{p}/number/{n} | ✓ | Full detail for one item |
+| `create_entity` | POST /wi/{p} | ✓ | Create unapproved item |
+| `run_work_item_pipeline` | POST /wi/{p}/{id}/summarise | ✓ | Haiku 4-agent summary |
+| `get_hotspots` | GET /memory/{p}/hotspots | ✓ | Direct file churn query |
+| `get_file_history` | GET /memory/{p}/file-history | ✓ | Per-file symbol changes |
+| `get_session_tags` / `set_session_tags` | GET/PUT /tags | ✓ | Phase/feature tracking |
+| `commit_push` | POST /git/{p}/commit-push | ✓ | Cursor session commits |
+| `get_roles` | GET /agent-roles | ✓ | Agent role definitions |
+| `get_db_schema` | n/a (static) | ✓ | Schema reference |
+| `sync_github_issues` | n/a | ✗ stub | Not implemented — returns error message |
+
+**`search_work_items`**: confirmed removed (was only in a comment). ✓
+**`get_hotspots`**: confirmed present. ✓
+**`due_date_before` on `list_work_items`**: added this session. ✓
+
+### Can MCP Answer Key Questions?
 
 | Question | Tool | Works? |
-|----------|------|--------|
+|---|---|---|
 | What are the open bugs? | `list_work_items(category=bug)` | ✓ |
-| What's the tech stack? | `get_project_state` | ✓ |
-| What are the coding conventions? | `search_memory(query="conventions")` | ✓ (via facts embed) |
-| What is the code structure? | `search_memory(query="code structure")` | ✓ (via code.md embed) |
-| What files are hotspots? | `search_memory(query="hotspot files")` | ⚠ Semantic, not exact |
-| What changed recently? | `get_commits` or `get_recent_history` | ✓ |
-| How many bugs are in-progress? | `list_work_items` + count | ✓ |
-| What are the main use cases? | `list_work_items(category=use_case)` | ✓ |
-| What is overdue? | — | ✗ No date filter |
-| What is the project policy / prefix convention? | `search_memory(query="naming convention prefix")` | ⚠ Only if in facts/conventions |
-| All commits for bug BU0012? | — | ✗ No tool |
-| Did this commit fix something? | — | ✗ No commit→item link query |
+| What is the tech stack? | `get_project_state` | ✓ |
+| What are coding conventions? | `search_memory("conventions")` | ✓ via facts embed |
+| What is the code structure? | `search_memory("code structure")` | ✓ via code.md embed |
+| What files are hotspots? | `get_hotspots` | ✓ direct |
+| What changed recently? | `get_commits` | ✓ |
+| What items are overdue? | `list_work_items(due_date_before="2026-04-27")` | ✓ (added) |
+| What is in progress? | `get_project_state` or `list_work_items(status=active)` | ✓ |
+| All commits for bug BU0012? | — | ✗ no direct tool |
+| Did this commit fix a bug? | — | ✗ no commit→item closure |
+| What's the naming prefix policy? | `search_memory("naming convention prefix")` | ⚠ only if in PROJECT.md/facts |
 
 ---
 
-## Summary
+## 7. Code Quality Notes (Last 10-15 Prompts)
 
-### What Is Missing (Major)
+### Changes Made This Session
+| Change | File | Quality |
+|---|---|---|
+| Split memory_work_items.py into mixins | `_wi_classify.py` (598L), `_wi_markdown.py` (509L), `_wi_helpers.py` (271L) | ✓ Good separation; mixin pattern is idiomatic |
+| Added AC to _embed_work_item | `_wi_helpers.py` | ✓ Simple 1-line add |
+| Fixed batch embed outside DB | `route_projects.py` | ✓ Correct — avoids N HTTP calls while holding pool connection |
+| `## Deprecated` parsing | `memory_files.py` | ✓ Clean; reuses existing section-parsing loop |
+| `due_date_before` MCP filter | `server.py` | ✓ Client-side slice; ISO string compare is lexicographically correct |
+| Removed `tag_suggestion` stub | `command_memory.yaml` | ✓ Eliminated silent duplicate |
 
-| # | Gap | Severity | Component |
-|---|-----|----------|-----------|
-| 1 | **Architectural override not tracked**: PROJECT.md Vision/Core Goals don't auto-invalidate old key_decisions. LLM sees stale architecture narrative until user manually rewrites. | **High** | Memory Files |
-| 2 | **Pending items invisible**: AI-classified items (wi_id LIKE 'AI%') not shown in CLAUDE.md or code.md — LLM unaware of what the system classified but user hasn't approved yet. | **Medium** | Memory Files |
-| 3 | **Commit → item closure missing**: A commit message "fixes BU0012" doesn't auto-resolve the work item. Human has to update status manually. | **Medium** | Work Item Flows |
-| 4 | **No overdue items surface**: No section in CLAUDE.md, no MCP tool filter for `due_date < today`. | **Medium** | MCP / Memory Files |
-| 5 | **`search_work_items` still present in MCP**: Redundant with `search_memory`. Adds schema weight to every call. Remove. | **Low** | MCP |
-| 6 | **`get_hotspots` MCP tool missing**: File churn data exists in DB but only reachable by fuzzy semantic search. A direct tool would be more reliable. | **Low** | MCP |
-| 7 | **code.md not refreshed on session start**: Only CLAUDE.md + cursorrules are written at start hook — code.md may be days old between commits. | **Low** | Memory Files |
-| 8 | **No MCP date filter on `list_work_items`**: Can't ask "what's due this week" or "what's overdue". | **Low** | MCP |
+### Remaining Code Quality Issues
 
-### Major Improvements — Per Component
+| Issue | File | Severity |
+|---|---|---|
+| `_WI_STATUS_LABELS` has dead int→str entries (0–5) | `memory_files.py:83` | Low — works but misleading after m079 |
+| `memory_work_items.py` still 1343 lines | `memory_work_items.py` | Medium — CRUD methods are dense; could split approve/reject/version into `_wi_crud.py` |
+| `sync_github_issues` in MCP returns a static error | `server.py` | Low — should be removed from tool list or implemented |
+| Token counting uses `len(text)//4` approximation | `_wi_classify.py` | Low — rough but sufficient for batching |
+| `_WI_SQL_*` constants in memory_work_items.py overlap with `_wi_helpers.py` SQL | Both files | Low — not duplicated but could be unified under `_wi_helpers.py` |
 
-#### Component 1: Memory Files
+---
+
+## 8. What Is Missing (Major Gaps Only)
+
+| # | Gap | Component | Impact |
+|---|---|---|---|
+| 1 | **`mem_mrr_items` and `mem_mrr_messages` are never populated** — classify has no meeting-note or Slack context | Layer 1 | Medium — LLM misses non-code decisions if team doesn't use commit messages + Claude Code exclusively |
+| 2 | **No commit→item auto-closure** — "fixes BU0012" in commit msg does not set `user_status=done` | Work Items | Medium — requires manual update; easy to miss |
+| 3 | **Project facts lag behind code** — `mem_ai_project_facts` only updated on manual `/memory` run; architectural changes not auto-detected from commits | Layer 2 | Medium — stale facts between `/memory` runs |
+| 4 | **`project_state.json` synthesis not triggered after commits** — key_decisions may be weeks old if user doesn't run `/memory` | Memory Files | Medium — CLAUDE.md tech_stack / key_decisions can lag |
+| 5 | **Hotspot work items only suggested on `/memory`** — `_suggest_hotspot_work_items()` not called from commit pipeline | Work Items | Low — refactor suggestions appear slowly |
+| 6 | **`sync_github_issues` MCP tool is a dead stub** — returns error; wastes tool-list space | MCP | Low — remove from tool list |
+| 7 | **No overdue items section in CLAUDE.md** — requires MCP call with `due_date_before` | Memory Files | Low — now possible via MCP but not auto-surfaced |
+
+---
+
+## 9. Major Improvements Per Component
+
+### Memory Files
 | Action | Impact |
-|--------|--------|
-| Add "supersedes" mechanism in PROJECT.md (e.g. `## Deprecated`) — `/memory` excludes deprecated entries from key_decisions | Prevents LLM seeing outdated architecture |
-| Show pending item count in CLAUDE.md (e.g. "12 unreviewed AI items — run `/items` to review") | LLM aware of unreviewed work |
-| Refresh code.md on session start hook (add to `write_root_files()`) | Always-fresh code map |
+|---|---|
+| Add a lightweight `/memory/quick-sync` endpoint triggered after commits — re-runs just `project_synthesis` (no file writes) → updates `project_state.json` | key_decisions stay current without full /memory cost |
+| Add `## Overdue` section to CLAUDE.md renderer showing items where `due_date < today AND user_status != 'done'` | LLM immediately aware of missed deadlines |
 
-#### Component 2: Work Item Flows
+### Work Item Flows
 | Action | Impact |
-|--------|--------|
-| Parse commit message for `fixes #BU0001` / `closes FE0012` — auto-set `user_status=done` | Closes the commit→item gap |
-| Surface overdue items in CLAUDE.md (below in-progress section) | Visible to LLM without MCP call |
+|---|---|
+| Parse "fixes BU\d+\|closes FE\d+" from commit messages in `route_git.py`; call `update(wi_id, user_status='done')` | Closes commit→item gap; zero user friction |
+| Surface unprocessed event count in CLAUDE.md (e.g. "23 unclassified events — run `/classify`") | LLM and user know when classification is overdue |
 
-#### Component 3: MCP / Embedding
+### MCP / Embedding
 | Action | Impact |
-|--------|--------|
-| Remove `search_work_items` tool (still present) | Reduces MCP schema weight |
-| Add `get_hotspots` tool (direct DB query, no semantic fuzzy) | Reliable hotspot answers |
-| Add `due_date_before` param to `list_work_items` dispatch | Enables overdue queries |
+|---|---|
+| Remove `sync_github_issues` from tool list (or implement it) | Reduces schema noise; reduces LLM confusion |
+| Add `parent_name` to `list_work_items` response | LLM can understand work item hierarchy without extra calls |

@@ -1,3 +1,4 @@
+<!-- Last updated: 2026-04-27 09:27 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
@@ -32,6 +33,7 @@ _Last updated: 2026-04-27_
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
 > - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
 >   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_decisions.
 > - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
 
 ---
@@ -83,10 +85,9 @@ Layer 2 — Structured Artifacts (mem_ai_project_facts)
 Layer 3 — Work Items (mem_work_items)
   AI-classified + user-reviewed: wi_type (use_case/feature/bug/task/requirement)
   user_status TEXT: open → pending → in-progress → review → done
-  wi_id: AI0001 (draft) → UC0001/FE0001/BU0001/TA0001 (approved)
 
 
-*See PROJECT.md for full documentation (327 lines total)*
+*See PROJECT.md for full documentation (335 lines total)*
 
 ## Recent Work (last 5 prompts)
 
@@ -98,3 +99,18 @@ Layer 3 — Work Items (mem_work_items)
 
 ---
 *Full context: see `state/CONTEXT.md` — refresh with `GET /projects/aicli/context?save=true`*
+
+## Code Hotspots
+
+- `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
+- `backend/memory/memory_work_items.py` — score 23.0 (21 commits, 1343 lines)
+- `backend/memory/memory_files.py` — score 17.0 (15 commits, 1178 lines)
+- `backend/routers/route_projects.py` — score 16.0 (14 commits, 1821 lines)
+- `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
+- `backend/core/db_migrations.py` — score 11.0 (9 commits, 3280 lines)
+- `backend/agents/mcp/server.py` — score 8.0 (6 commits, 856 lines)
+- `backend/routers/route_work_items.py` — score 7.0 (7 commits, 594 lines)
+- `backend/routers/route_git.py` — score 6.0 (4 commits, 1578 lines)
+- `backend/routers/route_memory.py` — score 5.0 (3 commits, 836 lines)
+
+_Full details: `memory/code.md`_
