@@ -434,8 +434,6 @@ class MemoryWorkItems:
         if not db.is_available():
             return result
         horizon_days = int(self._config().get("event_horizon_days", 90))
-        if not db.is_available():
-            return result
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -482,18 +480,31 @@ class MemoryWorkItems:
                         commit_hashes.append(d["commit_hash"])
 
                     # Attach hotspot file data to commits that touch risky files
+                    # Single query: fetch file paths + symbol summaries for all commits
                     if commit_hashes:
                         cur.execute(
-                            """SELECT DISTINCT commit_hash, file_path
+                            """SELECT commit_hash, file_path, class_name, method_name,
+                                      LEFT(llm_summary, 120) AS llm_summary
                                FROM mem_mrr_commits_code
-                               WHERE commit_hash = ANY(%s)""",
+                               WHERE commit_hash = ANY(%s)
+                               ORDER BY commit_hash, file_path
+                               LIMIT 300""",
                             (commit_hashes,),
                         )
                         hash_to_files: dict[str, list[str]] = {}
-                        for chash, fpath in cur.fetchall():
+                        hash_to_symbols: dict[str, list[dict]] = {}
+                        for chash, fpath, cls, meth, sym_sum in cur.fetchall():
                             hash_to_files.setdefault(chash, []).append(fpath)
+                            if sym_sum:
+                                hash_to_symbols.setdefault(chash, []).append({
+                                    "file_path": fpath,
+                                    "class_name": cls or "",
+                                    "method_name": meth or "",
+                                    "summary": sym_sum,
+                                })
 
-                        all_files = [fp for fps in hash_to_files.values() for fp in fps]
+                        # Attach hotspot data for files touched by each commit
+                        all_files = list({fp for fps in hash_to_files.values() for fp in fps})
                         if all_files:
                             hotspot_map = {
                                 h["file_path"]: h
@@ -506,26 +517,7 @@ class MemoryWorkItems:
                                 if hs:
                                     commit["_hotspot_files"] = hs
 
-                    # Attach per-symbol LLM summaries to commits for richer classify context
-                    if commit_hashes:
-                        cur.execute(
-                            """SELECT commit_hash, file_path, class_name, method_name,
-                                      LEFT(llm_summary, 120) AS llm_summary
-                               FROM mem_mrr_commits_code
-                               WHERE commit_hash = ANY(%s)
-                                 AND llm_summary IS NOT NULL AND llm_summary <> ''
-                               ORDER BY commit_hash, file_path
-                               LIMIT 300""",
-                            (commit_hashes,),
-                        )
-                        hash_to_symbols: dict[str, list[dict]] = {}
-                        for chash, fpath, cls, meth, sym_sum in cur.fetchall():
-                            hash_to_symbols.setdefault(chash, []).append({
-                                "file_path": fpath,
-                                "class_name": cls or "",
-                                "method_name": meth or "",
-                                "summary": sym_sum or "",
-                            })
+                        # Attach symbol summaries
                         for commit in result["commits"]:
                             syms = hash_to_symbols.get(commit["commit_hash"])
                             if syms:
@@ -549,16 +541,17 @@ class MemoryWorkItems:
                         d["created_at"] = d["created_at"].isoformat() if d["created_at"] else None
                         result["messages"].append(d)
 
-                    # Items
+                    # Items — apply same event horizon as other sources
                     cur.execute(
                         """SELECT id::text, item_type, title,
                                   LEFT(summary, 800) AS summary,
                                   tags, created_at
                            FROM mem_mrr_items
                            WHERE project_id=%s AND wi_id IS NULL
+                             AND created_at > NOW() - INTERVAL '1 day' * %s
                            ORDER BY created_at ASC
                            LIMIT 50""",
-                        (pid,),
+                        (pid, horizon_days),
                     )
                     cols = [d[0] for d in cur.description]
                     for row in cur.fetchall():

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 01:42 UTC -->
+<!-- Last updated: 2026-04-27 01:59 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
@@ -87,7 +87,7 @@ Layer 3 — Work Items (mem_work_items)
   wi_id: AI0001 (draft) → UC0001/FE0001/BU0001/TA0001 (approved)
 
 
-*See PROJECT.md for full documentation (314 lines total)*
+*See PROJECT.md for full documentation (331 lines total)*
 
 ## Recent Work (last 5 prompts)
 

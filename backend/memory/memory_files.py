@@ -86,14 +86,6 @@ _WI_STATUS_LABELS: dict = {
     "review": "review", "blocked": "blocked", "done": "done",
 }
 
-_SQL_COUPLING_HIGH = """
-    SELECT file_a, file_b, co_change_count
-    FROM mem_mrr_commits_file_coupling
-    WHERE project_id = %s AND co_change_count >= %s
-    ORDER BY co_change_count DESC
-    LIMIT 10
-"""
-
 _SQL_RECENTLY_CHANGED = """
     SELECT c.commit_hash_short, c.created_at::date AS commit_date,
            cc.file_path, cc.symbol_type, cc.class_name, cc.method_name,
@@ -102,7 +94,7 @@ _SQL_RECENTLY_CHANGED = """
     JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
     WHERE c.project_id = %s
     ORDER BY c.created_at DESC
-    LIMIT 200
+    LIMIT 60
 """
 
 _SQL_HOTSPOTS = """
@@ -113,10 +105,11 @@ _SQL_HOTSPOTS = """
     LIMIT 20
 """
 
+# Single parameterized coupling query — used with different thresholds for display vs. work-item suggest
 _SQL_COUPLING = """
     SELECT file_a, file_b, co_change_count
     FROM mem_mrr_commits_file_coupling
-    WHERE project_id = %s AND co_change_count >= 3
+    WHERE project_id = %s AND co_change_count >= %s
     ORDER BY co_change_count DESC
     LIMIT 10
 """
@@ -319,7 +312,7 @@ class MemoryFiles:
                             }
                             for row in cur.fetchall()
                         ]
-                        cur.execute(_SQL_COUPLING, (project_id,))
+                        cur.execute(_SQL_COUPLING, (project_id, 3))
                         ctx["coupling"] = [
                             {"file_a": row[0], "file_b": row[1], "count": row[2]}
                             for row in cur.fetchall()
@@ -332,7 +325,7 @@ class MemoryFiles:
 
         # Project summary from PROJECT.md — extract Vision + Core Goals sections
         try:
-            proj_md_path = self._workspace() / project / "PROJECT.md"
+            proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
             if proj_md_path.exists():
                 md_text = proj_md_path.read_text(encoding="utf-8")
                 _wanted = {"Vision", "Core Goals"}
@@ -926,7 +919,7 @@ class MemoryFiles:
                         "INSERT INTO mem_ai_project_facts "
                         "(project_id, fact_key, fact_value, category, embedding) "
                         "VALUES (%s, 'code_structure', %s, 'code', %s::vector)",
-                        (project_id, content[:4000], vec),
+                        (project_id, content[:8000], vec),
                     )
                 conn.commit()
             log.debug("_embed_code_md: embedded code.md for '%s'", project)
@@ -980,7 +973,7 @@ class MemoryFiles:
                         created += 1
                     # Auto-suggest decoupling for highly co-changed file pairs
                     coupling_threshold = cfg.get("coupling_threshold", 8)
-                    cur.execute(_SQL_COUPLING_HIGH, (project_id, coupling_threshold))
+                    cur.execute(_SQL_COUPLING, (project_id, coupling_threshold))
                     for file_a, file_b, count in cur.fetchall():
                         name_a, name_b = Path(file_a).name, Path(file_b).name
                         wi_name = f"Decouple {name_a} ↔ {name_b}"
@@ -1031,11 +1024,17 @@ class MemoryFiles:
             return False
 
     def write_root_files(self, project: str, suggest_hotspots: bool = False) -> list[str]:
-        """
-        Render and write all root-level context files.
+        """Render and write all root-level context files.
+
         Returns list of written file paths (relative to workspace).
         """
         ctx = self._load_context(project)
+        return self._write_root_files_with_ctx(project, ctx, suggest_hotspots)
+
+    def _write_root_files_with_ctx(  # noqa: C901 (complexity acceptable here)
+        self, project: str, ctx: dict, suggest_hotspots: bool = False
+    ) -> list[str]:
+        """Internal: render + write all root files from an already-loaded context dict."""
         code_dir = self._code_dir(project)
         written: list[str] = []
 
@@ -1094,15 +1093,10 @@ class MemoryFiles:
 
         # Clean up old pipeline run logs and history archives
         try:
-            log_cfg = self._load_memory_config(project)  # reuse existing loader (has project.yaml)
-            proj_yaml = self._workspace() / project / "project.yaml"
-            if proj_yaml.exists():
-                _pdata = _yaml.safe_load(proj_yaml.read_text(encoding="utf-8")) or {}
-                _lcfg = _pdata.get("logs", {})
-                _pipe_days = int(_lcfg.get("pipeline_retention_days", 14))
-                _hist_days = int(_lcfg.get("history_retention_days", 30))
-            else:
-                _pipe_days, _hist_days = 14, 30
+            # Use already-loaded memory config from ctx — avoids re-reading project.yaml
+            _log_cfg = mem_cfg.get("logs", {}) if isinstance(mem_cfg, dict) else {}
+            _pipe_days = int(_log_cfg.get("pipeline_retention_days", 14))
+            _hist_days = int(_log_cfg.get("history_retention_days", 30))
             _deleted = pp.cleanup_project_logs(project, pipeline_days=_pipe_days, history_days=_hist_days)
             if _deleted:
                 log.info("write_root_files: cleaned %d stale log file(s) for '%s'", _deleted, project)
@@ -1156,7 +1150,15 @@ class MemoryFiles:
 
     def write_all_files(self, project: str) -> list[str]:
         """Write root files + all active feature files. Called by /memory POST."""
-        written = self.write_root_files(project, suggest_hotspots=True)
-        for tag_name in self.get_active_feature_tags(project):
-            written.extend(self.write_feature_files(project, tag_name))
+        ctx = self._load_context(project)
+        # Re-use the already-loaded active_tags from ctx — avoids a second DB round-trip
+        written = self._write_root_files_with_ctx(project, ctx, suggest_hotspots=True)
+        for tag in ctx.get("active_tags", []):
+            if tag.get("name"):
+                written.extend(self.write_feature_files(project, tag["name"]))
         return written
+
+    def _write_root_files_with_ctx(
+        self, project: str, ctx: dict, suggest_hotspots: bool = False
+    ) -> list[str]:
+        """Internal: render and write all root-level context files from a pre-loaded ctx."""

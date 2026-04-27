@@ -1,122 +1,80 @@
 # aicli Memory System Audit
-_Last updated: 2026-04-27 | Fresh review — reflects current code state after this session's changes_
+_Last updated: 2026-04-27 | Fresh audit — reflects code state after last 10 prompts_
 
 ---
 
 ## 1. Memory Files
 
-### CLAUDE.md (`render_root_claude_md` + `generate_memory` — two separate render paths)
+### CLAUDE.md / context files
 
-| Section | Source | State |
-|---------|--------|-------|
-| Header + context age | `project_state.json.last_memory_run` | ✓ |
-| Project summary | PROJECT.md Vision + Core Goals (≤1200 chars) | ✓ |
-| Code structure | Top-level dirs from `code_dir` (file scan) | ✓ Always fresh |
-| Stack & Architecture | `project_state.json.tech_stack` (Haiku synthesis) | ✓ REPLACE each `/memory` run |
-| Key Architectural Decisions | `project_state.json.key_decisions` (Haiku synthesis) | ✓ REPLACE each run |
-| In Progress | DB `user_status='in-progress'` → fallback to LLM-derived | ✓ Fixed this session |
-| Active Features | `mem_work_items` approved, not-done, top 20, bug-first | ✓ wi_id + summary + due_date |
-| AC for use cases | `acceptance_criteria` first 150 chars under each UC | ✓ Added this session |
-| Code Hotspots | `mem_mrr_commits_file_stats` | ✓ |
-| Recently Changed | `mem_mrr_commits_code` last symbols, token-budget aware | ✓ |
-| Coding conventions | ✗ Not in CLAUDE.md — only added to code.md this session | ✗ Gap |
+| Item | State |
+|------|-------|
+| Project summary | **BUG** — `_load_context()` reads from `workspace/{p}/PROJECT.md` (line 335) but actual file is at `workspace/{p}/memory/PROJECT.md`. Project summary section is always empty. |
+| Conventions | ✓ Reads correctly from `memory/PROJECT.md` `## Conventions` section |
+| Stack & Architecture | ✓ From `project_state.json.tech_stack` (Haiku synthesis, replaced each run) |
+| Key Decisions | ✓ From `project_state.json.key_decisions` (max 15) |
+| In Progress | ✓ DB-primary (`user_status='in-progress'`), fallback to LLM-derived |
+| Active Features | ✓ Top 12, bug-first, from `mem_work_items` approved items |
+| Acceptance Criteria | ✓ Shown for `use_case` type items only |
+| Implementation Plan | ✓ Shown for `in-progress` items (first 180 chars) |
+| Code Hotspots | ✓ From `mem_mrr_commits_file_stats` |
+| Recently Changed | ✓ Symbol-level from commits, token-budget aware |
+| Coding Conventions | ✓ From `PROJECT.md ## Conventions` section |
+| Unapproved work items | ✗ Never shown — no "pending review" section |
 
-**Critical gap**: `generate_memory()` uses `get_project_context()` for CLAUDE.md — NOT `render_root_claude_md()`. All DB in-progress + AC fixes only apply to the commit/work-item trigger path (`write_root_files()`), not to the `/memory` POST path. Two separate render paths exist and are diverging.
+### code.md
 
----
-
-### code.md (`_render_code_md`)
-
-| Section | Source | State |
-|---------|--------|-------|
-| Directory tree | Walks `code_dir` depth-3 | ✓ Always current |
-| Active Work Items | Approved `mem_work_items`, not-done | ✓ |
-| Coding Conventions | `## Conventions` section from `workspace/{p}/memory/PROJECT.md` | ✓ Added this session |
-| Recently Changed | `mem_mrr_commits_code` last 20 symbols with llm_summary | ✓ |
-| Code Hotspots | `mem_mrr_commits_file_stats` | ✓ |
-| File Coupling | `mem_mrr_commits_file_coupling` co_change ≥ 3 | ✓ |
-
-**Trigger**: `write_root_files()` called on (a) commit background task, (b) `/memory`, (c) work item update. Now also calls `_embed_code_md()` at end.
-**`write_code_md()`** (lighter call) does NOT call `_embed_code_md()` — but per git grep, commit path uses `write_root_files()`, so this is safe.
-
----
+| Item | State |
+|------|-------|
+| Directory tree | ✓ Always fresh (walks `code_dir` depth-3) |
+| Active Work Items | ✓ Approved, not-done |
+| AC for use_cases | ✓ Added |
+| Implementation plan | ✓ For in-progress items |
+| Coding Conventions | ✓ Pulled from `PROJECT.md ## Conventions` |
+| Recently Changed (table) | ✓ Last 20 symbols |
+| Code Hotspots (table) | ✓ File + score + commits + bug fixes |
+| File Coupling | ✓ Co-change pairs |
+| Embedding (facts table) | ✓ `write_code_md()` + `write_root_files()` + `generate_memory()` all call `_embed_code_md()` |
+| Trigger on `/memory` POST | ✓ `generate_memory()` explicitly calls `_embed_code_md(project_name)` at step 5b |
 
 ### PROJECT.md
 
-| Aspect | State |
-|--------|-------|
-| Vision / Core Goals | ✓ Feeds CLAUDE.md project summary |
-| Tech Stack / Architecture | ✓ Feeds Haiku synthesis context |
-| Key Decisions section | ✓ Updated by `/memory` from synthesis output |
-| Recent Work section | ✓ Updated by `/memory` from synthesis |
-| Coding conventions (`## Conventions`) | ✓ Now read into code.md — but user must write it |
-| `implementation_plan` / `acceptance_criteria` | ✗ Not in PROJECT.md — only in mem_work_items |
-| Staleness | If user never edits, conventions/patterns drift silently |
-
----
+| Item | State |
+|------|-------|
+| Vision / Core Goals | ✓ User-managed; feeds CLAUDE.md project summary |
+| Conventions section | ✓ Added to aicli project and `_templates/memory/PROJECT.md` starter |
+| Recent Work / Key Decisions | ✓ Auto-updated by `/memory` via synthesis |
+| Starter template | ✓ `_templates/memory/PROJECT.md` created; seeded on project create |
+| Staleness detection | ✓ `_Last updated_` date bumped on each `/memory` run |
 
 ### project_state.json
 
-| Field | Source | State |
-|-------|--------|-------|
-| `tech_stack` | Haiku synthesis (REPLACE) | ✓ |
-| `key_decisions` | Haiku synthesis (REPLACE, max 15) | ✓ |
-| `in_progress` | Haiku synthesis — NOW fallback only (DB primary) | ✓ Fixed this session |
-| `_synthesis_cache` | Incremental: only resent to Haiku when ≥3 new entries | ✓ |
-| `last_memory_run` | ISO timestamp from `/memory` POST | ✓ |
-| `project_facts` | Haiku synthesis output — now FALLBACK for empty DB table | ⚠ Rarely populated |
-
----
+| Item | State |
+|------|-------|
+| `tech_stack` | ✓ Haiku synthesis, REPLACED each run |
+| `key_decisions` | ✓ Haiku synthesis, REPLACED each run, max 15 |
+| `in_progress` | ✓ Fallback only — DB primary now |
+| `last_memory_run` | ✓ Timestamp shown in CLAUDE.md age note |
 
 ### Project Facts (`mem_ai_project_facts`)
 
-| Aspect | State |
-|--------|-------|
-| Auto-population | ✓ On each `/memory` run via `_auto_populate_project_facts()` — Added this session |
-| Expiry of stale facts | ✓ `valid_until = NOW()` for all non-code facts before inserting new — Added this session |
-| code.md embedded | ✓ Stored as `fact_key='code_structure'`, refreshed on `write_root_files()` — Added this session |
-| Searchable via MCP | ✓ `search_facts` now calls `GET /search/facts` over this table — Fixed this session |
-| Duplicate keys | ⚠ Haiku may extract slightly different keys across runs — mitigated by bulk-expiry |
-| Conflict detection path | ⚠ `memory_promotion.py` conflict detection still rarely fires |
+| Item | State |
+|------|-------|
+| Auto-population on `/memory` | ✓ Haiku extracts 5-10 facts from PROJECT.md + synthesis |
+| Key normalization | ✓ `_norm_key()` lowercases + snake_cases before insert |
+| Stale fact expiry | ✓ Bulk `valid_until=NOW()` for non-code facts before each run |
+| Code structure embedded | ✓ code.md stored as `fact_key='code_structure'` |
+| Embedding inside open conn | **PERF** — `_embed_sync()` called per-fact inside `with db.conn()` block. N blocking embed calls while holding a DB connection. Should embed all texts first, then insert in batch. |
+| Duplicate INSERT pattern | MINOR — two near-identical INSERT blocks (with/without embedding vec) could be one. |
 
----
+### SQL Issues — memory_files.py
 
-### Approved Work Items (`mem_work_items` WHERE `approved_at IS NOT NULL`)
-
-| Aspect | State |
-|--------|-------|
-| In CLAUDE.md | ✓ Top 20, bug-first, summary + due_date |
-| AC shown in CLAUDE.md | ✓ For use_case type only — Added this session |
-| In code.md | ✓ Full list |
-| Searchable via MCP | ✓ `search_work_items` → pgvector cosine |
-| Re-embed on content edit | ✓ Triggered on name/summary field changes |
-| `implementation_plan` surfaced | ✗ Not in any context file — only via MCP `get_item_by_number` |
-| Score sync when done | ✓ `user_status='done'` → `score_status=5` auto-set |
-| Reclassify on drift | ✓ `POST /wi/{p}/{id}/reclassify` |
-
----
-
-### Unapproved Work Items (`wi_id LIKE 'AI%'` or `wi_id IS NULL`)
-
-| Aspect | State |
-|--------|-------|
-| In CLAUDE.md | ✗ Excluded — intentional (drafts pending review) |
-| Searchable | ✗ No embedding until approved — intentional |
-| Visible to classify() | ✓ All AI-drafts deleted and re-generated each run |
-| Visible via MCP | ✓ `list_work_items` and `get_open_items` return all items |
-
----
-
-### How New Requirements Override Old
-
-| Change | Mechanism | Works? |
-|--------|-----------|--------|
-| Edit PROJECT.md + run `/memory` | Haiku re-synthesises from scratch using full PROJECT.md | ✓ |
-| New architecture decision | Next `/memory` run replaces key_decisions[] entirely | ✓ |
-| Deprecated pattern (e.g. no more JSONL) | Haiku should suppress from synthesis if not in PROJECT.md | ⚠ Relies on LLM judgment |
-| Old facts in `mem_ai_project_facts` | `valid_until` bulk-expiry before each `/memory` insert | ✓ Fixed this session |
-| Old events in `mem_mrr_*` | Still feed into `classify()` — can re-create stale items | ✗ No event expiry |
-| Renamed module or class | Only reflected after next commit + write_root_files() | ✓ |
+| Issue | Detail |
+|-------|--------|
+| Duplicate coupling SQL | `_SQL_COUPLING` (hardcoded threshold=3) and `_SQL_COUPLING_HIGH` (parameterized) query the same table. Merge into one parameterized constant. |
+| `_SQL_RECENTLY_CHANGED` fetches 200 rows | Only 30 shown (max_recent default). `LIMIT 50` is enough. |
+| `get_active_feature_tags()` re-queries DB | Runs `_SQL_ACTIVE_WORK_ITEMS` again; data already in `ctx["active_tags"]`. Pass `ctx` instead. |
+| `write_root_files()` reads project.yaml twice | Once in `_load_context()`, again at line 1097 for log cleanup. Use `ctx["memory_config"]`. |
 
 ---
 
@@ -124,137 +82,134 @@ _Last updated: 2026-04-27 | Fresh review — reflects current code state after t
 
 ### Classification (events → items)
 
-| Aspect | State |
-|--------|-------|
-| Event sources | `mem_mrr_prompts`, `mem_mrr_commits`, `mem_mrr_messages`, `mem_mrr_items` (wi_id IS NULL) |
-| Grouping | Token-bounded batches ~3000 tok; events sorted by time |
-| Hotspot context | `mem_mrr_commits_file_stats` attached to commit events | ✓ |
-| Per-symbol summaries | `mem_mrr_commits_code.llm_summary` now fed into classify() prompt | ✓ Added this session |
-| Use case cap | Max 8 UCs per run; existing UCs passed as context to avoid duplicates | ✓ |
-| Duplicate AI-drafts | All AI-draft items deleted before each classify() run | ✓ Always fresh |
-| Tag propagation | phase + feature tags flow from source events to item JSONB tags | ✓ |
+| Item | State |
+|------|-------|
+| Event sources | `mem_mrr_prompts`, `mem_mrr_commits`, `mem_mrr_messages`, `mem_mrr_items` |
+| Event horizon | ✓ Configurable `event_horizon_days` (default 90) applied to prompts/commits/messages |
+| `mem_mrr_items` horizon | **BUG** — date cutoff not applied to `mem_mrr_items` query. Only source type without time filter. Old items re-enter classification indefinitely. |
+| Commit symbol summaries | ✓ Per-symbol `llm_summary` from `mem_mrr_commits_code` fed into classify prompt |
+| Hotspot context | ✓ File hotspot scores attached to commit events |
+| Two queries for same hashes | **PERF** — `_fetch_pending_events` queries `mem_mrr_commits_code` twice for the same `commit_hashes`: once for file paths (hotspot), once for symbol summaries. Can be merged into one query. |
+| Double `db.is_available()` check | MINOR — called at lines 434 and 437, identical check. Remove duplicate. |
+| Use case cap | ✓ Max 8 UCs per run; existing UCs passed as context to avoid duplicates |
+| AI draft lifecycle | ✓ All AI-draft items deleted before each classify() run |
+
+### Work Item Scores & Status
+
+| Item | State |
+|------|-------|
+| `user_status` in reclassify | ✓ Fetched from DB, mapped to score hint, passed to Haiku |
+| `score_status` auto-5 on done | ✓ |
+| `implementation_plan` in classify prompt | ✗ The 4-agent pipeline writes this, but it's not fed back into `classify()` context for reclassification |
+
+### Embedding & Re-embedding
+
+| Item | State |
+|------|-------|
+| Re-embed on name/summary edit | ✓ Triggered on content update |
+| `acceptance_criteria` in embed text | **GAP** — `_embed_work_item()` embeds only `name + wi_type + summary + deliveries`. AC is not included, so semantic search won't match on criteria text. |
+| Embed triggered on approve | ✓ |
+| AC included in approve embed | ✗ Same gap as above — approval embeds only name/summary |
+
+### Commits → Code Intelligence
+
+| Item | State |
+|------|-------|
+| `commit_analysis` → `diff_summary` | ✓ Stored in `mem_mrr_commits` |
+| Symbol extraction | ✓ Haiku → `llm_summary` in `mem_mrr_commits_code` |
+| File stats / coupling | ✓ `mem_mrr_commits_file_stats`, `mem_mrr_commits_file_coupling` |
+| code.md refresh after commit | ✓ `write_code_md()` called in background |
+| `code.md` embed after commit | ✓ `write_code_md()` calls `_embed_code_md()` |
+
+### File & Code Quality
+
+| Item | State |
+|------|-------|
+| `memory_work_items.py` size | **2621 lines** — largest hotspot. Needs splitting into `_classify.py`, `_crud.py`, `_embed.py`, `_approval.py` |
+| `_config()` reads from `code_dir/project.yaml` | Inconsistency with `memory_files.py` which reads from `workspace/{p}/project.yaml`. May point to different files if `code_dir ≠ workspace/{p}`. |
 
 ---
 
-### Item Scores & Status
+## 3. Embedding / MCP Strategy
 
-| Field | Meaning | Set by | Auto-update |
-|-------|---------|--------|-------------|
-| `score_importance` (0-5) | AI criticality | Haiku at classify + reclassify | ✓ |
-| `score_status` (0-5) | AI completeness estimate | Haiku at classify + reclassify | ✓ Auto-5 on done |
-| `user_status` TEXT | User workflow stage | User via UI / PATCH | N/A |
-| `user_importance` INT | User override | User via UI / PATCH | N/A |
+### What Is Embedded
 
-**Gap**: No way to know if an item was "started" vs "just created" from score alone — `score_status` is AI-estimated completeness, not actual implementation progress.
+| Data | Model | Trigger | State |
+|------|-------|---------|-------|
+| Approved work items | text-embedding-3-small | On approve + content edit | ✓ |
+| Project facts (auto) | text-embedding-3-small | On `/memory` | ✓ |
+| code.md document | text-embedding-3-small | On `write_root_files()` and `write_code_md()` | ✓ but NOT from `/memory` POST |
+| `acceptance_criteria` text | — | Never | ✗ |
 
----
+### MCP Tools (18 tools — too many)
 
-### User Tags
+| Tool | Useful? | Note |
+|------|---------|------|
+| `search_memory` | ✓ | Now searches work_items + facts combined |
+| `search_work_items` | **REDUNDANT** | Subset of `search_memory`. Remove. |
+| `search_facts` | ✓ | Focused search for architecture/conventions |
+| `get_project_state` | ✓ | Project overview, session tags |
+| `get_open_items` | **REDUNDANT** | Same as `list_work_items?status=active`. Remove or merge. |
+| `list_work_items` | ✓ | Full list with status filter |
+| `get_hotspots` | ✓ | File churn ranking |
+| `get_file_history` | ✓ | Per-file symbol-level changes |
+| `get_commits` | ✓ | Recent commits with tags |
+| `get_item_by_number` | ✓ | Resolve wi_id → full details |
+| `get_recent_history` | ✓ | Last N prompts |
+| `get_tagged_context` | ✓ | All events for a phase/feature |
+| `get_tag_context` | ⚠ | Similar to `get_tagged_context`; different API; naming confusing |
+| `set_session_tags` | ✓ | Tag current session |
+| `get_session_tags` | ✓ | Read current tags |
+| `commit_push` | ✓ | For Cursor sessions |
+| `create_entity` | ✓ | Create unapproved item |
+| `run_work_item_pipeline` | ✓ | 4-agent pipeline trigger |
+| `get_db_schema` | ✓ | Static schema reference (inline dict — doesn't hit DB) |
 
-| Tag | Stored | In classify? | In CLAUDE.md? |
-|-----|--------|-------------|--------------|
-| `phase` | `mng_session_tags` + event JSONB | ✓ Priority context | ✗ Indirect |
-| `feature` | `mng_session_tags` + event JSONB | ✓ Groups events | ✓ Item names surface it |
-| `bug_ref` | event JSONB | ✓ Routes to bug type | ✓ Bugs shown first |
+**Tool count**: 18. Every MCP call sends all 18 schemas to the LLM. Target: 14-15 by removing `search_work_items` and `get_open_items`.
 
----
-
-### Commits → Code Intelligence Pipeline
-
-| Stage | What | State |
-|-------|------|-------|
-| Commit pushed | Sonnet: `commit_analysis` → `diff_summary` in `mem_mrr_commits` | ✓ |
-| Symbol extraction | Haiku: `commit_symbol` → `llm_summary` in `mem_mrr_commits_code` | ✓ |
-| File stats | Hotspot score accumulated in `mem_mrr_commits_file_stats` | ✓ |
-| File coupling | Co-change pairs in `mem_mrr_commits_file_coupling` | ✓ |
-| Feed into classify() | diff_summary + hotspot + now symbol llm_summary | ✓ Fixed this session |
-| CLAUDE.md + code.md update | `write_root_files()` in background after symbol extraction | ✓ |
-| code.md embedding | `_embed_code_md()` called at end of `write_root_files()` | ✓ Added this session |
-
----
-
-### Approved Item Consistency
-
-| Scenario | Handled? |
-|----------|----------|
-| Name/summary edit → stale embedding | ✓ Re-embeds on update |
-| `user_status='done'` → score sync | ✓ Auto-sets `score_status=5` |
-| Child `due_date` > parent | ✓ Blocked at update |
-| UC `due_date` change → cascade children | ✓ Auto-cascade |
-| Concurrent edits by two users | ✗ Last write wins — no optimistic lock |
-| Item drifts after many manual edits | ✓ `/wi reclassify` re-runs Haiku |
-| Merge: source appended to target | ✓ Soft-delete source, append to target summary |
-| `acceptance_criteria` updated → re-embed | ✓ AC is in the re-embed trigger fields |
-
----
-
-## 3. Embedding & MCP Strategy
-
-### What Is Currently Embedded
-
-| Data | Model | Table.Column | Trigger |
-|------|-------|-------------|---------|
-| Approved work items | text-embedding-3-small | `mem_work_items.embedding` | On approve + content edit |
-| Project facts (auto) | text-embedding-3-small | `mem_ai_project_facts.embedding` | On `/memory` — added this session |
-| code.md document | text-embedding-3-small | `mem_ai_project_facts` (`fact_key='code_structure'`) | On `write_root_files()` — added this session |
-| Raw prompts | ✗ No vector column | — | — |
-| Commits | ✗ No vector column | — | — |
-| Per-symbol code | ✗ No vector column | — | — |
-
----
-
-### MCP Tools — What LLMs Can Ask Now
+### MCP — Can It Answer Key Questions?
 
 | Question | Tool | Works? |
 |----------|------|--------|
-| What features/bugs are open? | `get_open_items(category=bug)` | ✓ Added this session |
-| What are in-progress items? | `get_open_items(status=in-progress)` | ✓ Added this session |
-| What is the code structure? | `search_facts(category=code)` | ✓ Fixed this session |
-| What files are hotspots? | `get_hotspots` | ✓ Added this session |
-| What are project conventions / policies? | `search_facts` | ✓ Fixed this session |
-| Current tech stack? | `get_project_state` | ✓ |
-| What changed recently? | `get_commits` | ✓ |
-| Find related features | `search_work_items` | ✓ |
-| Recall a past decision | `search_memory` | ⚠ Queries work items, not prompts |
-| Item details by ID | `get_item_by_number` | ✓ Returns AC + implementation_plan |
-| Number of open bugs | `get_open_items(category=bug)` → count | ✓ |
-| What changed in file X? | ✗ No dedicated tool | — |
-| Latest project goals / vision | `get_project_state` | ✓ Reads PROJECT.md + state |
-
----
+| What are the open bugs? | `get_open_items(category=bug)` | ✓ |
+| How many bugs are in-progress? | `get_open_items(category=bug, status=in-progress)` | ✓ |
+| What is the project's tech stack? | `get_project_state` | ✓ |
+| What are the coding conventions? | `search_facts(query="conventions coding style")` | ✓ |
+| What changed in file X recently? | `get_file_history(file_path=X)` | ✓ (new) |
+| What files are hotspots? | `get_hotspots` | ✓ |
+| What are the main use cases? | `list_work_items(category=use_case)` | ✓ |
+| What is currently in-progress? | `list_work_items(status=active)` + filter client-side | ✓ |
+| What decisions were made about auth? | `search_memory(query="auth decision")` | ✓ (improved) |
+| What's the code structure? | `search_facts(category=code)` | ✓ (via embedded code.md) |
+| Latest updates / commits | `get_commits` | ✓ |
+| Number of pending items | `list_work_items` → count | ✓ |
 
 ### Embedding Strategy Analysis
 
-| Option | ROI | Status |
-|--------|-----|--------|
-| code.md as single doc in facts | High — structure + hotspots searchable, no schema change | ✓ Done |
-| Project facts from PROJECT.md | High — makes architecture searchable | ✓ Done |
-| Per-symbol `llm_summary` embedding | Medium — granular but ~N×commits rows, needs VECTOR column | ✗ Not done |
-| Per-commit `diff_summary` embedding | Low — high churn, coarse, many rows | ✗ Not needed |
-| Raw prompt history embedding | Low — noisy, better served by tag filtering | ✗ Intentionally excluded |
-
----
-
-### `search_memory` Tool — Naming Gap
-
-`search_memory` calls `POST /search/semantic` which queries ONLY `mem_work_items.embedding`. Despite its name, it does NOT search prompt history, commits, code, or project facts. This is confusing — an LLM asking "what did we decide about auth last month" via `search_memory` will only find work items, not actual prompt history. `search_facts` now correctly queries `mem_ai_project_facts`.
+| Option | Status | Assessment |
+|--------|--------|------------|
+| code.md as single embedded doc | ✓ Done | High ROI — entire code map searchable |
+| Per-symbol embedding | ✗ Not done | Medium ROI, high cost — ~N×commits rows |
+| code.md embed from `/memory` POST | ✗ Missing | Should call `_embed_code_md()` at end of `generate_memory()` |
+| `acceptance_criteria` in work item embed | ✗ Not done | Medium ROI — AC text is search-relevant |
+| Per-commit diff embedding | ✗ Not done | Low ROI — noisy, already in `get_commits` |
 
 ---
 
 ## Summary
 
-### What Is Still Missing
+### What Is Still Missing / Fixed This Session
 
-| # | Gap | Severity |
-|---|-----|----------|
-| 1 | Dual CLAUDE.md render paths: `generate_memory()` and `render_root_claude_md()` are diverging — DB in-progress/AC fixes only apply to the commit-trigger path | High |
-| 2 | `search_memory` queries work items, not actual prompt/commit history — misleading name and behavior | High |
-| 3 | `implementation_plan` (from 4-agent pipeline) never surfaced in any context file | Medium |
-| 4 | No event expiry — old `mem_mrr_*` rows feed into `classify()` indefinitely and can re-create stale work items | Medium |
-| 5 | PROJECT.md has no `## Conventions` section by default — must be user-written for code.md to pick it up | Medium |
-| 6 | `mem_ai_project_facts` duplicate keys — Haiku may extract slightly different key names each run | Low |
-| 7 | `write_code_md()` (lighter call) does not call `_embed_code_md()` — if ever used in isolation, code.md embedding goes stale | Low |
-| 8 | No "what changed in file X" MCP tool — useful for targeted code investigation | Low |
+| # | Gap | Severity | Fixed? |
+|---|-----|----------|--------|
+| 1 | **Project summary path BUG**: `_load_context()` read wrong path for PROJECT.md | Critical | ✓ Fixed |
+| 2 | **`mem_mrr_items` not time-bounded**: old items re-entered classify forever | Medium | ✓ Fixed |
+| 3 | **Duplicate coupling SQL + 200-row over-fetch + redundant `get_active_feature_tags` DB query** | Low | ✓ Fixed |
+| 4 | **`_embed_code_md` truncation**: embedded `[:8000]` but stored `[:4000]` | Low | ✓ Fixed |
+| 5 | **18 MCP tools**: `search_work_items` + `get_open_items` redundant | Low | ✓ Fixed (16 tools) |
+| 6 | **`acceptance_criteria` not in work item embedding**: AC text not findable via semantic search | Medium | ✗ Open |
+| 7 | **`_auto_populate_project_facts` embeds inside open DB connection**: N blocking embed calls while holding pool connection | Medium | ✗ Open |
+| 8 | **`memory_work_items.py` at 2621 lines**: Two DB queries merged (commit_code) but file still needs splitting | Low | ✗ Open |
 
 ---
 
@@ -263,23 +218,23 @@ _Last updated: 2026-04-27 | Fresh review — reflects current code state after t
 #### Component 1: Memory Files
 | Improvement | Action |
 |-------------|--------|
-| Merge the two CLAUDE.md render paths | `generate_memory()` should call `MemoryFiles().render_root_claude_md(ctx)` instead of `get_project_context()` — single source of truth |
-| Add `## Conventions` to starter PROJECT.md templates | All new projects get a conventions scaffold out of the box |
-| Surface `implementation_plan` in code.md | Show first 200 chars of `implementation_plan` for approved features in code.md Active Work Items |
-| Add conventions to CLAUDE.md | Move conventions from code.md to CLAUDE.md (higher read frequency) or include in both |
+| ~~Fix project_summary path~~ | ✓ Done — `workspace/{p}/memory/PROJECT.md` |
+| ~~Merge duplicate coupling SQL~~ | ✓ Done — single `_SQL_COUPLING(pid, threshold)` |
+| ~~Remove project.yaml double-read~~ | ✓ Done — uses `ctx["memory_config"]` |
+| ~~Remove redundant `get_active_feature_tags` query~~ | ✓ Done — `write_all_files()` now uses ctx |
 
-#### Component 2: Work Items
+#### Component 2: Work Item Flows
 | Improvement | Action |
 |-------------|--------|
-| Event expiry / archive | Add `archived_before` timestamp to `classify()` — events older than N days or already in a done item are skipped |
-| Show `user_status` in item score context | When reclassifying, pass current `user_status` to Haiku so `score_status` aligns with reality |
-| Backfill missing symbol embeddings | Embed `llm_summary` rows from `mem_mrr_commits_code` into a new search table for file-level search |
-| `implementation_plan` in CLAUDE.md | Show 1-liner for features with `user_status='in-progress'` |
+| Add date horizon to `mem_mrr_items` | Add `AND created_at > NOW() - INTERVAL '1 day' * %s` to items query |
+| Merge two `mem_mrr_commits_code` queries | One query selecting both `file_path` and `llm_summary` per symbol |
+| Include AC in work item embedding | Add `acceptance_criteria` to `_embed_work_item()` text composition |
+| Split `memory_work_items.py` | Extract `_classify.py` (~700 lines), `_approval.py` (~300 lines), `_crud.py` (~600 lines) |
 
 #### Component 3: Embedding / MCP
 | Improvement | Action |
 |-------------|--------|
-| Rename or fix `search_memory` | Either search actual prompt history (add embedding column to `mem_mrr_prompts`) or rename to `search_items` to reduce confusion |
-| Add `get_file_history` MCP tool | Query `mem_mrr_commits_code` for a specific `file_path` — returns recent changes + llm_summary per symbol |
-| Fact deduplication | Before inserting new facts, compare keys with edit-distance; avoid near-duplicate keys like `database` vs `database_engine` |
-| Embed `implementation_plan` separately | Store as a second `mem_ai_project_facts` row per approved feature so it's independently searchable |
+| Remove `search_work_items` tool | Covered by `search_memory` — reduces tool count to 17 |
+| Remove `get_open_items` tool | Merge into `list_work_items` as default `status=active` — reduces to 16 |
+| Fix `_auto_populate_project_facts` embed order | Collect all (fact_key, fact_value) texts, batch embed outside DB conn, then bulk insert |
+| Fix `_embed_code_md` truncation | Align `content[:8000]` for both embedding and storage |

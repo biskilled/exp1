@@ -373,48 +373,6 @@ async def list_tools() -> list[mcp_types.Tool]:
             },
         ),
         mcp_types.Tool(
-            name="get_open_items",
-            description=(
-                "Return open/in-progress work items from mem_work_items filtered by type and status. "
-                "Use to find what tasks are pending before starting new work, "
-                "or to check if a bug/feature already exists before creating one."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "category": {
-                        "type": "string",
-                        "description": "Filter by wi_type: use_case, feature, bug, task, requirement",
-                    },
-                    "status": {
-                        "type": "string",
-                        "default": "active",
-                        "description": "active (not done/blocked), in-progress, review, or open",
-                    },
-                    "project": {"type": "string"},
-                },
-            },
-        ),
-        mcp_types.Tool(
-            name="search_work_items",
-            description=(
-                "Semantic search over work items (features, bugs, tasks). "
-                "Returns matching items ranked by cosine similarity to the query. "
-                "Use to find relevant features/bugs before starting implementation, "
-                "or to discover related work items for a given topic."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query":    {"type": "string", "description": "Natural language query"},
-                    "limit":    {"type": "integer", "default": 10},
-                    "category": {"type": "string", "description": "Filter by category: feature, bug, task"},
-                    "project":  {"type": "string"},
-                },
-                "required": ["query"],
-            },
-        ),
-        mcp_types.Tool(
             name="get_tag_context",
             description=(
                 "Return comprehensive context for a specific tag (feature, bug, or task): "
@@ -772,59 +730,6 @@ async def _dispatch(name: str, args: dict) -> Any:
         }
         qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
         return await _get(f"/memory/{_up.quote(project)}/hotspots?{qs}")
-
-    elif name == "get_open_items":
-        import urllib.parse as _up
-        # Use list_work_items endpoint at /wi/{project}, filter client-side by status
-        params: dict = {}
-        if args.get("category"):
-            params["wi_type"] = args["category"]
-        qs = ("?" + "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())) if params else ""
-        result = await _get(f"/wi/{_up.quote(project)}{qs}")
-        items = result.get("items", [])
-        # Filter by status client-side
-        status_filter = (args.get("status") or "active").lower()
-        if status_filter == "active":
-            items = [i for i in items if i.get("user_status") not in ("done", "blocked", "archived")]
-        elif status_filter == "in-progress":
-            items = [i for i in items if i.get("user_status") == "in-progress"]
-        elif status_filter == "review":
-            items = [i for i in items if i.get("user_status") == "review"]
-        elif status_filter == "open":
-            items = [i for i in items if i.get("user_status") == "open"]
-        # Return concise fields
-        return {
-            "project": project,
-            "count": len(items),
-            "items": [
-                {
-                    "id":          i.get("id"),
-                    "wi_id":       i.get("wi_id"),
-                    "name":        i.get("name"),
-                    "wi_type":     i.get("wi_type"),
-                    "user_status": i.get("user_status"),
-                    "due_date":    i.get("due_date"),
-                    "summary":     (i.get("summary") or "")[:100],
-                }
-                for i in items[:50]
-            ],
-        }
-
-    elif name == "search_work_items":
-        # Semantic search over approved (embedded) work items via pgvector cosine similarity
-        # Note: only approved items with embedding IS NOT NULL are searchable
-        result = await _post("/search/semantic", {
-            "query": args["query"],
-            "project": project,
-            "limit": args.get("limit", 10),
-            "source_types": ["work_item"],
-        })
-        hits = result.get("results", [])
-        # Optionally filter by wi_type (category) client-side
-        if args.get("category"):
-            cat = args["category"]
-            hits = [h for h in hits if h.get("source_type") == cat or h.get("wi_type") == cat]
-        return {"results": hits, "count": len(hits), "note": "Only approved (embedded) work items are searchable."}
 
     elif name == "get_tag_context":
         import urllib.parse as _up
