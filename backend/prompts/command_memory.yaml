@@ -37,17 +37,17 @@
 # ─────────────────────────────────────────────────────────────────────────────
 - key: project_synthesis
   name: Project State Synthesis
-  description: "Haiku synthesis — extracts key_decisions, tech_stack, in_progress, project_facts from development history → project_state.json"
+  description: "Haiku synthesis — extracts key_decisions, tech_stack, in_progress from development history → project_state.json"
   model: haiku
   max_tokens: 2000
   system: |
     You are analyzing development history for project "{project_name}".
 
-    Current structured state:
+    Current structured state (may contain stale facts — correct them if PROJECT.md contradicts):
     {current_state}
 
     {prior_block}
-    Project intro (from PROJECT.md):
+    PROJECT.md (authoritative — use this to correct any stale decisions):
     {proj_intro}
 
     {entity_block}
@@ -59,20 +59,14 @@
       "key_decisions": ["up to 15 stable architectural/technical decisions any LLM must know"],
       "in_progress": ["up to 6 items most recently worked on, based on last 5 sessions"],
       "tech_stack": {{"component": "technology or version"}},
-      "project_summary": "2-3 sentence description of what this project is and its current state.",
-      "project_facts": {{
-        "stack": {{"key": "value"}},
-        "pattern": {{"key": "value"}},
-        "convention": {{"key": "value"}},
-        "constraint": {{"key": "value"}}
-      }}
+      "project_summary": "2-3 sentence description of what this project is and its current state."
     }}
 
     Rules:
-    - key_decisions: permanent facts (tech choices, auth approach, architecture patterns)
-    - in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions)
+    - PROJECT.md is authoritative: if it describes an architecture that contradicts current key_decisions, the PROJECT.md version wins — replace the stale decision.
+    - key_decisions: stable facts (tech choices, auth approach, architecture patterns). Do NOT include features that were true in a past version but have since been removed or redesigned.
+    - in_progress: what was MOST RECENTLY worked on (infer from last 5 sessions only).
     - tech_stack: return ONLY the canonical set (~15 most relevant entries). Do not duplicate keys. Replace stale entries.
-    - project_facts: optional structured facts by category. Each category is a flat key→value map. Omit empty categories. Max 5 entries per category.
     - Return ONLY valid JSON, no explanation outside the JSON.
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -809,7 +809,18 @@ async def _synthesize_with_llm(
             "key_decisions": state_data.get("key_decisions", []),
             "in_progress": state_data.get("in_progress", []),
         }, indent=2)
-        proj_intro = (project_md.split("\n## ")[0].strip()[:600] if project_md else "")
+        # Extract Vision + Core Goals + Memory Architecture from PROJECT.md (up to 2500 chars).
+        # These sections are authoritative for correcting stale key_decisions.
+        if project_md:
+            _sections_wanted = {"Vision", "Core Goals", "Memory Architecture", "Key Decisions"}
+            _parts = [""]
+            for _section in project_md.split("\n## ")[1:]:
+                _heading = _section.split("\n")[0].strip()
+                if _heading in _sections_wanted:
+                    _parts.append(f"## {_section}")
+            proj_intro = ("\n".join(_parts)).strip()[:2500] or project_md.split("\n## ")[0].strip()[:600]
+        else:
+            proj_intro = ""
 
         entity_block = f"Active project entities (features/bugs/tasks):\n{entity_text}\n\n" if entity_text else ""
 
@@ -821,7 +832,7 @@ async def _synthesize_with_llm(
                 for k in ("key_decisions", "in_progress", "tech_stack", "project_summary")
                 if prior_synthesis.get(k)
             }, indent=2)[:800]
-            prior_block = f"Prior synthesis (merge, do not discard stable decisions):\n{prior_json}\n\n"
+            prior_block = f"Prior synthesis (reference only — PROJECT.md overrides any stale entries):\n{prior_json}\n\n"
 
         # Load prompt from YAML file (hot-reloadable — no restart needed)
         _prompt_tpl = None
@@ -1121,11 +1132,10 @@ async def generate_memory(project_name: str):
         if synthesis.get("tech_stack"):
             state_data["tech_stack"] = synthesis["tech_stack"]
         if synthesis.get("key_decisions"):
-            # Deduplicate: LLM wins on new entries; preserve prior unique decisions
-            existing = set(state_data.get("key_decisions", []))
-            new_kd = synthesis["key_decisions"]
-            state_data["key_decisions"] = new_kd + [d for d in existing if d not in set(new_kd)]
-            state_data["key_decisions"] = state_data["key_decisions"][:15]
+            # LLM output fully replaces old decisions — stale facts must not accumulate.
+            # The synthesis prompt is given the current key_decisions as input, so stable
+            # decisions will be preserved by the LLM if they are still accurate.
+            state_data["key_decisions"] = synthesis["key_decisions"][:15]
         if synthesis.get("in_progress"):
             state_data["in_progress"] = synthesis["in_progress"][:6]
         # Save synthesis as cache for next incremental run
