@@ -490,27 +490,6 @@ def _load_creds(project_name: str) -> dict:
     return {}
 
 
-def _apply_creds_to_remote(project_name: str, code_dir: Path):
-    """Set the remote URL to include the stored token (used only during setup)."""
-    creds = _load_creds(project_name)
-    token = creds.get("token", "")
-    if not token:
-        return
-    proj_dir = _proj_dir(project_name)
-    try:
-        cfg = yaml.safe_load((proj_dir / "project.yaml").read_text()) or {}
-    except Exception:
-        return
-    github_repo = cfg.get("github_repo", "")
-    if not github_repo:
-        return
-    authed_url = _build_authed_url(github_repo, creds.get("username", ""), token)
-    rc, _, _ = _git(["remote", "get-url", "origin"], code_dir)
-    if rc == 0:
-        _git(["remote", "set-url", "origin", authed_url], code_dir)
-    else:
-        _git(["remote", "add", "origin", authed_url], code_dir)
-
 
 def _authed_url(project_name: str) -> str:
     """Return an authenticated remote URL built from stored credentials.

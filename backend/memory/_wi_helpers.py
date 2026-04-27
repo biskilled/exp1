@@ -268,4 +268,4 @@ def _embed_work_item(item_id: str, fields: dict) -> None:
                 )
             conn.commit()
     except Exception as e:
-        log.debug(f"_embed_work_item({item_id}) skipped: {e}")
+        log.warning(f"_embed_work_item({item_id}) failed — semantic search will return stale results: {e}")

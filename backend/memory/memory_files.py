@@ -366,10 +366,13 @@ class MemoryFiles:
                         ctx["conventions"] = _body.strip()[:800]
                     elif _heading == "Deprecated":
                         # Each non-empty line is a phrase; key_decisions containing it are suppressed
+                        import re as _re_dep
                         for _line in _section.splitlines()[1:]:
-                            _phrase = _line.lstrip("- ").split(":")[0].strip()
-                            if _phrase and not _phrase.startswith("<!--"):
-                                deprecated_phrases.append(_phrase.lower())
+                            _m = _re_dep.match(r'^-?\s*(.+)', _line.lstrip())
+                            if _m:
+                                _phrase = _m.group(1).strip()
+                                if _phrase and not _phrase.startswith("<!--"):
+                                    deprecated_phrases.append(_phrase.lower())
                 ctx["deprecated_phrases"] = deprecated_phrases
         except Exception:
             pass
@@ -959,18 +962,23 @@ class MemoryFiles:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
-                    for h in hotspots:
-                        file_name = Path(h["file"]).name
-                        wi_name = f"Refactor {file_name} (hotspot)"
-                        # Skip if open/in-progress item already exists
+                    # Batch check: which hotspot items already have an active WI?
+                    hotspot_names = [f"Refactor {Path(h['file']).name} (hotspot)" for h in hotspots]
+                    if hotspot_names:
                         cur.execute(
-                            "SELECT 1 FROM mem_work_items "
-                            "WHERE project_id=%s AND name=%s "
+                            "SELECT name FROM mem_work_items "
+                            "WHERE project_id=%s AND name = ANY(%s) "
                             "AND deleted_at IS NULL AND completed_at IS NULL "
-                            "AND (user_status IS NULL OR user_status <> 'done') LIMIT 1",
-                            (project_id, wi_name),
+                            "AND (user_status IS NULL OR user_status <> 'done')",
+                            (project_id, hotspot_names),
                         )
-                        if cur.fetchone():
+                        existing_hotspots = {r[0] for r in cur.fetchall()}
+                    else:
+                        existing_hotspots = set()
+
+                    for h in hotspots:
+                        wi_name = f"Refactor {Path(h['file']).name} (hotspot)"
+                        if wi_name in existing_hotspots:
                             continue
                         cur.execute(
                             "INSERT INTO mem_work_items "
@@ -985,20 +993,33 @@ class MemoryFiles:
                             ),
                         )
                         created += 1
+
                     # Auto-suggest decoupling for highly co-changed file pairs
                     coupling_threshold = cfg.get("coupling_threshold", 8)
                     cur.execute(_SQL_COUPLING, (project_id, coupling_threshold))
-                    for file_a, file_b, count in cur.fetchall():
+                    coupling_rows = cur.fetchall()
+
+                    # Batch check coupling pairs
+                    coupling_names = [
+                        f"Decouple {Path(fa).name} ↔ {Path(fb).name}"
+                        for fa, fb, _ in coupling_rows
+                    ]
+                    if coupling_names:
+                        cur.execute(
+                            "SELECT name FROM mem_work_items "
+                            "WHERE project_id=%s AND name = ANY(%s) "
+                            "AND deleted_at IS NULL AND completed_at IS NULL "
+                            "AND (user_status IS NULL OR user_status <> 'done')",
+                            (project_id, coupling_names),
+                        )
+                        existing_coupling = {r[0] for r in cur.fetchall()}
+                    else:
+                        existing_coupling = set()
+
+                    for file_a, file_b, count in coupling_rows:
                         name_a, name_b = Path(file_a).name, Path(file_b).name
                         wi_name = f"Decouple {name_a} ↔ {name_b}"
-                        cur.execute(
-                            "SELECT 1 FROM mem_work_items "
-                            "WHERE project_id=%s AND name=%s "
-                            "AND deleted_at IS NULL AND completed_at IS NULL "
-                            "AND (user_status IS NULL OR user_status <> 'done') LIMIT 1",
-                            (project_id, wi_name),
-                        )
-                        if cur.fetchone():
+                        if wi_name in existing_coupling:
                             continue
                         cur.execute(
                             "INSERT INTO mem_work_items "
