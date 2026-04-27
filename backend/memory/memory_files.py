@@ -101,8 +101,9 @@ _SQL_RECENTLY_CHANGED = """
 _SQL_HOTSPOTS = """
     SELECT file_path, hotspot_score, commit_count, current_lines, bug_commit_count, last_changed_at
     FROM mem_mrr_commits_file_stats
-    WHERE project_id = %s AND hotspot_score >= %s
-    ORDER BY hotspot_score DESC
+    WHERE project_id = %s AND hotspot_score >= %s AND current_lines > 0
+    ORDER BY hotspot_score * EXP(-0.693 * GREATEST(0,
+        EXTRACT(EPOCH FROM (NOW() - last_changed_at)) / 15552000.0)) DESC
     LIMIT 20
 """
 

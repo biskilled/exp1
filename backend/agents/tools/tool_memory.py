@@ -23,8 +23,12 @@ log = logging.getLogger(__name__)
 
 def _embed_sync(text: str) -> list[float] | None:
     """Synchronous embedding via OpenAI text-embedding-3-small. Returns None on failure.
+
+    Retries up to 3 times with exponential backoff on transient errors.
     Use _embed_async() from async FastAPI routes to avoid blocking the event loop.
+    Use _embed_batch_sync() to embed multiple texts in a single API call.
     """
+    import time
     try:
         from data.dl_api_keys import get_key
         import openai
@@ -32,17 +36,79 @@ def _embed_sync(text: str) -> list[float] | None:
         if not key:
             return None
         client = openai.OpenAI(api_key=key)
-        resp = client.embeddings.create(model="text-embedding-3-small", input=text[:8000])
-        return resp.data[0].embedding
+        for attempt in range(3):
+            try:
+                resp = client.embeddings.create(
+                    model="text-embedding-3-small", input=text[:8000]
+                )
+                return resp.data[0].embedding
+            except openai.RateLimitError:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)   # 1s, 2s
+                else:
+                    raise
+            except openai.APIConnectionError:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise
     except Exception as e:
         log.debug(f"_embed_sync error: {e}")
         return None
+
+
+def _embed_batch_sync(texts: list[str]) -> list[list[float] | None]:
+    """Embed multiple texts in a single OpenAI API call. Returns one vector per text (None on error).
+
+    OpenAI accepts up to 2048 inputs per request. Texts are truncated to 8000 chars each.
+    Use this instead of calling _embed_sync() in a loop — reduces API round-trips by N-fold.
+    """
+    import time
+    if not texts:
+        return []
+    try:
+        from data.dl_api_keys import get_key
+        import openai
+        key = get_key("openai") or get_key("openai_key")
+        if not key:
+            return [None] * len(texts)
+        client = openai.OpenAI(api_key=key)
+        truncated = [t[:8000] for t in texts]
+        for attempt in range(3):
+            try:
+                resp = client.embeddings.create(
+                    model="text-embedding-3-small", input=truncated
+                )
+                # API returns results sorted by index
+                result: list[list[float] | None] = [None] * len(texts)
+                for item in resp.data:
+                    result[item.index] = item.embedding
+                return result
+            except openai.RateLimitError:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise
+            except openai.APIConnectionError:
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+                else:
+                    raise
+    except Exception as e:
+        log.debug(f"_embed_batch_sync error: {e}")
+        return [None] * len(texts)
 
 
 async def _embed_async(text: str) -> list[float] | None:
     """Async wrapper around _embed_sync — runs in a thread so it doesn't block the event loop."""
     import asyncio
     return await asyncio.to_thread(_embed_sync, text)
+
+
+async def _embed_batch_async(texts: list[str]) -> list[list[float] | None]:
+    """Async wrapper around _embed_batch_sync."""
+    import asyncio
+    return await asyncio.to_thread(_embed_batch_sync, texts)
 
 
 def _vec_str(vec: list[float]) -> str:

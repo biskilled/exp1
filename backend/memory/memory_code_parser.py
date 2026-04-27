@@ -69,6 +69,7 @@ _SQL_UPSERT_FILE_STATS = """
 
 # Recompute hotspot_score from stored cumulative values after the upsert.
 # Score = commit_count (frequency) + 2 if file is large (≥ _LARGE_FILE_LINES lines).
+# Stored as a raw frequency counter; recency decay is applied at query time.
 _SQL_REFRESH_HOTSPOT = """
     UPDATE mem_mrr_commits_file_stats
        SET hotspot_score = commit_count + CASE WHEN current_lines >= %s THEN 2 ELSE 0 END
@@ -77,12 +78,19 @@ _SQL_REFRESH_HOTSPOT = """
 
 _SQL_UPSERT_COUPLING = """
     INSERT INTO mem_mrr_commits_file_coupling
-        (project_id, file_a, file_b, co_change_count, coupling_score, last_co_change, updated_at)
-    VALUES (%s, %s, %s, 1, 0, NOW(), NOW())
+        (project_id, file_a, file_b, co_change_count, last_co_change, updated_at)
+    VALUES (%s, %s, %s, 1, NOW(), NOW())
     ON CONFLICT (project_id, file_a, file_b) DO UPDATE SET
         co_change_count = mem_mrr_commits_file_coupling.co_change_count + 1,
         last_co_change  = NOW(),
         updated_at      = NOW()
+"""
+
+# Mark a deleted file: set current_lines=0 so it stops appearing as a live hotspot
+_SQL_ARCHIVE_DELETED_FILE = """
+    UPDATE mem_mrr_commits_file_stats
+       SET current_lines = 0, last_changed_at = NOW(), updated_at = NOW()
+     WHERE project_id = %s AND file_path = %s
 """
 
 # Patterns that indicate a bug-fix or revert commit
@@ -412,6 +420,11 @@ def _count_file_lines(code_dir: str, commit_hash: str, file_path: str) -> int:
     return 0
 
 
+# Max files to pair for co-change coupling per commit.
+# A commit touching N files creates N*(N-1)/2 pairs. Cap keeps the table bounded.
+_MAX_COUPLING_FILES = 20
+
+
 def _update_file_stats(
     project_id: int,
     commit_hash: str,
@@ -420,10 +433,12 @@ def _update_file_stats(
     author: str,
     rows_to_insert: list[tuple],
     code_dir: str,
+    deleted_files: list[str] | None = None,
 ) -> None:
     """Upsert per-file stats and co-change coupling after a commit is parsed.
 
     Called once per commit after all symbol rows have been inserted.
+    deleted_files: paths that were removed in this commit — their current_lines is set to 0.
     """
     if not db.is_available():
         return
@@ -451,36 +466,40 @@ def _update_file_stats(
         file_stats[fp]["removed"] += removed
         file_stats[fp]["changes"] += (added + removed)
 
-    if not file_stats:
-        return
-
-    # Get author count for each file from DB (approximate — use existing count)
-    # We simplify: pass author_count=1 at insert time; the ON CONFLICT uses GREATEST
-    # so it will only increase if a new distinct author touches this file later.
-    # A separate backfill query handles the real count.
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
+                # ── Active files: upsert stats + refresh hotspot score ────────────
                 for fp, stats in file_stats.items():
                     current_lines = _count_file_lines(code_dir, commit_hash, fp)
-
                     cur.execute(_SQL_UPSERT_FILE_STATS, (
                         project_id, fp,
-                        stats["changes"],  # change_count (symbol-level changes)
+                        stats["changes"],
                         bug_inc,
                         stats["added"],
                         stats["removed"],
                         revert_inc,
                         current_lines,
                     ))
-                    # Recompute score from cumulative stored values (not just this delta)
                     cur.execute(_SQL_REFRESH_HOTSPOT, (_LARGE_FILE_LINES, project_id, fp))
 
-                # Co-change coupling: every pair of files touched in this commit
-                file_list = sorted(file_stats.keys())
-                for i, fa in enumerate(file_list):
-                    for fb in file_list[i + 1:]:
-                        cur.execute(_SQL_UPSERT_COUPLING, (project_id, fa, fb))
+                # ── Deleted files: mark current_lines=0 so they leave hotspot lists ──
+                for fp in (deleted_files or []):
+                    cur.execute(_SQL_ARCHIVE_DELETED_FILE, (project_id, fp))
+
+                # ── Co-change coupling ────────────────────────────────────────────
+                # Cap at _MAX_COUPLING_FILES (most-changed first) to bound table growth.
+                # A commit touching N>20 files (e.g. dep update) would create N*(N-1)/2
+                # pairs which can be thousands of rows per commit.
+                coupling_candidates = sorted(
+                    file_stats.keys(),
+                    key=lambda fp: file_stats[fp]["changes"],
+                    reverse=True,
+                )[:_MAX_COUPLING_FILES]
+                for i, fa in enumerate(coupling_candidates):
+                    for fb in coupling_candidates[i + 1:]:
+                        fa_s, fb_s = (fa, fb) if fa < fb else (fb, fa)
+                        cur.execute(_SQL_UPSERT_COUPLING, (project_id, fa_s, fb_s))
 
             conn.commit()
     except Exception as e:
@@ -507,33 +526,43 @@ def _read_yaml_guards(project: str) -> dict:
 
 # ── Public query helpers ───────────────────────────────────────────────────────
 
-_SQL_HOTSPOTS = """
+# Effective score = raw hotspot_score * recency decay.
+# Half-life = 180 days: a file untouched for 180 days contributes half its raw score.
+# current_lines > 0 guard excludes deleted/archived files from results.
+_HOTSPOT_DECAY_EXPR = (
+    "hotspot_score * EXP(-0.693 * GREATEST(0, EXTRACT(EPOCH FROM (NOW() - last_changed_at))"
+    " / 15552000.0))"  # 15552000 = 180 days in seconds
+)
+
+_SQL_HOTSPOTS = f"""
     SELECT file_path, change_count, commit_count, author_count,
            bug_commit_count, lines_added, lines_removed, revert_count,
            current_lines, hotspot_score, last_changed_at
     FROM mem_mrr_commits_file_stats
     WHERE project_id = %s
       AND hotspot_score >= %s
-    ORDER BY hotspot_score DESC
+      AND current_lines > 0
+    ORDER BY {_HOTSPOT_DECAY_EXPR} DESC
     LIMIT %s
 """
 
-_SQL_HOTSPOTS_FOR_FILES = """
+_SQL_HOTSPOTS_FOR_FILES = f"""
     SELECT file_path, change_count, commit_count, author_count,
            bug_commit_count, lines_added, lines_removed, revert_count,
            current_lines, hotspot_score, last_changed_at
     FROM mem_mrr_commits_file_stats
     WHERE project_id = %s
       AND file_path = ANY(%s)
-    ORDER BY hotspot_score DESC
+      AND current_lines > 0
+    ORDER BY {_HOTSPOT_DECAY_EXPR} DESC
 """
 
 _SQL_COUPLING_FOR_FILE = """
-    SELECT file_b AS coupled_file, co_change_count, coupling_score
+    SELECT file_b AS coupled_file, co_change_count
     FROM mem_mrr_commits_file_coupling
     WHERE project_id = %s AND file_a = %s
     UNION ALL
-    SELECT file_a AS coupled_file, co_change_count, coupling_score
+    SELECT file_a AS coupled_file, co_change_count
     FROM mem_mrr_commits_file_coupling
     WHERE project_id = %s AND file_b = %s
     ORDER BY co_change_count DESC
@@ -660,12 +689,14 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
     file_sections = re.split(r"(?=^diff --git )", raw_diff, flags=re.MULTILINE)
 
     rows_to_insert: list[tuple] = []
+    deleted_files: list[str] = []
     client_id = db.default_client_id()
     min_lines = guards["min_lines"]
 
     haiku_system = _prompts.content("commit_symbol") or (
-        "You are a code analyst. Given a changed symbol (class/method/function) and its diff, "
-        "write a 1-sentence summary of what changed and why. Be concise."
+        "You are a code analyst. Given changed symbols and their diffs from one file, "
+        "write a 1-sentence summary per symbol. "
+        "Reply with ONLY numbered lines: '1. <summary>', '2. <summary>', etc."
     )
 
     for section in file_sections:
@@ -683,8 +714,9 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
         added_lines = file_info["added_lines"]
         removed_lines = file_info["removed_lines"]
 
-        # For deleted files, skip symbol extraction
+        # Track deleted files for stats archiving; skip symbol extraction
         if file_change == "deleted":
+            deleted_files.append(file_path)
             continue
 
         # Get file content after commit for symbol extraction
@@ -706,24 +738,22 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
         symbols = _extract_symbols_from_source(source, file_language)
         diff_lines = section.splitlines()
 
+        # Collect touched symbols for this file (no LLM call yet)
+        pending: list[dict] = []
         for sym in symbols:
-            sym_start = sym["start_line"] + 1   # convert to 1-based
+            sym_start = sym["start_line"] + 1
             sym_end = sym["end_line"] + 1
             sym_name = sym["name"]
             sym_type = sym["symbol_type"]
             sym_class = sym["class_name"]
 
-            # Check which changed lines overlap with this symbol's range
-            sym_added = {l for l in added_lines if sym_start <= l <= sym_end}
-            sym_removed = {l for l in removed_lines if sym_start <= l <= sym_end}
-
+            sym_added = {ln for ln in added_lines if sym_start <= ln <= sym_end}
+            sym_removed = {ln for ln in removed_lines if sym_start <= ln <= sym_end}
             if not sym_added and not sym_removed:
-                continue  # symbol not touched by this commit
+                continue
 
             rows_added = len(sym_added)
             rows_removed = len(sym_removed)
-
-            # Determine symbol_change type
             if sym_removed and not sym_added:
                 symbol_change = "deleted"
             elif sym_added and not sym_removed:
@@ -731,37 +761,56 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
             else:
                 symbol_change = "modified"
 
-            # Extract diff snippet
             diff_snippet = _extract_diff_snippet(diff_lines, sym_start, sym_end)
+            pending.append({
+                "sym_type": sym_type, "sym_class": sym_class, "sym_name": sym_name,
+                "symbol_change": symbol_change,
+                "rows_added": rows_added, "rows_removed": rows_removed,
+                "diff_snippet": diff_snippet,
+                "needs_llm": (rows_added + rows_removed) >= min_lines,
+            })
 
-            # LLM summary: skip if fewer than min_lines changed
-            llm_summary: str | None = None
-            if rows_added + rows_removed >= min_lines:
-                symbol_label = f"{sym_class}.{sym_name}" if sym_class else sym_name
-                llm_summary = await _haiku(
-                    haiku_system,
-                    f"File: {file_path}\nSymbol: {sym_type} {symbol_label}\nDiff:\n{diff_snippet[:1000]}",
+        if not pending:
+            continue
+
+        # ── Batch LLM call: one call per file instead of one per symbol ──────
+        # Symbols that meet the min_lines threshold get a summary; others get None.
+        llm_syms = [s for s in pending if s["needs_llm"]]
+        summaries: list[str | None] = [None] * len(llm_syms)
+        if llm_syms:
+            parts = []
+            for idx, s in enumerate(llm_syms, 1):
+                label = f"{s['sym_class']}.{s['sym_name']}" if s["sym_class"] else s["sym_name"]
+                snippet = (s["diff_snippet"] or "")[:600]
+                parts.append(
+                    f"{idx}. {s['sym_type']} {label}\n{snippet}"
                 )
+            user_msg = f"File: {file_path}\n\n" + "\n\n".join(parts)
+            raw_response = await _haiku(haiku_system, user_msg[:4000])
+            if raw_response:
+                # Parse "1. ...\n2. ..." response — tolerate formatting variations
+                parsed = re.findall(r"^\d+\.\s*(.+)", raw_response, re.MULTILINE)
+                for idx, text in enumerate(parsed):
+                    if idx < len(summaries):
+                        summaries[idx] = text.strip()
 
+        # Map summaries back to pending symbols
+        llm_idx = 0
+        for s in pending:
+            llm_summary: str | None = None
+            if s["needs_llm"]:
+                llm_summary = summaries[llm_idx] if llm_idx < len(summaries) else None
+                llm_idx += 1
             rows_to_insert.append((
-                client_id,
-                project_id,
-                commit_hash,
-                file_path,
-                file_ext,
-                file_language,
-                file_change,
-                sym_type,
-                sym_class,
-                sym_name,
-                symbol_change,
-                rows_added,
-                rows_removed,
-                diff_snippet or None,
+                client_id, project_id, commit_hash,
+                file_path, file_ext, file_language, file_change,
+                s["sym_type"], s["sym_class"], s["sym_name"], s["symbol_change"],
+                s["rows_added"], s["rows_removed"],
+                s["diff_snippet"] or None,
                 llm_summary,
             ))
 
-    if not rows_to_insert:
+    if not rows_to_insert and not deleted_files:
         return 0
 
     # Bulk insert
@@ -783,6 +832,7 @@ async def extract_commit_code(project: str, commit_hash: str) -> int:
     _update_file_stats(
         project_id, commit_hash, commit_msg, commit_tags,
         commit_author, rows_to_insert, code_dir,
+        deleted_files=deleted_files,
     )
 
     return inserted

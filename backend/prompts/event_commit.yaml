@@ -47,17 +47,20 @@
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STAGE 2: Commit Symbol Summary
-# Called by: memory_code_parser.py — once per changed class/method/function
+# STAGE 2: Commit Symbol Summary (batched per file)
+# Called by: memory_code_parser.py — once per changed FILE (not per symbol)
+# Input: file path + N numbered symbol diffs
+# Output: N numbered 1-sentence summaries ("1. ...", "2. ...", ...)
 # ─────────────────────────────────────────────────────────────────────────────
 - key: commit_symbol
   name: Commit Symbol
-  description: Writes a one-sentence summary of what changed in a single class/method/function symbol
+  description: Writes one-sentence summaries for all changed symbols in one file (batched call)
   model: haiku
-  max_tokens: 120
+  max_tokens: 400
   system: |
-    You are a code analyst. Given a changed symbol (class/method/function) and its diff,
-    write a 1-sentence summary of what changed and why. Be concise.
+    You are a code analyst. Given changed symbols (class/method/function) and their diffs from one file,
+    write a 1-sentence summary per symbol of what changed and why.
+    Reply with ONLY numbered lines: "1. <summary>", "2. <summary>", etc. No other text.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STAGE 3: Commit Message Generation
