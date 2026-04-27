@@ -54,6 +54,7 @@ _SQL_ACTIVE_WORK_ITEMS = """
       AND wi_type IN ('use_case', 'feature')
       AND deleted_at IS NULL
       AND completed_at IS NULL
+      AND approved_at IS NOT NULL
     ORDER BY score_importance DESC NULLS LAST, created_at DESC
     LIMIT 20
 """
@@ -291,19 +292,42 @@ class MemoryFiles:
         except Exception as e:
             log.warning(f"MemoryFiles._load_context error for '{project}': {e}")
 
-        # Project summary from PROJECT.md
+        # Project summary from PROJECT.md — extract Vision + Core Goals sections
         try:
             proj_md_path = self._workspace() / project / "PROJECT.md"
             if proj_md_path.exists():
                 md_text = proj_md_path.read_text(encoding="utf-8")
-                body = md_text.split("\n## ")[0]
-                summary_lines = [
-                    l for l in body.splitlines()
-                    if l and not l.startswith(("#", ">", "<!--", "_", "```", "|"))
-                ]
-                ctx["project_summary"] = " ".join(summary_lines[:3])[:300]
+                _wanted = {"Vision", "Core Goals"}
+                _parts: list[str] = []
+                for _section in md_text.split("\n## ")[1:]:
+                    _heading = _section.split("\n")[0].strip()
+                    if _heading in _wanted:
+                        # Strip HTML comments (<!-- user-managed --> etc.)
+                        _body = "\n".join(
+                            l for l in _section.splitlines()[1:]
+                            if l and not l.startswith("<!--")
+                        )
+                        if _body.strip():
+                            _parts.append(f"## {_heading}\n{_body.strip()}")
+                ctx["project_summary"] = "\n\n".join(_parts)[:1200]
+                # Fallback: first paragraph if no sections found
+                if not ctx["project_summary"]:
+                    body = md_text.split("\n## ")[0]
+                    summary_lines = [
+                        l for l in body.splitlines()
+                        if l and not l.startswith(("#", ">", "<!--", "_", "```", "|"))
+                    ]
+                    ctx["project_summary"] = " ".join(summary_lines[:3])[:300]
         except Exception:
             pass
+
+        # Fallback: populate facts_by_cat from project_state.json project_facts
+        # when mem_ai_project_facts table is empty (common — table rarely auto-populated)
+        if not ctx["facts_by_cat"]:
+            pf = state_data.get("project_facts", {})
+            for cat, kvs in pf.items():
+                if isinstance(kvs, dict):
+                    ctx["facts_by_cat"][cat] = list(kvs.items())
 
         # Code structure (top-level dirs) + store resolved code_dir in ctx
         try:
