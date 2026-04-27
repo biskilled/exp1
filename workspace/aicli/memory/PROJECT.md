@@ -302,31 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Code quality audit (sessions 40+): verified all modules <1500 lines, SQL queries optimized (no N+1 or unbounded CTEs), token counting uses len(text)//4, _load_context() split into _query_db_into_ctx() and _parse_project_md(), date cascade validation enforced.
-- Memory file convergence: unified get_project_context() path for both /memory POST and commit/work-item triggers; all 5 output files use same DB source and Haiku synthesis; removed duplicate render paths.
-- Work item approval flow: unapproved drafts (AI prefix) never embed or run pipeline; once user approves, wi_id changes to UC/FE/BU/TA, embedding is computed, and 4-agent pipeline triggers automatically.
-- mem_ai_project_facts consolidation: conflict detection merged with facts management into single YAML/class; facts are written by detect_fact_conflicts() and displayed in PROJECT.md Vision section.
-- Project state refresh: /memory endpoint regenerates project_state.json (batched every N prompts) which drives all 5 managed files; PROJECT.md, CODE.md, CLAUDE.md all regenerated from single context source.
-- N+1 elimination completed: hotspot/coupling checks batch SELECT with WHERE name = ANY(%s); tag updates use single executemany; per-row queries removed across memory_files.py and _wi_helpers.py.
+- Code optimization audit: eliminated N+1 hotspot checks via batch WHERE queries, fixed token counting (len(text) // 4), optimized _update_item_tags to use executemany instead of N separate calls.
+- Database schema & query performance: bounded all recursive CTEs (depth < 20), added date cascade validation in _apply_date_rules() to prevent re-parenting inconsistencies.
+- Memory file rendering: refactored _load_context() to split DB queries (_query_db_into_ctx) and PROJECT.md parsing (_parse_project_md) to eliminate double file-read bug.
+- Work item approval flow: commit-sourced items now auto-set score_status=5 via regex detection (fixes BU0012 pattern); approval marks user_status='done' and triggers embedding.
+- Memory synthesis convergence: unified get_project_context() path used by both /memory POST and commit/work-item event handlers; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from single source.
+- Project facts management: mem_ai_project_facts table integrates with memory_promotion.py for conflict detection; conflict_detection.yaml merged into mem_project_state.yaml.
 
 ## Key Decisions
 
 - Memory architecture: 3 layers — raw captures (mem_mrr_*), structured artifacts (mem_ai_project_facts), and work items (mem_work_items) with pgvector embeddings for approved items only (1536-dim, text-embedding-3-small).
-- Work items: unified hierarchy with wi_parent_id linking features/bugs/tasks to use_case parents; approved items (wi_id: UC/FE/BU/TA) embed and trigger 4-agent pipeline; unapproved drafts (AI prefix) never embed or run pipeline.
+- Work items: unified hierarchy with wi_parent_id linking features/bugs/tasks to use_case parents; approved items (wi_id: UC/FE/BU/TA) embed and trigger 4-agent pipeline; unapproved drafts (AI prefix) never embed.
 - File generation: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; this single JSON drives all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/).
-- File management: backend/memory/memory.yaml is the canonical single-source mapping for output files; templates/ holds seed files (_CLAUDE.md, _settings.json, _mcp.json); memory.yaml itself is NOT copied to projects (internal engine only).
-- Code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit via sync_code_structure() and refreshed post-memory via unified get_project_context() path.
-- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, command_work_items.yaml, event_commit.yaml, event_hook_context.yaml, misc.yaml); loaded via prompt_loader utility.
+- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
+- Code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit and refreshed post-memory via unified get_project_context() path.
+- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger; loaded via prompt_loader utility (command_memory.yaml, event_commit.yaml, command_work_items.yaml, misc.yaml, mem_project_state.yaml, mem_session_tags.yaml).
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
-- Embeddings: ONLY approved work items embed (mem_work_items.embedding VECTOR); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
+- Embeddings: ONLY approved work items embed; code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
 - Work item re-embedding: triggered only on name/summary/description edits for approved items via automatic flag in update(); unapproved drafts never re-embed.
-- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001'/'resolve TA0003' in commit message auto-closes items with score_status=5, score_importance=5; user must approve to update user_status to 'done'.
-- MCP tools: 14 tools rewired to REST endpoints (create_entity→POST /wi, list_work_items→GET /wi, sync_github_issues→PATCH /wi, get_file_history→GET /memory/file-history, etc.).
-- Database queries: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot checks use single WHERE name = ANY(%s) with batch execution instead of per-row queries.
-- Code organization: memory_work_items.py (1343 lines) split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (400 lines) with shared imports.
-- Token counting: len(text) // 4 for Claude token estimation in work item synthesis and prompt truncation.
+- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5; user must approve to update user_status to 'done'.
+- MCP tools: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, get_file_history, etc.).
+- Database queries: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot checks use single WHERE name = ANY(%s); token counting: len(text) // 4.
+- Code organization: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py with shared imports; all modules < 1500 lines.
 - JWT auth: hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
-- Date cascade validation: child work items cannot have due_date later than parent use_case due_date; enforced in _apply_date_rules() on reparenting and update().
+- Memory file convergence: unified get_project_context() path confirmed for /memory POST and commit/work-item triggers; all 5 output files regenerated from single DB source.
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
