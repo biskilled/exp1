@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Production readiness: verified memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; code quality acceptable after refactoring; critical bug (duplicate _write_root_files_with_ctx stub) fixed.
-- UI enhancements for work item transparency: added _waitingBadge() showing 'X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing 'X days open' for approved use cases.
-- Hotspot recency weighting: hotspot scores decay using 180-day half-life formula in both parser and memory_files queries to prioritize recently-changed files.
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing '📂 X days open' for approved use cases — added to planner.js.
+- Hotspot recency weighting: verified 180-day half-life formula (EXP(-0.693 × age_ratio)) applied in both parser and memory_files queries to prioritize recently-changed files in CODE.md.
 - Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns auto-set score_status=5 and score_importance=5 for user approval.
 - Code quality optimization: eliminated N+1 hotspot checks via batch WHERE name = ANY(%s); token counting standardized to len(text) // 4; unbounded CTEs bounded to depth < 20.
 - Code refactoring completion: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py; _load_context() split into _query_db_into_ctx() and _parse_project_md(); all verified < 1500 lines with no circular imports.
+- Production readiness verification: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; 4-agent pipeline ready; critical bugs fixed (duplicate _write_root_files stub, MCP server dispatch complete).
 
 ## Key Decisions
 
