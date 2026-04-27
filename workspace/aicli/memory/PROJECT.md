@@ -303,11 +303,11 @@ sidebar tabs:
 ## Recent Work
 
 - Code audit cycle: fresh aicli_memory.md audit in progress reviewing all changes from last 10-15 prompts for optimization, SQL efficiency, code duplication, and file length reasonableness.
+- Date cascade validation: _apply_date_rules() now prevents re-parenting work items to use cases with earlier due_dates; added depth check when only wi_parent_id changes.
+- Database query optimization: eliminated N+1 hotspot existence checks via batch WHERE name = ANY(%s) in memory_files.py; _update_item_tags refactored to use executemany instead of N separate execute calls.
+- Token counting standardization: replaced word_count × 1.3 with len(text) // 4 across all embedding calculations for accuracy.
 - Memory file rendering: refactored _load_context() to split DB queries (_query_db_into_ctx) and PROJECT.md parsing (_parse_project_md) to eliminate double file-read bug.
 - Work item approval flow: commit-sourced items now auto-set score_status=5 via regex detection (fixes BU0012 pattern); approval marks user_status='done' and triggers embedding.
-- Database schema & query performance: bounded all recursive CTEs (depth < 20), added date cascade validation in _apply_date_rules() to prevent re-parenting inconsistencies.
-- Code optimization audit: eliminated N+1 hotspot checks via batch WHERE queries, fixed token counting (len(text) // 4), optimized _update_item_tags to use executemany instead of N separate calls.
-- Memory synthesis convergence: unified get_project_context() path used by both /memory POST and commit/work-item event handlers; all 5 output files regenerated from single source.
 
 ## Key Decisions
 
