@@ -22,7 +22,9 @@ log = logging.getLogger(__name__)
 # ── Embedding helper (sync — for use in sync tool handlers) ───────────────────
 
 def _embed_sync(text: str) -> list[float] | None:
-    """Synchronous embedding via OpenAI text-embedding-3-small. Returns None on failure."""
+    """Synchronous embedding via OpenAI text-embedding-3-small. Returns None on failure.
+    Use _embed_async() from async FastAPI routes to avoid blocking the event loop.
+    """
     try:
         from data.dl_api_keys import get_key
         import openai
@@ -35,6 +37,12 @@ def _embed_sync(text: str) -> list[float] | None:
     except Exception as e:
         log.debug(f"_embed_sync error: {e}")
         return None
+
+
+async def _embed_async(text: str) -> list[float] | None:
+    """Async wrapper around _embed_sync — runs in a thread so it doesn't block the event loop."""
+    import asyncio
+    return await asyncio.to_thread(_embed_sync, text)
 
 
 def _vec_str(vec: list[float]) -> str:

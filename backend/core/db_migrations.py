@@ -3209,6 +3209,32 @@ def m080_wi_pipeline_columns(conn) -> None:
     log.info("m080: mem_work_items — added acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id")
 
 
+def m081_wi_embedding_index_and_cleanup(conn) -> None:
+    """Add pgvector IVFFlat index on mem_work_items.embedding + drop dead coupling_score.
+
+    Without this index every semantic search over work items performs a full table scan
+    (O(N) cosine distance computation). With IVFFlat, queries use approximate NN search.
+
+    Also drops coupling_score from mem_mrr_commits_file_coupling — it was never written
+    or read; co_change_count is the real coupling signal.
+    """
+    cur = conn.cursor()
+    # IVFFlat index — lists=100 is appropriate for up to ~1M rows; tune if needed
+    cur.execute("""
+        CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_work_items_embedding
+        ON mem_work_items USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+        WHERE embedding IS NOT NULL AND deleted_at IS NULL
+    """)
+    # Drop dead column
+    cur.execute("""
+        ALTER TABLE mem_mrr_commits_file_coupling
+        DROP COLUMN IF EXISTS coupling_score
+    """)
+    conn.commit()
+    log.info("m081: added ivfflat index on mem_work_items.embedding; dropped coupling_score column")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3277,4 +3303,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m078_drop_planner_tags", m078_drop_planner_tags),
     ("m079_wi_user_status_to_text", m079_wi_user_status_to_text),
     ("m080_wi_pipeline_columns", m080_wi_pipeline_columns),
+    ("m081_wi_embedding_index_and_cleanup", m081_wi_embedding_index_and_cleanup),
 ]

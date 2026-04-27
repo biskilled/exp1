@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re as _re_md
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -94,7 +95,7 @@ _SQL_RECENTLY_CHANGED = """
     JOIN mem_mrr_commits_code cc ON cc.commit_hash = c.commit_hash
     WHERE c.project_id = %s
     ORDER BY c.created_at DESC
-    LIMIT 60
+    LIMIT 20
 """
 
 _SQL_HOTSPOTS = """
@@ -269,7 +270,7 @@ class MemoryFiles:
                 }
                 for row in cur.fetchall()
             ]
-            cur.execute(_SQL_COUPLING, (project_id, 3))
+            cur.execute(_SQL_COUPLING, (project_id, mem_cfg.get("coupling_threshold", 8)))
             ctx["coupling"] = [
                 {"file_a": row[0], "file_b": row[1], "count": row[2]}
                 for row in cur.fetchall()
@@ -279,7 +280,6 @@ class MemoryFiles:
 
     def _parse_project_md(self, project: str, ctx: dict) -> None:
         """Read PROJECT.md once and populate project_summary, conventions, deprecated_phrases."""
-        import re as _re_md
         _SUMMARY_SECTIONS = {"Vision", "Core Goals"}
         _CONV_SECTIONS    = {"Conventions", "Coding Standards", "Coding Conventions", "Development Standards"}
         try:
@@ -1106,9 +1106,11 @@ class MemoryFiles:
                 _write(code_dir / "CLAUDE.md", claude_content)
                 _write(code_dir / ".cursorrules", cursor_content)
 
+        # Load memory config — needed for log cleanup and hotspot suggestions
+        mem_cfg = ctx.get("memory_config", {})
+
         # Clean up old pipeline run logs and history archives
         try:
-            # Use already-loaded memory config from ctx — avoids re-reading project.yaml
             _log_cfg = mem_cfg.get("logs", {}) if isinstance(mem_cfg, dict) else {}
             _pipe_days = int(_log_cfg.get("pipeline_retention_days", 14))
             _hist_days = int(_log_cfg.get("history_retention_days", 30))
@@ -1119,7 +1121,6 @@ class MemoryFiles:
             log.debug("write_root_files: log cleanup error: %s", _ce)
 
         # Auto-suggest refactor/decouple tasks from hotspot + coupling data
-        mem_cfg = ctx.get("memory_config", {})
         if suggest_hotspots and mem_cfg.get("hotspot_suggest_work_item", True):
             created = self._suggest_hotspot_work_items(project, ctx.get("hotspots", []), mem_cfg)
             if created:
@@ -1173,7 +1174,3 @@ class MemoryFiles:
                 written.extend(self.write_feature_files(project, tag["name"]))
         return written
 
-    def _write_root_files_with_ctx(
-        self, project: str, ctx: dict, suggest_hotspots: bool = False
-    ) -> list[str]:
-        """Internal: render and write all root-level context files from a pre-loaded ctx."""

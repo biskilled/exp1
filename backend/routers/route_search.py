@@ -123,10 +123,10 @@ async def semantic_search(body: SemanticSearchRequest, user=Depends(get_optional
     project = body.project or settings.active_project or "default"
     limit = min(body.limit, 50)
 
-    # ── Embed the query ────────────────────────────────────────────────────────
+    # ── Embed the query (async to avoid blocking the event loop) ──────────────
     try:
-        from agents.tools.tool_memory import _embed_sync, _vec_str
-        vec = _embed_sync(body.query)
+        from agents.tools.tool_memory import _embed_async, _vec_str
+        vec = await _embed_async(body.query)
     except Exception:
         vec = None
 
@@ -232,8 +232,8 @@ async def search_facts(
     limit = min(limit, 50)
 
     try:
-        from agents.tools.tool_memory import _embed_sync, _vec_str
-        vec = _embed_sync(query)
+        from agents.tools.tool_memory import _embed_async, _vec_str
+        vec = await _embed_async(query)
     except Exception:
         vec = None
 
