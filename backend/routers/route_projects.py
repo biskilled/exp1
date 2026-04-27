@@ -1084,6 +1084,20 @@ async def _auto_populate_project_facts(
                 deduped.append({**f, "_norm_key": nk})
         facts = deduped
 
+        # Batch embed all facts BEFORE opening the DB connection.
+        # Embedding is a blocking HTTP call — holding the pool connection during
+        # N embed calls wastes a connection for the full duration.
+        prepared: list[tuple[str, str, str, str | None]] = []
+        for f in facts:
+            fk  = f.get("_norm_key") or str(f["fact_key"])[:120]
+            fv  = str(f["fact_value"])[:500]
+            cat = f.get("category", "general")
+            if cat not in ("stack", "pattern", "convention", "constraint", "general"):
+                cat = "general"
+            embedding = _embed_sync(f"{fk}: {fv}")
+            vec = _vec_str(embedding) if embedding else None
+            prepared.append((fk, fv, cat, vec))
+
         with db.conn() as conn:
             with conn.cursor() as cur:
                 # Expire previous auto-generated facts (non-code category)
@@ -1093,14 +1107,7 @@ async def _auto_populate_project_facts(
                     (project_id,),
                 )
                 inserted = 0
-                for f in facts:
-                    fk = f.get("_norm_key") or str(f["fact_key"])[:120]
-                    fv = str(f["fact_value"])[:500]
-                    cat = f.get("category", "general")
-                    if cat not in ("stack", "pattern", "convention", "constraint", "general"):
-                        cat = "general"
-                    embedding = _embed_sync(f"{fk}: {fv}")
-                    vec = _vec_str(embedding) if embedding else None
+                for fk, fv, cat, vec in prepared:
                     if vec:
                         cur.execute(
                             "INSERT INTO mem_ai_project_facts "
