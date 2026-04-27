@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 23:50 UTC -->
+<!-- Last updated: 2026-04-27 23:51 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -14,14 +14,14 @@ workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node re
 
 ## Key Decisions
 
-- Memory architecture: 3 layers — raw captures (mem_mrr_*: prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings ONLY for approved items prefixed UC/FE/BU/TA).
+- Memory architecture: 3 layers — raw captures (mem_mrr_* for prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings ONLY for approved items prefixed UC/FE/BU/TA).
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from single JSON.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task) and wi_parent_id linking children to use_case parents; wi_id format: AI0001 (unapproved draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
 - Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency weighting (EXP(-0.693 × age_ratio)).
 - Embeddings strategy: ONLY approved work items (wi_id: UC/FE/BU/TA) embed to pgvector; code.md, project_state.json, project facts, and prompts never embed; /search/semantic searches work_items only.
 - Work item re-embedding: triggered automatically on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 via regex 'fixes BU0012' pattern.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, approve_work_items, etc.) with stdio server in agents/mcp/server.py with unified dispatch pattern matching tool name to REST route.
+- MCP server: 14 tools (search_memory, get_project_state, list_work_items, approve_work_items, etc.) rewired to REST endpoints; stdio server in agents/mcp/server.py with unified dispatch pattern matching tool name to REST route.
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Continuous integration: chore commits after Claude CLI sessions (ebf898a3 and d113294c) indicate automated post-session memory capture and state synthesis.
-- Memory file generation: CLAUDE.md, CODE.md, PROJECT.md output files verified to provide good project structure view with work items, use cases, and code quality metrics.
-- Work item pipeline: 4-agent PM→Architect→Developer→Reviewer pipeline functioning for approved use cases with acceptance criteria, implementation plans, and pipeline status tracking.
-- Hotspot tracking: code.md hotspot scores and file coupling metrics actively maintained with 180-day recency decay for recent changes.
+- Multiple chore commits after Claude CLI session ebf898a3 (2026-04-27 14:03–23:49) and d113294c (2026-04-27 23:49–23:50) — indicates active development cycle with frequent save/commit patterns.
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases — integration in planner.js.
+- Hotspot recency weighting: 180-day half-life formula (EXP(-0.693 × age_ratio)) applied in parser and memory_files queries for CODE.md prioritization.
+- Commit-sourced work items auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') auto-set score_status=5 and score_importance=5 for user approval.
 
-_Last updated: 2026-04-27 23:50 UTC_
+_Last updated: 2026-04-27 23:51 UTC_

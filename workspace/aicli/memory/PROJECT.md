@@ -303,11 +303,11 @@ sidebar tabs:
 ## Recent Work
 
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing '📂 X days open' for approved use cases — added to planner.js.
-- Hotspot recency weighting: verified 180-day half-life formula (EXP(-0.693 × age_ratio)) applied in both parser and memory_files queries to prioritize recently-changed files in CODE.md.
 - Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns auto-set score_status=5 and score_importance=5 for user approval.
-- Code quality optimization: eliminated N+1 hotspot checks via batch WHERE name = ANY(%s); token counting standardized to len(text) // 4; unbounded CTEs bounded to depth < 20.
+- Hotspot recency weighting: verified 180-day half-life formula (EXP(-0.693 × age_ratio)) applied in both parser and memory_files queries to prioritize recently-changed files in CODE.md.
 - Code refactoring completion: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py; _load_context() split into _query_db_into_ctx() and _parse_project_md(); all verified < 1500 lines with no circular imports.
 - Production readiness verification: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; 4-agent pipeline ready; critical bugs fixed (duplicate _write_root_files stub, MCP server dispatch complete).
+- Open bugs tracking: 16 open bugs out of 47 total (31 done); most recent work on UI category display, archive/unarchive toggle, and PROJECT.md load performance; MCP fully operational and ready for new sessions.
 
 ## Key Decisions
 
@@ -322,10 +322,10 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; stored in mem_work_items columns acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id.
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
-- Database optimization: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns (hotspot checks use single WHERE name = ANY(%s)); token counting: len(text) // 4.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines.
+- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines; recursive CTEs bounded to depth < 20.
 - Date cascade validation: _apply_date_rules() prevents re-parenting work items to use cases with earlier due_dates; depth check added when wi_parent_id changes to prevent silent data inconsistency.
 - File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
+- Database optimization: batch queries replace N+1 patterns (hotspot checks use single WHERE name = ANY(%s)); token counting: len(text) // 4; recursive CTEs bounded to depth < 20; unbounded CTE depth safeguards added.
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
