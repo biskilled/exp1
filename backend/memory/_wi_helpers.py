@@ -246,8 +246,9 @@ def _rollup_uc_tags(pid: int, uc_ids: list[str]) -> None:
 def _embed_work_item(item_id: str, fields: dict) -> None:
     """Compute embedding for an approved work item and store in DB.
 
-    Embeds: name + wi_type + summary + deliveries + delivery_type + acceptance_criteria
-    so AC text is findable via semantic search.
+    Embeds: name + wi_type + summary + deliveries + delivery_type
+            + acceptance_criteria + implementation_plan (truncated to 500 chars each)
+    so AC/plan text is findable via semantic search.
     """
     from core.database import db
     try:
@@ -258,6 +259,7 @@ def _embed_work_item(item_id: str, fields: dict) -> None:
             fields.get("deliveries", ""),
             fields.get("delivery_type", ""),
             fields.get("acceptance_criteria", ""),
+            fields.get("implementation_plan", ""),
         ]))
         if not text.strip():
             return

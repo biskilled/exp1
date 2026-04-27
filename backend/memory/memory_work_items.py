@@ -704,7 +704,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                     # Load the item (must still be a draft AI row)
                     cur.execute(
                         """SELECT wi_type, name, summary, mrr_ids, wi_parent_id::text,
-                                  deliveries, delivery_type
+                                  deliveries, delivery_type, acceptance_criteria
                            FROM mem_work_items
                            WHERE id=%s::uuid AND project_id=%s AND wi_id LIKE 'AI%%'""",
                         (item_id, pid),
@@ -712,7 +712,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                     row = cur.fetchone()
                     if not row:
                         return {"error": "item not found or already approved/rejected"}
-                    wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type = row
+                    wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type, acceptance_criteria = row
 
                     # Generate ID
                     new_wi_id = _generate_wi_id(cur, pid, wi_type)
@@ -754,10 +754,11 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
 
                 conn.commit()
 
-            # Compute embedding
+            # Compute embedding (include AC if already set at approval time)
             _embed_work_item(item_id, {
                 "name": name, "wi_type": wi_type, "summary": summary or "",
                 "deliveries": deliveries or "", "delivery_type": delivery_type or "",
+                "acceptance_criteria": acceptance_criteria or "",
             })
 
             # For use_cases: cascade-approve all pending children, then refresh MD
@@ -977,14 +978,16 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
             if date_conflict_resolved:
                 result["date_conflict_resolved"] = True
 
-            # Re-embed if semantic content changed (name, summary, deliveries, delivery_type)
-            _embed_fields = {"name", "summary", "deliveries", "delivery_type"}
+            # Re-embed if semantic content changed
+            _embed_fields = {"name", "summary", "deliveries", "delivery_type",
+                             "acceptance_criteria", "implementation_plan"}
             if _embed_fields & set(updates.keys()):
                 try:
                     with db.conn() as _conn:
                         with _conn.cursor() as _cur:
                             _cur.execute(
-                                "SELECT name, wi_type, summary, deliveries, delivery_type, approved_at "
+                                "SELECT name, wi_type, summary, deliveries, delivery_type, approved_at,"
+                                "       acceptance_criteria, implementation_plan "
                                 "FROM mem_work_items WHERE id=%s::uuid AND project_id=%s",
                                 (item_id, pid),
                             )
@@ -994,6 +997,8 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                             "name": _row[0] or "", "wi_type": _row[1] or "",
                             "summary": _row[2] or "", "deliveries": _row[3] or "",
                             "delivery_type": _row[4] or "",
+                            "acceptance_criteria": (_row[6] or "")[:500],
+                            "implementation_plan": (_row[7] or "")[:500],
                         })
                         result["re_embedded"] = True
                 except Exception as _e:

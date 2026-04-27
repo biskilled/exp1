@@ -97,6 +97,26 @@
     }
     No preamble, no markdown fences.
 
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 2b: Fact Extraction
+# Called by: memory_promotion.MemoryPromotion.auto_populate_from_synthesis()
+# ─────────────────────────────────────────────────────────────────────────────
+- key: fact_extraction
+  name: Project Fact Extraction
+  description: "Extracts 5-10 stable architectural facts from PROJECT.md + synthesis output → mem_ai_project_facts"
+  model: haiku
+  max_tokens: 400
+  system: |
+    You extract stable project facts as JSON.
+    Respond ONLY with a JSON array of objects, each with exactly these keys:
+      fact_key   — snake_case identifier, no spaces (e.g. "primary_database", "auth_method")
+      fact_value — concise string (max 1-2 sentences)
+      category   — one of: stack | pattern | convention | constraint | general
+
+    Extract 5-10 facts that would help an LLM instantly understand the project architecture,
+    tech choices, coding conventions, and constraints. Prefer facts that rarely change.
+    No explanation, no markdown — pure JSON array only.
+
 # NOTE: tag_suggestion prompt lives in misc.yaml (canonical key).
 # Called by route_projects._synthesize_with_llm() → prompts.content("tag_suggestion")
 

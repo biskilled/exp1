@@ -32,10 +32,33 @@ _SQL_GET_CURRENT_FACTS = """
     ORDER BY fact_key
 """
 
+_SQL_GET_FACT_BY_KEY = """
+    SELECT fact_value FROM mem_ai_project_facts
+    WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
+    LIMIT 1
+"""
+
 _SQL_MARK_FACT_CONFLICT = """
     UPDATE mem_ai_project_facts
     SET conflict_status=%s
     WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
+"""
+
+_SQL_EXPIRE_BY_KEY = """
+    UPDATE mem_ai_project_facts SET valid_until=NOW()
+    WHERE project_id=%s AND fact_key=%s AND valid_until IS NULL
+"""
+
+_SQL_EXPIRE_STALE = """
+    UPDATE mem_ai_project_facts SET valid_until=NOW()
+    WHERE project_id=%s AND valid_until IS NULL AND category <> 'code'
+    AND fact_key <> ALL(%s::text[])
+"""
+
+_SQL_INSERT_FACT = """
+    INSERT INTO mem_ai_project_facts
+        (project_id, fact_key, fact_value, category, embedding, conflict_status)
+    VALUES (%s, %s, %s, %s, %s, %s)
 """
 
 
@@ -164,7 +187,7 @@ class MemoryPromotion:
                     with conn.cursor() as cur:
                         cur.execute(
                             _SQL_MARK_FACT_CONFLICT,
-                            (action, project, fact_key),
+                            (action, project_id, fact_key),  # use int project_id, not name
                         )
                 return {
                     "action": action,
@@ -176,6 +199,172 @@ class MemoryPromotion:
                 }
 
         return {"action": "ok", "conflict_status": None}
+
+    async def save_fact(
+        self,
+        project_id: int,
+        fact_key: str,
+        fact_value: str,
+        category: str = "general",
+    ) -> str:
+        """Upsert one project fact with conflict detection.
+
+        Returns: 'inserted' | 'unchanged' | 'superseded' | 'merged' | 'flagged'
+        """
+        # Load existing fact for this key
+        existing_value: Optional[str] = None
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_SQL_GET_FACT_BY_KEY, (project_id, fact_key))
+                row = cur.fetchone()
+        if row:
+            existing_value = row[0]
+
+        # Same value → nothing to do
+        if existing_value is not None and existing_value.strip().lower() == fact_value.strip().lower():
+            return "unchanged"
+
+        # Resolve conflicts when key already exists with a different value
+        action = "insert"
+        embed_value = fact_value
+        conflict_status: Optional[str] = None
+
+        if existing_value is not None:
+            resolution = await self._resolve_conflict(fact_key, existing_value, fact_value)
+            action = resolution.get("resolution", "supersede") if resolution else "supersede"
+            if action == "merge" and resolution and resolution.get("merged_value"):
+                embed_value = resolution["merged_value"]
+            conflict_status = "pending_review" if action == "flag" else None
+
+        # Embed the (possibly merged) value
+        vec_param: Optional[str] = None
+        try:
+            from agents.tools.tool_memory import _embed_sync, _vec_str as _vs
+            emb = _embed_sync(f"{fact_key}: {embed_value}")
+            if emb:
+                vec_param = f"[{','.join(str(x) for x in emb)}]"
+        except Exception:
+            pass
+
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if existing_value is not None:
+                    if action == "flag":
+                        # Mark old fact as flagged but keep it; insert new alongside
+                        cur.execute(_SQL_MARK_FACT_CONFLICT, ("pending_review", project_id, fact_key))
+                    else:
+                        # Supersede or merge: expire the old fact
+                        cur.execute(_SQL_EXPIRE_BY_KEY, (project_id, fact_key))
+                cur.execute(
+                    _SQL_INSERT_FACT,
+                    (project_id, fact_key, embed_value, category, vec_param, conflict_status),
+                )
+
+        return "inserted" if action == "insert" else action
+
+    async def auto_populate_from_synthesis(
+        self,
+        project_name: str,
+        project_id: int,
+        project_md: str,
+        synthesis: Optional[dict],
+    ) -> int:
+        """Extract stable facts from PROJECT.md + synthesis, save each with conflict detection.
+
+        Replaces _auto_populate_project_facts() in route_projects.py.
+        Returns count of facts changed (inserted or updated).
+        """
+        import re as _re
+
+        # Build LLM input
+        text_for_llm = ""
+        if project_md:
+            text_for_llm += project_md[:3000]
+        if synthesis:
+            if synthesis.get("tech_stack"):
+                text_for_llm += "\n\n## Tech Stack (from synthesis)\n"
+                for k, v in synthesis["tech_stack"].items():
+                    text_for_llm += f"- {k}: {v}\n"
+            if synthesis.get("key_decisions"):
+                text_for_llm += "\n## Key Decisions (from synthesis)\n"
+                for d in synthesis["key_decisions"]:
+                    text_for_llm += f"- {d}\n"
+        if not text_for_llm.strip():
+            return 0
+
+        # Call LLM to extract facts
+        system_prompt = _prompts.content("fact_extraction") or (
+            "You extract stable project facts as JSON. "
+            "Respond ONLY with a JSON array of objects with keys: "
+            "fact_key (snake_case), fact_value (concise string), "
+            "category (stack|pattern|convention|constraint|general). "
+            "No explanation, no markdown."
+        )
+        raw = await _call_llm(
+            system_prompt,
+            f"Extract stable project facts from this context:\n\n{text_for_llm[:3000]}",
+            max_tokens=400,
+        )
+        if not raw:
+            return 0
+
+        m = _re.search(r"\[.*\]", raw, _re.DOTALL)
+        if not m:
+            return 0
+        try:
+            facts = json.loads(m.group())
+        except Exception:
+            return 0
+        if not isinstance(facts, list):
+            return 0
+
+        # Normalise keys + deduplicate
+        def _norm_key(k: str) -> str:
+            k = k.lower().strip()
+            k = _re.sub(r"[^a-z0-9]+", "_", k)
+            return k[:80].strip("_")
+
+        valid_cats = {"stack", "pattern", "convention", "constraint", "general"}
+        seen: set[str] = set()
+        cleaned: list[dict] = []
+        for f in facts:
+            if not isinstance(f, dict) or not f.get("fact_key") or not f.get("fact_value"):
+                continue
+            nk = _norm_key(str(f["fact_key"]))
+            if not nk or nk in seen:
+                continue
+            seen.add(nk)
+            cat = f.get("category", "general")
+            if cat not in valid_cats:
+                cat = "general"
+            cleaned.append({"fact_key": nk, "fact_value": str(f["fact_value"])[:500], "category": cat})
+            if len(cleaned) >= 12:
+                break
+
+        if not cleaned:
+            return 0
+
+        # Save each fact (with conflict detection per key)
+        count = 0
+        for f in cleaned:
+            try:
+                action = await self.save_fact(project_id, f["fact_key"], f["fact_value"], f["category"])
+                if action != "unchanged":
+                    count += 1
+            except Exception as e:
+                log.debug(f"auto_populate: save_fact failed for '{f['fact_key']}': {e}")
+
+        # Expire facts whose keys are no longer in the new extraction (stale)
+        new_keys = [f["fact_key"] for f in cleaned]
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(_SQL_EXPIRE_STALE, (project_id, new_keys))
+        except Exception as e:
+            log.debug(f"auto_populate: expire_stale failed: {e}")
+
+        log.info("auto_populate_from_synthesis: %d facts changed for project_id=%d", count, project_id)
+        return count
 
     async def _resolve_conflict(
         self, fact_key: str, old_value: str, new_value: str
