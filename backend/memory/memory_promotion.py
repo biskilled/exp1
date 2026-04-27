@@ -293,13 +293,7 @@ class MemoryPromotion:
             return 0
 
         # Call LLM to extract facts
-        system_prompt = _prompts.content("fact_extraction") or (
-            "You extract stable project facts as JSON. "
-            "Respond ONLY with a JSON array of objects with keys: "
-            "fact_key (snake_case), fact_value (concise string), "
-            "category (stack|pattern|convention|constraint|general). "
-            "No explanation, no markdown."
-        )
+        system_prompt = _prompts.content("fact_extraction") or "Extract stable project facts as JSON."
         raw = await _call_llm(
             system_prompt,
             f"Extract stable project facts from this context:\n\n{text_for_llm[:3000]}",

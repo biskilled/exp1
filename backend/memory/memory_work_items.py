@@ -704,7 +704,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                     # Load the item (must still be a draft AI row)
                     cur.execute(
                         """SELECT wi_type, name, summary, mrr_ids, wi_parent_id::text,
-                                  deliveries, delivery_type, acceptance_criteria
+                                  deliveries, delivery_type, acceptance_criteria, implementation_plan
                            FROM mem_work_items
                            WHERE id=%s::uuid AND project_id=%s AND wi_id LIKE 'AI%%'""",
                         (item_id, pid),
@@ -712,7 +712,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                     row = cur.fetchone()
                     if not row:
                         return {"error": "item not found or already approved/rejected"}
-                    wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type, acceptance_criteria = row
+                    wi_type, name, summary, mrr_ids, parent_id, deliveries, delivery_type, acceptance_criteria, implementation_plan = row
 
                     # Generate ID
                     new_wi_id = _generate_wi_id(cur, pid, wi_type)
@@ -754,11 +754,12 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
 
                 conn.commit()
 
-            # Compute embedding (include AC if already set at approval time)
+            # Compute embedding (include AC + plan if already set at approval time)
             _embed_work_item(item_id, {
                 "name": name, "wi_type": wi_type, "summary": summary or "",
                 "deliveries": deliveries or "", "delivery_type": delivery_type or "",
-                "acceptance_criteria": acceptance_criteria or "",
+                "acceptance_criteria": (acceptance_criteria or "")[:500],
+                "implementation_plan": (implementation_plan or "")[:500],
             })
 
             # For use_cases: cascade-approve all pending children, then refresh MD

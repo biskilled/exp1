@@ -306,8 +306,8 @@ sidebar tabs:
 - Database schema & query performance: bounded all recursive CTEs (depth < 20), added date cascade validation in _apply_date_rules() to prevent re-parenting inconsistencies.
 - Memory file rendering: refactored _load_context() to split DB queries (_query_db_into_ctx) and PROJECT.md parsing (_parse_project_md) to eliminate double file-read bug.
 - Work item approval flow: commit-sourced items now auto-set score_status=5 via regex detection (fixes BU0012 pattern); approval marks user_status='done' and triggers embedding.
-- Memory synthesis convergence: unified get_project_context() path used by both /memory POST and commit/work-item event handlers; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from single source.
-- Project facts management: mem_ai_project_facts table integrates with memory_promotion.py for conflict detection; conflict_detection.yaml merged into mem_project_state.yaml.
+- Memory synthesis convergence: unified get_project_context() path used by both /memory POST and commit/work-item event handlers; all 5 output files regenerated from single source.
+- Code audit cycle: fresh aicli_memory.md audit in progress reviewing all changes from last 10-15 prompts for optimization, SQL efficiency, code duplication, and file length reasonableness.
 
 ## Key Decisions
 
@@ -316,12 +316,12 @@ sidebar tabs:
 - File generation: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; this single JSON drives all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/).
 - File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
 - Code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit and refreshed post-memory via unified get_project_context() path.
-- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger; loaded via prompt_loader utility (command_memory.yaml, event_commit.yaml, command_work_items.yaml, misc.yaml, mem_project_state.yaml, mem_session_tags.yaml).
+- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, event_commit.yaml, command_work_items.yaml, misc.yaml, mem_project_state.yaml, mem_session_tags.yaml); loaded via prompt_loader utility.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
 - Embeddings: ONLY approved work items embed; code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
 - Work item re-embedding: triggered only on name/summary/description edits for approved items via automatic flag in update(); unapproved drafts never re-embed.
-- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5; user must approve to update user_status to 'done'.
-- MCP tools: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, get_file_history, etc.).
+- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-sets score_status=5; user must approve to update user_status to 'done'.
+- MCP tools: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity→POST /wi/, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, get_file_history, etc.).
 - Database queries: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot checks use single WHERE name = ANY(%s); token counting: len(text) // 4.
 - Code organization: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py with shared imports; all modules < 1500 lines.
 - JWT auth: hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
