@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 13:12 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 13:30 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -30,11 +30,11 @@ _Last updated: 2026-04-27_
 
 ## Key Decisions
 
-- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state. No .ai/, _system/, or .ai/ folders.
+- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state.
 - Memory files (PROJECT.md, CODE.md, CLAUDE.md, cursor/rules, api/) generated ONLY by POST /memory endpoint from project_state.json + database queries; token-limited by project.yaml config. Not copied to projects.
 - backend/memory/memory.yaml is canonical single source for file mapping; templates in backend/memory/templates/; memory.yaml itself is NOT copied to projects (internal logic only).
 - code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit + refreshed post-commit via sync_code_structure().
-- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit.
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit with depth<20 bounded recursion.
 - Work Items unified hierarchy: wi_parent_id links features/bugs/tasks to use_case parents; approved items trigger 4-agent pipeline (PM→Architect→Developer→Reviewer) with acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id columns.
 - Approved work items ONLY are embedded (pgvector, 1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
 - JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients→Users→Projects.
@@ -43,13 +43,13 @@ _Last updated: 2026-04-27_
 - Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5, score_importance=5; user must approve to update user_status to 'done'.
 - project_state.json generated ONLY by POST /memory endpoint; drives all 5 memory file outputs; no other code path writes it.
 - MCP tools rewired to REST: create_entity→POST /wi/{project}, list_work_items→GET /wi/{project}, sync_github_issues→PATCH /wi/{project}, get_file_history→GET /memory/{project}/file-history.
-- Code refactoring: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (485 lines); recursive CTEs bounded at depth 20; N+1 queries replaced with batch operations.
-- Recursive CTE safety: all 6 unbounded CTEs (descendants, tree, approve_all, etc.) capped with depth < 20; token counting uses len(text) // 4 for accuracy.
+- Memory files convergence: both /memory POST (get_project_context) and commit/work-item triggers (render_root_claude_md) use identical DB queries for in_progress items and acceptance_criteria display.
+- Work item embedding refresh: re-embedding occurs only on name/summary/description edits for approved items; NOT triggered for unapproved drafts.
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 
-- [2026-04-27] yes. fix that
 - [2026-04-27] ok. can you fix aall remainig issues as it look small onnes
 - [2026-04-27] ok. no need please fix that all
+- [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 
+- [2026-04-27] ok. fix that
 - [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 

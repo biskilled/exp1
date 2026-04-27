@@ -302,20 +302,20 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Code quality audit: verify all modules <1500 lines, SQL queries optimized (no N+1), recursive CTEs bounded (depth <20), no dead code, method complexity manageable.
-- Memory files convergence: ensure both /memory POST (get_project_context) and commit/work-item trigger (render_root_claude_md) use same DB queries for in_progress items and acceptance_criteria display.
-- Work item embedding refresh: verify re-embedding occurs on name/summary/description edits for approved items only; confirm NOT triggered for unapproved drafts.
-- Prompt consolidation: all 14 LLM calls mapped to YAML keys; validate no inline prompts remain in route code.
-- Performance bottleneck: PROJECT.md load >60s likely due to large commit history or inefficient aggregation; profile get_project_context() queries.
-- MCP tool dispatch completeness: verify all 14 tools route correctly to backend endpoints; confirm create_entity maps category→wi_type.
+- Code quality audit: verify all modules <1500 lines, SQL queries optimized (no N+1), recursive CTEs bounded (depth<20), no dead code, method complexity manageable — all fixes applied in last 5 sessions.
+- Performance bottleneck investigation: PROJECT.md load times >60s likely due to large commit history or inefficient aggregation in get_project_context() queries; _load_context() split into _query_db_into_ctx() and _parse_project_md().
+- Memory file convergence: unified get_project_context() path for both /memory POST and commit/work-item triggers; removed duplicate render paths.
+- Work item re-embedding on edit: approved items now correctly re-embed when name/summary/description changed; unapproved drafts do not re-embed.
+- Token counting accuracy: changed word_count × 1.3 to len(text) // 4 for better Claude token estimation in work item synthesis.
+- Auto-commit-push cycles: integrated with Claude CLI sessions; testing with 15+ commits (ebf898a3 spanning 2026-04-27 02:15–13:25).
 
 ## Key Decisions
 
-- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state. No .ai/, _system/, or .ai/ folders.
+- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state.
 - Memory files (PROJECT.md, CODE.md, CLAUDE.md, cursor/rules, api/) generated ONLY by POST /memory endpoint from project_state.json + database queries; token-limited by project.yaml config. Not copied to projects.
 - backend/memory/memory.yaml is canonical single source for file mapping; templates in backend/memory/templates/; memory.yaml itself is NOT copied to projects (internal logic only).
 - code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit + refreshed post-commit via sync_code_structure().
-- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit.
+- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit with depth<20 bounded recursion.
 - Work Items unified hierarchy: wi_parent_id links features/bugs/tasks to use_case parents; approved items trigger 4-agent pipeline (PM→Architect→Developer→Reviewer) with acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id columns.
 - Approved work items ONLY are embedded (pgvector, 1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
 - JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients→Users→Projects.
@@ -324,8 +324,9 @@ sidebar tabs:
 - Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5, score_importance=5; user must approve to update user_status to 'done'.
 - project_state.json generated ONLY by POST /memory endpoint; drives all 5 memory file outputs; no other code path writes it.
 - MCP tools rewired to REST: create_entity→POST /wi/{project}, list_work_items→GET /wi/{project}, sync_github_issues→PATCH /wi/{project}, get_file_history→GET /memory/{project}/file-history.
-- Code refactoring: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (485 lines); recursive CTEs bounded at depth 20; N+1 queries replaced with batch operations.
-- Recursive CTE safety: all 6 unbounded CTEs (descendants, tree, approve_all, etc.) capped with depth < 20; token counting uses len(text) // 4 for accuracy.
+- Memory files convergence: both /memory POST (get_project_context) and commit/work-item triggers (render_root_claude_md) use identical DB queries for in_progress items and acceptance_criteria display.
+- Work item embedding refresh: re-embedding occurs only on name/summary/description edits for approved items; NOT triggered for unapproved drafts.
+- Date cascade validation: when re-parenting a work item (change wi_parent_id), child due_date must not exceed new parent UC due_date; enforced in _apply_date_rules().
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
