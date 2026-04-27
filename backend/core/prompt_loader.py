@@ -119,7 +119,8 @@ class PromptLoader:
 
         loaded = 0
         for yaml_file in sorted(_PROMPTS_DIR.rglob("*.yaml")):
-            if yaml_file.name == "prompts.yaml":
+            # These files use custom nested formats loaded directly by their callers
+            if yaml_file.name in ("prompts.yaml", "command_work_items.yaml"):
                 continue
             try:
                 data = _yaml.safe_load(yaml_file.read_text())

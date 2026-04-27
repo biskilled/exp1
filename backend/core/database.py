@@ -325,7 +325,7 @@ class _Database:
         - Existing role (matched by client_id + project + name): ALL fields updated from YAML.
         - New role (not yet in DB): inserted fresh from YAML.
 
-        Called after the built-in batch INSERT so YAML values take precedence.
+        YAML is the sole source of truth; DB is the runtime cache.
         Roles are written to project='_global' (shared across all projects/clients).
         """
         import json as _json

@@ -1,235 +1,299 @@
 # aicli Memory System — System Audit
-_Last updated: 2026-04-27 | Goal: shared LLM memory layer — any LLM picks up project context instantly_
+_Last updated: 2026-04-27 | Goal: any LLM can pick up a project instantly — same context, same decisions, same history_
 
 ---
 
-## 1. System Overview — Data Flow
+## 1. Full Trigger Chain (events → DB → files)
 
 ```
-User/Git Actions                Layer 1 Raw Capture (mem_mrr_*)
-─────────────────               ─────────────────────────────────────────────────
-Claude Code stop hook     ────► mem_mrr_prompts   (prompt+response, tags, session_id)
-git push (post-commit)    ────► mem_mrr_commits    (hash, msg, tags, diff_summary)
-                                    │
-                                    └──► [background thread] _extract_commit_code_background()
-                                              ├── mem_mrr_commits_code   (tree-sitter: class/method/file)
-                                              ├── mem_mrr_commits_file_stats  (hotspot_score per file)
-                                              ├── mem_mrr_commits_file_coupling  (co-change pairs)
-                                              ├── _close_items_from_commit()  ← NEW
-                                              │     "fixes BU0012" → score_status=5, user_status='review'
-                                              ├── _post_commit_synthesis()    ← NEW
-                                              │     Haiku synthesis → project_state.json (background)
-                                              └── write_root_files() → code.md + CLAUDE.md + embed
-Manual API only           ────► mem_mrr_items    (documents, meetings) ← EMPTY in practice
-Manual API only           ────► mem_mrr_messages (Slack/chat)          ← EMPTY in practice
+══ GIT PUSH ════════════════════════════════════════════════════════════════
+route_git: POST /git/{project}/commit-push
+  └─ _sync_commit_and_link()
+       ├─ UPSERT mem_mrr_commits (hash, msg, diff_summary, tags)
+       └─ Link to active session prompt (mem_mrr_prompts.session_id)
 
-                 Layer 2 Project Facts (mem_ai_project_facts)
-                 ─────────────────────────────────────────────────────────────────
-POST /memory/{p}          Haiku project_synthesis → project_state.json (key_decisions, tech_stack)
-                          _auto_populate_project_facts() → batch-embed outside DB conn → mem_ai_project_facts
-                          _embed_code_md() → code_structure fact (searchable via MCP search_memory)
+  └─ [background thread] _extract_commit_code_background()
+       ├─ extract_commit_code()                         ← tree-sitter
+       │    ├─ INSERT mem_mrr_commits_code  (per symbol: class/method/file)
+       │    ├─ Haiku call → llm_summary per symbol      ← commit_symbol prompt
+       │    ├─ UPDATE mem_mrr_commits_file_stats        (hotspot_score recompute)
+       │    └─ UPDATE mem_mrr_commits_file_coupling     (co-change pairs)
+       │
+       ├─ _close_items_from_commit()                   ← NEW
+       │    regex "fixes/closes BU0012" →
+       │    UPDATE mem_work_items SET score_status=5, user_status='review'
+       │
+       ├─ _post_commit_synthesis()                     ← NEW (Haiku background)
+       │    reads last 15 commits as history →
+       │    Haiku call → WRITE project_state.json      ← project_synthesis prompt
+       │
+       └─ MemoryFiles.write_root_files()
+            ├─ _load_context()  [DB + PROJECT.md]
+            ├─ WRITE: CLAUDE.md, .cursorrules, code.md, GEMINI.md, AGENTS.md
+            └─ _embed_code_md() → UPDATE mem_ai_project_facts[code_structure]
 
-                 Layer 3 Work Items (mem_work_items)
-                 ─────────────────────────────────────────────────────────────────
-POST /wi/classify         mem_mrr_* (wi_id IS NULL) → Haiku batch → draft items (wi_id=AI0001…)
-User approves in UI       AI0001 → BU0001 + embed + MD file + write_root_files()
-Commit "fixes BU0012"     score_status=5, score_importance=5, user_status='review' ← NEW
+══ CLASSIFY (manual or threshold) ═════════════════════════════════════════
+POST /wi/{project}/classify
+  └─ _ClassifyMixin.classify()
+       ├─ DELETE draft rows (wi_id LIKE 'AI%')
+       ├─ _fetch_pending_events()  ← all 4 mem_mrr_* sources, single query each
+       │    commits: with batch join to commits_code + hotspot_map
+       ├─ _group_events()          ← 3000-token batches
+       ├─ For each batch:
+       │    _load_existing_context() → approved use cases (for dedup)
+       │    _classify_group()     ← Haiku call               ← classification prompt
+       │    _save_classifications() → INSERT mem_work_items (AI0001…)
+       ├─ _update_item_tags()     ← executemany batch
+       └─ _rollup_uc_tags()       ← aggregate children tags to use case
 
-                 Context File Outputs (memory_files.py — deterministic, no LLM)
-                 ─────────────────────────────────────────────────────────────────
-After every commit        write_root_files() → CLAUDE.md, .cursorrules, code.md, GEMINI.md, AGENTS.md
-                          _embed_code_md() → mem_ai_project_facts[code_structure]
-POST /memory              write_all_files() → all files above + provider-specific files
-Session start hook        POST /memory/regenerate?scope=root → write_root_files()
+══ USER APPROVES DRAFT ════════════════════════════════════════════════════
+PUT /wi/{project}/{id}/approve
+  └─ MemoryWorkItems.approve()
+       ├─ SELECT current row (must be AI* prefix)
+       ├─ _generate_wi_id()        → allocate BU0001 / FE0002 / UC0001 etc.
+       ├─ UPDATE mem_work_items SET wi_id=new_id, approved_at=NOW()
+       ├─ Batch UPDATE mem_mrr_prompts/commits/messages/items  ← no longer pending
+       ├─ _embed_work_item()        → embedding stored in mem_work_items.embedding
+       └─ If use_case: approve_all_under() + refresh_md()
+            └─ WRITE documents/use_cases/{slug}.md
+
+══ POST /memory (manual or stop-hook) ════════════════════════════════════
+POST /projects/{project}/memory
+  └─ route_projects.generate_memory()
+       ├─ _synthesize_with_llm()                        ← project_synthesis prompt
+       │    reads last 50 prompts + PROJECT.md + state
+       │    Haiku → WRITE project_state.json
+       │    → tag_suggestion prompt → suggested phase/feature returned to caller
+       ├─ _auto_populate_project_facts()
+       │    Haiku extract → batch embed outside DB → INSERT mem_ai_project_facts
+       └─ MemoryFiles.write_all_files()
+            ├─ All root files + provider files (CLAUDE.md, .cursorrules, code.md…)
+            └─ Feature-specific CLAUDE.md files per approved use case
+
+══ SESSION START (hook) ═══════════════════════════════════════════════════
+check_session_context.sh → POST /memory/regenerate?scope=root
+  └─ MemoryFiles.write_root_files()  [same path as post-commit]
 ```
 
 ---
 
 ## 2. LLM Prompts — Complete Inventory
 
-All prompts live in `backend/prompts/*.yaml`, hot-reloaded by `core/prompt_loader.py`.
-No inline LLM strings remain in Python.
+All prompts are in `backend/prompts/*.yaml`, loaded by `core/prompt_loader.py`.
+No inline LLM strings in Python.
 
-| Prompt Key | File | Model | Trigger | Input → Output |
-|---|---|---|---|---|
-| `project_synthesis` | command_memory.yaml | Haiku 2000tok | POST /memory | history + PROJECT.md + state → project_state.json |
-| `conflict_detection` | command_memory.yaml | Haiku 300tok | POST /memory → MemoryPromotion | old+new fact → resolution type |
-| `tag_suggestion` | misc.yaml | Haiku 100tok | POST /memory | last 5 developer prompts → `{"phase":"…","feature":"…"}` |
-| `feature_auto_detect` | misc.yaml | Haiku 60tok | POST /chat/hook-log | existing features + new prompt → auto-tag session feature |
-| `memory_context_compact` | command_memory.yaml | n/a (preamble) | write_all_files() | — → prepended to .cursorrules, copilot |
-| `memory_context_full` | command_memory.yaml | n/a (preamble) | write_all_files() | — → prepended to CLAUDE.md, GEMINI.md |
-| `memory_context_openai` | command_memory.yaml | n/a (preamble) | write_all_files() | — → prepended to api/system_prompt.md |
-| `commit_analysis` | event_commit.yaml | Haiku | POST /git/commit-store | hash+msg+diff → phase/feature tags + summary |
-| `commit_symbol` | event_commit.yaml | Haiku | extract_commit_code() background | per-symbol diff → llm_summary |
-| `commit_message` | event_commit.yaml | Haiku | POST /git/commit-push | staged diff → generated commit message |
-| `react_pipeline_base` | react_base.yaml | n/a (static) | agent.py startup | — → ReAct system prompt prefix |
-| `react_suffix` | react_base.yaml | n/a (static) | agent.run() | — → shorter ReAct format |
-| _(classify)_ | work_items.yaml | Haiku 4000tok | POST /wi/classify | batched events (~3000 tok/batch) → work item JSON |
-| _(summarise)_ | work_items.yaml | Haiku 2000tok | POST /wi/{id}/summarise | UC name+children → new_summary + reorder |
-| _(reclassify)_ | work_items.yaml | Haiku 120tok | POST /wi/{id}/reclassify | item name/summary/status → wi_type + scores |
+| # | Key | File | Model | Max Tokens | When Triggered | Input → Output |
+|---|-----|------|-------|-----------|----------------|----------------|
+| 1 | `project_synthesis` | command_memory.yaml | Haiku | 2000 | POST /memory | 50 history entries + PROJECT.md + state → `project_state.json` |
+| 2 | `conflict_detection` | command_memory.yaml | Haiku | 300 | POST /memory → MemoryPromotion | old + new fact value → resolution type + merged value |
+| 3 | `tag_suggestion` | misc.yaml | Haiku | 100 | POST /memory | last 5 developer prompts → `{"phase":"…", "feature":"…"}` |
+| 4 | `feature_auto_detect` | misc.yaml | Haiku | 60 | POST /chat/hook-log | existing features + new prompt → auto-tag session |
+| 5 | `memory_context_compact` | command_memory.yaml | n/a (static) | — | write_all_files() | preamble → prepended to .cursorrules, copilot |
+| 6 | `memory_context_full` | command_memory.yaml | n/a (static) | — | write_all_files() | preamble → prepended to CLAUDE.md, GEMINI.md |
+| 7 | `memory_context_openai` | command_memory.yaml | n/a (static) | — | write_all_files() | preamble → OpenAI system_prompt.md |
+| 8 | `commit_analysis` | event_commit.yaml | Haiku | 800 | POST /git/commit-store | hash + msg + diff → phase/feature tags + summary |
+| 9 | `commit_symbol` | event_commit.yaml | Haiku | 120 | extract_commit_code() [background] | per-symbol diff → 1-sentence llm_summary |
+| 10 | `commit_message` | event_commit.yaml | Haiku | 80 | POST /git/commit-push | staged diff → commit message string |
+| 11 | `react_pipeline_base` | react_base.yaml | n/a (static) | — | agent.py startup | system prompt prefix for all pipeline agents |
+| 12 | `react_suffix` | react_base.yaml | n/a (static) | — | agent.run() | shorter ReAct format for non-pipeline mode |
+| 13 | _(classify)_ | work_items.yaml | Haiku | 8000 | POST /wi/classify | batched events (3000 tok/batch) → JSON work item array |
+| 14 | _(summarise)_ | work_items.yaml | Haiku | 2000 | POST /wi/{id}/summarise | UC name + children → new_summary + reorder |
+| 15 | _(reclassify)_ | work_items.yaml | Haiku | 120 | POST /wi/{id}/reclassify | name + summary + status → wi_type + scores |
 
-**Active Haiku call paths**: 6 (project_synthesis, conflict_detection, tag_suggestion, commit_analysis, commit_symbol/message, classify). 3 static preambles (no LLM call).
-
-**Fixed**: `tag_suggestion` was duplicated in `command_memory.yaml` (empty stub) and `misc.yaml` (full prompt). Alphabetical load order → misc.yaml wins. Stub removed from command_memory.yaml.
+**Active Haiku call paths**: 7 (synthesis, conflict, tags, feature-detect, commit-analysis, classify, reclassify)
+**Post-commit**: `commit_symbol` (per symbol, background) + `project_synthesis` (background)
+**Fixed**: `tag_suggestion` was duplicated in command_memory.yaml (stub); stub removed.
 
 ---
 
-## 3. Memory Layers — Current State
+## 3. Memory Layers
 
-### Layer 1: Raw Capture (`mem_mrr_*`)
+```
+Layer 1 — Raw Capture (mem_mrr_*)
+├─ mem_mrr_prompts          prompt+response, session_id, tags JSONB
+│   Populated by: Claude Code stop hook → POST /chat/hook-log
+│   Used by: classify(), project_synthesis(), recent_work section
+│
+├─ mem_mrr_commits          hash, msg, diff_summary, tags, commit_type
+│   Populated by: git post-commit → POST /git/commit-store
+│   Used by: classify(), commit_analysis Haiku, code.md recently-changed
+│
+├─ mem_mrr_commits_code     per-symbol (class/method/file), llm_summary
+│   Populated by: extract_commit_code() [background tree-sitter]
+│   Used by: code.md recently-changed section, classify context (_hotspot_files)
+│
+├─ mem_mrr_commits_file_stats   hotspot_score, bug_commit_count per file
+│   Populated by: extract_commit_code() [background]
+│   Used by: code.md hotspots table, _suggest_hotspot_work_items()
+│
+├─ mem_mrr_commits_file_coupling   co-change pairs count
+│   Populated by: extract_commit_code() [background]
+│   Used by: code.md coupling table, _suggest_decouple_work_items()
+│
+├─ mem_mrr_items            EMPTY in practice — no auto-ingestion path
+│   Populated by: manual POST /items only
+│   Used by: classify() (included in batch but never has rows)
+│
+└─ mem_mrr_messages         EMPTY in practice — no auto-ingestion path
+    Populated by: manual POST /messages only
+    Used by: classify() (included in batch but never has rows)
 
-| Table | Populated By | Frequency | Used For |
-|---|---|---|---|
-| `mem_mrr_prompts` | Claude Code stop hook → POST /chat/hook-log | Every session end | Work item classify source |
-| `mem_mrr_commits` | git post-commit hook → POST /git/commit-store | Every push | Classify + commit_analysis LLM |
-| `mem_mrr_commits_code` | extract_commit_code() [background] | After each commit | code.md hotspots + symbol summaries |
-| `mem_mrr_commits_file_stats` | extract_commit_code() [background] | After each commit | hotspot_score, bug_commit_count |
-| `mem_mrr_commits_file_coupling` | extract_commit_code() [background] | After each commit | co-change coupling detection |
-| `mem_mrr_items` | Manual POST /items | **Never in practice** | Meeting notes / docs — **EMPTY** |
-| `mem_mrr_messages` | Manual POST /messages | **Never in practice** | Slack/chat — **EMPTY** |
+Layer 2 — Durable Facts (mem_ai_project_facts)
+├─ fact_key, fact_value, category (stack/pattern/convention/general/code)
+├─ embedding VECTOR(1536)   ← OpenAI text-embedding-3-small
+├─ valid_until              ← previous facts soft-deleted on /memory refresh
+├─ code_structure fact      ← full code.md snapshot (embedded for semantic search)
+│   Populated by: /memory → _auto_populate_project_facts() [batch embed before DB open]
+│   Also by: write_root_files() → _embed_code_md() after every commit
+│   Used by: MCP search_memory, render_root_claude_md()
+│   Index: idx_mem_ai_pf_pid ON (project_id) WHERE valid_until IS NULL ✓
 
-**Assessment**: prompts + commits are well-captured and auto-tagged. `mem_mrr_items` and `mem_mrr_messages` exist in schema but have no auto-population path — classify context is prompt+commit only.
+Layer 3 — Work Items (mem_work_items)
+├─ Draft items    wi_id='AI0001' → user reviews in UI
+├─ Approved items wi_id='BU0001' → embedded + MD file written
+├─ Rejected items wi_id='REJxxxxxx' → soft deleted
+├─ wi_type: use_case | feature | bug | task | requirement | policy
+├─ user_status (TEXT, m079): open | pending | in-progress | review | blocked | done
+├─ embedding VECTOR(1536)   ← _embed_work_item() includes AC + deliveries
+│   Populated by: classify() → drafts; approve() → real IDs
+│   Used by: MCP search_memory, CLAUDE.md Active Features section
 
-### Layer 2: Project Facts (`mem_ai_project_facts`)
-
-**Structure**: `fact_key`, `fact_value`, `category` (stack/pattern/convention/constraint/general/code), `embedding VECTOR(1536)`, `valid_until`
-
-**Written by**:
-1. POST /memory → `_auto_populate_project_facts()` — batch-embeds outside DB connection (fixed ✓)
-2. `_embed_code_md()` — stores full code.md as `fact_key='code_structure'` for semantic search
-
-**Assessment**: Facts are sparse in practice. The primary LLM context comes from `project_state.json` (written by /memory + NOW ALSO by `_post_commit_synthesis()` after every commit). The `code_structure` fact is the most valuable — makes the full code map searchable via MCP.
-
-### Layer 3: Work Items (`mem_work_items`)
-
-**Lifecycle**: raw event → [classify] → draft (AI0001) → [approve] → approved (BU0001) → [done] → `user_status='done'`
-
-**Approved items embed**: `_embed_work_item()` includes name + wi_type + summary + deliveries + delivery_type + acceptance_criteria (✓).
-**Re-embed trigger**: `approve()` + `update()` when semantic fields change.
-**Markdown file**: Written to `workspace/{project}/documents/use_cases/{slug}.md` on approval.
-**Commit auto-close** ← NEW: `_close_items_from_commit()` regex parses "fixes/closes/resolves BU0012" → score_status=5, score_importance=5, user_status='review'.
+Layer 4 — Context Files (workspace/{project}/memory/)
+├─ CLAUDE.md          deterministic render from DB + PROJECT.md (no LLM)
+├─ .cursorrules       compact variant (~2000 tokens)
+├─ code.md            dir tree + recently-changed symbols + hotspots + coupling
+├─ project_state.json Haiku synthesis output (key_decisions, tech_stack, in_progress)
+└─ documents/use_cases/{slug}.md   per-approved use_case MD file
+    Triggered by: every commit (root files) | /memory (all files) | session start (root)
+```
 
 ---
 
 ## 4. Component Analysis
 
-### 4A. code.md — Well-triggered?
+### 4A. code.md — Well-triggered and complete?
 
-**Content**: Dir tree (depth 3) + recently changed symbols (from mem_mrr_commits_code, last 20) + hotspot files table (score, commits, lines, bugs) + coupling pairs.
+**Content**: ASCII dir tree (depth 3) + recently-changed symbols (last 20 unique) + hotspot files (score/commits/lines/bugs) + coupling pairs.
 
 **Trigger chain**:
 ```
-git push → mem_mrr_commits → [background] extract_commit_code()
-    → mem_mrr_commits_code + file_stats + file_coupling
-    → write_root_files() → code.md written
-        → _embed_code_md() → mem_ai_project_facts[code_structure]
-Session start hook → POST /memory/regenerate?scope=root → write_root_files() (same path)
-POST /memory → write_all_files() (same path)
+git push → extract_commit_code() [background]
+  → mem_mrr_commits_code + file_stats updated
+  → write_root_files() → code.md written
+  → _embed_code_md() → mem_ai_project_facts[code_structure] embedded
+Session start hook → POST /memory/regenerate?scope=root → write_root_files()
+POST /memory → write_all_files() → same path
 ```
 
-**Status**: ✓ Well-triggered. Always current after commit AND embedded for semantic search.
+**Status**: ✓ Well-triggered. code.md is always current after commit AND embedded for semantic search (`search_memory("code structure")` retrieves it).
 
-**Minor gap**: code.md shows *recently changed* symbols + hotspots but not the full public API surface. An LLM knows what's changing, not what everything does.
+**Gap**: code.md shows *recently-changed* symbols only — not the full public API surface. An LLM reading it knows what's changing, not everything that exists.
+
+**Embedding strategy**: Re-embedding the full code.md on every commit (not per-symbol) is the right call — one searchable "code map" chunk is better than thousands of fragmented rows. Symbol-level data stays in `mem_mrr_commits_code` for classification context.
 
 ### 4B. PROJECT.md — Well-maintained?
 
-**Content**: Vision + Core Goals (user-managed) + Conventions + Recent Work + Key Decisions (auto-updated by /memory) + `## Deprecated` section (NEW ✓).
+**Content**: Vision + Core Goals (user-managed) + Conventions + Recent Work + Key Decisions (auto-updated by /memory) + `## Deprecated` section.
 
-**`## Deprecated` mechanism**: User adds phrases under this section. `_load_context()` in memory_files.py parses them; CLAUDE.md and .cursorrules renderers filter matching `key_decisions`. Instant suppression without needing `/memory` run.
+**`## Deprecated` mechanism**: phrases under this section are filtered from `key_decisions` in both CLAUDE.md and .cursorrules renderers. Instant suppression without needing `/memory` run.
 
-**Status**: ✓ Both the `## Deprecated` filter and the Haiku `project_synthesis` prompt ("PROJECT.md is authoritative — replace stale decisions") prevent old architecture from polluting LLM context.
+**Post-commit synthesis** (NEW): `_post_commit_synthesis()` runs Haiku in background after every commit → `project_state.json` stays ≤1 commit stale without manual `/memory`.
 
-**Gap**: Key Decisions come from Haiku synthesis over *prompts* — not direct code reading. They lag behind code changes that haven't been discussed in prompts.
+**Status**: ✓ Three-layer stale-prevention: `## Deprecated` filter + `project_synthesis` "PROJECT.md is authoritative" instruction + post-commit background synthesis.
 
-### 4C. Project Facts (`mem_ai_project_facts`) — Updated and non-duplicate?
+**Gap**: Key Decisions come from Haiku synthesis over *prompts* — not direct code reading. Architecture changes only in code (no prompt discussion) won't appear.
 
-**Upsert strategy**: `valid_until=NOW()` marks old facts stale before inserting new (per category). Key normalization prevents exact duplicates.
+### 4C. Project Facts (`mem_ai_project_facts`) — Updated? Non-duplicate?
 
-**Status**: ✓ Works for explicit `/memory` runs. NOW ALSO updated via `_post_commit_synthesis()` (background after every commit) — project_state.json stays fresh without manual /memory.
+**Upsert strategy**: `valid_until=NOW()` marks old facts stale before inserting new per category. Key normalization (snake_case) prevents exact duplicates.
 
-**Missing index**: `CREATE INDEX ... ON mem_ai_project_facts(project_id, valid_until) WHERE valid_until IS NULL` — currently full table scan per render.
+**Status**: ✓ Facts stay current after every commit (via post-commit synthesis) and after every `/memory` run. `code_structure` fact stores full code.md for MCP search.
+
+**Concern**: facts are sparse in practice — the primary LLM context comes from `project_state.json`, not this table. Facts are most useful for MCP semantic search (`search_memory("auth approach")`).
 
 ### 4D. Approved Work Items — Well-used?
 
-**In CLAUDE.md**: Top 12 approved (non-done), bug-type first. In-progress items shown separately with due dates. Acceptance criteria for use_cases.
+**In CLAUDE.md**: Top 12 approved (non-done), bug-type first. In-progress items with due dates. Acceptance criteria for use_cases.
 
-**Status**: ✓ Well-used. Both human-readable CLAUDE.md section and semantic search embedding are populated with acceptance_criteria included.
+**Embedding**: includes name + wi_type + summary + deliveries + delivery_type + acceptance_criteria. Re-embedded on `approve()` and `update()` when semantic fields change.
 
-### 4E. Unapproved/Draft Work Items — Visibility
+**Commit auto-close** (NEW): `_close_items_from_commit()` — regex parses "fixes/closes/resolves BU0012" from commit message → `score_status=5, score_importance=5, user_status='review'`. Item surfaces prominently in UI for one-click approve.
 
-**Status**: ✓ Correct behavior (confirmed with user). Draft items (wi_id LIKE 'AI%') are NOT shown in CLAUDE.md or embedded — they're user-replaceable noise. Only visible in Work Items UI. Classify purges all AI drafts before regenerating.
+**Status**: ✓ Well-used. Both human-readable CLAUDE.md and semantic search are populated.
 
-### 4F. Architectural Overrides — Stale decisions replaced?
+### 4E. Unapproved/Draft Work Items — Considered?
 
-**Mechanisms** (both active):
-1. `## Deprecated` in PROJECT.md → instant phrase-filter in renderers
-2. `project_synthesis` Haiku prompt → "PROJECT.md is authoritative, replace stale decisions"
-3. `_post_commit_synthesis()` → re-runs synthesis after every commit (NEW ✓)
+**Current state**: Draft items (wi_id LIKE 'AI%') are NOT shown in CLAUDE.md or embedded — by design. They're user-replaceable noise before approval. The classify() run purges all drafts before regenerating, so CLAUDE.md is never polluted.
 
-**Status**: ✓ Three-layer protection against stale architecture in LLM context.
+**Status**: ✓ Correct behavior (confirmed with user). Draft items are only visible in the Work Items UI.
+
+### 4F. Architectural Overrides — Old decisions replaced?
+
+Three mechanisms working together:
+1. `## Deprecated` in PROJECT.md → phrase-filter in renderers (instant)
+2. `project_synthesis` Haiku prompt: "PROJECT.md is authoritative — replace stale decisions"
+3. `_post_commit_synthesis()` re-runs synthesis after every commit
+
+**Status**: ✓ Solid. No manual `/memory` run needed to suppress stale architecture.
 
 ### 4G. CLAUDE.md — Complete and current?
 
-**Sections** (all from DB, deterministic):
-- Key Architectural Decisions ← project_state.json (now updated on every commit ✓)
+All sections rendered deterministically from DB (no LLM at render time):
+- Key Architectural Decisions ← `project_state.json` (now ≤1 commit stale ✓)
 - Project Documentation ← PROJECT.md Vision + Core Goals
-- Code Hotspots ← mem_mrr_commits_file_stats
-- Recently Changed Symbols ← mem_mrr_commits_code
-- Active Features/Work Items ← mem_work_items (approved only, bug-first)
-- In Progress Items with due dates
-- Coding Conventions ← PROJECT.md ## Conventions
-- Tech Stack ← project_state.json
+- Code Hotspots ← `mem_mrr_commits_file_stats` (score ≥ threshold)
+- Recently Changed Symbols ← `mem_mrr_commits_code` (last 20 unique)
+- Active Features/Work Items ← `mem_work_items` (approved only, bug-first)
+- In-Progress Items with due dates
+- Coding Conventions ← PROJECT.md `## Conventions`
+- Tech Stack ← `project_state.json`
 
-**Status**: ✓ Well-structured. Token-budget rolloff (oldest symbols drop first). Key Decisions now always ≤1 commit stale.
+**Status**: ✓ Well-structured. Token-budget rolloff (oldest symbols drop first).
 
 ---
 
 ## 5. Work Item Flows
 
-### Classification Trigger
+### Classification
 ```
-Events piling up in mem_mrr_* (wi_id IS NULL)
-    → Manual: POST /wi/classify
-    → Auto (threshold mode): check_and_trigger() from route_git.py + route_chat.py
-      (prompts: 2000 tokens, commits: 1000, messages: 5000, items: 500)
-    → Haiku batch (3000 tokens/batch) → JSON array of work items
-    → Draft rows: use_cases first (AI0001), children via wi_parent_id
+Events in mem_mrr_* (wi_id IS NULL)
+  → manual POST /wi/classify  OR  auto threshold-trigger from route_git/route_chat
+  → DELETE all AI* draft rows
+  → _fetch_pending_events():
+       prompts:  up to 200 rows, last 90 days
+       commits:  up to 100 rows + batch-joined commits_code symbols + hotspot_map
+       messages: up to 50 rows  (EMPTY — no ingestion path)
+       items:    up to 50 rows  (EMPTY — no ingestion path)
+  → _group_events(): sort chronologically, batch to 3000 tokens
+  → For each batch: Haiku classify → draft mem_work_items
+  → executemany batch-update item tags
 ```
 
 ### Approve Chain
 ```
-User approves in UI
-    → Assign real wi_id (US0001/BU0001/FE0001/TA0001)
-    → batch UPDATE mem_mrr_* SET wi_id=new_id WHERE id = ANY(...)  ← FIXED (was N+1)
-    → _embed_work_item() → VECTOR(1536) stored
-    → _write_md_file() → documents/use_cases/{slug}.md written
-    → write_root_files() → CLAUDE.md refreshed
-```
-
-### Commit → Work Item Auto-Close (NEW)
-```
-git push → commit msg "fixes BU0012" or "closes FE0001"
-    → _close_items_from_commit(project_id, commit_msg)
-        → regex: fix(es|ed)|clos(e|es|ed)|resolv(e|es|ed) + [A-Z]{2}[0-9]{4}
-        → UPDATE mem_work_items SET score_status=5, score_importance=5, user_status='review'
-        → User sees item in 'review' queue with high confidence → one-click approve
+User approves draft in UI
+  → assign real wi_id (BU/FE/UC/TA prefix)
+  → batch UPDATE mem_mrr_* WHERE id = ANY(...) [no N+1 ✓]
+  → _embed_work_item() → VECTOR(1536)
+  → WRITE documents/use_cases/{slug}.md
+  → write_root_files() → CLAUDE.md refreshed
 ```
 
 ### Score System
 | Field | Set By | Meaning |
 |---|---|---|
-| `score_importance` | Haiku at classify time (1-5) | How important this item is |
+| `score_importance` | Haiku at classify time (1-5) | How important |
 | `score_status` | Haiku at classify time (1=not started, 5=done) | LLM-estimated progress |
 | `user_status` | User in UI (authoritative) | `open/pending/in-progress/review/blocked/done` |
 
-`score_status` is supplementary — `user_status` is source of truth for CLAUDE.md and MCP.
+`user_status` is the source of truth for CLAUDE.md and MCP. `score_status` is supplementary.
 
 ### Code Events → Classification Context
-`_ClassifyMixin._fetch_pending_events()` attaches to each commit:
-- `_hotspot_files`: files touched by commit with their hotspot scores
-- `_symbol_summaries`: per-symbol LLM summaries from mem_mrr_commits_code
+Each commit in `_fetch_pending_events()` is enriched with:
+- `_hotspot_files`: files touched by this commit + their hotspot scores (batch-joined)
+- `_symbol_summaries`: per-symbol LLM summaries from `mem_mrr_commits_code` (batch-joined)
 
-These feed the Haiku classify prompt → LLM-aware of which files are changing and what code-level changes mean.
+This gives Haiku awareness of *what* changed and *where* — enabling smarter classification.
 
 ---
 
@@ -237,110 +301,112 @@ These feed the Haiku classify prompt → LLM-aware of which files are changing a
 
 ### What Is Embedded
 
-| Data | Trigger | Table | Searchable Via |
+| Data | When | Table | Searched Via |
 |---|---|---|---|
-| Approved work items | approve() + re-embed on update | mem_work_items.embedding | MCP search_memory + /search/semantic |
-| code.md snapshot | write_root_files() after every commit + /memory | mem_ai_project_facts(code_structure) | MCP search_memory("code structure") |
-| Project facts | POST /memory → batch outside DB conn | mem_ai_project_facts | MCP search_memory(category) |
+| Approved work items | approve() + re-embed on update | `mem_work_items.embedding` | MCP `search_memory` + `/search/semantic` |
+| code.md snapshot | write_root_files() after every commit + /memory | `mem_ai_project_facts[code_structure]` | MCP `search_memory("code structure")` |
+| Project facts | POST /memory → batch outside DB conn | `mem_ai_project_facts` | MCP `search_memory(category)` |
 
-**Not embedded** (correct): raw prompts/commits (noisy), per-symbol diffs (covered by code.md), draft items.
+**Not embedded** (correct): raw prompts/commits (noisy), per-symbol diffs (code.md covers this), draft items.
 
-### MCP Tools (15 registered — sync_github_issues dispatch removed ✓)
+**Embedding strategy**: Re-embedding the full code.md (one chunk) after every commit is correct. Per-symbol embedding would use far more tokens for worse retrieval (fragmented context). An LLM querying `search_memory("router layer")` gets the full code map in one hit.
 
-| Tool | Status | Notes |
+### MCP Tools (15 active)
+
+| Tool | Purpose | Useful? |
 |---|---|---|
-| `search_memory` | ✓ | Cosine similarity over work items + code_structure + facts |
-| `get_project_state` | ✓ | Tech stack, key decisions, in-progress |
-| `get_recent_history` | ✓ | Last N prompts with phase/feature filter |
-| `get_commits` | ✓ | Tagged commits |
-| `get_tagged_context` | ✓ | All events for a phase or feature |
-| `list_work_items` | ✓ | Filter by type, status, `due_date_before` (added ✓) |
-| `get_item_by_number` | ✓ | Full detail for one item |
-| `create_entity` | ✓ | Create unapproved item |
-| `run_work_item_pipeline` | ✓ | Haiku 4-agent summary |
-| `get_hotspots` | ✓ | Direct file churn query |
-| `get_file_history` | ✓ | Per-file symbol changes |
-| `get_session_tags` / `set_session_tags` | ✓ | Phase/feature tracking |
-| `commit_push` | ✓ | Cursor session commits |
-| `get_roles` | ✓ | Agent role definitions |
-| `get_db_schema` | ✓ | Schema reference (static) |
+| `search_memory` | Parallel search work items + code_structure + facts | ✓ Core tool |
+| `get_project_state` | Tech stack, key decisions, in-progress | ✓ Core tool |
+| `list_work_items` | Filter by type/status/`due_date_before` | ✓ Core tool |
+| `get_commits` | Recent commits with tags | ✓ |
+| `get_tagged_context` | All events for a phase or feature | ✓ |
+| `get_session_tags` / `set_session_tags` | Phase/feature tracking | ✓ |
+| `get_item_by_number` | Full detail for one item (BU0001) | ✓ |
+| `create_entity` | Create unapproved work item | ✓ |
+| `run_work_item_pipeline` | Haiku 4-agent summary | ✓ |
+| `get_hotspots` | Direct file churn query | ✓ |
+| `get_file_history` | Per-file symbol changes | ✓ |
+| `commit_push` | Cursor session commits | ✓ |
+| `get_db_schema` | Schema reference (static) | ✓ |
+| `get_roles` | Agent role definitions | ✓ |
+| `get_recent_history` | Last N prompts with filter | ✓ |
 
-### MCP Capability Matrix
+### MCP Capability Matrix (can it answer project questions?)
 
 | Question | Tool | Works? |
 |---|---|---|
-| What are the open bugs? | `list_work_items(category=bug)` | ✓ |
+| What are the open bugs? | `list_work_items(category=bug, status=open)` | ✓ |
 | What is the tech stack? | `get_project_state` | ✓ |
-| What are coding conventions? | `search_memory("conventions")` | ✓ via facts |
+| What are the coding conventions? | `search_memory("conventions")` | ✓ via facts |
 | What is the code structure? | `search_memory("code structure")` | ✓ via code.md embed |
 | What files are hotspots? | `get_hotspots` | ✓ direct |
 | What changed recently? | `get_commits` | ✓ |
-| What items are overdue? | `list_work_items(due_date_before="today")` | ✓ added ✓ |
-| What is in progress? | `get_project_state` or `list_work_items(status=in-progress)` | ✓ |
-| All commits for bug BU0012? | — | ✗ no direct tool |
-| What's the full API surface? | — | ✗ code.md shows recent changes only |
+| What items are overdue? | `list_work_items(due_date_before="today")` | ✓ |
+| What are the main use cases? | `list_work_items(category=use_case)` | ✓ |
+| Class naming policy / prefix rules? | `search_memory("naming convention")` | ⚠ only if in PROJECT.md/facts |
+| Number of open bugs? | `list_work_items(category=bug)` → count | ✓ |
+| Which commits fixed BU0012? | — | ✗ no commit→item lookup tool |
+| Full public API surface? | — | ✗ code.md shows recent changes only |
 
 ---
 
-## 7. Code Quality — Changes Applied This Session
+## 7. Code Quality Summary (All Recent Fixes)
 
-### Fixes Applied
+### Fixes Applied Across This Session
 
 | Fix | File | Before → After |
 |---|---|---|
-| 4 unbounded recursive CTEs | `_wi_markdown.py` (3 CTEs), `memory_work_items.py` (1 CTE) | No depth limit → `AND d.depth < 20` added to all |
-| N+1 UPDATE in approve() | `memory_work_items.py` | 4 per-row loops → 4 `WHERE id = ANY(%s::uuid[])` batch updates |
-| N+1 UPDATE in reject() | `memory_work_items.py` | Same pattern fixed |
-| Commit → item auto-close | `route_git.py` | New `_close_items_from_commit()` via regex |
-| Post-commit synthesis | `route_git.py` | New `_post_commit_synthesis()` keeps project_state.json fresh |
-| MCP dead stub | `server.py` | `sync_github_issues` dispatch branch removed |
-| Duplicate tag_suggestion | `command_memory.yaml` | Stub removed; misc.yaml is canonical |
-| `## Deprecated` section | `memory_files.py` | Phrase-filter in both CLAUDE.md + cursorrules renderers |
-| `due_date_before` filter | `server.py` | Added to `list_work_items` MCP tool |
-
-### 2 CTEs already had depth limits
-
-`memory_work_items.py` lines 286 and 416 (`desc_tree`) already used `AND dt.depth < 10`. Only the 4 `tree`/`descendants` CTEs in `_wi_markdown.py` and `approve_all_under` were unbounded.
-
-### Remaining Quality Notes
-
-| Issue | File | Severity |
-|---|---|---|
-| Missing DB index on project_facts | `mem_ai_project_facts(project_id, valid_until)` | Medium — full table scan per render |
-| Token counting uses `len(text.split()) * 1.3` | `_wi_classify.py:_count_tokens()` | Low — ~10% under-estimate; benign for batching |
-| `memory_work_items.py` still ~1350 lines | CRUD methods dense | Low — mixins extracted; remaining methods are cohesive |
-| N+1 hotspot existence checks | `route_projects.py:_suggest_hotspot_work_items()` | Low — one DB query per hotspot file |
+| 4 unbounded recursive CTEs | `_wi_markdown.py` (3), `memory_work_items.py` (1) | No depth → `AND d.depth < 20` |
+| N+1 UPDATE in approve/reject | `memory_work_items.py` | Per-row loops → batch `ANY(%s::uuid[])` |
+| N+1 hotspot existence checks | `memory_files.py` | Per-file SELECT → batch `WHERE name = ANY(%s)` |
+| N+1 `_update_item_tags` | `_wi_helpers.py` | Per-item execute → `executemany` |
+| N+1 sync_missing_commits | `route_git.py` | Per-commit SELECT → batch `WHERE commit_hash = ANY(%s)` |
+| Token counting | `_wi_helpers.py` | `word_count × 1.3` → `len(text) // 4` |
+| `_load_context()` god function | `memory_files.py` | Split into `_query_db_into_ctx()` + `_parse_project_md()`; PROJECT.md read once (was twice) |
+| Fragile MD parser | `_wi_markdown.py` | Compiled `_ITEM_HEADER_RE` accepts `—`, `–`; `###` also breaks section |
+| Date cascade extraction | `memory_work_items.py` | Inline if-chains → `_apply_date_rules()` helper |
+| MCP search URL | `server.py` | String `f"/search/facts?query={quote(...)}"` → params dict |
+| MCP timeouts hardcoded | `server.py` | 30/60s → env vars `MCP_TIMEOUT_GET` / `MCP_TIMEOUT_POST` |
+| Commit auto-close | `route_git.py` | New `_close_items_from_commit()` |
+| Post-commit synthesis | `route_git.py` | New `_post_commit_synthesis()` |
+| `## Deprecated` suppression | `memory_files.py` | Phrase-filter in CLAUDE.md + cursorrules renderers |
+| `due_date_before` MCP filter | `server.py` | Added to `list_work_items` tool |
+| Duplicate `tag_suggestion` key | `command_memory.yaml` | Stub removed; `misc.yaml` is canonical |
+| Orphaned `_apply_creds_to_remote` | `route_git.py` | Deleted (never called) |
+| Silent embed failures | `_wi_helpers.py`, `memory_work_items.py` | `log.debug` → `log.warning` |
 
 ---
 
 ## 8. What Is Missing (Major Gaps Only)
 
-| # | Gap | Impact | Status |
+| # | Gap | Layer | Impact |
 |---|---|---|---|
-| 1 | `mem_mrr_items` and `mem_mrr_messages` never populated | Medium — non-code decisions invisible to classify | No auto-ingestion path |
-| 2 | Missing DB index on `mem_ai_project_facts` | Medium — full table scan on every /memory render | Not yet added (migration needed) |
-| 3 | No overdue items section in CLAUDE.md | Low — requires MCP call; not auto-surfaced | By design (MCP covers it) |
-| 4 | code.md lacks full API surface | Low — only recent-change symbols shown | Intentional for token budget |
-| 5 | No commit→wi_id lookup tool in MCP | Low — "all commits for BU0012?" not answerable | Not yet implemented |
+| 1 | `mem_mrr_items` and `mem_mrr_messages` never populated — classify has no meeting-note or Slack context | Layer 1 | Medium — non-code decisions invisible to LLM |
+| 2 | No commit→item lookup in MCP — "which commits fixed BU0012?" not answerable | MCP | Low — use `get_commits` + manual filter |
+| 3 | code.md shows recent-change symbols only — full public API surface not visible | Layer 4 | Low — intentional for token budget |
+| 4 | Classification is manual only — no real-time trigger after commit stores events | Layer 3 | Medium — draft items lag behind reality |
+| 5 | `_rollup_uc_tags()` in `_wi_helpers.py` loops over uc_ids with per-UC SELECT+UPDATE | Code | Low — use case count is small in practice |
 
 ---
 
-## 9. Major Improvements Per Component
+## 9. Major Improvements Per Section
 
 ### Memory Files
 | Action | Impact |
 |---|---|
-| Add missing index: `CREATE INDEX ON mem_ai_project_facts(project_id, valid_until) WHERE valid_until IS NULL` | Removes full table scan on every render |
 | Add `## Overdue` section to CLAUDE.md renderer (`due_date < today AND user_status != 'done'`) | LLM immediately aware of missed deadlines |
+| Populate `mem_mrr_items` via GitHub Issues webhook → classify pipeline | Non-code decisions (bugs, feature requests) enter the memory layer automatically |
 
 ### Work Item Flows
 | Action | Impact |
 |---|---|
-| Surface unprocessed event count in CLAUDE.md (e.g. "23 unclassified events — run `/classify`") | LLM and user know when classification is overdue |
-| Add `parent_name` to `list_work_items` MCP response | LLM understands hierarchy without extra calls |
+| Surface unprocessed event count in CLAUDE.md ("23 unclassified events — run /classify") | LLM and user know when classification is overdue |
+| Add `parent_name` to `list_work_items` MCP response | LLM understands hierarchy without extra API calls |
+| Auto-trigger classify after N new commits (not just token threshold) | Draft items stay current without manual trigger |
 
 ### MCP / Embedding
 | Action | Impact |
 |---|---|
-| Add `get_commits_for_item` tool: `GET /git/{p}/commits?wi_id=BU0012` | Closes the "which commits fixed this bug?" gap |
-| Populate `mem_mrr_items` via webhook (GitHub Issues → items) | Non-code decisions enter classify pipeline |
+| Add `get_commits_for_item` tool: `GET /git/{p}/commits?wi_id=BU0012` | Closes "which commits fixed this bug?" gap |
+| Split `server.py:_dispatch()` into tool handler modules (`tools/search.py`, `tools/work_items.py`) | 854-line file is too large; split improves testability |
+| Implement GitHub Issues → `mem_mrr_items` webhook (1 route + 10 lines) | Closes the biggest Layer 1 gap with minimal effort |
