@@ -57,16 +57,19 @@ class _MarkdownMixin:
                     cur.execute(
                         """WITH RECURSIVE descendants AS (
                              SELECT id, wi_id, wi_type, name, summary,
-                                    COALESCE(user_status, score_status, 0) AS eff_status
+                                    COALESCE(user_status, score_status, 0) AS eff_status,
+                                    0 AS depth
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
                                AND deleted_at IS NULL
                            UNION ALL
                              SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary,
-                                    COALESCE(w.user_status, w.score_status, 0)
+                                    COALESCE(w.user_status, w.score_status, 0),
+                                    d.depth + 1
                              FROM mem_work_items w
                              JOIN descendants d ON w.wi_parent_id = d.id
                              WHERE w.project_id=%s AND w.deleted_at IS NULL
+                               AND d.depth < 20
                            )
                            SELECT wi_id, wi_type, name, summary, eff_status
                            FROM descendants
@@ -257,14 +260,16 @@ class _MarkdownMixin:
                     # 3. Load all DB children (non-deleted, non-rejected)
                     cur.execute(
                         """WITH RECURSIVE tree AS (
-                             SELECT id, wi_id, wi_type, name, summary
+                             SELECT id, wi_id, wi_type, name, summary, 0 AS depth
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
                                AND deleted_at IS NULL
                            UNION ALL
-                             SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary
+                             SELECT w.id, w.wi_id, w.wi_type, w.name, w.summary,
+                                    d.depth + 1
                              FROM mem_work_items w JOIN tree d ON w.wi_parent_id = d.id
                              WHERE w.project_id=%s AND w.deleted_at IS NULL
+                               AND d.depth < 20
                            )
                            SELECT id::text, wi_id, wi_type, name, summary
                            FROM tree
@@ -410,14 +415,19 @@ class _MarkdownMixin:
 
                     cur.execute(
                         """WITH RECURSIVE tree AS (
-                             SELECT id, wi_id, name, COALESCE(user_status, score_status, 0) AS eff
+                             SELECT id, wi_id, name,
+                                    COALESCE(user_status, score_status, 0) AS eff,
+                                    0 AS depth
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
                                AND deleted_at IS NULL
                            UNION ALL
-                             SELECT w.id, w.wi_id, w.name, COALESCE(w.user_status, w.score_status, 0)
+                             SELECT w.id, w.wi_id, w.name,
+                                    COALESCE(w.user_status, w.score_status, 0),
+                                    d.depth + 1
                              FROM mem_work_items w JOIN tree d ON w.wi_parent_id = d.id
                              WHERE w.project_id=%s AND w.deleted_at IS NULL
+                               AND d.depth < 20
                            )
                            SELECT name FROM tree
                            WHERE wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%' AND eff < 5

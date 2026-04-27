@@ -725,36 +725,31 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                         (new_wi_id, item_id),
                     )
 
-                    # Mark linked mirror rows (skip invalid IDs)
+                    # Mark linked mirror rows (batch updates — one query per table)
                     mrr = mrr_ids if isinstance(mrr_ids, dict) else {}
-                    for prompt_id in mrr.get("prompts") or []:
-                        if not _UUID_RE.match(str(prompt_id)):
-                            log.debug(f"approve: skipping invalid prompt_id: {prompt_id!r}")
-                            continue
+                    prompt_ids = [p for p in mrr.get("prompts") or [] if _UUID_RE.match(str(p))]
+                    if prompt_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_prompts SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (new_wi_id, prompt_id, pid),
+                            "UPDATE mem_mrr_prompts SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (new_wi_id, prompt_ids, pid),
                         )
-                    for commit_hash in mrr.get("commits") or []:
+                    commit_hashes = mrr.get("commits") or []
+                    if commit_hashes:
                         cur.execute(
-                            "UPDATE mem_mrr_commits SET wi_id=%s WHERE commit_hash=%s AND project_id=%s",
-                            (new_wi_id, commit_hash, pid),
+                            "UPDATE mem_mrr_commits SET wi_id=%s WHERE commit_hash = ANY(%s) AND project_id=%s",
+                            (new_wi_id, commit_hashes, pid),
                         )
-                    for msg_id in mrr.get("messages") or []:
-                        if not _UUID_RE.match(str(msg_id)):
-                            log.debug(f"approve: skipping invalid msg_id: {msg_id!r}")
-                            continue
+                    msg_ids = [m for m in mrr.get("messages") or [] if _UUID_RE.match(str(m))]
+                    if msg_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_messages SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (new_wi_id, msg_id, pid),
+                            "UPDATE mem_mrr_messages SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (new_wi_id, msg_ids, pid),
                         )
-                    for it_id in mrr.get("items") or []:
-                        if not _UUID_RE.match(str(it_id)):
-                            log.debug(f"approve: skipping invalid item_id: {it_id!r}")
-                            continue
+                    item_ids = [i for i in mrr.get("items") or [] if _UUID_RE.match(str(i))]
+                    if item_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_items SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (new_wi_id, it_id, pid),
+                            "UPDATE mem_mrr_items SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (new_wi_id, item_ids, pid),
                         )
 
                 conn.commit()
@@ -804,33 +799,31 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                         "UPDATE mem_work_items SET wi_id=%s, updated_at=NOW() WHERE id=%s::uuid",
                         (rej_id, item_id),
                     )
-                    # Mark linked mirror rows so they aren't re-classified
+                    # Mark linked mirror rows so they aren't re-classified (batch updates)
                     mrr = mrr_ids if isinstance(mrr_ids, dict) else {}
-                    for prompt_id in mrr.get("prompts") or []:
-                        if not _UUID_RE.match(str(prompt_id)):
-                            continue
+                    prompt_ids = [p for p in mrr.get("prompts") or [] if _UUID_RE.match(str(p))]
+                    if prompt_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_prompts SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (rej_id, prompt_id, pid),
+                            "UPDATE mem_mrr_prompts SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (rej_id, prompt_ids, pid),
                         )
-                    for commit_hash in mrr.get("commits") or []:
+                    commit_hashes = mrr.get("commits") or []
+                    if commit_hashes:
                         cur.execute(
-                            "UPDATE mem_mrr_commits SET wi_id=%s WHERE commit_hash=%s AND project_id=%s",
-                            (rej_id, commit_hash, pid),
+                            "UPDATE mem_mrr_commits SET wi_id=%s WHERE commit_hash = ANY(%s) AND project_id=%s",
+                            (rej_id, commit_hashes, pid),
                         )
-                    for msg_id in mrr.get("messages") or []:
-                        if not _UUID_RE.match(str(msg_id)):
-                            continue
+                    msg_ids = [m for m in mrr.get("messages") or [] if _UUID_RE.match(str(m))]
+                    if msg_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_messages SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (rej_id, msg_id, pid),
+                            "UPDATE mem_mrr_messages SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (rej_id, msg_ids, pid),
                         )
-                    for it_id in mrr.get("items") or []:
-                        if not _UUID_RE.match(str(it_id)):
-                            continue
+                    item_ids = [i for i in mrr.get("items") or [] if _UUID_RE.match(str(i))]
+                    if item_ids:
                         cur.execute(
-                            "UPDATE mem_mrr_items SET wi_id=%s WHERE id=%s::uuid AND project_id=%s",
-                            (rej_id, it_id, pid),
+                            "UPDATE mem_mrr_items SET wi_id=%s WHERE id = ANY(%s::uuid[]) AND project_id=%s",
+                            (rej_id, item_ids, pid),
                         )
                 conn.commit()
             return {"wi_id": rej_id, "item_id": item_id}
@@ -1242,15 +1235,16 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                 with conn.cursor() as cur:
                     cur.execute(
                         """WITH RECURSIVE tree AS (
-                             SELECT id::text, wi_id
+                             SELECT id::text, wi_id, 0 AS depth
                              FROM mem_work_items
                              WHERE wi_parent_id=%s::uuid AND project_id=%s
                                AND deleted_at IS NULL
                            UNION ALL
-                             SELECT w.id::text, w.wi_id
+                             SELECT w.id::text, w.wi_id, d.depth + 1
                              FROM mem_work_items w
                              JOIN tree d ON w.wi_parent_id = d.id::uuid
                              WHERE w.project_id=%s AND w.deleted_at IS NULL
+                               AND d.depth < 20
                            )
                            SELECT id FROM tree
                            WHERE wi_id LIKE 'AI%%'""",
