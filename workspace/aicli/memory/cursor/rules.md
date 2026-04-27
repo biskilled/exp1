@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 01:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 01:37 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-27_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-27] Again, please clear all aiCli_memory.md as it is too long and start to explain from scratch all memory mechanism.  for c
 - [2026-04-27] Do the same for work_item - is well sumerrised to use cases, items types (feature, bug, taks) item score (no started- im
 - [2026-04-27] embedding / mcp strategy - the current embedding I know about is approved work items. what about code.md in order to und
 - [2026-04-27] please add the issing LLm methos into the aiCli_memory.md and apply all sujjestion
 - [2026-04-27] I would like to run the last 3 prompts again -  first clear up the aiCli_memory.md file (you can see what you did for th
+- [2026-04-27] can you do all recoomedation ? just to confirm on embed code.md - is it mean you remove the embedding per commit / per f
