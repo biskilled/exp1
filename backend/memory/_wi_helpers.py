@@ -117,8 +117,8 @@ def _get_code_dir(project: str) -> Optional[Path]:
 
 
 def _count_tokens(text: str) -> int:
-    """Rough token estimate: word count × 1.3."""
-    return int(len(text.split()) * 1.3)
+    """Rough token estimate: ~4 chars per token (closer to Claude's actual tokenizer)."""
+    return max(1, len(text) // 4)
 
 
 def _generate_wi_id(cur, project_id: int, wi_type: str) -> str:
@@ -186,24 +186,29 @@ def _update_item_tags(saved_items: list[dict], tag_lookup: dict[str, dict]) -> N
     if not db.is_available() or not saved_items:
         return
     try:
+        # Build all (tags_json, item_id) pairs in Python, then batch-update
+        updates: list[tuple[str, str]] = []
+        for item in saved_items:
+            item_id = item.get("id")
+            if not item_id:
+                continue
+            mrr = item.get("mrr_ids") or {}
+            merged: dict = {}
+            for ref_list in mrr.values():
+                for ref_id in (ref_list or []):
+                    raw_tags = tag_lookup.get(ref_id) or {}
+                    user_tags = {k: v for k, v in raw_tags.items() if k in _USER_TAG_KEYS}
+                    merged = _merge_tags(merged, user_tags)
+            if merged:
+                updates.append((json.dumps(merged), item_id))
+        if not updates:
+            return
         with db.conn() as conn:
             with conn.cursor() as cur:
-                for item in saved_items:
-                    item_id = item.get("id")
-                    if not item_id:
-                        continue
-                    mrr = item.get("mrr_ids") or {}
-                    merged: dict = {}
-                    for ref_list in mrr.values():
-                        for ref_id in (ref_list or []):
-                            raw_tags = tag_lookup.get(ref_id) or {}
-                            user_tags = {k: v for k, v in raw_tags.items() if k in _USER_TAG_KEYS}
-                            merged = _merge_tags(merged, user_tags)
-                    if merged:
-                        cur.execute(
-                            "UPDATE mem_work_items SET tags=%s WHERE id=%s::uuid",
-                            (json.dumps(merged), item_id),
-                        )
+                cur.executemany(
+                    "UPDATE mem_work_items SET tags=%s WHERE id=%s::uuid",
+                    updates,
+                )
             conn.commit()
     except Exception as e:
         log.debug(f"_update_item_tags error: {e}")

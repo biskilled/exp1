@@ -962,7 +962,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                         })
                         result["re_embedded"] = True
                 except Exception as _e:
-                    log.debug(f"update: re-embed skipped for {item_id}: {_e}")
+                    log.warning(f"update: re-embed failed for {item_id} — semantic search may be stale: {_e}")
 
             return result
         except Exception as e:

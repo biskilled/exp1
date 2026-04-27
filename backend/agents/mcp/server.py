@@ -60,22 +60,26 @@ PROJECT = args.project
 
 # ── HTTP helpers ───────────────────────────────────────────────────────────────
 
+_TIMEOUT_GET  = float(os.environ.get("MCP_TIMEOUT_GET",  "30"))
+_TIMEOUT_POST = float(os.environ.get("MCP_TIMEOUT_POST", "120"))
+
+
 async def _get(path: str, params: dict | None = None) -> Any:
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_GET) as client:
         r = await client.get(BACKEND + path, params=params or {})
         r.raise_for_status()
         return r.json()
 
 
 async def _post(path: str, body: dict) -> Any:
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_POST) as client:
         r = await client.post(BACKEND + path, json=body)
         r.raise_for_status()
         return r.json()
 
 
 async def _put(path: str, body: dict) -> Any:
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT_GET) as client:
         r = await client.put(BACKEND + path, json=body)
         r.raise_for_status()
         return r.json()

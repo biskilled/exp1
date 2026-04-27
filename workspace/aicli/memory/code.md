@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 10:54 UTC -->
+<!-- Last updated: 2026-04-27 11:08 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -226,12 +226,12 @@ _Files with highest commit frequency — candidates for refactoring._
 |------|-------|---------|-------|-----------|--------------|
 | `backend/memory/memory_code_parser.py` | 58.9626 | 2 | 788 | 0 | 2026-04-22 |
 | `backend/memory/memory_work_items.py` | 24.0 | 22 | 1337 | 0 | 2026-04-27 |
-| `backend/memory/memory_files.py` | 17.0 | 15 | 1178 | 0 | 2026-04-27 |
+| `backend/memory/memory_files.py` | 18.0 | 16 | 1199 | 0 | 2026-04-27 |
 | `backend/routers/route_projects.py` | 16.0 | 14 | 1821 | 0 | 2026-04-27 |
 | `backend/core/db_migrations.py` | 11.0 | 9 | 3280 | 0 | 2026-04-26 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/agents/mcp/server.py` | 9.0 | 7 | 850 | 0 | 2026-04-27 |
-| `backend/routers/route_git.py` | 7.0 | 5 | 1697 | 0 | 2026-04-27 |
+| `backend/routers/route_git.py` | 8.0 | 6 | 1676 | 0 | 2026-04-27 |
 | `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
 | `backend/routers/route_memory.py` | 5.0 | 3 | 836 | 0 | 2026-04-27 |
 | `backend/routers/route_chat.py` | 5.0 | 3 | 975 | 0 | 2026-04-27 |
@@ -242,14 +242,14 @@ _Files frequently committed together — likely tightly coupled._
 | File A | File B | Co-changes |
 |--------|--------|------------|
 | `backend/memory/memory_work_items.py` | `ui/frontend/views/work_items.js` | 8 |
-| `backend/core/db_migrations.py` | `backend/memory/memory_work_items.py` | 7 |
 | `backend/memory/memory_work_items.py` | `backend/routers/route_work_items.py` | 7 |
+| `backend/core/db_migrations.py` | `backend/memory/memory_work_items.py` | 7 |
 | `backend/memory/memory_files.py` | `backend/routers/route_projects.py` | 7 |
+| `backend/memory/memory_files.py` | `backend/routers/route_git.py` | 5 |
 | `backend/memory/memory_files.py` | `backend/memory/memory_work_items.py` | 5 |
-| `backend/memory/memory_files.py` | `backend/routers/route_git.py` | 4 |
-| `backend/routers/route_work_items.py` | `ui/frontend/views/work_items.js` | 4 |
-| `backend/core/db_migrations.py` | `backend/routers/route_work_items.py` | 4 |
 | `backend/agents/mcp/server.py` | `backend/memory/memory_files.py` | 4 |
+| `backend/core/db_migrations.py` | `backend/routers/route_work_items.py` | 4 |
+| `backend/routers/route_work_items.py` | `ui/frontend/views/work_items.js` | 4 |
 | `backend/agents/mcp/server.py` | `backend/memory/memory_work_items.py` | 4 |
 
 ---

@@ -1447,41 +1447,56 @@ async def sync_missing_commits(project_name: str, background: BackgroundTasks):
     already_known = 0
     latest_hash: str | None = None
 
+    # Parse all lines upfront
+    parsed: list[tuple[str, str, str, str, str]] = []
     for line in lines:
         parts = line.split("\t", 4)
         if len(parts) < 2:
             continue
-        chash = parts[0].strip()
-        commit_msg = parts[1].strip() if len(parts) > 1 else ""
-        author = parts[2].strip() if len(parts) > 2 else ""
-        author_email = parts[3].strip() if len(parts) > 3 else ""
-        committed_at = parts[4].strip() if len(parts) > 4 else ""
+        parsed.append((
+            parts[0].strip(),
+            parts[1].strip() if len(parts) > 1 else "",
+            parts[2].strip() if len(parts) > 2 else "",
+            parts[3].strip() if len(parts) > 3 else "",
+            parts[4].strip() if len(parts) > 4 else "",
+        ))
 
-        # Skip if already stored
+    # Batch check which hashes already exist — one query instead of N
+    all_hashes = [p[0] for p in parsed]
+    known_hashes: set[str] = set()
+    if all_hashes:
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        "SELECT 1 FROM mem_mrr_commits WHERE commit_hash=%s", (chash,)
+                        "SELECT commit_hash FROM mem_mrr_commits WHERE commit_hash = ANY(%s)",
+                        (all_hashes,),
                     )
-                    if cur.fetchone():
-                        already_known += 1
-                        latest_hash = chash
-                        continue
-        except Exception:
-            skipped += 1
+                    known_hashes = {r[0] for r in cur.fetchall()}
+        except Exception as e:
+            log.warning(f"sync-commits: batch check failed: {e}")
+
+    for chash, commit_msg, author, author_email, committed_at in parsed:
+        if chash in known_hashes:
+            already_known += 1
+            latest_hash = chash
             continue
 
         # Get diff stat for this commit (code files only)
         _, diff_raw, _ = _git(["show", "--stat", "--format=", chash], code_dir)
         code_stat, _ = _filter_diff_stat(diff_raw or "")
 
-        ctype = _extract_commit_type(commit_msg)
-        _sync_commit_and_link(
-            project_name, chash, None, commit_msg, committed_at or "",
-            code_stat, author, author_email,
-            summary="", commit_type=ctype, is_external=True,
-        )
+        try:
+            ctype = _extract_commit_type(commit_msg)
+            _sync_commit_and_link(
+                project_name, chash, None, commit_msg, committed_at or "",
+                code_stat, author, author_email,
+                summary="", commit_type=ctype, is_external=True,
+            )
+        except Exception as e:
+            log.warning(f"sync-commits: failed to store {chash[:8]}: {e}")
+            skipped += 1
+            continue
         background.add_task(_extract_commit_code_background, project_name, chash)
         synced += 1
         latest_hash = chash
