@@ -1,33 +1,16 @@
-# aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 15:41 UTC
+<!-- Last updated: 2026-04-27 22:28 UTC -->
+## Project: aicli
 
-# aicli — Shared AI Memory Platform
+## Stack
 
-_Last updated: 2026-04-27_
-
-> **How this file works**
-> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
-> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
->   You can still edit them; `/memory` will merge its output in without discarding your additions.
-> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
-
-## Tech Stack
-
-- **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
-- **frontend**: Vanilla JS + Electron + Vite
-- **ui_components**: xterm.js + Monaco editor + Cytoscape.js
-- **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE
-- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry + 4-agent pipeline (PM→Architect→Developer→Reviewer)
-- **memory_synthesis**: Claude Haiku (project_state.json) + 5 output files with pgvector embeddings for approved work items only
-- **chunking**: Smart: per-class/function (Python/JS/TS) + per-section (Markdown) + per-file (diffs) via tree-sitter
-- **mcp**: Stdio MCP server with 14 tools (search_memory, get_project_state, tags, backlog, create_entity, list_work_items, etc.)
-- **deployment_backend**: Railway (Dockerfile + railway.toml)
-- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **database_migrations**: PostgreSQL with m001-m080 framework (m080 adds 4-agent pipeline columns)
-- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) for per-symbol diffs and hotspot detection
+cli: Python 3.12 + prompt_toolkit + rich
+backend: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
+frontend: Vanilla JS + Electron + Vite
+ui_components: xterm.js + Monaco editor + Cytoscape.js
+storage: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+authentication: JWT (python-jose + bcrypt) + DEV_MODE
+llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node retry + 4-agent pipeline (PM→Architect→Developer→Reviewer)
 
 ## Key Decisions
 
@@ -39,18 +22,19 @@ _Last updated: 2026-04-27_
 - Work item re-embedding: triggered automatically only on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 via regex 'fixes BU0012' pattern.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
 - MCP server: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity→POST /wi/, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, etc.); stdio server in agents/mcp/server.py.
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified interface for all multi-LLM workflows.
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; stored in mem_work_items columns acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id.
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
-- Database optimization: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot existence checks use single WHERE name = ANY(%s); token counting: len(text) // 4.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files (CLAUDE.md, SETTINGS.json, etc.); memory.yaml is internal engine only, not copied to projects.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines.
-- Memory file convergence: unified get_project_context() path for /memory POST and commit/work-item triggers; all 5 output files regenerated from single DB source; _load_context() splits DB queries (_query_db_into_ctx) and PROJECT.md parsing (_parse_project_md) to eliminate double file-read.
 
-## Recent Context (last 5 changes)
+## Active Features (do not break)
 
-- [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 
-- [2026-04-27] items and messeges are not used now - ao it is ok. mem_ai_project_facts suppose to have facts as well. conflict detectio
-- [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 
-- [2026-04-27] I would like to run the last prompt again -  This time please go over on all latest changes (in the last 10-15 prompts) 
-- [2026-04-27] Can i use  the  memory layer in production? did you optimise code as  possilbe, clean unsud data? please answer the foll
+Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
+Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
+MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
+Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
+Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
+
+## In Progress
+
+- Rapid iteration cycle: 15 consecutive git commits in ~9 hours (2026-04-27 13:11–22:28) on session ebf898a3 indicate active refinement of core memory engine or work item pipeline.
+- High-frequency chore commits: pattern suggests automated post-Claude-session hooks (auto_commit_push.sh) are working and firing regularly with minimal commit messages.
+- Likely areas under development: memory synthesis, work item classification, database query optimization, or output file regeneration logic based on commit density.
+
+_Last updated: 2026-04-27 22:28 UTC_
