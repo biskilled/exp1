@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-27 12:26 UTC -->
+<!-- Last updated: 2026-04-27 13:11 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -172,52 +172,48 @@ aicli/
 
 ## Active Work Items
 
-- **[done]** Feature snapshot aggregation layer (mem_ai_feature_snapshot)  _(due 2026-05-02)_
-- **[blocked]** Drag-drop work item linking to tags with instant UI update
-- **[in-progress]** Add tagging to prompts and commits in UI
-- **[pending]** Bidirectional tag sync between prompts and commits
-- **[open]** Prompt/commit auto-tagging suggestion engine
-- **[done]** Graph workflow role selection UI
-- **[done]** Work item parent_id persistence
-- **[done]** Agent roles CRUD backend router
-- **[done]** Add GET /entities/summary endpoint for project state
-- **[done]** Extend MCP server with chat and entity routers
-- **[done]** Enhance /memory command with entity summary context
-- **[done]** Commits phase column population
-- **[done]** Session phase tagging with persistence
-- **[done]** Implement MCP setup for new project creation flow
-- **[done]** Add entity CRUD endpoints and database layer
-- **[done]** Link commits to triggering prompts
-- **[done]** Load tags into memory once on tab open
-- **[done]** Tag-by-source-id endpoint for event linking
-- **[done]** Commit history visibility in session groups
-- **[done]** History view filter bar & tag picker
+- **[pending]** `bug` Work Item UI Category Display Bug  _(due 2026-05-02)_
+- **[open]** `use_case` Work Item Management & Metadata System  _(due 2026-05-02)_
+- **[open]** `use_case` MCP Configuration
+- **[pending]** `task` Verify Hook-Log DB Storage After Migration  _(due 2026-05-02)_
+- **[in-progress]** `task` Audit and clean planner_tags table schema
+
+## Coding Conventions
+
+- **Python style**: Python 3.12+; type hints on all new functions; no `from X import *`
+- **Imports**: stdlib → third-party → local; each group alphabetically sorted
+- **Async**: use `async`/`await` throughout FastAPI routes; no blocking calls in async context
+- **DB access**: always use `db.conn()` context manager (psycopg2 pool); parameterized queries only
+- **Error handling**: log with `log.warning()` for expected errors, `log.exception()` for unexpected; return 422/404 from routes, never 500 for known cases
+- **Naming**: `snake_case` for Python; `camelCase` for JS; `UPPER_SNAKE` for module-level constants
+- **LLM prompts**: all prompts in `backend/prompts/*.yaml`; load via `prompt_loader.prompts.content(key)`; never inline strings
+- **Work items**: `user_status` is TEXT (`open|pending|
 
 ## Recently Changed
 _Last 20 symbol-level changes (class / method / function)._
 
 | Symbol | Change | Commit | Summary |
 |--------|--------|--------|---------|
-| `MemoryFiles.get_top_events` | modified | `b3d2fda3` | The `get_top_events` method now converts database query results into a |
-| `_resolve_user_id` | modified | `b3d2fda3` | The function now handles multiple input types (int, str, or None) and  |
 | `MemoryFiles` | modified | `b3d2fda3` | The MemoryFiles class was updated to include additional fields (event_ |
+| `MemoryFiles.get_top_events` | modified | `b3d2fda3` | The `get_top_events` method now converts database query results into a |
 | `m051_schema_refactor_user_id_updated_at` | modified | `b3d2fda3` | This migration function refactors the database schema to convert user  |
-| `_loadSessions` | modified | `b48376c2` | The `_loadSessions` function was updated to restore the last known ses |
+| `_resolve_user_id` | modified | `b3d2fda3` | The function now handles multiple input types (int, str, or None) and  |
 | `chat_history` | modified | `b48376c2` | The `chat_history` function was modified to fetch a larger set of data |
+| `_loadSessions` | modified | `b48376c2` | The `_loadSessions` function was updated to restore the last known ses |
 | `_normalize_jsonl_entry` | modified | `b4a10441` | This new function normalizes history.jsonl entries to match the databa |
 | `m050_prompts_source_id_index` | modified | `d45c125b` | Added a database migration to create a unique partial index on `mem_mr |
-| `_Database.conn` | modified | `18dc4454` | The `conn` method now validates database connections before returning  |
 | `_Database` | modified | `18dc4454` | The `_Database` class now validates database connections before use by |
+| `_Database.conn` | modified | `18dc4454` | The `conn` method now validates database connections before returning  |
 | `MemoryEmbedding.process_item` | modified | `25e5c306` | The method now includes error handling to catch and log exceptions dur |
 | `MemoryEmbedding` | modified | `25e5c306` | I don't see a diff provided in your message. Could you please share th |
 | `m047_events_is_system` | modified | `ec75b516` | Added a database migration to add an `is_system` BOOLEAN column to the |
 | `_upsert_event` | modified | `ec75b516` |  |
-| `sync_commits` | modified | `ec75b516` |  |
-| `MemoryEmbedding.process_commit_batch` | modified | `ec75b516` | The method now detects and flags commits that only modify system files |
 | `_embed_commits_background` | modified | `ec75b516` | The `_embed_commits_background` function was enhanced to asynchronousl |
 | `_is_system_commit` | modified | `ec75b516` | The function `_is_system_commit` was added to detect auto-generated sy |
-| `generate_snapshot` | modified | `514a4b47` | The `generate_snapshot` function was enhanced with debug logging to tr |
-| `_parse_snapshot_json` | modified | `514a4b47` | The function was enhanced to robustly extract and parse JSON from mark |
+| `sync_commits` | modified | `ec75b516` |  |
+| `MemoryEmbedding.process_commit_batch` | modified | `ec75b516` | The method now detects and flags commits that only modify system files |
+| `_run_promote_all_work_items` | modified | `514a4b47` | The function now tracks execution time using `monotonic()` and passes  |
+| `_call_sonnet` | modified | `514a4b47` |  |
 
 ## Code Hotspots
 _Files with highest commit frequency — candidates for refactoring._
@@ -225,12 +221,12 @@ _Files with highest commit frequency — candidates for refactoring._
 | File | Score | Commits | Lines | Bug Fixes | Last Changed |
 |------|-------|---------|-------|-----------|--------------|
 | `backend/memory/memory_code_parser.py` | 58.9626 | 2 | 788 | 0 | 2026-04-22 |
-| `backend/memory/memory_work_items.py` | 25.0 | 23 | 1337 | 0 | 2026-04-27 |
-| `backend/memory/memory_files.py` | 18.0 | 16 | 1199 | 0 | 2026-04-27 |
+| `backend/memory/memory_work_items.py` | 26.0 | 24 | 1360 | 0 | 2026-04-27 |
+| `backend/memory/memory_files.py` | 19.0 | 17 | 1179 | 0 | 2026-04-27 |
 | `backend/routers/route_projects.py` | 16.0 | 14 | 1821 | 0 | 2026-04-27 |
 | `backend/core/db_migrations.py` | 11.0 | 9 | 3280 | 0 | 2026-04-26 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
-| `backend/agents/mcp/server.py` | 10.0 | 8 | 854 | 0 | 2026-04-27 |
+| `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `backend/routers/route_git.py` | 9.0 | 7 | 1691 | 0 | 2026-04-27 |
 | `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
 | `backend/routers/route_memory.py` | 5.0 | 3 | 836 | 0 | 2026-04-27 |
@@ -245,12 +241,12 @@ _Files frequently committed together — likely tightly coupled._
 | `backend/memory/memory_work_items.py` | `backend/routers/route_work_items.py` | 7 |
 | `backend/memory/memory_files.py` | `backend/routers/route_projects.py` | 7 |
 | `backend/core/db_migrations.py` | `backend/memory/memory_work_items.py` | 7 |
-| `backend/agents/mcp/server.py` | `backend/memory/memory_work_items.py` | 5 |
-| `backend/memory/memory_files.py` | `backend/memory/memory_work_items.py` | 5 |
+| `backend/memory/memory_files.py` | `backend/memory/memory_work_items.py` | 6 |
+| `backend/agents/mcp/server.py` | `backend/memory/memory_work_items.py` | 6 |
+| `backend/agents/mcp/server.py` | `backend/memory/memory_files.py` | 5 |
 | `backend/memory/memory_files.py` | `backend/routers/route_git.py` | 5 |
-| `backend/agents/mcp/server.py` | `backend/memory/memory_files.py` | 4 |
-| `backend/routers/route_work_items.py` | `ui/frontend/views/work_items.js` | 4 |
 | `backend/core/db_migrations.py` | `backend/routers/route_work_items.py` | 4 |
+| `backend/routers/route_work_items.py` | `ui/frontend/views/work_items.js` | 4 |
 
 ---
 _Generated by aicli. Run `/memory` to refresh._
