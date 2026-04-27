@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 13:30 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 13:31 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -30,21 +30,21 @@ _Last updated: 2026-04-27_
 
 ## Key Decisions
 
-- Workspace structure: aicli/cli/{claude,mcp}/ for hooks/configs; aicli/pipelines/{prompts,samples}/ for workflows; aicli/documents/ for project files; aicli/state/ for runtime state.
-- Memory files (PROJECT.md, CODE.md, CLAUDE.md, cursor/rules, api/) generated ONLY by POST /memory endpoint from project_state.json + database queries; token-limited by project.yaml config. Not copied to projects.
-- backend/memory/memory.yaml is canonical single source for file mapping; templates in backend/memory/templates/; memory.yaml itself is NOT copied to projects (internal logic only).
-- code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit + refreshed post-commit via sync_code_structure().
-- mem_mrr_commits_code (19 columns) with is_latest BOOLEAN: per-symbol diffs tracked; replaces separate symbols table; updated per commit with depth<20 bounded recursion.
-- Work Items unified hierarchy: wi_parent_id links features/bugs/tasks to use_case parents; approved items trigger 4-agent pipeline (PM→Architect→Developer→Reviewer) with acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id columns.
-- Approved work items ONLY are embedded (pgvector, 1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
-- JWT authentication: python-jose + bcrypt with DEV_MODE toggle; hierarchical Clients→Users→Projects.
+- Memory architecture: 3 layers — raw captures (mem_mrr_*), structured artifacts (mem_ai_project_facts, mem_work_items), and embeddings (pgvector 1536-dim for approved work items only).
+- Work items: unified hierarchy with wi_parent_id linking features/bugs/tasks to use_case parents; approved items (wi_id: UC/FE/BU/TA) embed and trigger 4-agent pipeline; unapproved drafts (AI prefix) do not embed.
+- Project context generation: ONLY POST /memory endpoint writes project_state.json (from get_project_context DB queries + Haiku synthesis); this drives all 5 memory files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/).
+- File management: backend/memory/memory.yaml is the canonical single source for output file mappings; templates/ holds seed files (_CLAUDE.md, _settings.json, _mcp.json); memory.yaml itself is NOT copied to projects (internal engine only).
+- Code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit via sync_code_structure(); refreshed post-memory via unified get_project_context() path.
+- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ (command_memory.yaml, command_work_items.yaml, event_commit.yaml, event_hook_context.yaml, misc.yaml); naming reflects trigger (command vs event).
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
-- All backend LLM prompts in YAML files under backend/memory/prompts/: command_memory.yaml (/memory), command_work_items.yaml (/wi classify), event_commit.yaml (post-commit), event_hook_context.yaml (hook synthesis), misc.yaml (inline prompts).
+- Embeddings: ONLY approved work items embed (mem_work_items.embedding VECTOR); code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
+- Work item re-embedding: triggered only on name/summary/description edits for approved items; unapproved drafts never re-embed.
 - Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-closes items with score_status=5, score_importance=5; user must approve to update user_status to 'done'.
-- project_state.json generated ONLY by POST /memory endpoint; drives all 5 memory file outputs; no other code path writes it.
-- MCP tools rewired to REST: create_entity→POST /wi/{project}, list_work_items→GET /wi/{project}, sync_github_issues→PATCH /wi/{project}, get_file_history→GET /memory/{project}/file-history.
-- Memory files convergence: both /memory POST (get_project_context) and commit/work-item triggers (render_root_claude_md) use identical DB queries for in_progress items and acceptance_criteria display.
-- Work item embedding refresh: re-embedding occurs only on name/summary/description edits for approved items; NOT triggered for unapproved drafts.
+- MCP tools: 14 tools rewired to REST endpoints (create_entity→POST /wi, list_work_items→GET /wi, sync_github_issues→PATCH /wi, get_file_history→GET /memory/file-history, etc.).
+- Database queries: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot checks use single WHERE name = ANY(%s) instead of per-row existence checks.
+- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines, constants+functions), _wi_classify.py (360 lines, classification), _wi_markdown.py (400 lines, markdown ops), memory_work_items.py (main CRUD, ~1300 lines).
+- Token counting: len(text) // 4 for Claude token estimation (replaces word_count × 1.3) in work item synthesis.
+- JWT auth: hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
 
 ## Recent Context (last 5 changes)
 
