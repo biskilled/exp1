@@ -135,7 +135,7 @@ aicli/                          ← Engine (code)
 │   ├── data/                   ← Runtime data (api_keys.json, pricing.json)
 │   └── prompts/                ← LLM system prompts (YAML — no inline Python strings)
 │       ├── command_memory.yaml     ← /memory: project_synthesis, conflict_detection, tag_suggestion, memory_context_*
-│       ├── command_commits.yaml    ← /git: commit_analysis, commit_symbol, commit_message
+│       ├── event_commit.yaml       ← on git commit: commit_analysis, commit_symbol, commit_message
 │       ├── command_work_items.yaml ← /wi/classify: classification, summarise, categories
 │       └── agent_react.yaml        ← agents: react_pipeline_base, react_suffix
 ├── ui/

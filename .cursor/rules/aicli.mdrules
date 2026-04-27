@@ -1,9 +1,9 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 00:12 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 00:15 UTC
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-04-27_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
@@ -49,8 +49,8 @@ _Last updated: 2026-04-26_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-26] what is create_entity used for ? was it for a use case ?
 - [2026-04-26] Lets fix / remove the create entity - currently entities are build in mem_work_item table. they are mapped as task. feat
 - [2026-04-26] Just to be cleared -The 4 agent pipeline suppose to work on approved open items under an approved use case
 - [2026-04-26] to summerise  1. what are the commands that manage all files strucure (code.md, claude.md. project.md..) and work item u
 - [2026-04-27] I would like to follow the llm prompts under the prompt folder. can you rename command_memory yaml file for all llm prom
+- [2026-04-27] is there is /commit command ? Also you mention code.md is created by command_memory . it is not supposed to update file 

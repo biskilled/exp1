@@ -100,20 +100,20 @@ There is **no `history.jsonl`** — all history is stored in the database (`mem_
 
 2. commit_analysis  [LLM: Claude Sonnet — called once per commit]
    Input:  git diff of the commit
-   Prompt: command_commits.yaml → key: commit_analysis
+   Prompt: event_commit.yaml → key: commit_analysis
    Output: JSON (message, summary, key_classes, patterns, decisions)
    Written to: mem_mrr_commits.diff_summary
 
 3. commit_message  [LLM: Claude Haiku — if no message provided]
    Input:  changed files list + diff summary
-   Prompt: command_commits.yaml → key: commit_message
+   Prompt: event_commit.yaml → key: commit_message
    Output: short git commit message string
 
 4. Background (after response returned):
    extract_commit_code() → memory_code_parser.py
      commit_symbol  [LLM: Claude Haiku — once per changed symbol]
        Input:  single class/method/function diff
-       Prompt: command_commits.yaml → key: commit_symbol
+       Prompt: event_commit.yaml → key: commit_symbol
        Output: 1-sentence summary
        Written to: mem_mrr_commits_code.llm_summary
      File stats → mem_mrr_commits_file_stats (hotspot_score, bug_commit_count)

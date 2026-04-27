@@ -1,4 +1,4 @@
-# command_commits.yaml — All LLM prompts used when processing git commits.
+# event_commit.yaml — All LLM prompts triggered by a git commit event.
 #
 # ── WHEN COMMITS ARE PROCESSED ───────────────────────────────────────────────
 #
