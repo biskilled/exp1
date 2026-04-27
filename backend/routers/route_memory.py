@@ -154,26 +154,6 @@ def _record_pipeline_run(project_id: int, stage: str) -> None:
         log.debug(f"_record_pipeline_run({stage}) error: {e}")
 
 
-async def _call_haiku(system_prompt: str, user_message: str, max_tokens: int = 600) -> str:
-    try:
-        from data.dl_api_keys import get_key
-        api_key = get_key("claude") or get_key("anthropic")
-        if not api_key:
-            return ""
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        resp = await client.messages.create(
-            model=getattr(settings, "claude_haiku_model", "claude-haiku-4-5-20251001"),
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        return resp.content[0].text if resp.content else ""
-    except Exception as e:
-        log.warning(f"_call_haiku error: {e}")
-        return ""
-
-
 def _parse_json(text: str) -> dict:
     clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`")
     m = re.search(r"\{[\s\S]*\}", clean)

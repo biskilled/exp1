@@ -48,7 +48,8 @@ _SQL_FACTS = """
 """
 
 _SQL_ACTIVE_WORK_ITEMS = """
-    SELECT wi_id, name, wi_type, user_status, due_date
+    SELECT wi_id, name, wi_type, user_status, due_date,
+           LEFT(COALESCE(summary, ''), 100)
     FROM mem_work_items
     WHERE project_id = %s
       AND wi_type IN ('use_case', 'feature', 'bug', 'task')
@@ -232,15 +233,17 @@ class MemoryFiles:
 
                     # Active work items (use_case/feature — drives "Active Features" section)
                     cur.execute(_SQL_ACTIVE_WORK_ITEMS, (project_id,))
-                    for wi_id, wi_name, wi_type, user_status, due_date in cur.fetchall():
+                    for wi_id, wi_name, wi_type, user_status, due_date, summary in cur.fetchall():
                         status_label = (
                             _WI_STATUS_LABELS.get(user_status, "open")
                             if user_status is not None else "open"
                         )
                         ctx["active_tags"].append({
                             "name":        wi_name,
+                            "wi_id":       wi_id or "",
+                            "wi_type":     wi_type or "",
                             "status":      status_label,
-                            "description": "",
+                            "description": (summary or "").strip(),
                             "due_date":    due_date.isoformat() if due_date else None,
                         })
 
@@ -375,7 +378,10 @@ class MemoryFiles:
         max_tokens = mem_cfg.get("claude_md_max_tokens", 8000)
         max_recent = mem_cfg.get("recent_work_max_entries", 30)
 
-        lines = [f"<!-- Last updated: {ts} -->", f"# {project}", ""]
+        # Context age — show when project_state.json was last synced
+        state_last_run = state_data.get("last_memory_run") or state_data.get("last_updated", "")
+        age_note = f" | Memory synced: {state_last_run[:10]}" if state_last_run else ""
+        lines = [f"<!-- Last updated: {ts} -->", f"# {project}", f"_{ts}{age_note}_", ""]
 
         # Project summary (from PROJECT.md)
         if ctx.get("project_summary"):
@@ -419,7 +425,8 @@ class MemoryFiles:
             for tag in ctx["active_tags"][:12]:
                 due = f" (due {tag['due_date']})" if tag.get("due_date") else ""
                 desc = f" — {tag['description']}" if tag.get("description") else ""
-                lines.append(f"- `{tag['name']}` [{tag['status']}]{desc}{due}")
+                wi_id_part = f"`{tag['wi_id']}` " if tag.get("wi_id") else ""
+                lines.append(f"- {wi_id_part}`{tag['name']}` [{tag['status']}]{desc}{due}")
             lines.append("")
 
         # Code Hotspots

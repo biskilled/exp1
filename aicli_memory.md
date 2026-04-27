@@ -9,10 +9,11 @@ _Last updated: 2026-04-27_
 | Command | Trigger | LLM | Output |
 |---------|---------|-----|--------|
 | `/memory` | Manual or Stop hook | Haiku (project_synthesis) | Writes all context files from project_state.json + DB |
-| `/push` | Manual or Stop hook | Sonnet (commit_analysis) + Haiku (commit_message, commit_symbol×N) | Stores commit in DB; updates code.md in background |
+| `/push` | Manual or Stop hook | Sonnet (commit_analysis) + Haiku (commit_message, commit_symbol×N) | Stores commit in DB; refreshes all root context files in background |
 | `/wi classify` | Manual (or threshold, opt-in) | Haiku (classification) | Creates draft work items in mem_work_items |
 | `/wi approve` | Manual (UI click) | OpenAI text-embedding-3-small | Assigns real ID, computes embedding |
 | `/wi pipeline` | Manual (MCP or API) | Sonnet ×4 (PM→Arch→Dev→Review) | Writes acceptance_criteria + implementation_plan to item |
+| `/wi reclassify <id>` | Manual | Haiku (120 tok) | Re-runs classification on existing item text; refreshes wi_type + scores |
 | `/search` | Manual | — (pgvector cosine) | Returns similar work items |
 | `/embed` | Manual | OpenAI text-embedding-3-small | Embeds unapproved items for search |
 | Session start hook | Auto (Claude Code Start) | — | Refreshes CLAUDE.md from cached project_state.json |
@@ -216,27 +217,27 @@ No code, no facts, no commit history in search results.
 
 | Method | File | Trigger | LLM | Input → Output |
 |--------|------|---------|-----|----------------|
-| `_haiku()` (symbol summary) | `memory/memory_code_parser.py:741` | Auto, background after every commit | Haiku (120 tok) | Changed symbol diff ≤1000 chars → description stored in `mem_mrr_commits_code.llm_summary` |
-| `_suggest_feature_tag()` | `routers/route_chat.py:395` | Auto, on every developer chat prompt | Haiku (60 tok) | 30 feature names + first 400 chars of prompt → `{"feature": "name"}` → updates `mng_session_tags` |
-| `ai_summarise_uc()` | `memory/memory_work_items.py:1394` | Manual — `POST /wi/{project}/{id}/summarise` | Haiku (2000 tok) | Use case + all child items → rewrites summary + re-orders children |
-| `_call_haiku()` in route_memory.py | `routers/route_memory.py:157` | **Never called** — dead code | — | — |
+| `_haiku()` (symbol summary) | `memory/memory_code_parser.py:741` | Auto, background after every commit | Haiku (120 tok) | Changed symbol diff ≤1000 chars → 1-sentence description → `mem_mrr_commits_code.llm_summary` |
+| `_auto_detect_session_feature()` | `routers/route_chat.py` | Auto, on the **first** user message of a session | Haiku (60 tok) | Up to 30 feature names + first 400 chars of prompt → `{"feature": "name"}` → updates `mng_session_tags` |
+| `ai_summarise_uc()` | `memory/memory_work_items.py:1366` | Manual — `POST /wi/{project}/{id}/ai-summarise` | Haiku (2000 tok) | Use case name + all child items → rewrites summary + re-orders children |
+| `reclassify()` *(new)* | `memory/memory_work_items.py` | Manual — `POST /wi/{project}/{id}/reclassify` | Haiku (120 tok) | Item name + summary + deliveries → updated wi_type + score_importance + score_status |
+| `_classify_group()` | `memory/memory_work_items.py:708` | Via `classify()` → `/wi classify` | Haiku (8000 tok) | Batch of raw mem_mrr_* events → flat JSON array of draft work items |
 
 ---
 
-## Suggestions
+## Applied Changes (2026-04-27)
 
-### Improve file updates
-- **Render age into CLAUDE.md** — show `project_state.json` `last_updated` date so LLMs know how stale context is.
-- **Auto-regenerate on commit** — `write_root_files()` currently only runs on `/memory`; trigger it after each commit so hotspot section stays current (already partly done via `write_code_md()`).
-- **Include `summary` in active items** — CLAUDE.md active features show only `wi_id + name`; adding one-line summary would give LLMs actionable context.
+| # | Suggestion | Applied | File |
+|---|-----------|---------|------|
+| 1 | Render context age into CLAUDE.md | ✓ | `memory_files.py` — header shows `Memory synced: YYYY-MM-DD` |
+| 2 | Auto-regenerate all root files on commit | ✓ | `route_git.py` — `write_root_files()` replaces `write_code_md()` after commit |
+| 3 | Include `summary` + `wi_id` in CLAUDE.md active items | ✓ | `memory_files.py` — SQL adds `summary`; renderer shows wi_id + desc |
+| 4 | `/wi reclassify <id>` endpoint | ✓ | `memory_work_items.py:reclassify()` + `route_work_items.py` |
+| 5 | `score_status` auto-sync on done | ✓ | `memory_work_items.py:update()` — sets `score_status=5` when `user_status='done'` |
+| 6 | Move `feature_auto_detect` prompt to YAML | ✓ | `backend/prompts/misc.yaml` + `route_chat.py` uses `prompts.content()` |
+| 7 | Remove dead `_call_haiku` in `route_memory.py` | ✓ | Deleted (was defined but never called) |
 
-### Improve work items
-- **`/wi reclassify <id>`** — re-run Haiku classification on a single item when its summary drifts from the original events.
-- **`score_status` auto-sync** — when user sets `user_status = 'done'`, automatically set `score_status = 5`; reduces divergence between the two fields.
-- **Link new events to approved items** — `mrr_ids` is only populated at approve time; edits and new commits related to the same feature are never linked back.
-
-### Improve MCP / embedding / methods
-- **Embed `mem_mrr_commits.diff_summary`** — would let `search_memory` return relevant commits alongside work items.
-- **Embed code symbols** — store `mem_mrr_commits_code.llm_summary` embeddings; enable code-aware search (`"how does auth work?"`).
-- **Move `_suggest_feature_tag` prompt to `misc.yaml`** — currently an inline string in `route_chat.py`; should be configurable like all other prompts.
-- **Remove dead `_call_haiku` in `route_memory.py`** — defined but never called; adds noise.
+### Remaining (require schema changes)
+- **Embed `mem_mrr_commits.diff_summary`** — needs `VECTOR(1536)` column on `mem_mrr_commits` + migration + background embed task.
+- **Embed code symbols** — needs `VECTOR(1536)` on `mem_mrr_commits_code` + migration + embed-after-commit step.
+- **Link new events to approved items** — `mrr_ids` only populated at approve time; would need background re-linking after classify runs.

@@ -230,9 +230,9 @@ def _extract_commit_code_background(project: str, commit_hash: str) -> None:
         from memory.memory_code_parser import extract_commit_code
         loop.run_until_complete(extract_commit_code(project, commit_hash))
         _finish_run(run_id, "ok", 1, 1, t0)
-        # Refresh code.md with updated hotspot scores (no LLM, fast)
+        # Refresh all root context files (CLAUDE.md, .cursorrules, code.md, etc.)
         from memory.memory_files import MemoryFiles
-        MemoryFiles().write_code_md(project)
+        MemoryFiles().write_root_files(project)
     except Exception as e:
         log.debug(f"_extract_commit_code_background error ({commit_hash[:8]}): {e}")
         _finish_run(run_id, "error", 1, 0, t0, str(e))

@@ -25,6 +25,7 @@ from agents.providers.pr_pricing import load_pricing, calculate_cost, can_user_a
 from agents.providers import call_claude, call_deepseek, call_gemini, call_grok
 from routers.route_usage import log_usage
 from memory.memory_sessions import SessionStore
+from core.prompt_loader import prompts as _prompts
 
 # ── SQL ─────────────────────────────────────────────────────────────────────────
 
@@ -384,19 +385,20 @@ async def _auto_detect_session_feature(
 
         import anthropic
         feat_list = ", ".join(f'"{f}"' for f in features[:30])
-        prompt = (
+        _system = _prompts.content("feature_auto_detect") or (
+            'You are a feature classifier. Return ONLY valid JSON: '
+            '{"feature": "exact-feature-name"} or {"feature": null}.'
+        )
+        _user = (
             f"Existing features: [{feat_list}]\n\n"
-            f"New developer prompt:\n{user_msg[:400]}\n\n"
-            'Does this prompt clearly relate to one of the existing features? '
-            'If yes, return {"feature": "exact-feature-name"}. '
-            'If not a confident match, return {"feature": null}. '
-            'Return ONLY valid JSON, nothing else.'
+            f"New developer prompt:\n{user_msg[:400]}"
         )
         client = anthropic.AsyncAnthropic(api_key=key)
         resp = await client.messages.create(
             model=settings.haiku_model,
             max_tokens=60,
-            messages=[{"role": "user", "content": prompt}],
+            system=_system,
+            messages=[{"role": "user", "content": _user}],
         )
         text = (resp.content[0].text if resp.content else "").strip()
         import re as _re

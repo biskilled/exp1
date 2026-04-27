@@ -1682,6 +1682,10 @@ class MemoryWorkItems:
             return {"error": "no valid fields"}
         if not db.is_available():
             return {"error": "db not available"}
+
+        # score_status auto-sync: mark as fully complete when user marks done
+        if updates.get("user_status") == "done" and "score_status" not in updates:
+            updates["score_status"] = 5
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
@@ -1791,6 +1795,72 @@ class MemoryWorkItems:
         except Exception as e:
             log.warning(f"update({item_id}) error: {e}")
             return {"error": str(e)}
+
+    async def reclassify(self, item_id: str, pid: int) -> dict:
+        """Re-run Haiku classification on an existing item's current text.
+
+        Useful when summary has drifted from its original events — refreshes
+        wi_type, score_importance, and score_status without touching user_status.
+        Returns the updated fields.
+        """
+        if not db.is_available():
+            return {"error": "db not available"}
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name, wi_type, summary, deliveries, delivery_type, approved_at "
+                        "FROM mem_work_items WHERE id=%s::uuid AND project_id=%s AND deleted_at IS NULL",
+                        (item_id, pid),
+                    )
+                    row = cur.fetchone()
+            if not row:
+                return {"error": "item not found"}
+            name, wi_type, summary, deliveries, delivery_type, approved_at = row
+        except Exception as e:
+            return {"error": str(e)}
+
+        system = (
+            "You are a work item classifier for a software project. "
+            "Given an existing work item, re-classify it and return ONLY valid JSON with these fields:\n"
+            '{"wi_type": "use_case|feature|bug|task|requirement", '
+            '"score_importance": 0-5, "score_status": 0-5}\n\n'
+            "score_importance: 0=trivial, 5=critical/blocking\n"
+            "score_status: 0=not started, 5=fully done\n"
+            "Return no other text."
+        )
+        user_msg = (
+            f"Name: {name or ''}\n"
+            f"Current type: {wi_type or ''}\n"
+            f"Summary: {(summary or '')[:500]}\n"
+            f"Deliveries: {(deliveries or '')[:300]}"
+        )
+        raw = await _call_haiku(system, user_msg, max_tokens=120)
+        if not raw:
+            return {"error": "AI returned empty response"}
+        try:
+            import re as _re
+            cleaned = _re.sub(r"```[a-z]*\n?", "", raw.strip()).strip().rstrip("`")
+            m = _re.search(r"\{.*?\}", cleaned, _re.DOTALL)
+            parsed = json.loads(m.group()) if m else {}
+        except Exception:
+            return {"error": f"AI returned invalid JSON: {raw[:200]}"}
+
+        new_wi_type      = parsed.get("wi_type", wi_type)
+        new_importance   = parsed.get("score_importance")
+        new_score_status = parsed.get("score_status")
+
+        valid_types = {"use_case", "feature", "bug", "task", "requirement"}
+        if new_wi_type not in valid_types:
+            new_wi_type = wi_type
+
+        fields: dict = {"wi_type": new_wi_type}
+        if new_importance is not None:
+            fields["score_importance"] = int(new_importance)
+        if new_score_status is not None:
+            fields["score_status"] = int(new_score_status)
+
+        return self.update(item_id, pid, fields)
 
     def merge(self, source_id: str, target_id: str, pid: int) -> dict:
         """Merge source item into target: append source summary, soft-delete source.

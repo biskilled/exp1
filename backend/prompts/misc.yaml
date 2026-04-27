@@ -1,0 +1,26 @@
+# misc.yaml — Miscellaneous one-off LLM prompts loaded via prompt_loader.
+#
+# All keys loaded at startup by core/prompt_loader.py (list format, key field).
+# Access: from core.prompt_loader import prompts; prompts.content("key_name")
+
+- key: tag_suggestion
+  name: Tag Suggestion
+  description: "Haiku suggests phase + feature session tags based on recent prompts"
+  model: haiku
+  max_tokens: 100
+  system: |
+    You are a tagging assistant for a software project.
+    Given recent developer prompts, suggest the most appropriate session tags.
+    Return ONLY valid JSON: {"phase": "development|testing|review|bugfix|discovery|production|maintenance", "feature": "feature-name-or-null"}
+    Use null if you are not confident. Return no other text.
+
+- key: feature_auto_detect
+  name: Feature Auto-Detection
+  description: "Haiku detects which existing feature a new developer prompt relates to"
+  model: haiku
+  max_tokens: 60
+  system: |
+    You are a feature classifier. Given a list of existing features and a new developer
+    prompt, determine if the prompt clearly relates to one of the existing features.
+    Return ONLY valid JSON: {"feature": "exact-feature-name"} or {"feature": null}.
+    Only return a feature name when you are confident. Return no other text.

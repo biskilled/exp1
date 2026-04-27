@@ -22,6 +22,7 @@ Endpoints:
     GET   /wi/{project}/{id}/md          — get Markdown for use_case
     POST  /wi/{project}/{id}/md          — save Markdown back to DB + file
     POST  /wi/{project}/{id}/md/refresh  — regenerate Markdown from DB
+    POST  /wi/{project}/{id}/reclassify  — re-run Haiku classification on existing item
 """
 from __future__ import annotations
 
@@ -394,6 +395,21 @@ async def ai_summarise_uc(project: str, uc_id: str):
     result = await wi.ai_summarise_uc(uc_id, pid)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@router.post("/{project}/{item_id}/reclassify")
+async def reclassify_item(project: str, item_id: str):
+    """Re-run Haiku classification on an existing item's current text.
+
+    Refreshes wi_type, score_importance, score_status without changing user_status.
+    Useful when an item's summary has drifted from its original events.
+    """
+    pid    = _pid(project)
+    wi     = _wi(project)
+    result = await wi.reclassify(item_id, pid)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
     return result
 
 
