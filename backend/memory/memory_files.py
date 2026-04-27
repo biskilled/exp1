@@ -862,6 +862,22 @@ class MemoryFiles:
 
     # ── Writers ───────────────────────────────────────────────────────────────
 
+    def write_code_md(self, project: str) -> bool:
+        """Regenerate code.md only — called after each commit to keep hotspots current.
+
+        Cheaper than write_root_files() — reads fresh hotspot/coupling data from DB
+        and rewrites just the one file. Returns True if written successfully.
+        """
+        try:
+            ctx = self._load_context(project)
+            dest = pp.code_md_path(project)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(self._render_code_md(ctx), encoding="utf-8")
+            return True
+        except Exception as e:
+            log.warning(f"write_code_md({project}): {e}")
+            return False
+
     def write_root_files(self, project: str, suggest_hotspots: bool = False) -> list[str]:
         """
         Render and write all root-level context files.

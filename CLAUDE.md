@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-26 23:48 UTC -->
+<!-- Last updated: 2026-04-27 00:12 UTC -->
 # Role: Developer — aicli
 
 You are working on **aicli**.
@@ -27,7 +27,7 @@ You are working on **aicli**.
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-04-27_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
@@ -69,22 +69,22 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ```
 Layer 1 — Raw Capture (mem_mrr_*)
-  ├── mem_mrr_prompts        raw prompt/response pairs (session-tagged)
+  ├── mem_mrr_prompts        raw prompt/response pairs (session-tagged, all in DB)
   ├── mem_mrr_commits        git commits (hash, msg, tags, diff_summary)
   ├── mem_mrr_commits_code   per-symbol diffs (tree-sitter: class, method, file)
+  ├── mem_mrr_commits_file_stats   hotspot scores per file
+  ├── mem_mrr_commits_file_coupling  co-change pairs
   ├── mem_mrr_items          document/meeting items
   └── mem_mrr_messages       Slack/chat messages
 
-Layer 2 — AI Events (mem_ai_events)
-  Haiku digest + OpenAI embedding (text-embedding-3-small, 1536-dim)
-  event_type: prompt_batch | commit | session_summary | item | workflow
-  source_id: batch_{hash8}_{tagfp8} for commits; last prompt UUID for prompt batches
-  Tags: only user-intent {phase, feature, bug, source} stored
+Layer 2 — Structured Artifacts (mem_ai_project_facts)
+  Durable facts extracted by /memory → project_state.json
+  ("uses pgvector", "auth is JWT") — updated by project_synthesis Haiku call
 
-Layer 3 — Structured Artifacts (mem_ai_project_facts)
-  Durable facts ("uses pgvector", "auth is JWT")
-
-Layer 4 — Work Items (mem_work_items)
+Layer 3 — Work Items (mem_work_items)
+  AI-classified + user-reviewed: wi_type (use_case/feature/bug/task/requirement)
+  user_status TEXT: open → pending → in-progress → review → done
+  wi_id: AI0001 (draft) → UC0001/FE0001/BU0001/TA0001 (approved)
 
 
 *See PROJECT.md for full documentation (314 lines total)*
@@ -104,7 +104,7 @@ Layer 4 — Work Items (mem_work_items)
 
 - `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
 - `backend/memory/memory_work_items.py` — score 17.0 (15 commits, 2570 lines)
-- `backend/routers/route_projects.py` — score 11.0 (9 commits, 1681 lines)
+- `backend/routers/route_projects.py` — score 12.0 (10 commits, 1681 lines)
 - `backend/core/db_migrations.py` — score 11.0 (9 commits, 3280 lines)
 - `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
 - `backend/memory/memory_files.py` — score 10.0 (8 commits, 991 lines)

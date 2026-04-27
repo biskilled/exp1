@@ -27,7 +27,7 @@ There is **no `history.jsonl`** — all history is stored in the database (`mem_
 | Command | Endpoint | LLM? | What it does |
 |---------|----------|------|--------------|
 | `/memory` | `POST /projects/{p}/memory` | ✓ Haiku | Synthesise project state → write all context files |
-| `/push` | `POST /git/{p}/commit-push` | ✓ Haiku+Sonnet | Commit + push; extract code symbols in background |
+| `/push` | `POST /git/{p}/commit-push` | ✓ Haiku+Sonnet | Commit + push; extract code symbols + refresh code.md in background |
 | `/wi classify` | `POST /wi/{p}/classify` | ✓ Haiku | Classify unprocessed events into work items |
 | `/wi approve` | `POST /wi/{p}/{id}/approve` | ✓ OpenAI | Assign real ID + compute embedding |
 | `/wi pipeline` | `POST /wi/{p}/{id}/run-pipeline` | ✓ Sonnet×4 | Run 4-agent PM→Arch→Dev→Review pipeline |
@@ -118,6 +118,8 @@ There is **no `history.jsonl`** — all history is stored in the database (`mem_
        Written to: mem_mrr_commits_code.llm_summary
      File stats → mem_mrr_commits_file_stats (hotspot_score, bug_commit_count)
      File coupling → mem_mrr_commits_file_coupling (co_change_count)
+   write_code_md()  [NO LLM — reads fresh hotspot data from DB]
+     Rewrites workspace/{project}/memory/code.md immediately after symbol extraction
 ```
 
 ---
