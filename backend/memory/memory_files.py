@@ -352,18 +352,25 @@ class MemoryFiles:
         except Exception:
             pass
 
-        # Coding conventions — read from PROJECT.md ## Conventions or ## Coding Standards section
+        # Coding conventions + Deprecated section — read from PROJECT.md
         try:
             proj_md_path = self._workspace() / project / "memory" / "PROJECT.md"
             if proj_md_path.exists():
                 _md = proj_md_path.read_text(encoding="utf-8")
                 _conv_wanted = {"Conventions", "Coding Standards", "Coding Conventions", "Development Standards"}
+                deprecated_phrases: list[str] = []
                 for _section in _md.split("\n## ")[1:]:
                     _heading = _section.split("\n")[0].strip()
                     if _heading in _conv_wanted:
                         _body = "\n".join(l for l in _section.splitlines()[1:] if not l.startswith("<!--"))
                         ctx["conventions"] = _body.strip()[:800]
-                        break
+                    elif _heading == "Deprecated":
+                        # Each non-empty line is a phrase; key_decisions containing it are suppressed
+                        for _line in _section.splitlines()[1:]:
+                            _phrase = _line.lstrip("- ").split(":")[0].strip()
+                            if _phrase and not _phrase.startswith("<!--"):
+                                deprecated_phrases.append(_phrase.lower())
+                ctx["deprecated_phrases"] = deprecated_phrases
         except Exception:
             pass
 
@@ -443,7 +450,11 @@ class MemoryFiles:
             lines.append("")
 
         # Key Architectural Decisions — from project_state.json
+        # Entries matching any phrase in ctx["deprecated_phrases"] are suppressed.
         key_decisions = state_data.get("key_decisions", [])
+        deprecated = [p.lower() for p in ctx.get("deprecated_phrases", [])]
+        if deprecated:
+            key_decisions = [d for d in key_decisions if not any(p in d.lower() for p in deprecated)]
         if key_decisions:
             lines += ["## Key Architectural Decisions", ""]
             for d in key_decisions[:15]:
@@ -576,6 +587,9 @@ class MemoryFiles:
             lines.append("")
 
         key_decisions = state_data.get("key_decisions", [])
+        deprecated = [p.lower() for p in ctx.get("deprecated_phrases", [])]
+        if deprecated:
+            key_decisions = [d for d in key_decisions if not any(p in d.lower() for p in deprecated)]
         if key_decisions:
             lines += ["## Key Decisions", ""]
             for d in key_decisions[:8]:

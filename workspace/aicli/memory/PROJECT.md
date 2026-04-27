@@ -6,6 +6,7 @@ _Last updated: 2026-04-27_
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
 > - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
 >   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_decisions.
 > - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
 
 ---
@@ -325,3 +326,10 @@ sidebar tabs:
 - 4-agent pipeline for approved work items: pm_analysis, architect_plan, dev_implementation, reviewer_validation columns on mem_work_items; triggered by approved use case parent
 - project_state.json generated only by /memory endpoint; drives all 11 memory file outputs; no other code path writes it
 - Hotspot threshold configured via project.yaml memory.hotspot_threshold; code.md refreshes after every commit via memory_files.py:sync_code_structure()
+
+<!-- user-managed -->
+## Deprecated
+<!-- List superseded architectural decisions, one per line.
+     Any key_decision containing a phrase from this list will be hidden from CLAUDE.md.
+     Format: - phrase (: optional explanation)
+     Example: - mem_ai_events: dropped in m078, use mem_work_items instead -->

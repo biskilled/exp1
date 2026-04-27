@@ -273,16 +273,18 @@ async def list_tools() -> list[mcp_types.Tool]:
             description=(
                 "List work items from mem_work_items for the project. "
                 "Returns wi_id (e.g. BU0001), name, wi_type, user_status, is_approved, parent_wi_id, "
-                "updated_at, and summary preview. "
-                "Filter by category (wi_type) and status (active/done/archived). "
+                "due_date, updated_at, and summary preview. "
+                "Filter by category (wi_type), status (active/done/archived), and due_date_before (ISO date). "
+                "Pass today's date as due_date_before to get all overdue items. "
                 "approved=True means item has been human-reviewed; embedding exists for approved items."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Filter by wi_type: use_case, feature, bug, task, requirement"},
-                    "status":   {"type": "string", "default": "active", "description": "active (not done), done, or archived (deleted)"},
-                    "project":  {"type": "string"},
+                    "category":        {"type": "string", "description": "Filter by wi_type: use_case, feature, bug, task, requirement"},
+                    "status":          {"type": "string", "default": "active", "description": "active (not done), done, or archived (deleted)"},
+                    "due_date_before": {"type": "string", "description": "ISO date (YYYY-MM-DD) — return only items with due_date on or before this date. Use today's date to get overdue items."},
+                    "project":         {"type": "string"},
                 },
             },
         ),
@@ -633,6 +635,11 @@ async def _dispatch(name: str, args: dict) -> Any:
             items = [i for i in items if i.get("user_status") == "done" and not i.get("deleted_at")]
         elif status_filter == "archived":
             items = [i for i in items if i.get("deleted_at")]
+
+        # Apply due_date_before filter (e.g. pass today's date to get overdue items)
+        cutoff = args.get("due_date_before")
+        if cutoff:
+            items = [i for i in items if i.get("due_date") and str(i["due_date"])[:10] <= cutoff[:10]]
 
         return {
             "count": len(items),

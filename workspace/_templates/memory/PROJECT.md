@@ -6,6 +6,7 @@ _Last updated: {{DATE}}_
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
 > - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
 >   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_decisions.
 > - Run `/memory` to regenerate CLAUDE.md, cursor rules, and all LLM prompt files from this document.
 
 ---
@@ -50,3 +51,10 @@ _Last updated: {{DATE}}_
 ## Key Decisions
 
 <!-- Populated automatically by /memory -->
+
+<!-- user-managed -->
+## Deprecated
+<!-- List superseded architectural decisions, one per line.
+     Any key_decision containing a phrase from this list will be hidden from CLAUDE.md.
+     Format: - phrase (: optional explanation)
+     Example: - jsonl storage: replaced by PostgreSQL -->
