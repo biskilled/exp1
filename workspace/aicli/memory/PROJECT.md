@@ -302,19 +302,19 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Code audit cycle (sessions 35-40): fresh aicli_memory.md audit reviewing all changes from last 10-15 prompts for optimization, SQL efficiency, code duplication, and file length reasonableness; 4 parallel audit agents verifying memory files, work items, code quality, and production readiness.
-- Production readiness assessment: verified memory files provide good project structure view, work items/use cases function correctly, code quality acceptable, no stale/unused data remains; critical bug fix: duplicate _write_root_files_with_ctx stub was shadowing real implementation, causing /memory POST to silently fail.
-- Memory file convergence: unified get_project_context() path eliminates double file-reads; _load_context() now splits DB queries and PROJECT.md parsing; all 5 output files regenerate from single DB source.
-- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' auto-sets score_status=5 and score_importance=5 for user approval; user must explicitly approve to mark user_status='done'.
+- Production readiness: verified memory files provide good project structure view, work items/use cases function correctly, code quality acceptable; critical bug (duplicate _write_root_files_with_ctx stub shadowing real implementation) causing /memory POST to silently fail has been fixed.
+- UI enhancements for work item transparency: added _waitingBadge() showing 'X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing 'X days open' for approved use cases, so users understand approval status and age.
+- Hotspot recency weighting: hotspot scores now decay using 180-day half-life formula in both parser and memory_files queries to prioritize recently-changed files.
+- Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns in commit messages auto-set score_status=5 and score_importance=5 for user approval.
 - Database query optimization: eliminated N+1 hotspot existence checks via batch WHERE name = ANY(%s); _update_item_tags refactored to use executemany instead of N separate execute calls; token counting standardized to len(text) // 4.
-- Hotspot recency weighting: hotspot scores now decay using 180-day half-life formula (EXP(-0.693 × age_ratio)) to prioritize recently-changed files; applied to both parser and memory_files hotspot queries.
+- Code split and refactoring completion: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py; _load_context() split into _query_db_into_ctx() and _parse_project_md(); all files verified < 1500 lines with no circular imports.
 
 ## Key Decisions
 
 - Memory architecture: 3 layers — raw captures (mem_mrr_*: prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings ONLY for approved items prefixed UC/FE/BU/TA).
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/) regenerated from single JSON.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task) and wi_parent_id linking children to use_case parents; wi_id format: AI0001 (unapproved draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
-- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores recency-weighted (180-day half-life).
+- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency weighting (EXP(-0.693 × age_ratio)).
 - Embeddings strategy: ONLY approved work items (wi_id: UC/FE/BU/TA) embed to pgvector; code.md, project_state.json, project facts, and prompts never embed; /search/semantic searches work_items only.
 - Work item re-embedding: triggered automatically on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 via regex 'fixes BU0012' pattern.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
@@ -323,9 +323,9 @@ sidebar tabs:
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; stored in mem_work_items columns acceptance_criteria, implementation_plan, pipeline_status, pipeline_run_id.
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients→Users→Projects; DEV_MODE toggle for passwordless local development.
 - Database optimization: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns (hotspot checks use single WHERE name = ANY(%s)); token counting: len(text) // 4.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
 - Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines.
 - Date cascade validation: _apply_date_rules() prevents re-parenting work items to use cases with earlier due_dates; depth check added when wi_parent_id changes to prevent silent data inconsistency.
+- File management: backend/memory/memory.yaml is canonical single-source mapping for output files and project creation; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
