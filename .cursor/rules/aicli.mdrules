@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 15:07 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-27 15:16 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -36,11 +36,11 @@ _Last updated: 2026-04-27_
 - File generation: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; this single JSON drives all 5 output files (CLAUDE.md, CODE.md, PROJECT.md, cursor/rules, api/).
 - File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml is internal engine only, not copied to projects.
 - Code.md structure: public symbols (classes/methods/functions) with file coupling/hotspot tables; generated from mem_mrr_commits_code per commit and refreshed post-memory via unified get_project_context() path.
-- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, event_commit.yaml, command_work_items.yaml, misc.yaml, mem_project_state.yaml, mem_session_tags.yaml); loaded via prompt_loader utility.
+- Prompts: all backend LLM prompts in YAML under backend/memory/prompts/ named by trigger (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
 - Embeddings: ONLY approved work items embed; code.md, project_state.json, project facts, and prompts are NOT embedded; /search/semantic searches work_items only.
 - Work item re-embedding: triggered only on name/summary/description edits for approved items via automatic flag in update(); unapproved drafts never re-embed.
-- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-sets score_status=5; user must approve to update user_status to 'done'.
+- Commit-sourced work items: regex 'fixes BU0012'/'closes FE0001' in commit message auto-sets score_status=5 and score_importance=5; user must approve to update user_status to 'done'.
 - MCP tools: 14 tools rewired to REST endpoints (search_memory, get_project_state, tags, backlog, create_entity→POST /wi/, list_work_items, run_work_item_pipeline, update_work_item, approve_work_items, get_file_history, etc.).
 - Database queries: recursive CTEs bounded (depth < 20); batch queries replace N+1 patterns; hotspot checks use single WHERE name = ANY(%s); token counting: len(text) // 4.
 - Code organization: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py with shared imports; all modules < 1500 lines.
