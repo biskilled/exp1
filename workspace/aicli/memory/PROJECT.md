@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix PROJECT.md file loading timeout (>60s) and backend startup race condition — likely caused by missing database indices or N+1 queries in project context loading
-- Fix 11 active bugs in UI (category display, drag-and-drop, archive toggles), backend (undefined column errors in routes, startup race), and database schema persistence
-- Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner UI
-- Verify MCP server with 14 tools is fully operational and ready for Claude Code sessions with shared project memory and role-based agent execution
-- Complete production readiness assessment: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready
-- Remove lifecycle tags from Planner UI and fix lifecycle field references in route_entities and route_history — column lifecycle removed from mem_ai_events but UI/routes still reference it
+- Fix PROJECT.md file loading timeout (>60s) and backend startup race condition — likely N+1 queries in project context loading or missing database indices
+- Fix 11 active bugs in UI (drag-and-drop in Planner, category display, archive toggles), backend (undefined column errors in routes, lifecycle field references removed but UI still uses), and database schema persistence after migrations
+- Fix commit sync batch upsert error in /history/commits/sync API (execute_values parameter mismatch) and tag counter not updating in Planner UI when tags added/removed
+- Remove lifecycle tags from Planner UI (column lifecycle removed from mem_ai_events in m080 but routes/UI still reference it at route_entities line 359, route_history line 228)
+- Verify MCP server with 14 tools fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability and tool dispatch correctness
+- Complete production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready; resolve remaining schema and startup issues
 
 ## Key Decisions
 
