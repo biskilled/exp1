@@ -303,9 +303,9 @@ sidebar tabs:
 ## Recent Work
 
 - Fix PROJECT.md file loading timeout (>60s) — likely N+1 queries in project context loading or missing database indices; impact: Planner hangs on project open
-- Fix 11 active bugs in UI (drag-and-drop in Planner, category display, archive toggles) and backend (undefined column errors in routes referencing removed lifecycle field at route_entities line 359, route_history line 228)
+- Fix undefined column errors in route_entities (line 359) and route_history (line 228) referencing removed lifecycle field from mem_ai_events migration m080
 - Fix commit sync batch upsert error in /history/commits/sync API (execute_values parameter mismatch) and tag counter not updating in Planner UI when tags added/removed
-- Remove lifecycle tags from Planner UI (column lifecycle removed from mem_ai_events in m080 but routes/UI still reference it)
+- Remove lifecycle tags from Planner UI and fix remaining 11 active UI bugs (drag-and-drop, category display, archive toggles, tagging UI errors)
 - Verify MCP server with 14 tools fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability and tool dispatch correctness
 - Complete production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready; resolve remaining schema and startup race condition issues
 
