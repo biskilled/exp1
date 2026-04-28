@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-28 19:32 UTC -->
+<!-- Last updated: 2026-04-28 19:35 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -21,7 +21,7 @@ workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node re
 - Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio)
 - Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility; no inline Python prompts
-- MCP server: 10+ tools dispatched via REST endpoints with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine
+- MCP server: 14 tools (search_memory, get_project_state, tags, backlog, etc.) dispatched via REST endpoints in agents/mcp/server.py with unified dispatch matching tool name to REST route; stdio transport on developer machine
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Commit-sourced work items auto-closure: regex patterns ('fixes', 'closes') auto-set score_status=5 and score_importance=5; items queued for user approval in review queue
-- UI transparency badges fully implemented: pending work items show ⏳ (grey/amber/red by age), approved use cases show 📂 (days since approval)
-- MCP server fully operational: all 10+ tools dispatched correctly via REST endpoints; Backend db_connected: true; ready for Claude Code sessions
-- Code refactoring complete: memory_work_items.py split (-49%, now 1343L); hotspot recency weighting applied; date cascade validation added; N+1 queries eliminated
+- Ongoing chore commits (ebf898a3/d113294c sessions): auto-commit-push after Claude Code sessions via stop hook integration
+- MCP server fully operational: 14 tools dispatched correctly via REST endpoints; Backend db_connected: true; ready for Claude Code sessions
+- Work items and use case backlog functioning: AI classification, approval workflow, and embedding pipeline operational
+- 4-agent pipeline ready for deployment: PM → Architect → Developer → Reviewer DAG executor tested
 
-_Last updated: 2026-04-28 19:32 UTC_
+_Last updated: 2026-04-28 19:35 UTC_
