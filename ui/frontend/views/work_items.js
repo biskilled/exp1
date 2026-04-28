@@ -43,12 +43,33 @@ const _TYPE = {
   requirement: { icon: '◎',  label: 'Requirement', color: '#f59e0b', cls: 'wi-type-req'  },
 };
 
+// After m079 user_status is TEXT ('open'|'pending'|'in-progress'|'review'|'blocked'|'done').
+// score_status is still a legacy numeric 0-9 field. Use _isDone() / _statusNum() everywhere.
+function _isDone(item) {
+  if (item.user_status != null) return item.user_status === 'done';
+  return (item.score_status ?? 0) >= 5;
+}
+
+// Map text user_status → numeric bucket so existing sort/compare logic keeps working.
+function _statusNum(item) {
+  const us = item.user_status;
+  if (us === 'done')        return 9;
+  if (us === 'review')      return 4;
+  if (us === 'in-progress') return 3;
+  if (us === 'blocked')     return 3;
+  if (us === 'pending')     return 2;
+  if (us === 'open')        return 1;
+  if (us != null)           return 1;   // unknown text → treat as open
+  return item.score_status ?? 0;        // numeric fallback
+}
+
 function _itemStatus(item) {
-  // user_status takes priority; fall back to score_status if column not yet populated
-  const s = item.user_status ?? item.score_status ?? 0;
-  if (s === 0) return { label: 'Not Started', cls: 'wi-s-req'  };
-  if (s >= 5)  return { label: 'Done',        cls: 'wi-s-done' };
-  return              { label: 'In Progress', cls: 'wi-s-wip'  };
+  if (_isDone(item))      return { label: 'Done',        cls: 'wi-s-done' };
+  const n = _statusNum(item);
+  if (n === 0)            return { label: 'Not Started', cls: 'wi-s-req'  };
+  if (n === 2)            return { label: 'Pending',     cls: 'wi-s-req'  };
+  if (n >= 3 && n < 9)   return { label: item.user_status === 'review' ? 'Review' : 'In Progress', cls: 'wi-s-wip' };
+  return                         { label: 'Open',        cls: 'wi-s-req'  };
 }
 
 function _typeMeta(t) {
@@ -1284,8 +1305,8 @@ function _attachDragListeners(reloadFn = _loadAll) {
       const siblings = _allItems
         .filter(i => i.wi_parent_id === targetUcId)
         .sort((a, b) => {
-          const aDone = (a.user_status ?? a.score_status ?? 0) >= 5 ? 1 : 0;
-          const bDone = (b.user_status ?? b.score_status ?? 0) >= 5 ? 1 : 0;
+          const aDone = _isDone(a) ? 1 : 0;
+          const bDone = _isDone(b) ? 1 : 0;
           if (aDone !== bDone) return aDone - bDone;
           return (b.user_importance ?? b.score_importance ?? 0) -
                  (a.user_importance ?? a.score_importance ?? 0);
@@ -1402,8 +1423,8 @@ async function _loadUseCases() {
 
 function _groupUcItems(children) {
   const TYPE_ORDER = ['bug', 'feature', 'task', 'policy', 'requirement', 'use_case'];
-  const inProgress = children.filter(c => (c.user_status ?? c.score_status ?? 0) < 5);
-  const completed  = children.filter(c => (c.user_status ?? c.score_status ?? 0) >= 5);
+  const inProgress = children.filter(c => !_isDone(c));
+  const completed  = children.filter(c =>  _isDone(c));
   function sortByTypeThenPriority(items) {
     return [...items].sort((a, b) => {
       const ta = TYPE_ORDER.indexOf(a.wi_type), tb = TYPE_ORDER.indexOf(b.wi_type);
@@ -1639,7 +1660,7 @@ function _renderUcItem(item, depth = 0) {
                 title="Rename">▾</button>
         <span class="wi-status-badge ${st.cls}">${st.label}</span>
         <button class="wi-edit-arrow" data-action="status-pop"
-                data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
+                data-id="${item.id}" data-score="${_statusNum(item)}"
                 title="Change status">▾</button>
         ${isPending
           ? `<span class="wi-pending">${_esc(item.wi_id || 'pending')}</span>
@@ -1746,7 +1767,7 @@ function _showDueDatePopover(anchorEl, item) {
   if (_closePop(anchorEl)) return;
   const today = new Date().toISOString().slice(0, 10);
   const isUC  = item.wi_type === 'use_case';
-  const kids  = isUC ? (item.children || []).filter(c => (c.user_status ?? c.score_status ?? 0) < 5) : [];
+  const kids  = isUC ? (item.children || []).filter(c => !_isDone(c)) : [];
   const pop = document.createElement('div');
   pop.className = 'wi-wi-pop';
   pop.style.width = '260px';
@@ -2189,8 +2210,8 @@ function _renderList() {
     const ucChildren = children
       .filter(c => c.wi_parent_id === uc.id)
       .sort((a, b) => {
-        const aDone = (a.user_status ?? a.score_status ?? 0) >= 5 ? 1 : 0;
-        const bDone = (b.user_status ?? b.score_status ?? 0) >= 5 ? 1 : 0;
+        const aDone = _isDone(a) ? 1 : 0;
+        const bDone = _isDone(b) ? 1 : 0;
         if (aDone !== bDone) return aDone - bDone; // done items last
         return (b.user_importance ?? b.score_importance ?? 0) -
                (a.user_importance ?? a.score_importance ?? 0); // higher importance first
@@ -2345,7 +2366,7 @@ function _renderItemCard(item, rank) {
         <!-- Status badge + ▾ button to change status -->
         <span class="wi-status-badge ${st.cls}">${st.label}</span>
         <button class="wi-edit-arrow" data-action="status-pop"
-                data-id="${item.id}" data-score="${item.user_status ?? item.score_status ?? 0}"
+                data-id="${item.id}" data-score="${_statusNum(item)}"
                 title="Change status">▾</button>
 
         <!-- ID + waiting badge for pending items -->

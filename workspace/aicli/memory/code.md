@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-28 00:03 UTC -->
+<!-- Last updated: 2026-04-28 11:47 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -224,12 +224,12 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_files.py` | 20.0 | 18 | 1176 | 0 | 2026-04-27 |
 | `backend/routers/route_projects.py` | 17.0 | 15 | 1693 | 0 | 2026-04-27 |
 | `backend/core/db_migrations.py` | 12.0 | 10 | 3307 | 0 | 2026-04-27 |
-| `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
+| `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
 | `backend/routers/route_git.py` | 9.0 | 7 | 1691 | 0 | 2026-04-27 |
 | `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
-| `backend/routers/route_chat.py` | 5.0 | 3 | 975 | 0 | 2026-04-27 |
 | `backend/routers/route_memory.py` | 5.0 | 3 | 836 | 0 | 2026-04-27 |
+| `backend/routers/route_chat.py` | 5.0 | 3 | 975 | 0 | 2026-04-27 |
 
 ## File Coupling
 _Files frequently committed together — likely tightly coupled._
