@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-28 19:17 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-28 19:31 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -50,7 +50,7 @@ _Last updated: 2026-04-28_
 ## Recent Context (last 5 changes)
 
 - [2026-04-28] Let understand what is the best approach for using pipeline. Is there is a point to use project manager for example in t
-- [2026-04-28] Let understand what is the best approach for using pipeline. Is there is a point to use project manager for example in t
 - [2026-04-28] currenlty my backend and ui sit on the same machine. so native CLI run at the backend, using my own login. assume backen
 - [2026-04-28] Is there is any point to try to check how to add skills insead of the roles I have. for example AWS architect - suppose 
 - [2026-04-28] Is there is point the claude cli will run the role ? how can I upload to role to claude cli (promts, tools ,mcp ) . I do
+- [2026-04-28] Do I have to set up all the tools using claude sdk ? or there are tamplte ? when I am using claude -p - it is automaticl

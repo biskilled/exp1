@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- UI transparency badges fully implemented: pending work items show ⏳ (grey/amber/red by age), approved use cases show 📂 (days since approval)
-- 16 active bugs: 11 in-progress (UI category display, drag-and-drop, archive/unarchive, undefined columns, backend startup race, PROJECT.md load timeout), 3 pending, 2 in review
-- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend db_connected: true; ready for Claude Code sessions
+- 16 active bugs across in-progress/pending/review: UI category display, drag-and-drop, archive/unarchive toggles, undefined column errors in routes, backend startup race condition, PROJECT.md load timeout (>60s)
+- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend db_connected: true; ready for Claude Code sessions with shared project memory
 - Production readiness confirmed: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready
-- Code refactoring complete: memory_work_items.py split (-49%, now 1343L); hotspot recency weighting applied; date cascade validation added; N+1 queries eliminated
+- Code refactoring complete: memory_work_items.py split (-49%, now 1343L); hotspot recency weighting applied; date cascade validation added; N+1 queries eliminated; token counting fixed to len(text) // 4
 - Commit-sourced work items auto-closure live: regex patterns auto-set score_status=5 and score_importance=5; items await user approval in review queue
+- UI transparency badges fully implemented: pending work items show ⏳ (grey/amber/red by age), approved use cases show 📂 (days since approval)
 
 ## Key Decisions
 
