@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix PROJECT.md file loading timeout (>60s) and backend startup race condition — likely N+1 queries in project context loading or missing database indices
-- Fix 11 active bugs in UI (drag-and-drop in Planner, category display, archive toggles), backend (undefined column errors in routes, lifecycle field references removed but UI still uses), and database schema persistence after migrations
+- Fix PROJECT.md file loading timeout (>60s) — likely N+1 queries in project context loading or missing database indices; impact: Planner hangs on project open
+- Fix 11 active bugs in UI (drag-and-drop in Planner, category display, archive toggles) and backend (undefined column errors in routes referencing removed lifecycle field at route_entities line 359, route_history line 228)
 - Fix commit sync batch upsert error in /history/commits/sync API (execute_values parameter mismatch) and tag counter not updating in Planner UI when tags added/removed
-- Remove lifecycle tags from Planner UI (column lifecycle removed from mem_ai_events in m080 but routes/UI still reference it at route_entities line 359, route_history line 228)
+- Remove lifecycle tags from Planner UI (column lifecycle removed from mem_ai_events in m080 but routes/UI still reference it)
 - Verify MCP server with 14 tools fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability and tool dispatch correctness
-- Complete production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready; resolve remaining schema and startup issues
+- Complete production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready; resolve remaining schema and startup race condition issues
 
 ## Key Decisions
 
@@ -315,7 +315,7 @@ sidebar tabs:
 - Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed
-- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio)
+- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency weighting: EXP(-0.693 × age_ratio)
 - Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility; no inline Python prompts
 - MCP server: 14 tools dispatched via REST endpoints in agents/mcp/server.py with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine

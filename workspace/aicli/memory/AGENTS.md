@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-28 19:44 UTC -->
+<!-- Last updated: 2026-04-28 19:50 UTC -->
 # aicli
-_2026-04-28 19:44 UTC | Memory synced: 2026-04-28_
+_2026-04-28 19:50 UTC | Memory synced: 2026-04-28_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -34,38 +34,37 @@ No more copy-pasting context. No more re-explaining your architecture.
 ## Stack & Architecture
 
 - **cli**: Python 3.12 + prompt_toolkit + rich
-- **backend**: FastAPI + uvicorn + python-jose + bcrypt + psycopg2
+- **backend_framework**: FastAPI + uvicorn
+- **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database_client**: psycopg2
 - **frontend**: Vanilla JS + Electron + Vite
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
-- **storage**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **authentication**: JWT (python-jose + bcrypt) + DEV_MODE
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
-- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) per-symbol diffs; hotspot recency: EXP(-0.693 × age_ratio), 180-day half-life
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) per-symbol diffs
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **database_migrations**: PostgreSQL m001-m080
 - **mcp**: Stdio MCP server with 10 tools; unified dispatch via REST endpoints
-- **prompts**: YAML files under backend/memory/prompts/
-- **code_organization**: Modular: memory_work_items.py (1343L) → _wi_helpers.py (225L), _wi_classify.py (360L), _wi_markdown.py (600L)
+- **memory_prompts**: YAML files under workspace/_templates/
 
 ## Key Architectural Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → work items (mem_work_items with pgvector ONLY for approved UC/FE/BU/TA items)
-- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON
+- Single source of truth: /memory POST endpoint synthesizes project_state.json via Haiku; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline
-- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, and commits never embed
 - Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio)
-- Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
-- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility; no inline Python prompts
-- MCP server: 10 tools (search_memory, get_project_state, tags, backlog, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine
+- Prompts: all backend LLM prompts stored in YAML under workspace/_templates/; loaded via prompt_loader utility; no inline Python prompts
+- MCP server: 10 tools dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified LLM abstraction layer
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects
+- Work item user_status: open → pending → in-progress → review → done; user_status field is the canonical approval/lifecycle state
+- File management: workspace/_templates/ holds seed YAML files for roles, pipelines, and prompts; templates are copied into projects on creation
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner
+- Auto-deploy: stop hook triggers auto_commit_push.sh after every Claude Code session to push project memory updates and work item changes
 
 ## In Progress
 
@@ -125,4 +124,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-28 19:44 UTC_
+_Last updated: 2026-04-28 19:50 UTC_
