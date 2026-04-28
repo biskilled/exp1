@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-28 18:36 UTC -->
+<!-- Last updated: 2026-04-28 18:38 UTC -->
 # aicli
-_2026-04-28 18:36 UTC | Memory synced: 2026-04-28_
+_2026-04-28 18:38 UTC | Memory synced: 2026-04-28_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -41,30 +41,31 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
-- **memory_synthesis**: Claude Haiku synthesis of project_state.json; pgvector embeddings ONLY for approved work items (UC/FE/BU/TA prefix)
+- **memory_synthesis**: Claude Haiku synthesis to project_state.json; pgvector embeddings ONLY for approved work items (UC/FE/BU/TA prefix)
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) per-symbol diffs; hotspot recency weighting: 180-day half-life EXP(-0.693 × age_ratio)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_migrations**: PostgreSQL m001-m080
 - **mcp**: Stdio MCP server with 14 tools; unified dispatch via REST endpoints
+- **role_definitions**: YAML in workspace/_templates/ for all agent roles and pipelines
 
 ## Key Architectural Decisions
 
 - Memory architecture: 3 layers — raw captures (mem_mrr_* tables: prompts, commits, code diffs, file stats, coupling), structured artifacts (mem_ai_project_facts with Haiku synthesis), and work items (mem_work_items with pgvector embeddings ONLY for approved items UC/FE/BU/TA).
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 5 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON.
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task) and wi_parent_id linking children to use_case parents; wi_id format: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
-- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio).
 - Embeddings strategy: ONLY approved work items (wi_id: UC/FE/BU/TA) embed to pgvector; code.md, project_state.json, project facts, and prompts never embed.
-- Work item re-embedding: triggered automatically on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 and score_importance=5 via regex 'fixes BU0012' pattern.
+- Work item re-embedding: triggered automatically on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed.
+- Commit-sourced items: auto-set score_status=5 and score_importance=5 via regex 'fixes BU0012'/'closes UC0001' pattern; enable auto-closure workflow.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
+- Role definitions: all agent roles and 4-agent pipeline (PM → Architect → Developer → Reviewer) defined in YAML under workspace/_templates/ (no inline Python).
 - MCP server: 14 tools dispatched via REST endpoints; stdio server in agents/mcp/server.py with unified dispatch matching tool name to REST route.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract.
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases.
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines.
+- Code organization: memory_work_items.py split into _wi_helpers.py, _wi_classify.py, _wi_markdown.py with shared imports; all modules < 1500 lines.
+- Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in both parser and memory_files queries to prioritize recently-changed files.
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting to use cases with earlier due_dates.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects.
-- Database optimization: batch queries replace N+1 patterns; token counting: len(text) // 4; hotspot checks use single WHERE name = ANY(%s) per category.
 
 ## In Progress
 
@@ -124,4 +125,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-28 18:36 UTC_
+_Last updated: 2026-04-28 18:38 UTC_
