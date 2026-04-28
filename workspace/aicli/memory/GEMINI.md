@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-28 18:57 UTC -->
+<!-- Last updated: 2026-04-28 19:17 UTC -->
 # aicli
-_2026-04-28 18:57 UTC | Memory synced: 2026-04-28_
+_2026-04-28 19:17 UTC | Memory synced: 2026-04-28_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -41,11 +41,13 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **authentication**: JWT (python-jose + bcrypt) + DEV_MODE
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
-- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) per-symbol diffs; hotspot recency weighting: 180-day half-life
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) per-symbol diffs; hotspot recency weighting: 180-day half-life EXP(-0.693 × age_ratio)
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **database_migrations**: PostgreSQL m001-m080
-- **mcp**: Stdio MCP server with 14 tools; unified dispatch via REST endpoints
+- **mcp**: Stdio MCP server with 10+ tools; unified dispatch via REST endpoints
+- **memory_layers**: mem_mrr_* (raw) → mem_ai_project_facts (structured) → mem_work_items (pgvector embeddings only for approved UC/FE/BU/TA)
+- **prompts**: YAML files under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml)
 
 ## Key Architectural Decisions
 
@@ -54,16 +56,16 @@ No more copy-pasting context. No more re-explaining your architecture.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed.
 - Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio).
-- Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue.
-- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
-- MCP server: 14 tools dispatched via REST endpoints in agents/mcp/server.py with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine.
+- Work item classification pipeline: /wi/{project}/classify deletes draft AI rows, classifies backlog into UC/FE/BU/TA, computes embeddings for approved items only, triggers 4-agent DAG on use case approval.
+- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility and injected into agent pipelines.
+- MCP server: 10+ tools dispatched via REST endpoints with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified LLM abstraction layer.
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; async DAG executor via asyncio.gather.
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines for maintainability.
+- Commit-sourced work items: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5; items await user approval in review queue before closure.
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects; duplicate _write_root_files eliminated.
-- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4; date cascade validation via recursive CTE.
+- Role YAML templates: all agent roles + pipelines defined in workspace/_templates/ (no inline Python); single source of truth for agent behavior across all environments.
+- Auto-deploy hooks: stop hook triggers auto_commit_push.sh after every Claude Code session to persist changes back to git.
 
 ## In Progress
 
@@ -123,4 +125,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-28 18:57 UTC_
+_Last updated: 2026-04-28 19:17 UTC_

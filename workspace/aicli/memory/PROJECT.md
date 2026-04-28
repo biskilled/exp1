@@ -302,30 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner.
-- 16 active bugs across UI (category display, drag-and-drop, archive/unarchive), database (undefined columns, sync errors), and backend (startup race condition, PROJECT.md load timeout >1 minute).
-- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend running db_connected: true; ready for Claude Code sessions to use shared memory.
-- Production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; 4-agent pipeline ready; critical architectural issues resolved.
-- Commit-sourced work items auto-closure: regex patterns auto-set score_status=5 and score_importance=5; items await user approval in work item review queue before closure.
-- Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in both parser and memory_files queries to deprioritize stale files.
+- UI transparency badges fully implemented: pending work items show ⏳ (grey/amber/red by age), approved use cases show 📂 (days since approval)
+- 16 active bugs: 11 in-progress (UI category display, drag-and-drop, archive/unarchive, undefined columns, backend startup race, PROJECT.md load timeout), 3 pending, 2 in review
+- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend db_connected: true; ready for Claude Code sessions
+- Production readiness confirmed: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready
+- Code refactoring complete: memory_work_items.py split (-49%, now 1343L); hotspot recency weighting applied; date cascade validation added; N+1 queries eliminated
+- Commit-sourced work items auto-closure live: regex patterns auto-set score_status=5 and score_importance=5; items await user approval in review queue
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables: prompts, commits, code diffs, file stats, coupling) → structured artifacts (mem_ai_project_facts) → work items (mem_work_items with pgvector ONLY for approved UC/FE/BU/TA items).
-- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON.
-- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline.
-- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed.
-- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio).
-- Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue.
-- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
-- MCP server: 14 tools dispatched via REST endpoints in agents/mcp/server.py with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine.
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified LLM abstraction layer.
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; async DAG executor via asyncio.gather.
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development.
-- Code organization: memory_work_items.py split into _wi_helpers.py (225 lines), _wi_classify.py (360 lines), _wi_markdown.py (600 lines) with shared imports; all modules < 1500 lines for maintainability.
-- Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates.
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects; duplicate _write_root_files eliminated.
-- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4; date cascade validation via recursive CTE.
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → work items (mem_work_items with pgvector ONLY for approved UC/FE/BU/TA items)
+- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON
+- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved); only approved items embed and trigger 4-agent pipeline
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed
+- Code.md generation: per-symbol diffs via tree-sitter (Python/JS/TS) with file coupling/hotspot tables; refreshed post-commit and post-memory; hotspot scores use 180-day half-life recency: EXP(-0.693 × age_ratio)
+- Work item auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
+- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility; no inline Python prompts
+- MCP server: 14 tools dispatched via REST endpoints in agents/mcp/server.py with unified dispatch matching tool name to REST route; stdio transport running locally on developer machine
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; unified LLM abstraction layer
+- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer; triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development
+- Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
+- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects
+- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
