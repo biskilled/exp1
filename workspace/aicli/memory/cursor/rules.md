@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-28 11:47 UTC -->
+<!-- Last updated: 2026-04-28 11:50 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -21,7 +21,7 @@ workflow_engine: Async DAG executor (asyncio.gather) + YAML config + per-node re
 - Embeddings strategy: ONLY approved work items (wi_id: UC/FE/BU/TA) embed to pgvector; code.md, project_state.json, project facts, and prompts never embed; /search/semantic searches work_items only.
 - Work item re-embedding: triggered automatically on name/summary/description edits for approved items via update(); unapproved drafts (AI prefix) never embed; commit-sourced items auto-set score_status=5 and score_importance=5 via regex 'fixes BU0012' pattern for user approval.
 - Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/ (command_memory.yaml, event_commit.yaml, command_work_items.yaml, mem_project_state.yaml, mem_session_tags.yaml, misc.yaml); loaded via prompt_loader utility.
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, classify, approve, run_pipeline, tags, backlog, etc.) dispatched via REST endpoints; stdio server in agents/mcp/server.py with unified dispatch pattern matching tool name to route.
+- MCP server: 14 tools rewired to REST endpoints; stdio server in agents/mcp/server.py with unified dispatch pattern matching tool name to REST route; tools include search_memory, get_project_state, list_work_items, classify, approve, run_pipeline.
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit-push hook integration: chore commits after every Claude CLI session (ebf898a3, d113294c) indicating post-session state capture and memory sync working.
-- MCP server fully operational: 10 tools dispatched correctly via REST endpoints; Backend running with db_connected status; ready for Claude Code sessions.
-- Commit-sourced work items auto-closure: regex 'fixes BU0012'/'closes FE0001' patterns auto-set score_status=5 and score_importance=5 for user approval in work item review queue.
-- Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in memory_files queries to prioritize recently-changed files in CODE.md rankings.
+- Commit-sourced work items: regex parsing 'fixes BU0012'/'closes FE0001' patterns in commit messages to auto-set score_status=5 and score_importance=5 for user approval workflow.
+- Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in parser and memory_files queries to prioritize recently-changed files in CODE.md rankings.
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' for pending items (grey ≤3d, amber 4–7d, red >7d) and _openDaysBadge() showing '📋 X days open' for approved use cases to distinguish approved from unapproved items.
+- MCP server operational: all 14 tools dispatched via REST endpoints; backend running with db_connected: true; ready for Claude Code sessions and semantic search.
 
-_Last updated: 2026-04-28 11:47 UTC_
+_Last updated: 2026-04-28 11:50 UTC_
