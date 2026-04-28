@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix backend startup race condition and PROJECT.md load timeout (>60s) — likely caused by missing indices or N+1 queries in project context loading
-- Fix 16 active bugs across UI (category display, drag-and-drop, archive toggles), backend (undefined column errors in routes, startup race), and database schema persistence
-- Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner
-- MCP server fully operational with 14 tools; ready for Claude Code sessions with shared project memory and role-based agent execution
-- Production readiness confirmed: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready for attended workflows
-- Code refactoring complete: memory_work_items.py split (-49%, now 1343L); hotspot recency weighting applied; date cascade validation added; N+1 queries eliminated; token counting fixed
+- Fix PROJECT.md file loading timeout (>60s) and backend startup race condition — likely caused by missing database indices or N+1 queries in project context loading
+- Fix 11 active bugs in UI (category display, drag-and-drop, archive toggles), backend (undefined column errors in routes, startup race), and database schema persistence
+- Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner UI
+- Verify MCP server with 14 tools is fully operational and ready for Claude Code sessions with shared project memory and role-based agent execution
+- Complete production readiness assessment: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure; work items/use cases function correctly; 4-agent pipeline ready
+- Remove lifecycle tags from Planner UI and fix lifecycle field references in route_entities and route_history — column lifecycle removed from mem_ai_events but UI/routes still reference it
 
 ## Key Decisions
 
