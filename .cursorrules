@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-28 18:48 UTC -->
+<!-- Last updated: 2026-04-28 18:57 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Continuous chore commits from Claude CLI sessions (ebf898a3 and d113294c) indicating active development cycle with multiple short sessions across 2026-04-27 to 2026-04-28.
-- MCP server operational with 14 tools; backend db_connected; ready for Claude Code sessions to access shared memory.
-- Work item classification and auto-closure via commit message regex patterns; user approval workflow in review queue.
-- Hotspot recency weighting with 180-day half-life applied to deprioritize stale files in code.md generation.
+- Commit-sourced work items auto-closure: regex patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5; items await user approval in work item review queue before closure.
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner.
+- Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in both parser and memory_files queries to deprioritize stale files and surface active development areas.
+- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend running db_connected: true; ready for Claude Code sessions to use shared memory and trigger 4-agent workflows.
 
-_Last updated: 2026-04-28 18:48 UTC_
+_Last updated: 2026-04-28 18:57 UTC_
