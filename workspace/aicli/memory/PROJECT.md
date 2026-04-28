@@ -305,9 +305,9 @@ sidebar tabs:
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner.
 - Commit-sourced work items auto-closure: regex patterns auto-set score_status=5 and score_importance=5; items await user approval in work item review queue before closure.
 - Hotspot recency weighting: 180-day half-life formula EXP(-0.693 × age_ratio) applied in both parser and memory_files queries to deprioritize stale files.
-- 16 active bugs including Work Item UI Category Display, drag-and-drop in Planner, archive/unarchive toggle, PROJECT.md load timeout (>1 minute), tag counter not updating, and undefined column errors in route_entities.
-- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend running db_connected: true; ready for new Claude Code sessions to use shared memory.
-- Production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; 4-agent pipeline ready; critical bugs fixed except UI rendering issues.
+- 16 active bugs across UI (category display, drag-and-drop, archive/unarchive), database (undefined columns, sync errors), and backend (startup race condition, PROJECT.md load timeout >1 minute).
+- MCP server fully operational: all 14 tools dispatched correctly via REST endpoints; Backend running db_connected: true; ready for Claude Code sessions to use shared memory.
+- Production readiness: memory files (CLAUDE.md, CODE.md, PROJECT.md) provide good project structure view; work items/use cases function correctly; 4-agent pipeline ready; critical architectural issues resolved.
 
 ## Key Decisions
 
