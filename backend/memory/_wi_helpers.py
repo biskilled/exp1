@@ -14,7 +14,7 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 # ── Prompt path ────────────────────────────────────────────────────────────────
-_WI_PROMPTS_PATH = Path(__file__).parent.parent / "prompts" / "command_work_items.yaml"
+_WI_PROMPTS_PATH = Path(__file__).parent / "command_work_items.yaml"
 
 # ── Table map ──────────────────────────────────────────────────────────────────
 _TABLE: dict[str, str] = {

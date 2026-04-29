@@ -30,7 +30,8 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-_PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+_PROMPTS_DIR  = Path(__file__).parent.parent / "prompts"
+_MEMORY_DIR   = Path(__file__).parent.parent / "memory"
 
 
 @dataclass
@@ -95,10 +96,6 @@ class PromptLoader:
         self._load()
 
     def _load(self) -> None:
-        if not _PROMPTS_DIR.exists():
-            log.warning(f"prompt_loader: prompts directory not found: {_PROMPTS_DIR}")
-            return
-
         try:
             import yaml as _yaml
         except ImportError:
@@ -117,45 +114,53 @@ class PromptLoader:
                 "sonnet": "claude-sonnet-4-6",
             }
 
+        # Files that use custom formats — loaded directly by their callers, not here
+        _SKIP = {"prompts.yaml", "command_work_items.yaml", "memory.yaml", "providers.yaml"}
+
+        scan_dirs = [d for d in (_PROMPTS_DIR, _MEMORY_DIR) if d.exists()]
+        if not scan_dirs:
+            log.warning("prompt_loader: no prompt directories found")
+            return
+
         loaded = 0
-        for yaml_file in sorted(_PROMPTS_DIR.rglob("*.yaml")):
-            # These files use custom nested formats loaded directly by their callers
-            if yaml_file.name in ("prompts.yaml", "command_work_items.yaml"):
-                continue
-            try:
-                data = _yaml.safe_load(yaml_file.read_text())
-            except Exception as e:
-                log.warning(f"prompt_loader: failed to parse {yaml_file}: {e}")
-                continue
-
-            # Support both single-prompt (dict) and multi-prompt (list) formats
-            items: list[tuple[str, dict]]
-            if isinstance(data, list):
-                items = [(item["key"], item) for item in data if isinstance(item, dict) and item.get("key")]
-            elif isinstance(data, dict):
-                items = [(yaml_file.stem, data)]
-            else:
-                continue
-
-            for key, item in items:
-                system = (item.get("system") or "").strip()
-                if not system:
-                    log.warning(f"prompt_loader: {yaml_file.name}[{key}] has no 'system' field — skipped")
+        for scan_dir in scan_dirs:
+            for yaml_file in sorted(scan_dir.rglob("*.yaml")):
+                if yaml_file.name in _SKIP:
                     continue
-                model_key = item.get("model", "haiku")
-                self._configs[key] = PromptConfig(
-                    name=item.get("name", key),
-                    description=item.get("description", ""),
-                    content=system,
-                    model=model_map.get(model_key, model_key),
-                    max_tokens=int(item.get("max_tokens", 300)),
-                    tools=item.get("tools") or [],
-                    mcp_server=item.get("mcp_server") or None,
-                    file_path=yaml_file,
-                )
-                loaded += 1
+                try:
+                    data = _yaml.safe_load(yaml_file.read_text())
+                except Exception as e:
+                    log.warning(f"prompt_loader: failed to parse {yaml_file}: {e}")
+                    continue
 
-        log.debug(f"prompt_loader: loaded {loaded} prompts from {_PROMPTS_DIR}")
+                # Support both single-prompt (dict) and multi-prompt (list) formats
+                items: list[tuple[str, dict]]
+                if isinstance(data, list):
+                    items = [(item["key"], item) for item in data if isinstance(item, dict) and item.get("key")]
+                elif isinstance(data, dict):
+                    items = [(yaml_file.stem, data)]
+                else:
+                    continue
+
+                for key, item in items:
+                    system = (item.get("system") or "").strip()
+                    if not system:
+                        log.warning(f"prompt_loader: {yaml_file.name}[{key}] has no 'system' field — skipped")
+                        continue
+                    model_key = item.get("model", "haiku")
+                    self._configs[key] = PromptConfig(
+                        name=item.get("name", key),
+                        description=item.get("description", ""),
+                        content=system,
+                        model=model_map.get(model_key, model_key),
+                        max_tokens=int(item.get("max_tokens", 300)),
+                        tools=item.get("tools") or [],
+                        mcp_server=item.get("mcp_server") or None,
+                        file_path=yaml_file,
+                    )
+                    loaded += 1
+
+        log.debug(f"prompt_loader: loaded {loaded} prompts from {scan_dirs}")
 
 
 async def _call_model(model: str, system: str, user: str, max_tokens: int) -> str:

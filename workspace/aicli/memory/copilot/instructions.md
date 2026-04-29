@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:10 UTC -->
+<!-- Last updated: 2026-04-29 15:14 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -15,7 +15,7 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small)
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state in _write_root_files_with_ctx()
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Fix undefined column errors: route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
-- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix undefined column errors in route code: route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
+- Remove deprecated lifecycle UI components: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to defunct lifecycle field
+- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; project loader initialization sequencing issue
+- Optimize PROJECT.md file loading performance: currently >60s timeout; performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
 
-_Last updated: 2026-04-29 15:10 UTC_
+_Last updated: 2026-04-29 15:14 UTC_

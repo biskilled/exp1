@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix undefined column errors: route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
+- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
 - Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
 - Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
-- Improve delivery_type and pipeline routing accuracy: added full project tech_stack context (frontend/backend/database keywords) to Haiku classifier system prompt to reduce misclassification
-- Remove unused role UI fields: deleted inputs, outputs, and role_type columns from mng_agent_roles; removed corresponding validation and serialization code; removed ReAct checkbox (now always enabled in pipeline execution)
+- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed; may require database indices on project, wi_type, user_status or single-pass read refactoring
+- Improve delivery_type classification accuracy: added full project tech_stack context (frontend/backend/database keywords) to Haiku classifier system prompt; reduce misclassifications via pattern matching
+- Fix commit sync batch upsert error in route_history.py: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations
 
 ## Key Decisions
 
@@ -321,11 +321,11 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) only; role YAML removed from unused pipelines; delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
+- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) only; delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
-- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; ReAct checkbox removed (misleading); agent always uses ReAct framework in pipeline execution
+- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; agent always uses ReAct framework in pipeline execution
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

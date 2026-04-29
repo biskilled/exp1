@@ -843,7 +843,7 @@ async def _synthesize_with_llm(
 
         # Load prompt from YAML file (hot-reloadable — no restart needed)
         _prompt_tpl = None
-        _prompt_file = Path(__file__).parent.parent / "prompts" / "command_memory.yaml"
+        _prompt_file = Path(__file__).parent.parent / "memory" / "command_memory.yaml"
         if _prompt_file.exists():
             try:
                 import yaml as _yaml
