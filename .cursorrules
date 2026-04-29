@@ -1,16 +1,16 @@
-<!-- Last updated: 2026-04-29 14:32 UTC -->
+<!-- Last updated: 2026-04-29 14:54 UTC -->
 ## Project: aicli
 
 ## Stack
 
-cli: Python 3.12 + prompt_toolkit + rich
+language_cli: Python 3.12
+cli_framework: prompt_toolkit + rich
 backend_framework: FastAPI + uvicorn
 backend_auth: JWT (python-jose + bcrypt) + DEV_MODE toggle
 database: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 database_client: psycopg2
-frontend: Vanilla JS + Electron + Vite
+frontend_framework: Vanilla JS + Electron + Vite
 ui_components: xterm.js + Monaco editor + Cytoscape.js
-llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 
 ## Key Decisions
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multiple chore commits in Claude CLI session ebf898a3 (2026-04-28 19:31 through 2026-04-29 14:31) — ongoing active development with 15 consecutive commit waves
 - Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI — 11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining after migration m080
+- Remove lifecycle tags from Planner UI — 11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining
 - Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
+- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches
 
-_Last updated: 2026-04-29 14:32 UTC_
+_Last updated: 2026-04-29 14:54 UTC_
