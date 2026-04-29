@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 19:54 UTC -->
+<!-- Last updated: 2026-04-29 20:01 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,6 +33,6 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit push after Claude CLI sessions: stop hook triggers auto_commit_push.sh following each session (session ID 1f8ecc78, repeated commits 2026-04-29 17:13–19:53)
+- Auto-commit push hook: repeatedly triggered after Claude Code session 1f8ecc78 (2026-04-29 17:13–19:53); investigating hook deduplication and commit coalescing logic
 
-_Last updated: 2026-04-29 19:54 UTC_
+_Last updated: 2026-04-29 20:01 UTC_

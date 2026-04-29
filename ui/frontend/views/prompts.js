@@ -235,43 +235,32 @@ const _PROVIDER_COLORS = {
 };
 
 function _renderRoleItem(r) {
-  const isActive   = _activeRole?.id === r.id;
-  const status     = r.status || (r.has_template === false ? 'ext' : 'base');
-  const canRestore = r.has_template === true;
-  const provColor  = _PROVIDER_COLORS[r.provider] || '#888888';
+  const isActive  = _activeRole?.id === r.id;
+  const status    = r.status || (r.has_template === false ? 'ext' : 'base');
+  const provColor = _PROVIDER_COLORS[r.provider] || '#888888';
 
-  // Status indicator: shown as a small pill at the right edge
+  // Status badge — clear labels, always visible
   let statusBadge = '';
   if (status === 'ext') {
-    statusBadge = `<span title="External role — no template, cannot restore"
-      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
-             background:rgba(245,158,11,0.18);color:#f59e0b;font-weight:600;
-             letter-spacing:0.04em;flex-shrink:0">EXT</span>`;
+    statusBadge = `<span title="External role — no template file"
+      style="font-size:0.5rem;padding:0.15rem 0.4rem;border-radius:4px;
+             background:rgba(245,158,11,0.18);color:#f59e0b;font-weight:700;
+             letter-spacing:0.05em;flex-shrink:0;white-space:nowrap">EXTERNAL</span>`;
   } else if (status === 'changed') {
     statusBadge = `<span title="Changed from saved base"
-      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
-             background:rgba(251,146,60,0.18);color:#fb923c;font-weight:600;
-             letter-spacing:0.04em;flex-shrink:0">~</span>`;
+      style="font-size:0.5rem;padding:0.15rem 0.4rem;border-radius:4px;
+             background:rgba(251,146,60,0.18);color:#fb923c;font-weight:700;
+             letter-spacing:0.05em;flex-shrink:0;white-space:nowrap">UPDATED</span>`;
   } else if (status === 'base' && r.has_snapshot) {
-    statusBadge = `<span title="At saved base"
-      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
-             background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;
-             letter-spacing:0.04em;flex-shrink:0">●</span>`;
+    statusBadge = `<span title="Matches saved base"
+      style="font-size:0.5rem;padding:0.15rem 0.4rem;border-radius:4px;
+             background:rgba(74,222,128,0.15);color:#4ade80;font-weight:700;
+             letter-spacing:0.05em;flex-shrink:0;white-space:nowrap">BASED</span>`;
   }
-
-  const restoreBtn = canRestore
-    ? `<button onclick="event.stopPropagation();window._rolesRestoreDefault(${r.id},${JSON.stringify(_esc(r.name))})"
-               title="Restore this role to template defaults"
-               style="opacity:0.3;font-size:0.55rem;padding:0.1rem 0.35rem;border-radius:4px;
-                      background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);
-                      color:rgba(255,255,255,0.7);cursor:pointer;flex-shrink:0;line-height:1;
-                      transition:opacity 0.15s,background 0.15s"
-               class="role-reset-btn">reset</button>`
-    : '';
 
   // Short model name: strip date suffixes like -20251001
   const modelShort = (r.model || '').replace(/-\d{8}$/, '').replace(/^claude-/, '').replace(/^gpt-/, '');
-  const provLabel   = r.provider ? (modelShort ? `${r.provider} · ${modelShort}` : r.provider) : '';
+  const provLabel  = r.provider ? (modelShort ? `${r.provider} · ${modelShort}` : r.provider) : '';
 
   return `
     <div onclick="window._rolesSelect(${r.id})"
@@ -279,10 +268,8 @@ function _renderRoleItem(r) {
                 display:flex;align-items:center;gap:0.5rem;
                 background:${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'};
                 border-left:3px solid ${isActive ? 'var(--accent)' : 'transparent'}"
-         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}';
-           const rb=this.querySelector('.role-reset-btn');if(rb){rb.style.opacity='1';rb.style.background='rgba(255,255,255,0.1)';}"
-         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}';
-           const rb=this.querySelector('.role-reset-btn');if(rb){rb.style.opacity='0.3';rb.style.background='rgba(255,255,255,0.06)';}">
+         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}'"
+         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}'">
       <div style="flex:1;min-width:0">
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -295,7 +282,7 @@ function _renderRoleItem(r) {
                          >${_esc(provLabel)}</span>` : ''}
         </div>
       </div>
-      ${statusBadge}${restoreBtn}
+      ${statusBadge}
     </div>`;
 }
 
