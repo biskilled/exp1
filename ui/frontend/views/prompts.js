@@ -22,6 +22,7 @@ let _systemRoles     = [];     // all available system roles loaded once at tab 
 let _roleLinks       = {};     // {roleId: [{id, name, category, order_index}]}
 let _activeSysRole   = null;   // system role being edited (admin panel)
 let _toolsByCategory = {};     // {category: [toolName, ...]} — populated by _loadRoleTools
+let _mcpCatalog      = [];     // MCP entries from catalog — populated by _loadRoleTools
 
 function _promptModal(title, label, placeholder = '') {
   return new Promise(resolve => {
@@ -90,6 +91,8 @@ export async function renderPrompts(container, projectName) {
   _systemRoles     = [];
   _roleLinks       = {};
   _toolsByCategory = {};
+  _mcpCatalog      = [];
+  _msCloseAll();
 
   const savedW = parseInt(localStorage.getItem('aicli_prompts_tree_w') || '220', 10);
 
@@ -268,96 +271,249 @@ async function _rolesSelect(id) {
   _renderRoleSystemRolesSection(id);
 }
 
+// ── Multi-select dropdown widget ─────────────────────────────────────────────
+// Each widget: _msHtml(id, items, selected) → HTML string
+// Global handlers keep state purely in DOM (checked checkboxes + chip DOM).
+
+function _msHtml(id, items, selectedValues, { label = '', placeholder = 'None selected', color = 'var(--accent)' } = {}) {
+  const selSet = new Set(selectedValues);
+  const chips  = selectedValues.map(v => {
+    const item = items.find(i => i.value === v);
+    return `<span style="display:inline-flex;align-items:center;gap:0.2rem;
+                         padding:0.1rem 0.3rem 0.1rem 0.5rem;border-radius:10px;
+                         background:rgba(100,108,255,0.18);color:var(--accent);
+                         font-size:0.62rem;line-height:1.4;white-space:nowrap">
+      ${_esc(item?.label || v)}
+      <span onclick="event.stopPropagation();window._msRemove('${id}','${_esc(v)}')"
+            style="cursor:pointer;opacity:0.7;font-size:0.75rem;padding:0 0.1rem">&times;</span>
+    </span>`;
+  }).join('');
+
+  const listItems = items.map(item => `
+    <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.6rem;
+                  cursor:pointer;font-size:0.68rem;color:var(--text);
+                  border-bottom:1px solid rgba(255,255,255,0.04)"
+           onmouseenter="this.style.background='var(--surface2)'"
+           onmouseleave="this.style.background='transparent'">
+      <input type="checkbox" value="${_esc(item.value)}" ${selSet.has(item.value) ? 'checked' : ''}
+             data-ms="${id}"
+             onchange="window._msSel('${id}','${_esc(item.value)}',this.checked)"
+             style="width:13px;height:13px;accent-color:${color};cursor:pointer;flex-shrink:0">
+      <span style="flex:1">${_esc(item.label || item.value)}</span>
+      ${item.tag ? `<span style="font-size:0.55rem;padding:0.05rem 0.3rem;border-radius:8px;
+                               background:var(--surface3);color:var(--muted)">${_esc(item.tag)}</span>` : ''}
+    </label>`).join('');
+
+  return `
+    <div style="position:relative" id="ms-root-${id}">
+      ${label ? `<div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.3rem">${label}</div>` : ''}
+      <div onclick="window._msToggle('${id}')"
+           style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;min-height:32px;
+                  padding:0.3rem 0.5rem;background:var(--bg);border:1px solid var(--border);
+                  border-radius:var(--radius);cursor:pointer;user-select:none">
+        <div id="ms-chips-${id}" style="flex:1;display:flex;flex-wrap:wrap;gap:0.2rem;align-items:center;min-height:20px">
+          ${chips || `<span style="font-size:0.65rem;color:var(--muted)">${_esc(placeholder)}</span>`}
+        </div>
+        <span style="color:var(--muted);font-size:0.65rem;flex-shrink:0">▾</span>
+      </div>
+      <div id="ms-drop-${id}"
+           style="display:none;position:absolute;z-index:200;top:calc(100% + 3px);left:0;right:0;
+                  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+                  box-shadow:0 10px 30px rgba(0,0,0,0.55);overflow:hidden">
+        <div style="padding:0.35rem 0.5rem;border-bottom:1px solid var(--border)">
+          <input id="ms-filter-${id}" type="search" placeholder="Filter…"
+                 oninput="window._msFilter('${id}')"
+                 onclick="event.stopPropagation()"
+                 style="width:100%;box-sizing:border-box;background:transparent;border:none;
+                        outline:none;color:var(--text);font-size:0.68rem;font-family:var(--font)">
+        </div>
+        <div id="ms-list-${id}" style="max-height:200px;overflow-y:auto">
+          ${listItems || `<div style="padding:0.5rem;font-size:0.65rem;color:var(--muted)">No items</div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function _msCloseAll() {
+  document.querySelectorAll('[id^="ms-drop-"]').forEach(el => { el.style.display = 'none'; });
+}
+
+function _msToggle(id) {
+  const drop = document.getElementById(`ms-drop-${id}`);
+  if (!drop) return;
+  const isOpen = drop.style.display !== 'none';
+  _msCloseAll();
+  if (!isOpen) {
+    drop.style.display = 'block';
+    const filter = document.getElementById(`ms-filter-${id}`);
+    if (filter) setTimeout(() => filter.focus(), 0);
+    // Close on outside click
+    setTimeout(() => {
+      const handler = (e) => {
+        const root = document.getElementById(`ms-root-${id}`);
+        if (root && !root.contains(e.target)) {
+          drop.style.display = 'none';
+          document.removeEventListener('click', handler);
+        }
+      };
+      document.addEventListener('click', handler);
+    }, 0);
+  }
+}
+
+function _msFilter(id) {
+  const val  = (document.getElementById(`ms-filter-${id}`)?.value || '').toLowerCase();
+  const list = document.getElementById(`ms-list-${id}`);
+  if (!list) return;
+  list.querySelectorAll('label').forEach(lbl => {
+    const text = lbl.textContent.toLowerCase();
+    lbl.style.display = text.includes(val) ? '' : 'none';
+  });
+}
+
+function _msRemove(id, value) {
+  // Uncheck the corresponding checkbox in the dropdown
+  const cb = document.querySelector(`#ms-list-${id} input[value="${CSS.escape(value)}"]`);
+  if (cb) { cb.checked = false; }
+  _msRefreshChips(id);
+}
+
+function _msSel(id, value, checked) {
+  void checked; // checkbox state already updated by browser
+  _msRefreshChips(id);
+}
+
+function _msGetSelected(id) {
+  return Array.from(document.querySelectorAll(`#ms-list-${id} input[type=checkbox]:checked`))
+    .map(cb => cb.value);
+}
+
+function _msRefreshChips(id) {
+  const chipsEl = document.getElementById(`ms-chips-${id}`);
+  if (!chipsEl) return;
+  const selected = _msGetSelected(id);
+  // Determine item label from current list labels
+  const labels = {};
+  document.querySelectorAll(`#ms-list-${id} input[type=checkbox]`).forEach(cb => {
+    const span = cb.closest('label')?.querySelector('span');
+    if (span) labels[cb.value] = span.textContent.trim();
+  });
+  if (!selected.length) {
+    const placeholder = chipsEl.dataset.placeholder || 'None selected';
+    chipsEl.innerHTML = `<span style="font-size:0.65rem;color:var(--muted)">${_esc(placeholder)}</span>`;
+    return;
+  }
+  chipsEl.innerHTML = selected.map(v => `
+    <span style="display:inline-flex;align-items:center;gap:0.2rem;
+                 padding:0.1rem 0.3rem 0.1rem 0.5rem;border-radius:10px;
+                 background:rgba(100,108,255,0.18);color:var(--accent);
+                 font-size:0.62rem;line-height:1.4;white-space:nowrap">
+      ${_esc(labels[v] || v)}
+      <span onclick="event.stopPropagation();window._msRemove('${id}','${_esc(v)}')"
+            style="cursor:pointer;opacity:0.7;font-size:0.75rem;padding:0 0.1rem">&times;</span>
+    </span>`).join('');
+}
+
+// ── Tools + MCP loader ────────────────────────────────────────────────────────
+
 async function _loadRoleTools(role) {
-  const grid = document.getElementById('role-tools-grid');
-  if (!grid) return;
+  const body = document.getElementById('role-tools-body');
+  if (!body) return;
 
-  // Check provider tool_support
-  const providerData  = _providers.find(p => p.id === role.provider) || {};
-  const toolSupport   = providerData.tool_support || 'full';
+  body.innerHTML = `<div style="font-size:0.65rem;color:var(--muted)">Loading…</div>`;
 
-  if (toolSupport === 'native') {
-    grid.closest('div')?.querySelector('[data-tools-label]')?.remove();
-    grid.innerHTML = `
-      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;
-                  background:rgba(100,108,255,0.08);border:1px solid rgba(100,108,255,0.25);
-                  border-radius:6px;font-size:0.68rem;color:rgba(255,255,255,0.7)">
-        <span style="font-size:0.9rem">ℹ</span>
-        <span>${_esc(providerData.tool_note || 'This provider manages its own tools natively.')}</span>
-      </div>`;
-    return;
-  }
+  const providerData = _providers.find(p => p.id === role.provider) || {};
+  const toolSupport  = providerData.tool_support || 'full';
+  const isNative     = toolSupport === 'native';
 
-  let allTools = [];
+  // Fetch tools and MCP catalog in parallel
+  let allTools = [], mcps = _mcpCatalog;
   try {
-    const data = await api.agentRoles.availableTools();
-    allTools = data.tools || [];
-  } catch (_) {
-    grid.innerHTML = '<div style="font-size:0.65rem;color:var(--muted)">Tools unavailable</div>';
-    return;
-  }
+    const fetches = [api.agentRoles.mcpCatalog(_project || 'aicli').catch(() => ({ mcps: [] }))];
+    if (!isNative) fetches.unshift(api.agentRoles.availableTools().catch(() => ({ tools: [] })));
+    const results = await Promise.all(fetches);
+    if (!isNative) { allTools = results[0].tools || []; mcps = results[1]?.mcps || []; }
+    else            { mcps = results[0].mcps || []; }
+    _mcpCatalog = mcps;
+  } catch (_) { /* use whatever was loaded */ }
 
-  // Group by category and store in module-level variable for _collectTools
+  // Build tool items grouped by category
   _toolsByCategory = {};
   for (const t of allTools) {
     if (!_toolsByCategory[t.category]) _toolsByCategory[t.category] = [];
     _toolsByCategory[t.category].push(t.name);
   }
 
-  const enabledSet = new Set(role.tools || []);
-  const catColors  = { git: '#e8834e', files: '#5b8af5', memory: '#9b7ef8', other: '#888' };
-  const catOrder   = ['git', 'files', 'memory', 'other'];
-  const sortedCats = [...catOrder.filter(c => _toolsByCategory[c]),
-                      ...Object.keys(_toolsByCategory).filter(c => !catOrder.includes(c))];
+  // Parse role's current tools into builtin and mcp
+  const roleMcpNames = (role.tools || []).filter(t => t.startsWith('mcp:')).map(t => t.slice(4));
+  const roleBuiltin  = (role.tools || []).filter(t => !t.startsWith('mcp:'));
 
-  let warningHtml = '';
-  if (toolSupport === 'limited') {
-    warningHtml = `
-      <div style="grid-column:1/-1;display:flex;align-items:center;gap:0.5rem;
-                  padding:0.4rem 0.65rem;background:rgba(230,180,50,0.1);
-                  border:1px solid rgba(230,180,50,0.35);border-radius:5px;
-                  font-size:0.65rem;color:rgba(230,180,50,0.9)">
-        ⚠ ${_esc(providerData.tool_note || 'Tool calling may not be supported by this provider.')}
-      </div>`;
-  }
+  // Tool multi-select items
+  const catColors = { git: '#e8834e', files: '#5b8af5', memory: '#9b7ef8', other: '#888' };
+  const toolItems = allTools.map(t => ({
+    value: t.name,
+    label: t.name,
+    tag:   t.category,
+  }));
 
-  let html = warningHtml;
-  for (const cat of sortedCats) {
-    const tools  = _toolsByCategory[cat] || [];
-    const col    = catColors[cat] || '#888';
-    // Category is checked if ALL its tools are enabled
-    const allOn  = tools.every(t => enabledSet.has(t));
-    const someOn = tools.some(t => enabledSet.has(t));
+  // MCP multi-select items — catalog + any unknown ones in role.tools
+  const catalogNames = new Set(mcps.map(m => m.name));
+  const unknownMcps  = roleMcpNames.filter(n => !catalogNames.has(n)).map(n => ({ name: n, label: n }));
+  const mcpItems     = [...mcps, ...unknownMcps].map(m => ({
+    value: m.name,
+    label: m.label || m.name,
+    tag:   (m.tags || [])[0] || '',
+  }));
+
+  let html = '';
+
+  if (isNative) {
+    // Native: show info badge for tools, still show MCP selector
     html += `
-      <label data-cat="${_esc(cat)}"
-             style="display:flex;flex-direction:column;gap:0.2rem;cursor:pointer;
-                    padding:0.35rem 0.5rem;border-radius:5px;border:1px solid var(--border);
-                    background:var(--surface2)">
-        <div style="display:flex;align-items:center;gap:0.4rem">
-          <input type="checkbox" data-category="${_esc(cat)}"
-            ${allOn ? 'checked' : ''} ${someOn && !allOn ? 'data-indeterminate="true"' : ''}
-            style="width:13px;height:13px;accent-color:${col};cursor:pointer;flex-shrink:0"
-            onchange="window._toolCatToggle('${_esc(cat)}', this.checked)">
-          <span style="font-size:0.68rem;font-weight:600;color:${col};text-transform:uppercase;letter-spacing:0.04em">${_esc(cat)}</span>
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.3rem">Built-in Tools</div>
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;
+                    background:rgba(100,108,255,0.08);border:1px solid rgba(100,108,255,0.22);
+                    border-radius:6px;font-size:0.67rem;color:rgba(255,255,255,0.65)">
+          <span style="font-size:0.85rem">ℹ</span>
+          <span>${_esc(providerData.tool_note || 'This provider uses its own native tools.')}</span>
         </div>
-        <div style="font-size:0.58rem;color:var(--muted);padding-left:1.4rem;line-height:1.5">
-          ${tools.map(t => `<span>${_esc(t)}</span>`).join(' · ')}
-        </div>
-      </label>`;
+      </div>`;
+  } else {
+    // Warning for limited providers
+    const warning = toolSupport === 'limited'
+      ? `<div style="margin-bottom:0.35rem;display:flex;align-items:center;gap:0.4rem;
+                     padding:0.35rem 0.55rem;background:rgba(230,180,50,0.1);
+                     border:1px solid rgba(230,180,50,0.3);border-radius:5px;
+                     font-size:0.63rem;color:rgba(230,180,50,0.9)">
+           ⚠ ${_esc(providerData.tool_note || 'Tool calling varies by model.')}
+         </div>` : '';
+    html += `<div>${warning}${_msHtml('tools', toolItems, roleBuiltin, {
+      label:       'Built-in Tools',
+      placeholder: 'No tools selected',
+      color:       'var(--accent)',
+    })}</div>`;
   }
-  grid.innerHTML = html || '<div style="font-size:0.65rem;color:var(--muted)">No tools registered</div>';
 
-  // Apply indeterminate state to checkboxes
-  grid.querySelectorAll('input[data-indeterminate="true"]').forEach(cb => { cb.indeterminate = true; });
+  html += `<div>${_msHtml('mcps', mcpItems, roleMcpNames, {
+    label:       'MCP Servers',
+    placeholder: 'No MCP servers selected',
+    color:       '#4ade80',
+  })}</div>`;
 
-  // Wire category toggle handler
-  window._toolCatToggle = (cat, checked) => {
-    // Check/uncheck all tools in the category — stored in _toolsByCategory
-    // No DOM per-tool checkboxes exist; the expansion happens in _collectTools()
-    // Update visual state of the category label
-    const cb = grid.querySelector(`input[data-category="${cat}"]`);
-    if (cb) { cb.checked = checked; cb.indeterminate = false; }
-  };
+  body.innerHTML = html;
+
+  // Store placeholder on chips container for _msRefreshChips
+  const toolChips = document.getElementById('ms-chips-tools');
+  if (toolChips) toolChips.dataset.placeholder = 'No tools selected';
+  const mcpChips = document.getElementById('ms-chips-mcps');
+  if (mcpChips) mcpChips.dataset.placeholder = 'No MCP servers selected';
+
+  // Wire global multi-select handlers (idempotent — last registration wins)
+  window._msToggle  = _msToggle;
+  window._msRemove  = _msRemove;
+  window._msSel     = _msSel;
+  window._msFilter  = _msFilter;
 }
 
 function _renderRoleSystemRolesSection(roleId) {
@@ -507,30 +663,9 @@ function _renderRoleEditor(role) {
         <span style="font-size:0.62rem;color:var(--muted)">(pipeline loop limit)</span>
       </div>
 
-      <!-- Built-in Tools -->
-      <div>
-        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
-          Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(built-in tools available in agentic loop)</span>
-        </div>
-        <div id="role-tools-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.25rem">
-          <div style="font-size:0.65rem;color:var(--muted)">Loading tools…</div>
-        </div>
-      </div>
-
-      <!-- MCP Tools -->
-      <div>
-        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.25rem">
-          MCP Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(one per line: <code>server_name</code> or <code>server_name/tool_name</code>)</span>
-        </div>
-        <textarea id="role-mcp-tools" rows="3"
-          style="width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);
-                 border:1px solid var(--border);color:var(--text);font-family:var(--font);
-                 font-size:0.68rem;padding:0.4rem 0.5rem;border-radius:var(--radius);outline:none;
-                 line-height:1.6"
-          placeholder="filesystem&#10;github/create_issue&#10;my_mcp_server/run_query">${_esc(_mcpToolsToText(role.tools || []))}</textarea>
-        <div style="font-size:0.58rem;color:var(--muted);margin-top:0.2rem">
-          Stored as <code>mcp:{entry}</code> in the tools list. MCP server must be configured in <code>.claude/mcp.json</code>.
-        </div>
+      <!-- Tools & MCP (multi-select dropdowns, loaded async by _loadRoleTools) -->
+      <div id="role-tools-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div style="font-size:0.65rem;color:var(--muted)">Loading…</div>
       </div>
 
       <!-- System Roles (prepended fragments) -->
@@ -580,16 +715,9 @@ function _mcpToolsFromText(text) {
 }
 
 function _collectTools() {
-  // Expand checked category checkboxes → individual tool names
-  const builtin = [];
-  document.querySelectorAll('#role-tools-grid input[data-category]').forEach(cb => {
-    if (cb.checked) {
-      const tools = _toolsByCategory[cb.dataset.category] || [];
-      builtin.push(...tools);
-    }
-  });
-  const mcpText = document.getElementById('role-mcp-tools')?.value || '';
-  return [...builtin, ..._mcpToolsFromText(mcpText)];
+  const builtin = _msGetSelected('tools');
+  const mcps    = _msGetSelected('mcps').map(v => `mcp:${v}`);
+  return [...builtin, ...mcps];
 }
 
 async function _rolesExportYaml(id, name) {
@@ -831,13 +959,19 @@ async function _rolesDelete(id) {
 }
 
 function _rolesProviderChange(provider) {
-  const datalist = document.getElementById('role-model-list');
+  const datalist   = document.getElementById('role-model-list');
   const modelInput = document.getElementById('role-model');
-  if (!datalist) return;
-  const models = _providerModels(provider);
-  datalist.innerHTML = models.map(m => `<option value="${_esc(m)}">`).join('');
-  // Auto-select the first model for the new provider
-  if (modelInput && models.length) modelInput.value = models[0];
+  if (datalist) {
+    const models = _providerModels(provider);
+    datalist.innerHTML = models.map(m => `<option value="${_esc(m)}">`).join('');
+    if (modelInput && models.length) modelInput.value = models[0];
+  }
+  // Reload tools/MCP dropdowns for the new provider
+  if (_activeRole) {
+    // Pass current selected tools so they survive the provider switch
+    const currentTools = _collectTools();
+    _loadRoleTools({ ..._activeRole, provider, tools: currentTools });
+  }
 }
 
 // ── System Roles (admin panel) ────────────────────────────────────────────────
