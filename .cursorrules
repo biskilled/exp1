@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:14 UTC -->
+<!-- Last updated: 2026-04-29 15:26 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Fix undefined column errors in route code: route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove deprecated lifecycle UI components: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to defunct lifecycle field
-- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; project loader initialization sequencing issue
-- Optimize PROJECT.md file loading performance: currently >60s timeout; performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
+- Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
+- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader
+- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed; may require database indices on project, wi_type, user_status or single-pass read refactoring
 
-_Last updated: 2026-04-29 15:14 UTC_
+_Last updated: 2026-04-29 15:26 UTC_

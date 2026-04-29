@@ -1,7 +1,11 @@
 """
 prompt_loader.py — File-based system prompt loader.
 
-Each YAML file under backend/prompts/ is one of two formats:
+Scans two directories for *.yaml prompt files:
+  backend/memory/yaml_config/   — memory pipeline prompts
+  backend/agents/yaml_config/   — agent / pipeline prompts
+
+Each YAML file is one of two formats:
 
   Single-prompt (dict):
     name, description, model, max_tokens, system, tools?, mcp_server?
@@ -9,7 +13,7 @@ Each YAML file under backend/prompts/ is one of two formats:
 
   Multi-prompt (list):
     Each item has the same fields plus a required `key` field.
-    Key = item["key"] (e.g. commit.yaml with key=commit_analysis → "commit_analysis")
+    Key = item["key"] (e.g. event_commit.yaml with key=commit_analysis → "commit_analysis")
 
 Prompts are NOT stored in the DB and NOT exposed to users.
 
@@ -30,8 +34,8 @@ from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
-_PROMPTS_DIR  = Path(__file__).parent.parent / "prompts"
-_MEMORY_DIR   = Path(__file__).parent.parent / "memory"
+_MEMORY_YAML_DIR = Path(__file__).parent.parent / "memory" / "yaml_config"
+_AGENTS_YAML_DIR = Path(__file__).parent.parent / "agents" / "yaml_config"
 
 
 @dataclass
@@ -48,7 +52,7 @@ class PromptConfig:
 
 class PromptLoader:
     """
-    Walks backend/prompts/ recursively for *.yaml files on first access.
+    Walks memory/yaml_config/ and agents/yaml_config/ for *.yaml files on first access.
     Each YAML file is one prompt; its stem filename is the lookup key.
     Thread-safe for reads (writes never happen at runtime).
     """
@@ -117,7 +121,7 @@ class PromptLoader:
         # Files that use custom formats — loaded directly by their callers, not here
         _SKIP = {"prompts.yaml", "command_work_items.yaml", "memory.yaml", "providers.yaml"}
 
-        scan_dirs = [d for d in (_PROMPTS_DIR, _MEMORY_DIR) if d.exists()]
+        scan_dirs = [d for d in (_MEMORY_YAML_DIR, _AGENTS_YAML_DIR) if d.exists()]
         if not scan_dirs:
             log.warning("prompt_loader: no prompt directories found")
             return

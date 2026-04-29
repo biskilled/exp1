@@ -96,7 +96,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
         return self._cfg
 
     def _prompts_cfg(self) -> dict:
-        """Load backend/prompts/work_items.yaml."""
+        """Load backend/memory/yaml_config/command_work_items.yaml."""
         if self._prompts is not None:
             return self._prompts
         self._prompts = {}

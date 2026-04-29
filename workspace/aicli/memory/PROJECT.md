@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
-- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed; may require database indices on project, wi_type, user_status or single-pass read refactoring
-- Improve delivery_type classification accuracy: added full project tech_stack context (frontend/backend/database keywords) to Haiku classifier system prompt; reduce misclassifications via pattern matching
-- Fix commit sync batch upsert error in route_history.py: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations
+- Fix backend startup race condition and project selector: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader or database connection timing
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup; needs immediate column reference audit
+- Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but 11 active references remain in drag-and-drop, category display, archive toggle, and tagging UI; also fix [object object] display bug in tag additions
+- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations to avoid double-update issue
+- YAML configuration reorganization: consolidate all prompts under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); rename misc.yaml to feature_detect.yaml and place under memory/yaml_config/
 
 ## Key Decisions
 
@@ -319,13 +319,13 @@ sidebar tabs:
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather; delivery_type classification uses full project tech_stack context
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) only; delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
+- All backend LLM prompts stored in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion, feature_auto_detect)
+- Role YAML consolidation: all 10 roles (developer.yaml, reviewer.yaml, etc.) stored in workspace/_templates/roles/; no inline Python role definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, and remove_react flag (always use pipeline execution, react checkbox deprecated)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
-- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; agent always uses ReAct framework in pipeline execution
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases; shows creation time context to users
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

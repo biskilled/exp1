@@ -32,7 +32,7 @@ from core.database import db, build_update
 
 log = logging.getLogger(__name__)
 
-_PROVIDERS_FILE = Path(__file__).parent.parent / "prompts" / "providers.yaml"
+_PROVIDERS_FILE = Path(__file__).parent.parent / "agents" / "yaml_config" / "providers.yaml"
 
 # ── Validation constants ──────────────────────────────────────────────────────
 

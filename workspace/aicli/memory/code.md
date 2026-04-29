@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:14 UTC -->
+<!-- Last updated: 2026-04-29 15:29 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -38,6 +38,9 @@ aicli/
 │   │   ├── _wi_classify.py
 │   │   ├── _wi_helpers.py
 │   │   ├── _wi_markdown.py
+│   │   ├── command_memory.yaml
+│   │   ├── command_work_items.yaml
+│   │   ├── event_commit.yaml
 │   │   ├── memory.yaml
 │   │   ├── memory_code_parser.py
 │   │   ├── memory_files.py
@@ -52,9 +55,6 @@ aicli/
 │   │   └── pipeline_runner.py
 │   ├── prompts/
 │   │   ├── agent_react.yaml
-│   │   ├── command_memory.yaml
-│   │   ├── command_work_items.yaml
-│   │   ├── event_commit.yaml
 │   │   ├── misc.yaml
 │   │   └── providers.yaml
 │   ├── routers/
@@ -223,7 +223,7 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_code_parser.py` | 58.9626 | 2 | 788 | 0 | 2026-04-22 |
 | `backend/memory/memory_work_items.py` | 29.0 | 27 | 1378 | 0 | 2026-04-27 |
 | `backend/memory/memory_files.py` | 20.0 | 18 | 1176 | 0 | 2026-04-27 |
-| `backend/routers/route_projects.py` | 17.0 | 15 | 1693 | 0 | 2026-04-27 |
+| `backend/routers/route_projects.py` | 18.0 | 16 | 1693 | 0 | 2026-04-29 |
 | `backend/core/db_migrations.py` | 13.0 | 11 | 3304 | 0 | 2026-04-29 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
