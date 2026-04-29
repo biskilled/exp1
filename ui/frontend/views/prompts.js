@@ -1116,94 +1116,33 @@ async function _rolesDelete(id) {
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
 }
 
-// ── System Prompt Presets ──────────────────────────────────────────────────────
+// ── System Roles reset-to-defaults ────────────────────────────────────────────
 
-let _promptPresets = [];
-const _BASE_DIVIDER = '\n\n---\n\n';
-
-/** Show or hide the base preset panel. Pass empty string to hide. */
-function _setBasePanel(content) {
-  const panel   = document.getElementById('role-base-panel');
-  const preview = document.getElementById('role-base-preview');
-  const hidden  = document.getElementById('role-base-content');
-  const label   = document.getElementById('role-base-label');
-  if (!panel) return;
-  if (!content?.trim()) {
-    panel.style.display = 'none';
-    if (hidden)  hidden.value    = '';
-    if (preview) preview.textContent = '';
-    return;
+async function _sysRolesResetDefaults() {
+  if (!confirm(
+    'Delete ALL system roles and re-seed the 3 canonical defaults?\n' +
+    '(Coding — General · Design & Planning · Review & Quality)\n\n' +
+    'Existing role attachments will be removed.'
+  )) return;
+  const btn = document.getElementById('sys-roles-reset-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const result = await api.systemRoles.resetDefaults();
+    toast(`Defaults restored: ${result.created} system roles created`, 'success');
+    // Reload system roles list
+    const sysData = await api.systemRoles.list().catch(() => ({ system_roles: [] }));
+    _systemRoles = sysData.system_roles || [];
+    _renderSysRolesList();
+    // Re-render current role editor system roles section (attachments cleared)
+    if (_activeRole) {
+      _roleLinks[_activeRole.id] = [];
+      _renderRoleSystemRolesSection(_activeRole.id);
+    }
+  } catch (e) {
+    toast('Reset failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Reset defaults'; }
   }
-  panel.style.display = 'block';
-  if (hidden)  hidden.value    = content;
-  if (preview) preview.textContent = content;
-  // Extract readable label from first heading line
-  const firstHeading = content.split('\n').find(l => l.trim().startsWith('#'));
-  if (label) label.textContent = firstHeading?.replace(/^#+\s*/, '') || 'Base preset';
-}
-
-/** Called by the Remove button inside the base preset panel. */
-function _roleClearBase() {
-  _setBasePanel('');
-  const desc = document.getElementById('role-preset-desc');
-  if (desc) desc.textContent = 'Base preset removed.';
-}
-
-async function _loadPromptPresets() {
-  const sel  = document.getElementById('role-prompt-preset');
-  const desc = document.getElementById('role-preset-desc');
-  const btn  = document.getElementById('role-preset-apply');
-  if (!sel) return;
-
-  // Fetch presets (cached after first load)
-  if (!_promptPresets.length) {
-    try {
-      const data = await api.agentRoles.systemPrompts();
-      _promptPresets = data.presets || [];
-    } catch { _promptPresets = []; }
-  }
-
-  // Populate dropdown
-  sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove()); // clear stale options
-  _promptPresets.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.name;
-    opt.textContent = p.label || p.name;
-    sel.appendChild(opt);
-  });
-
-  // Split the role's existing system_prompt into base + role-specific
-  const sp = _activeRole?.system_prompt || '';
-  const divIdx = sp.indexOf(_BASE_DIVIDER);
-  if (divIdx !== -1) {
-    const basePart    = sp.slice(0, divIdx);
-    const roleSpecific = sp.slice(divIdx + _BASE_DIVIDER.length);
-    _setBasePanel(basePart);
-    const ta = document.getElementById('role-system-prompt');
-    if (ta) ta.value = roleSpecific;
-    // Pre-select matching preset in dropdown
-    const matchedPreset = _promptPresets.find(p => sp.startsWith(p.content.trimEnd()));
-    if (matchedPreset) sel.value = matchedPreset.name;
-  } else {
-    // No divider — full content is role-specific, base panel stays hidden
-    const ta = document.getElementById('role-system-prompt');
-    if (ta) ta.value = sp;
-    _setBasePanel('');
-  }
-
-  // Show description when selection changes
-  sel.addEventListener('change', () => {
-    const p = _promptPresets.find(x => x.name === sel.value);
-    if (desc) desc.textContent = p?.description || '';
-  });
-
-  // "Set" button — set selected preset as the base panel
-  if (btn) btn.addEventListener('click', () => {
-    const p = _promptPresets.find(x => x.name === sel.value);
-    if (!p) { if (desc) desc.textContent = 'Select a preset first.'; return; }
-    _setBasePanel(p.content.trimEnd());
-    if (desc) desc.textContent = `"${p.label}" set as base. Add role-specific instructions below.`;
-  });
 }
 
 function _rolesProviderChange(provider) {

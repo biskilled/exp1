@@ -302,7 +302,7 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- System prompts consolidation issue: Multiple system prompts visible in UI despite consolidation to 3 presets; investigating duplicate entries in mng_agent_roles or system_prompts.yaml
+- System prompts UI consolidation: Multiple system prompts visible in UI despite consolidation to 3 presets; old system roles cleaned up (28 → 3) via reset-defaults endpoint; investigating duplicate entries and UI refresh
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
 - Fix PROJECT.md file loading timeout (>60 seconds): Likely N+1 queries or missing database indices on mem_work_items or mem_ai_events causing slow project load
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
@@ -324,7 +324,7 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, minimal); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
+- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
 - Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
 
 ## Deprecated

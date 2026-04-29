@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 18:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 18:39 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,13 +44,13 @@ _Last updated: 2026-04-29_
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, minimal); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
+- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
 - Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] let me understand - system promots are loaded for db , not from yaml files ? what is managned by database, what is manag
 - [2026-04-29] I dont understand. when user edit by UI - it is saved in the databse and yaml is not updated ? Also when user update dir
 - [2026-04-29] Ok. I will take option b, which mean the yaml is only for view there is no point to update the yaml file. when user upda
 - [2026-04-29] backedn wont sto and start in relatiy. I would like to have refresh above at the role section (on top) that will upload 
 - [2026-04-29] Why do I see lots of system prompts . didnt you fix that ?
+- [2026-04-29] I think there is bit of a mess in SYSTEM PROMOTS. I do see quite lots of system promot whci are probable lots of old one
