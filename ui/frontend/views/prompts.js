@@ -877,8 +877,12 @@ async function _rolesDelete(id) {
 
 function _rolesProviderChange(provider) {
   const datalist = document.getElementById('role-model-list');
+  const modelInput = document.getElementById('role-model');
   if (!datalist) return;
-  datalist.innerHTML = _providerModels(provider).map(m => `<option value="${_esc(m)}">`).join('');
+  const models = _providerModels(provider);
+  datalist.innerHTML = models.map(m => `<option value="${_esc(m)}">`).join('');
+  // Auto-select the first model for the new provider
+  if (modelInput && models.length) modelInput.value = models[0];
 }
 
 // ── System Roles (admin panel) ────────────────────────────────────────────────

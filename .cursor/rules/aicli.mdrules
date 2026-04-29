@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 13:52 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 14:18 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -22,12 +22,12 @@ _Last updated: 2026-04-29_
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
-- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring (EXP(-0.693 × age_ratio))
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **mcp**: Stdio MCP server with 14 tools; unified REST dispatch
-- **memory_files**: YAML under backend/memory/prompts/; /memory POST endpoint single source of truth for project_state.json
-- **prompt_config**: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection) + workspace/_templates/roles/ (role YAML definitions)
+- **memory_files**: YAML under backend/memory/prompts/; /memory POST endpoint single source of truth
+- **prompt_config**: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis)
 
 ## Key Decisions
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-29_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] you mention planer is not working well as fe matched TA401 as planer inseaed of database - is it possilbe to imprve accu
 - [2026-04-29] I do it is using regex and fix wording which I prefer to prevent. is there is beeter way (use prompt like langauege , st
 - [2026-04-29] I would like to start update my Roles section. I do see Internal Prompts - is it still in used ?
 - [2026-04-29] As Far as I remeber fact_extraction using promots stored in yaml config. which config file is it using ?
 - [2026-04-29] Can you remove what is not sued under _tamplate/pipelines.. Also remove that from the UI as it will be fully managed by 
+- [2026-04-29] I would like to improve the roles UI, Yaml config. currently when I am trying to choose yaml - I do see backend error - 

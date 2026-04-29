@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 13:52 UTC -->
+<!-- Last updated: 2026-04-29 14:19 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -55,7 +55,8 @@ aicli/
 │   │   ├── command_memory.yaml
 │   │   ├── command_work_items.yaml
 │   │   ├── event_commit.yaml
-│   │   └── misc.yaml
+│   │   ├── misc.yaml
+│   │   └── providers.yaml
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── route_admin.py

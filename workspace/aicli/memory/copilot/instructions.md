@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 13:52 UTC -->
+<!-- Last updated: 2026-04-29 14:19 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
+- Multiple chore commits after Claude CLI session ebf898a3 (2026-04-28 19:31 through 2026-04-29 14:18) — ongoing active development with frequent commits
 - Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner UI when tags added/removed
-- Backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
-- Optimize PROJECT.md file loading (currently >60s timeout) — performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
+- Remove lifecycle tags from Planner UI (11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining)
+- Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
 
-_Last updated: 2026-04-29 13:52 UTC_
+_Last updated: 2026-04-29 14:19 UTC_
