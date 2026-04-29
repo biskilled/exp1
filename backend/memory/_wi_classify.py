@@ -378,7 +378,15 @@ class _ClassifyMixin:
     # ── LLM classification call ────────────────────────────────────────────────
 
     def _build_tech_tags_block(self) -> str:
-        """Read tech_stack from this project's project_state.json and emit a TECH TAGS block."""
+        """Inject project tech_stack into the classifier prompt.
+
+        No regex, no hardcoded word lists. The LLM receives the project's actual
+        tech_stack dict (maintained via /memory POST) and uses its own knowledge
+        to map work items to the right delivery_type tags.
+
+        To add a new technology (e.g. 'rust'), update tech_stack in project_state.json
+        by running /memory — no code changes needed.
+        """
         try:
             from core.project_paths import ProjectPaths
             pid = self._get_project_id()  # type: ignore[attr-defined]
@@ -388,92 +396,47 @@ class _ClassifyMixin:
                     row = cur.fetchone()
             if not row:
                 return ""
-            project_name = row[0]
-            pp = ProjectPaths(project_name)
+            pp = ProjectPaths(row[0])
             state_file = pp.state_dir() / "project_state.json"
             if not state_file.exists():
                 return ""
             import json as _json
-            ps = _json.loads(state_file.read_text())
-            ts = ps.get("tech_stack", {})
+            ts = _json.loads(state_file.read_text()).get("tech_stack", {})
         except Exception:
             return ""
 
         if not ts:
             return ""
 
-        # Map tech_stack dict → layer buckets with specific technology names
-        layer_map: dict[str, list[str]] = {
-            "frontend":  [],
-            "backend":   [],
-            "database":  [],
-            "cli":       [],
-            "mcp":       [],
-            "agents":    [],
-            "devops":    [],
-            "memory":    [],
-            "tests":     [],
-            "documents": [],
-            "config":    [],
-        }
-        # Normalise: collapse whitespace, unify "vanilla js" → "vanilla-js"
-        tech_text = " ".join(str(v) for v in ts.values()).lower()
-        tech_text = tech_text.replace("vanilla js", "vanilla-js")
+        ts_lines = "\n".join(f"  {k}: {v}" for k, v in ts.items())
+        return f"""
 
-        def _has(*terms: str) -> list[str]:
-            return [t for t in terms if t in tech_text]
+PROJECT TECH STACK (source: project_state.json — updated by /memory):
+{ts_lines}
 
-        # Frontend
-        layer_map["frontend"]  = _has("javascript", "typescript", "react", "vue", "svelte",
-                                       "vanilla-js", "electron", "vite", "html", "css",
-                                       "xterm", "monaco", "angular", "nextjs", "nuxt")
-        # Backend
-        layer_map["backend"]   = _has("python", "fastapi", "uvicorn", "flask", "django",
-                                       "rust", "go", "node", "express", "jwt", "bcrypt",
-                                       "auth", "fastify")
-        # Database
-        layer_map["database"]  = _has("postgres", "postgresql", "pgvector", "mysql",
-                                       "sqlite", "redis", "psycopg2", "sqlalchemy",
-                                       "migration", "sql", "mongodb", "prisma")
-        # CLI
-        layer_map["cli"]       = _has("prompt_toolkit", "rich", "typer", "click",
-                                       "argparse", "cobra")
-        # MCP
-        layer_map["mcp"]       = _has("mcp", "stdio", "model context protocol")
-        # Agents / LLM
-        layer_map["agents"]    = _has("haiku", "sonnet", "opus", "openai", "deepseek",
-                                       "gemini", "grok", "llm", "agent", "pipeline",
-                                       "workflow", "tree-sitter")
-        # DevOps
-        layer_map["devops"]    = _has("railway", "docker", "dockerfile", "kubernetes",
-                                       "terraform", "aws", "electron-builder", "vercel",
-                                       "heroku", "github actions")
-        # Memory / embedding
-        layer_map["memory"]    = _has("embedding", "vector", "pgvector", "synthesis",
-                                       "project_state", "haiku synthesis")
+DELIVERY_TYPE INSTRUCTIONS:
+Output a pipe-separated list of tags for the delivery_type field of each work item.
+Put the layer first, then the specific technologies from the stack above that apply.
 
-        # Build the prompt block
-        lines = [
-            "\n\nTECH TAGS — use these for delivery_type (pipe-separated, most specific first):",
-            "  Format: \"<layer>|<specific-tech>|<specific-tech>|...\"",
-            "  Layers: frontend | backend | database | cli | mcp | agents | devops | memory | documents | config | tests | fullstack",
-            "  Specific techs detected in this project:",
-        ]
-        for layer, tags in layer_map.items():
-            if tags:
-                lines.append(f"    {layer}: {', '.join(dict.fromkeys(tags))}")  # dedup, ordered
+Layer options: frontend | backend | database | cli | mcp | agents | devops | memory | documents | config | tests | fullstack
 
-        lines += [
-            "  RULES:",
-            "  - Use the LAYER first, then specific techs: \"backend|python|fastapi\"",
-            "  - A database schema change is 'database|postgres|migration' NOT 'frontend' even if a",
-            "    planner UI references it — look at WHAT changes, not WHAT references it",
-            "  - Table/column/schema/index/SQL keywords → always include 'database'",
-            "  - JS/HTML/CSS/UI/component/modal/button/drag-drop → always include 'frontend'",
-            "  - LLM/agent/pipeline/MCP tool → 'agents' or 'mcp'",
-            "  - fullstack only if BOTH backend and frontend layers are genuinely changed",
-        ]
-        return "\n".join(lines)
+Rules:
+- Classify by WHAT CHANGES, not what references it.
+  Example: "planner_tags table schema cleanup" → database (a DB table), NOT frontend
+- Include the specific technology from the stack above when it genuinely applies:
+    backend route or API change      → "backend|python|fastapi"
+    DB schema, migration, SQL query  → "database|postgres"
+    UI component, modal, button      → "frontend|<frontend tech from stack>"
+    LLM agent or pipeline work       → "agents|<llm tech from stack>"
+    deployment or infrastructure     → "devops|<infra tech from stack>"
+    MCP tool or stdio transport      → "mcp"
+- fullstack only when BOTH frontend and backend genuinely change together
+- File paths in commit data are the strongest signal:
+    ui/ or frontend/ → frontend
+    routers/ or backend/ → backend
+    migrations/ or SQL → database
+    agents/ → agents
+    terraform/ or docker → devops"""
 
     async def _classify_group(self, group: dict, existing_ctx: str,
                                max_use_cases: int = 8) -> list[dict]:

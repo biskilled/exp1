@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-28_
+_Last updated: 2026-04-29_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
@@ -302,30 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix PROJECT.md file loading timeout (>60s) — likely N+1 queries in project context loading or missing database indices; PROJECT.md now read once in single pass but performance audit ongoing
-- Fix undefined column errors in route_entities (line 359) and route_history (line 228) referencing removed lifecycle field from mem_ai_events migration m080
+- Fix PROJECT.md file loading timeout (>60s) — PROJECT.md now read once in single pass but performance audit ongoing; may need database indices on project, wi_type, user_status
+- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — these columns were removed in migration m080 but route code not yet updated
 - Fix commit sync batch upsert error in /history/commits/sync API (execute_values parameter mismatch) and tag counter not updating in Planner UI when tags added/removed
-- Remove lifecycle tags from Planner UI and fix remaining 11 active UI bugs (drag-and-drop, category display, archive toggles, tagging UI errors, [object object] tag display)
-- Fix backend startup race condition on first load and active project not displayed in project selector after startup; recent projects list missing aiCli project
-- Verify MCP server with 14 tools fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability, tool dispatch correctness, and context compression
+- Remove lifecycle tags from Planner UI (11 active bugs remain: drag-and-drop, category display, archive toggles, tagging UI errors, [object object] tag display)
+- Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
+- Verify MCP server 14-tool suite fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability, tool dispatch correctness, and context compression
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small)
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state in _write_root_files_with_ctx()
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
-- Embeddings strategy: ONLY approved work items embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed
-- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, etc.) dispatched via REST endpoints in agents/mcp/server.py with unified dispatch; stdio transport running locally on developer machine
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
+- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, etc.) dispatched via REST endpoints in agents/mcp/server.py with unified dispatch; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server currently runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML under backend/memory/prompts/ with roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml) defined in workspace/_templates/; no inline Python prompts
+- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
+- All backend LLM prompts stored in YAML under backend/memory/prompts/ with roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml, react_base.yaml); project facts stored in mem_ai_project_facts table with conflict detection and embedding after /memory POST synthesis
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany instead of N execute calls
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; _load_context() split into _query_db_into_ctx() and _parse_project_md() for robustness; PROJECT.md read once in single pass
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases; user_status display bars show item lifecycle state
+- Delivery type routing: work items classified with delivery_type (code_change/feature/bug/refactor/doc/infrastructure) using Haiku classifier with project tech stack context; maps to appropriate pipeline (developer, architect, infrastructure, etc.)
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
