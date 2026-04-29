@@ -356,6 +356,8 @@ api.agentRoles = {
   versions:       (id)                  => _get(`/agent-roles/${id}/versions`),
   restore:        (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
   restoreDefault: (id)                  => _post(`/agent-roles/${id}/restore`, {}),
+  setBase:        (id)                  => _post(`/agent-roles/${id}/set-base`, {}),
+  resetToBase:    (id)                  => _post(`/agent-roles/${id}/reset-to-base`, {}),
   reloadFromYaml: (project = 'aicli')  => _post(`/agent-roles/reload?project=${enc(project)}`, {}),
   providers:      ()                    => _get('/agent-roles/providers'),
   availableTools: ()                    => _get('/agent-roles/available-tools'),

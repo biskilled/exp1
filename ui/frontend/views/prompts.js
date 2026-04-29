@@ -174,6 +174,8 @@ export async function renderPrompts(container, projectName) {
   window._sysRolesAttach         = _sysRolesAttach;
   window._sysRolesDetach         = _sysRolesDetach;
   window._sysRolesResetDefaults  = _sysRolesResetDefaults;
+  window._rolesSaveAsBase        = _rolesSaveAsBase;
+  window._rolesResetToBase       = _rolesResetToBase;
 
   // Wire reload button (after HTML is set)
   const reloadBtn = document.getElementById('roles-reload-btn');
@@ -234,16 +236,29 @@ const _PROVIDER_COLORS = {
 
 function _renderRoleItem(r) {
   const isActive   = _activeRole?.id === r.id;
-  const isExt      = r.has_template === false;
+  const status     = r.status || (r.has_template === false ? 'ext' : 'base');
   const canRestore = r.has_template === true;
   const provColor  = _PROVIDER_COLORS[r.provider] || 'var(--muted)';
 
-  const extBadge  = isExt
-    ? `<span title="External role — no template, cannot restore"
-             style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
-                    background:rgba(255,165,0,0.18);color:#f59e0b;font-weight:600;
-                    letter-spacing:0.04em;flex-shrink:0">EXT</span>`
-    : '';
+  // Status indicator: shown as a small pill at the right edge
+  let statusBadge = '';
+  if (status === 'ext') {
+    statusBadge = `<span title="External role — no template, cannot restore"
+      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
+             background:rgba(245,158,11,0.18);color:#f59e0b;font-weight:600;
+             letter-spacing:0.04em;flex-shrink:0">EXT</span>`;
+  } else if (status === 'changed') {
+    statusBadge = `<span title="Changed from saved base"
+      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
+             background:rgba(251,146,60,0.18);color:#fb923c;font-weight:600;
+             letter-spacing:0.04em;flex-shrink:0">~</span>`;
+  } else if (status === 'base' && r.has_snapshot) {
+    statusBadge = `<span title="At saved base"
+      style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
+             background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;
+             letter-spacing:0.04em;flex-shrink:0">●</span>`;
+  }
+
   const restoreBtn = canRestore
     ? `<button onclick="event.stopPropagation();window._rolesRestoreDefault(${r.id},${JSON.stringify(_esc(r.name))})"
                title="Restore this role to template defaults"
@@ -274,7 +289,7 @@ function _renderRoleItem(r) {
           <span style="color:rgba(255,255,255,0.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(modelShort)}</span>` : ''}
         </div>
       </div>
-      ${extBadge}${restoreBtn}
+      ${statusBadge}${restoreBtn}
     </div>`;
 }
 
@@ -304,7 +319,7 @@ async function _rolesReloadFromYaml(projectName) {
   } catch (e) {
     toast('Reload failed: ' + e.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '↺'; }
+    if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
   }
 }
 
@@ -324,6 +339,43 @@ async function _rolesRestoreDefault(id, name) {
   } catch (e) {
     toast('Restore failed: ' + e.message, 'error');
   }
+}
+
+async function _rolesSaveAsBase(id) {
+  if (!confirm('Save current state as base?\nFuture edits will show as CHANGED until you save as base again.')) return;
+  try {
+    await api.agentRoles.setBase(id);
+    // Refresh role in list to update status badge
+    const data = await api.agentRoles.list(_project || '_global');
+    _roles = data.roles || [];
+    const fresh = _roles.find(r => r.id === id);
+    if (fresh) {
+      _activeRole = fresh;
+      _renderRolesList();
+      _renderRoleEditor(fresh);
+    }
+    toast('Base snapshot saved', 'success');
+  } catch (e) { toast('Save as base failed: ' + e.message, 'error'); }
+}
+
+async function _rolesResetToBase(id) {
+  if (!confirm('Reset role to saved base?\nAll current changes will be replaced with the saved base state.')) return;
+  try {
+    const updated = await api.agentRoles.resetToBase(id);
+    const idx = _roles.findIndex(r => r.id === id);
+    if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated };
+    _activeRole = _roles[idx] || _activeRole;
+    _renderRolesList();
+    _renderRoleEditor(_activeRole);
+    _loadRoleTools(_activeRole);
+    // Reload system role links
+    try {
+      const linkData = await api.systemRoles.listLinks(id);
+      _roleLinks[id] = linkData.links || [];
+    } catch (_) { _roleLinks[id] = []; }
+    _renderRoleSystemRolesSection(id);
+    toast('Role reset to base', 'success');
+  } catch (e) { toast('Reset to base failed: ' + e.message, 'error'); }
 }
 
 async function _rolesNew() {
@@ -728,17 +780,28 @@ function _renderRoleEditor(role) {
 
   // Toolbar
   if (toolbar) {
+    const hasSnapshot = role.has_snapshot || false;
+    const resetLabel  = hasSnapshot ? '↩ Reset to base' : '';
     toolbar.innerHTML = `
       <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
       <button id="roles-delete-btn" class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem">Delete</button>
       <button id="roles-edit-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">Edit YAML</button>
       <button id="roles-export-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">↓ YAML</button>
+      <button id="roles-set-base-btn" class="btn btn-ghost btn-sm"
+        style="font-size:0.62rem;color:#4ade80;border-color:rgba(74,222,128,0.4)"
+        title="Snapshot current state as the base — future changes show as CHANGED">Save as base</button>
+      ${hasSnapshot ? `<button id="roles-reset-base-btn" class="btn btn-ghost btn-sm"
+        style="font-size:0.62rem;color:#fb923c;border-color:rgba(251,146,60,0.4)"
+        title="Restore role to saved base snapshot">↩ Reset to base</button>` : ''}
       <button id="roles-save-btn" class="btn btn-primary btn-sm">Save</button>
     `;
     toolbar.querySelector('#roles-delete-btn').addEventListener('click', () => _rolesDelete(role.id));
     toolbar.querySelector('#roles-edit-yaml-btn').addEventListener('click', () => _rolesEditYaml(role));
     toolbar.querySelector('#roles-export-yaml-btn').addEventListener('click', () => _rolesExportYaml(role.id, role.name));
+    toolbar.querySelector('#roles-set-base-btn').addEventListener('click', () => _rolesSaveAsBase(role.id));
     toolbar.querySelector('#roles-save-btn').addEventListener('click', () => _rolesSave(role.id));
+    const resetBaseBtn = toolbar.querySelector('#roles-reset-base-btn');
+    if (resetBaseBtn) resetBaseBtn.addEventListener('click', () => _rolesResetToBase(role.id));
   }
 
   const providerOpts = _providers.map(p =>
@@ -1063,12 +1126,8 @@ async function _rolesSave(id) {
   const description   = document.getElementById('role-description')?.value?.trim();
   const maxIterations = parseInt(document.getElementById('role-max-iterations')?.value || '10', 10);
 
-  // Reconstruct merged system_prompt: base (if any) + divider + role-specific
-  const _DIVIDER    = '\n\n---\n\n';
-  const baseContent = document.getElementById('role-base-content')?.value?.trimEnd() || '';
-  const roleSpec    = document.getElementById('role-system-prompt')?.value || '';
-  const systemPrompt  = baseContent ? baseContent + _DIVIDER + roleSpec : roleSpec;
-  const tools         = _collectTools();
+  const systemPrompt = document.getElementById('role-system-prompt')?.value || '';
+  const tools        = _collectTools();
   if (!name) { toast('Name required', 'error'); return; }
   _rolesShowErrors([]);  // clear any previous errors
   try {

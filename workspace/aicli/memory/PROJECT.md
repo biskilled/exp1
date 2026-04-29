@@ -302,19 +302,19 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- System prompts UI consolidation: Multiple system prompts visible in UI despite consolidation to 3 presets; old system roles cleaned up (28 → 3) via reset-defaults endpoint; investigating duplicate entries and UI refresh issues
-- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
-- Fix PROJECT.md file loading timeout (>60 seconds): Likely N+1 queries or missing database indices on mem_work_items or mem_ai_events causing slow project load
+- Fix undefined column errors in route_history and route_entities: psycopg2 UndefinedColumn errors for event_type (line 228) and lifecycle (line 359); columns removed in m080 but route code still references them
+- Fix PROJECT.md file loading timeout (>60 seconds): Likely N+1 queries or missing database indices on mem_work_items causing slow project load
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
 - Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added/removed; missing state refresh trigger in planner.js render loop
 - Fix commit sync batch upsert error: Database schema migrations not persisting; old tables still appearing after migration; need to verify DB state matches latest migration
+- Pipeline execution and retry configuration: Move retry logic from agent roles to pipeline YAML stage definitions; wire up pipeline UI to create/edit pipelines with stage-level retry policies
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML → DB sync: workspace/_templates/pipelines/roles/*.yaml are read-only factory defaults; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB table is single source of truth for runtime; UI edits persist in DB across restarts; Refresh button re-seeds YAML; Restore button resets individual role to YAML defaults
+- Role YAML → DB sync: workspace/_templates/pipelines/roles/role_*.yaml are read-only factory defaults; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB table is single source of truth for runtime; UI edits persist in DB across restarts; Refresh button re-seeds YAML; Restore button resets individual role to YAML defaults
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
@@ -324,9 +324,8 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
+- System prompts consolidation: 3 shared system prompt presets in workspace/_templates/pipelines/system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
 - Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
-- Pipeline YAML standardization: all pipeline configs prefixed pl_*.yaml under workspace/_templates/pipelines/; all role YAML prefixed role_*.yaml; pipeline memory prompts in backend/memory/yaml_config/; agent/pipeline prompts in backend/agents/yaml_config/
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

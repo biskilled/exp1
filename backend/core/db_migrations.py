@@ -3232,6 +3232,21 @@ def m081_wi_embedding_index_and_cleanup(conn) -> None:
     log.info("m081: added ivfflat index on mem_work_items.embedding; dropped coupling_score column")
 
 
+def m082_role_base_snapshot(conn) -> None:
+    """Add base_snapshot JSONB column to mng_agent_roles for the save-as-base feature.
+
+    Allows admins to snapshot a role's current state (system_prompt, provider, model,
+    description, tools, max_iterations) so that subsequent changes are visually flagged
+    as CHANGED in the UI and can be reverted with Reset to base.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS base_snapshot JSONB DEFAULT NULL"
+        )
+    conn.commit()
+    log.info("m082: base_snapshot JSONB column added to mng_agent_roles")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3301,4 +3316,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m079_wi_user_status_to_text", m079_wi_user_status_to_text),
     ("m080_wi_pipeline_columns", m080_wi_pipeline_columns),
     ("m081_wi_embedding_index_and_cleanup", m081_wi_embedding_index_and_cleanup),
+    ("m082_role_base_snapshot", m082_role_base_snapshot),
 ]

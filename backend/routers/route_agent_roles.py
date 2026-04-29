@@ -12,6 +12,8 @@ Routes:
   DELETE /agent-roles/{id}                  soft-delete (admin only)
   GET    /agent-roles/{id}/versions         version history (admin only)
   POST   /agent-roles/{id}/restore/{vid}    restore to previous version (admin only)
+  POST   /agent-roles/{id}/set-base         snapshot current state as base (admin only)
+  POST   /agent-roles/{id}/reset-to-base    restore role to saved base snapshot (admin only)
   GET    /agent-roles/providers             list LLM providers + models from providers.yaml (no auth)
   GET    /agent-roles/available-tools       list all registered tool names + categories
   POST   /agent-roles/validate-yaml         validate YAML without writing to DB (admin only)
@@ -136,7 +138,8 @@ _SQL_LIST_ROLES = (
     """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
-              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10)
+              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
+              ar.base_snapshot
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
        WHERE ar.is_active=TRUE AND (ar.project_id=%s OR ar.project_id=%s)
@@ -147,10 +150,36 @@ _SQL_GET_ROLE_BY_ID = (
     """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
-              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10)
+              COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
+              ar.base_snapshot
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
        WHERE ar.id=%s"""
+)
+
+_SQL_GET_ROLE_SNAPSHOT = (
+    """SELECT system_prompt, provider, model, description,
+              COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10)
+       FROM mng_agent_roles WHERE id=%s AND is_active=TRUE"""
+)
+
+_SQL_SET_BASE_SNAPSHOT = (
+    """UPDATE mng_agent_roles SET base_snapshot=%s::jsonb, updated_at=NOW()
+       WHERE id=%s AND is_active=TRUE
+       RETURNING id"""
+)
+
+_SQL_RESET_FROM_SNAPSHOT = (
+    """UPDATE mng_agent_roles
+       SET system_prompt  = base_snapshot->>'system_prompt',
+           provider       = base_snapshot->>'provider',
+           model          = base_snapshot->>'model',
+           description    = base_snapshot->>'description',
+           tools          = (base_snapshot->'tools')::jsonb,
+           max_iterations = COALESCE((base_snapshot->>'max_iterations')::int, 10),
+           updated_at     = NOW()
+       WHERE id=%s AND is_active=TRUE AND base_snapshot IS NOT NULL
+       RETURNING id"""
 )
 
 _SQL_INSERT_ROLE = (
@@ -286,25 +315,69 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
     Non-admin users receive ONLY id / name / description — the full definition
     (system_prompt, provider, model, tools, output schema) is
     admin-only so customers cannot reverse-engineer proprietary role logic.
+
+    Row column indices (0-based):
+      0=id, 1=project, 2=name, 3=description, 4=system_prompt,
+      5=provider, 6=model, 7=tags, 8=is_active, 9=created_at, 10=updated_at,
+      11=output_schema, 12=auto_commit, 13=tools, 14=max_iterations, 15=base_snapshot
     """
-    name = row[2]
+    name      = row[2]
+    has_tmpl  = (name in tmpl_names) if tmpl_names is not None else True
+
     r = {
         "id":           row[0],
         "name":         name,
         "description":  row[3],
         "is_active":    row[8],
-        "has_template": (name in tmpl_names) if tmpl_names is not None else None,
+        "has_template": has_tmpl if tmpl_names is not None else None,
     }
     if not admin:
         return r
 
-    import json as _json
     _tools_raw = row[13] if len(row) > 13 else []
     if isinstance(_tools_raw, str):
         try:
             _tools_raw = _json.loads(_tools_raw)
         except Exception:
             _tools_raw = []
+
+    # base_snapshot — stored as JSONB (dict) or None
+    base_snap = row[15] if len(row) > 15 else None
+    if isinstance(base_snap, str):
+        try:
+            base_snap = _json.loads(base_snap)
+        except Exception:
+            base_snap = None
+
+    # Compute role status: "ext" | "base" | "changed"
+    if not has_tmpl:
+        status = "ext"
+    elif base_snap is None:
+        status = "base"   # pristine — never had a custom base saved
+    else:
+        current_sp    = row[4] or ""
+        current_prov  = row[5]
+        current_model = row[6]
+        current_desc  = row[3] or ""
+        current_tools = sorted(_tools_raw) if isinstance(_tools_raw, list) else []
+        current_max   = int(row[14]) if len(row) > 14 else 10
+
+        snap_sp    = base_snap.get("system_prompt") or ""
+        snap_prov  = base_snap.get("provider")
+        snap_model = base_snap.get("model")
+        snap_desc  = base_snap.get("description") or ""
+        snap_tools = sorted(base_snap.get("tools") or [])
+        snap_max   = int(base_snap.get("max_iterations") or 10)
+
+        changed = (
+            current_sp != snap_sp
+            or current_prov  != snap_prov
+            or current_model != snap_model
+            or current_desc  != snap_desc
+            or current_tools != snap_tools
+            or current_max   != snap_max
+        )
+        status = "changed" if changed else "base"
 
     r.update({
         "project":        row[1],
@@ -318,6 +391,8 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         "auto_commit":    row[12] if len(row) > 12 else False,
         "tools":          _tools_raw if isinstance(_tools_raw, list) else [],
         "max_iterations": int(row[14]) if len(row) > 14 else 10,
+        "status":         status,
+        "has_snapshot":   base_snap is not None,
     })
     return r
 
@@ -1047,6 +1122,81 @@ async def restore_role_default(role_id: int, user=Depends(get_optional_user)):
 
     log.info(f"Role '{name}' (id={role_id}) restored to template defaults")
     return result
+
+
+# ── Base snapshot: save / reset ───────────────────────────────────────────────
+
+@router.post("/{role_id}/set-base")
+async def set_role_base(role_id: int, user=Depends(get_optional_user)):
+    """Snapshot current role state as the 'base'.
+
+    Subsequent edits will show a CHANGED status badge in the UI.
+    Calling reset-to-base restores to this snapshot.
+    """
+    _require_db()
+    _require_admin(user)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_ROLE_SNAPSHOT, (role_id,))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Role not found or not active")
+
+    tools = row[4]
+    if isinstance(tools, str):
+        try:
+            tools = _json.loads(tools)
+        except Exception:
+            tools = []
+
+    snapshot = {
+        "system_prompt":  row[0] or "",
+        "provider":       row[1],
+        "model":          row[2],
+        "description":    row[3] or "",
+        "tools":          tools if isinstance(tools, list) else [],
+        "max_iterations": int(row[5]) if row[5] is not None else 10,
+    }
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_SET_BASE_SNAPSHOT, (_json.dumps(snapshot), role_id))
+            r = cur.fetchone()
+    if not r:
+        raise HTTPException(404, "Role not found or not active")
+
+    log.info(f"Role id={role_id} base snapshot saved")
+    return {"ok": True, "role_id": role_id}
+
+
+@router.post("/{role_id}/reset-to-base")
+async def reset_role_to_base(role_id: int, user=Depends(get_optional_user)):
+    """Restore role fields to the saved base snapshot.
+
+    Overwrites: system_prompt, provider, model, description, tools, max_iterations.
+    Returns the updated role dict.
+    """
+    _require_db()
+    _require_admin(user)
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_RESET_FROM_SNAPSHOT, (role_id,))
+            r = cur.fetchone()
+    if not r:
+        raise HTTPException(404, "Role not found, not active, or no base snapshot has been saved")
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Role not found after reset")
+
+    tmpl = _template_names()
+    log.info(f"Role id={role_id} reset to base snapshot")
+    return _row_to_role(row, admin=True, tmpl_names=tmpl)
 
 
 # ── Shared YAML parse helper ──────────────────────────────────────────────────
