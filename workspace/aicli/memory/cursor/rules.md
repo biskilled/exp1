@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:39 UTC -->
+<!-- Last updated: 2026-04-29 15:45 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -20,7 +20,7 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
+- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 
 ## Active Features (do not break)
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup; audit all column references
-- Fix backend startup race condition and project selector: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader or database connection timing
-- Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but active references remain in drag-and-drop, category display, and tagging UI; also fix [object object] display bug in tag additions
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
+- Multiple auto-commit chore sessions after Claude CLI session ebf898a3 (15 commits 2026-04-29 09:21–15:44) — indicates active CI/CD integration with auto_commit_push.sh triggered after each Claude Code session
+- Consolidate YAML configuration: all prompts moved under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); deleted unused samples/ folder and dead pipeline YAML files; removed deprecated role UI fields
+- Fix PROJECT.md file loading timeout: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup
 
-_Last updated: 2026-04-29 15:39 UTC_
+_Last updated: 2026-04-29 15:45 UTC_

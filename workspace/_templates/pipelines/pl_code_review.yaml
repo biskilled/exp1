@@ -1,0 +1,17 @@
+name: "code_review"
+version: "1.0"
+description: |
+  Web Developer (prep) → Code Reviewer (deep review) pipeline.
+  Produces a checklist then a scored JSON review.
+
+stages:
+  - key: "prep"
+    role: "Web Developer"
+    description: "Survey recently changed files and produce a review checklist"
+
+  - key: "reviewer"
+    role: "Code Reviewer"
+    description: "Deep review using the checklist; returns scored JSON"
+
+on_completion:
+  save_memory: true

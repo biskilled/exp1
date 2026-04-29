@@ -305,7 +305,7 @@ class _Database:
 
     @staticmethod
     def _seed_agent_roles(conn) -> None:
-        """Upsert all agent roles from workspace/_templates/pipelines/roles/*.yaml.
+        """Upsert all agent roles from workspace/_templates/pipelines/roles/role_*.yaml.
 
         Uses DO UPDATE so improved prompts take effect on server restart.
         """
@@ -320,7 +320,7 @@ class _Database:
 
     @staticmethod
     def _seed_roles_from_yaml(cur) -> None:
-        """Full UPSERT of agent roles from workspace/_templates/pipelines/roles/*.yaml into DB.
+        """Full UPSERT of agent roles from workspace/_templates/pipelines/roles/role_*.yaml into DB.
 
         - Existing role (matched by client_id + project + name): ALL fields updated from YAML.
         - New role (not yet in DB): inserted fresh from YAML.
@@ -352,7 +352,7 @@ class _Database:
             return
         global_pid = _row[0]
 
-        for yaml_path in sorted(templates_dir.glob("*.yaml")):
+        for yaml_path in sorted(templates_dir.glob("role_*.yaml")):
             try:
                 data = _yaml.safe_load(yaml_path.read_text())
                 if not data or not isinstance(data, dict) or not data.get("name"):

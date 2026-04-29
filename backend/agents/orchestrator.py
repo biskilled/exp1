@@ -154,11 +154,11 @@ class PipelineDef:
     def load(cls, pipeline_name: str) -> "PipelineDef":
         """Load a pipeline definition from workspace/_templates/pipelines/{name}.yaml"""
         pdir = _pipelines_dir()
-        yaml_path = pdir / f"{pipeline_name}.yaml"
+        yaml_path = pdir / f"pl_{pipeline_name}.yaml"
         if not yaml_path.exists():
             raise FileNotFoundError(
                 f"Pipeline '{pipeline_name}' not found at {yaml_path}. "
-                f"Available: {[f.stem for f in pdir.glob('*.yaml')]}"
+                f"Available: {[f.stem[3:] for f in pdir.glob('pl_*.yaml')]}"
             )
         raw = yaml.safe_load(yaml_path.read_text())
         stages = [
@@ -187,7 +187,7 @@ class PipelineDef:
         pdir = _pipelines_dir()
         if not pdir.exists():
             return []
-        return sorted(f.stem for f in pdir.glob("*.yaml"))
+        return sorted(f.stem[3:] for f in pdir.glob("pl_*.yaml"))
 
 
 # ── Orchestrator ──────────────────────────────────────────────────────────────

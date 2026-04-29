@@ -1,0 +1,12 @@
+name: "update_docs"
+version: "1.0"
+description: |
+  Single-stage pipeline: Web Developer updates PROJECT.md from recent memory and user input.
+
+stages:
+  - key: "writer"
+    role: "Web Developer"
+    description: "Update PROJECT.md using recent memory entries and user input"
+
+on_completion:
+  save_memory: false

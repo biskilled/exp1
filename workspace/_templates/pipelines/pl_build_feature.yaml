@@ -1,0 +1,25 @@
+name: "build_feature"
+version: "1.0"
+description: |
+  Sr. Architect → Web Developer → Code Reviewer pipeline for building new features.
+  Reviewer rejection loops back to Developer (up to max_rejection_retries times).
+
+stages:
+  - key: "architect"
+    role: "Sr. Architect"
+    description: "Design the feature: scope, affected modules, data flow, implementation steps"
+
+  - key: "developer"
+    role: "Web Developer"
+    description: "Implement the Architect's spec; read before editing; verify after every change"
+
+  - key: "reviewer"
+    role: "Code Reviewer"
+    description: "Review against acceptance criteria; approve or request changes"
+
+on_rejection:
+  loops_back_to: "developer"
+  max_retries: 2
+
+on_completion:
+  save_memory: true

@@ -248,8 +248,8 @@ async def list_templates():
         return {"templates": []}
 
     templates = []
-    for f in sorted(pipelines_dir.glob("*.yaml")):
-        info: dict = {"name": f.stem}
+    for f in sorted(pipelines_dir.glob("pl_*.yaml")):
+        info: dict = {"name": f.stem[3:]}
         try:
             data = yaml.safe_load(f.read_text()) or {}
             info["description"] = (data.get("description") or "").strip().split("\n")[0]
