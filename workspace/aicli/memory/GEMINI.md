@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-29 20:27 UTC -->
+<!-- Last updated: 2026-04-29 22:35 UTC -->
 # aicli
-_2026-04-29 20:27 UTC | Memory synced: 2026-04-29_
+_2026-04-29 22:35 UTC | Memory synced: 2026-04-29_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -39,27 +39,27 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **frontend_framework**: Vanilla JS + Electron + Vite
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML pipeline + pipeline-level retry
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML pipeline + pipeline-level retry and temperature/top_p overrides
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **mcp_transport**: Stdio MCP server with 10 tools; unified REST dispatch
+- **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
 
 ## Key Architectural Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB; Refresh button re-seeds YAML; Restore button resets individual role to base_snapshot
-- Role parameters: system_prompt, system_prompt_preset (references shared presets from system_prompts.yaml), provider/model, tools, mcp, max_iterations, temperature, top_p configured per role; pipeline can override temperature/top_p per stage; base_snapshot stores pristine role state for restore-to-default functionality
-- System prompts consolidation: 3 shared system prompt presets in workspace/_templates/pipelines/system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; all roles default to canonical preset on creation
-- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
+- Role YAML factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only
+- Role parameters: system_prompt + system_prompt_preset (references 3 shared presets from system_prompts.yaml), provider/model, tools (by category: git/files/memory), mcp (multi-select), max_iterations, temperature, top_p configured per role; pipeline can override temperature/top_p per stage; base_snapshot stores pristine role state for restore
+- System prompts consolidation: 3 shared system prompt presets in workspace/_templates/pipelines/system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all roles default to canonical preset on creation
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system, temperature) → str contract; model configurable per role YAML
+- MCP server: 10 MCPs (github, postgres, slack, linear, jira, stripe, contentful, supabase, s3, openapi) with multi-select in role editor; unified REST dispatch; stdio transport, local machine, no auth required
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system, temperature) → str contract; model configurable per role YAML; temperature/top_p passed through from role or pipeline stage
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather; retry logic configured at pipeline level via YAML
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
 
@@ -92,11 +92,11 @@ No more copy-pasting context. No more re-explaining your architecture.
 - `backend/memory/memory_work_items.py` — score 30.0 (28 commits, 1378 lines)
 - `backend/memory/memory_files.py` — score 20.0 (18 commits, 1176 lines)
 - `backend/routers/route_projects.py` — score 19.0 (17 commits, 1693 lines)
-- `backend/core/db_migrations.py` — score 15.0 (13 commits, 3336 lines)
+- `backend/core/db_migrations.py` — score 16.0 (14 commits, 3362 lines)
 - `ui/frontend/views/prompts.js` — score 12.0 (10 commits, 1642 lines)
 - `backend/agents/mcp/server.py` — score 11.0 (9 commits, 854 lines)
 - `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
-- `backend/routers/route_agent_roles.py` — score 9.0 (7 commits, 1379 lines)
+- `backend/routers/route_agent_roles.py` — score 10.0 (8 commits, 1542 lines)
 - `backend/routers/route_git.py` — score 9.0 (7 commits, 1691 lines)
 
 ## Recently Changed (last commits)
@@ -121,4 +121,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-29 20:27 UTC_
+_Last updated: 2026-04-29 22:35 UTC_

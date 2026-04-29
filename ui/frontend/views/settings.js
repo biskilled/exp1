@@ -1454,16 +1454,26 @@ function _jwtIsAdmin() {
   } catch { return false; }
 }
 
+// Module-level provider cache for the roles edit form (populated on first load)
+let _settingsProviders = [];
+
+function _settingsProviderModels(providerId) {
+  const p = _settingsProviders.find(x => x.id === providerId);
+  return p?.models || [];
+}
+
 async function renderAgentRoles(content) {
   const isAdmin = _jwtIsAdmin();
   content.innerHTML = `<div style="color:var(--muted);font-size:0.72rem">Loading…</div>`;
 
   let roles = [], adminFlag = false, pipelines = [];
   try {
-    const [rolesData, plData] = await Promise.all([
+    const [rolesData, plData, provData] = await Promise.all([
       api.agentRoles.list('_global', true),   // show_deactivated=true so settings sees all
       api.agentRoles.pipelinesConfig().catch(() => ({ pipelines: [] })),
+      api.agentRoles.providers().catch(() => ({ providers: [] })),
     ]);
+    if (provData?.providers?.length) _settingsProviders = provData.providers;
     roles     = rolesData.roles || [];
     adminFlag = rolesData.is_admin || isAdmin;
     pipelines = plData.pipelines || [];
@@ -1578,16 +1588,39 @@ async function renderAgentRoles(content) {
     if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
   };
   window._rolesSaveEdit = async (id) => {
-    const desc   = document.getElementById(`re-desc-${id}`)?.value.trim() || '';
-    const prov   = document.getElementById(`re-prov-${id}`)?.value || 'claude';
-    const model  = document.getElementById(`re-model-${id}`)?.value.trim() || '';
-    const prompt = document.getElementById(`re-prompt-${id}`)?.value || '';
-    const note   = document.getElementById(`re-note-${id}`)?.value.trim() || '';
+    const desc    = document.getElementById(`re-desc-${id}`)?.value.trim() || '';
+    const prov    = document.getElementById(`re-prov-${id}`)?.value || 'claude';
+    const model   = document.getElementById(`re-model-${id}`)?.value || '';
+    const prompt  = document.getElementById(`re-prompt-${id}`)?.value || '';
+    const note    = document.getElementById(`re-note-${id}`)?.value.trim() || '';
+    const tempRaw = document.getElementById(`re-temp-${id}`)?.value;
+    const temperature = tempRaw != null ? parseFloat(tempRaw) : null;
     try {
-      await api.agentRoles.patch(id, { description: desc, provider: prov, model, system_prompt: prompt, note });
-      toast('Role updated', 'success');
+      await api.agentRoles.patch(id, { description: desc, provider: prov, model, system_prompt: prompt, note, temperature });
+      toast('Role saved — new version created', 'success');
       renderAgentRoles(content);
     } catch (e) { toast('Update failed: ' + e.message, 'error'); }
+  };
+  window._rolesResetToBase = async (id) => {
+    if (!confirm('Reset this role to its saved base snapshot? Current changes will be lost.')) return;
+    try {
+      await api.agentRoles.resetToBase(id);
+      toast('Role reset to base', 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Reset failed: ' + e.message, 'error'); }
+  };
+  window._rolesProviderChange = (id) => {
+    const prov   = document.getElementById(`re-prov-${id}`)?.value;
+    const modelSel = document.getElementById(`re-model-${id}`);
+    if (!prov || !modelSel) return;
+    const models = _settingsProviderModels(prov);
+    const currentVal = modelSel.value;
+    // Re-populate options; keep current if it's in the new list
+    modelSel.innerHTML = models.map(m =>
+      `<option value="${_esc(m)}" ${m === currentVal ? 'selected' : ''}>${_esc(m)}</option>`
+    ).join('') + (models.length === 0 ? '<option value="">— no preset models —</option>' : '');
+    // If current model isn't in list, select first
+    if (models.length && !models.includes(currentVal)) modelSel.value = models[0];
   };
   window._rolesShowVersions = async (id, name) => {
     const el = document.getElementById(`role-versions-${id}`);
@@ -1680,30 +1713,83 @@ function _renderRoleRow(r, isAdmin) {
       <!-- Edit form (hidden by default) -->
       <div id="role-edit-${r.id}" style="display:none;border-top:1px solid var(--border);
            padding:0.75rem;background:var(--surface2)">
+
+        <!-- Form header: note + link to full editor -->
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;font-size:0.6rem;color:var(--muted)">
+          <span>Each save creates a new version. Use History to restore older versions.</span>
+          <a href="#" onclick="window._nav('prompts');return false"
+            style="margin-left:auto;color:var(--accent);text-decoration:none;white-space:nowrap"
+            title="Open full role editor in the Roles tab">Open in Roles editor →</a>
+        </div>
+
         <div class="field-group">
           <div class="field-label" style="font-size:0.6rem">Description</div>
           <input class="field-input" id="re-desc-${r.id}" value="${_esc(r.description)}" /></div>
+
+        <!-- Provider + Model row -->
         <div style="display:flex;gap:0.5rem">
           <div class="field-group" style="flex:1">
             <div class="field-label" style="font-size:0.6rem">Provider</div>
-            <select class="field-input" id="re-prov-${r.id}">
-              ${['claude','openai','deepseek','gemini','grok'].map(p =>
-                `<option value="${p}" ${r.provider===p?'selected':''}>${p}</option>`).join('')}
-            </select></div>
+            <select class="field-input" id="re-prov-${r.id}"
+              onchange="window._rolesProviderChange(${r.id})">
+              ${(() => {
+                const provs = _settingsProviders.length
+                  ? _settingsProviders
+                  : [{id:'claude',label:'Claude'},{id:'openai',label:'OpenAI'},{id:'deepseek',label:'DeepSeek'},{id:'gemini',label:'Gemini'},{id:'grok',label:'Grok'}];
+                return provs.map(p =>
+                  `<option value="${_esc(p.id)}" ${r.provider===p.id?'selected':''}>${_esc(p.label||p.id)}</option>`
+                ).join('');
+              })()}
+            </select>
+          </div>
           <div class="field-group" style="flex:1">
             <div class="field-label" style="font-size:0.6rem">Model</div>
-            <input class="field-input" id="re-model-${r.id}" value="${_esc(r.model||'')}" /></div>
+            <select class="field-input" id="re-model-${r.id}">
+              ${(() => {
+                const models = _settingsProviderModels(r.provider);
+                const cur = r.model || '';
+                const opts = [...new Set([...(cur ? [cur] : []), ...models])];
+                if (!opts.length) return `<option value="${_esc(cur)}">${_esc(cur) || '— default —'}</option>`;
+                return opts.map(m => `<option value="${_esc(m)}" ${m===cur?'selected':''}>${_esc(m)}</option>`).join('');
+              })()}
+            </select>
+          </div>
         </div>
+
+        <!-- Temperature -->
+        <div class="field-group">
+          <div class="field-label" style="font-size:0.6rem">
+            Temperature
+            <span id="re-temp-val-${r.id}" style="margin-left:0.4rem;color:var(--accent);font-weight:600">
+              ${r.temperature != null ? parseFloat(r.temperature).toFixed(2) : '0.30'}
+            </span>
+            <span style="color:var(--muted);font-weight:400;margin-left:0.4rem">(0 = precise · 1 = creative)</span>
+          </div>
+          <input type="range" id="re-temp-${r.id}" min="0" max="1" step="0.05"
+            value="${r.temperature != null ? r.temperature : 0.3}"
+            oninput="document.getElementById('re-temp-val-${r.id}').textContent=parseFloat(this.value).toFixed(2)"
+            style="width:100%;accent-color:var(--accent)" />
+        </div>
+
+        <!-- System Prompt -->
         <div class="field-group">
           <div class="field-label" style="font-size:0.6rem">System Prompt</div>
           <textarea class="field-input" id="re-prompt-${r.id}" rows="6"
             style="font-family:monospace;font-size:0.68rem;resize:vertical">${_esc(r.system_prompt||'')}</textarea></div>
+
+        <!-- Change note -->
         <div class="field-group">
-          <div class="field-label" style="font-size:0.6rem">Change note (optional)</div>
+          <div class="field-label" style="font-size:0.6rem">Change note (optional — recorded in version history)</div>
           <input class="field-input" id="re-note-${r.id}" placeholder="What changed and why?" /></div>
-        <div style="display:flex;gap:0.5rem;margin-top:0.25rem">
-          <button class="btn btn-primary btn-sm" onclick="window._rolesSaveEdit(${r.id})">Save</button>
+
+        <!-- Action buttons -->
+        <div style="display:flex;gap:0.5rem;margin-top:0.25rem;align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="window._rolesSaveEdit(${r.id})">Save version</button>
           <button class="btn btn-ghost btn-sm" onclick="window._rolesToggleEdit(${r.id})">Cancel</button>
+          ${r.has_snapshot ? `
+          <button class="btn btn-ghost btn-sm" onclick="window._rolesResetToBase(${r.id})"
+            style="margin-left:auto;color:var(--amber,#f59e0b);border-color:var(--amber,#f59e0b)"
+            title="Restore role to the saved base snapshot">↩ Reset to base</button>` : ''}
         </div>
       </div>
       <!-- Version history panel -->

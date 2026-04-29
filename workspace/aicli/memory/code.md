@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 20:27 UTC -->
+<!-- Last updated: 2026-04-29 22:35 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -205,14 +205,15 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_work_items.py` | 30.0 | 28 | 1378 | 0 | 2026-04-29 |
 | `backend/memory/memory_files.py` | 20.0 | 18 | 1176 | 0 | 2026-04-27 |
 | `backend/routers/route_projects.py` | 19.0 | 17 | 1693 | 0 | 2026-04-29 |
-| `backend/core/db_migrations.py` | 15.0 | 13 | 3336 | 0 | 2026-04-29 |
+| `backend/core/db_migrations.py` | 16.0 | 14 | 3362 | 0 | 2026-04-29 |
 | `ui/frontend/views/prompts.js` | 12.0 | 10 | 1642 | 0 | 2026-04-29 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |
-| `backend/routers/route_agent_roles.py` | 9.0 | 7 | 1379 | 0 | 2026-04-29 |
+| `backend/routers/route_agent_roles.py` | 10.0 | 8 | 1542 | 0 | 2026-04-29 |
 | `backend/routers/route_git.py` | 9.0 | 7 | 1691 | 0 | 2026-04-27 |
-| `backend/core/database.py` | 7.0 | 7 | 759 | 0 | 2026-04-29 |
+| `backend/core/database.py` | 8.0 | 8 | 795 | 0 | 2026-04-29 |
 | `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
+| `ui/frontend/views/settings.js` | 5.0 | 3 | 1753 | 0 | 2026-04-29 |
 | `backend/routers/route_memory.py` | 5.0 | 3 | 836 | 0 | 2026-04-27 |
 | `backend/routers/route_chat.py` | 5.0 | 3 | 975 | 0 | 2026-04-27 |
 
