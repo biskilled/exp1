@@ -1,16 +1,33 @@
-<!-- Last updated: 2026-04-29 14:59 UTC -->
-## Project: aicli
+# aicli — AI Coding Rules
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:06 UTC
 
-## Stack
+# aicli — Shared AI Memory Platform
 
-language_cli: Python 3.12
-cli_framework: prompt_toolkit + rich
-backend_framework: FastAPI + uvicorn
-backend_auth: JWT (python-jose + bcrypt) + DEV_MODE toggle
-database: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-database_client: psycopg2
-frontend_framework: Vanilla JS + Electron + Vite
-ui_components: xterm.js + Monaco editor + Cytoscape.js
+_Last updated: 2026-04-29_
+
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
+
+## Tech Stack
+
+- **language_cli**: Python 3.12
+- **cli_framework**: prompt_toolkit + rich
+- **backend_framework**: FastAPI + uvicorn
+- **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database_client**: psycopg2
+- **frontend_framework**: Vanilla JS + Electron + Vite
+- **ui_components**: xterm.js + Monaco editor + Cytoscape.js
+- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **mcp_transport**: Stdio MCP server with 14 tools; unified REST dispatch
+- **memory_config**: YAML under backend/prompts/ + workspace/_templates/roles/
 
 ## Key Decisions
 
@@ -22,20 +39,10 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
-
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
-## In Progress
-
-- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI — 11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining
-- Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
-- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches
-
-_Last updated: 2026-04-29 14:59 UTC_
+- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
+- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) + workspace/_templates/roles/ (role YAML only); delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
+- Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
+- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📋 X days open' for approved use cases
+- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; ReAct checkbox enables/disables Thought/Action/Observation framework in agent execution

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 14:59 UTC -->
+<!-- Last updated: 2026-04-29 15:06 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -23,19 +23,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
 ## In Progress
 
-- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI — 11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining
-- Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
-- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches
+- Improve delivery_type and pipeline routing accuracy: added full project tech_stack context (frontend/backend/database keywords) to Haiku classifier system prompt to reduce misclassification (e.g., TA4001 'planner' now correctly maps to database instead of frontend)
+- Remove unused role UI fields: deleted inputs, outputs, and role_type columns from mng_agent_roles; removed corresponding validation and serialization code; updated role edit dialog to eliminate unused form fields
+- Fix undefined column errors: route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
+- Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
 
-_Last updated: 2026-04-29 14:59 UTC_
+_Last updated: 2026-04-29 15:06 UTC_
