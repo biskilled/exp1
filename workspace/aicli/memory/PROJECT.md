@@ -302,18 +302,19 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- UI visual polish: added colored pill backgrounds for Provider+Model in role list items matching Settings design; styled reset buttons with opacity for visibility; full background shapes for model display
-- Role base snapshot feature: POST /agent-roles/{id}/set-base snapshots current system_prompt, provider, model, tools, mcp as base_snapshot; Restore button in header resets individual role to last saved base; Save as Base button locks current state
-- Pipeline retry configuration: evaluating whether retry logic should be configured at pipeline level rather than individual role level; currently stored per-role but may be orchestrated via pipeline YAML
-- Workflow section navigation: consolidated Roles, Pipelines, MCP Catalog under new left nav Workflows group; MCP Catalog accessible as dedicated view with activate/deactivate/edit cards for all 10 MCPs
+- Role base snapshot feature: POST /agent-roles/{id}/set-base snapshots current system_prompt, provider, model, tools, mcp as base_snapshot; Restore button resets role to last saved base; Save as Base button locks current state; visual status pills (BASED/UPDATED/EXTERNAL) indicate state relative to base
+- Roles UI styling: colored pill backgrounds for Provider+Model matching Settings design; styled reset buttons with opacity for visibility; full background shapes for model display; removed small inline restore button redundancy
+- MCP Catalog navigation: consolidated Roles, Pipelines, MCP Catalog under new left nav Workflows group; MCP Catalog accessible as dedicated view with activate/deactivate/edit cards for all 10 MCPs; fully wired backend and frontend
 - Tool category multi-select UI: replaced individual tool checkboxes with category-based dropdowns (git, files, memory, etc.) showing tool counts; users select entire categories rather than individual tools
+- System prompts cleanup: soft-deleted 28 legacy system roles; retained only 3 canonical presets (Coding—General, Design & Planning, Review & Quality); all 10 roles correctly mapped to canonical presets; reset-to-defaults fully functional
+- Project filesystem cleanup: removed dead cli/ folder, aicli/documents/, aicli/features/; aligned workspace/aicli/pipelines/ with workspace/_templates/pipelines/; consolidated all pipeline YAML configs under workspace/_templates/pipelines/ with role_* and pl_* prefixes
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML → DB sync: workspace/_templates/pipelines/roles/role_*.yaml are read-only factory defaults; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB table is single source of truth for runtime; UI edits persist in DB across restarts; Refresh button re-seeds YAML; Restore button resets individual role to YAML defaults
+- Role YAML factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB; Refresh button re-seeds YAML; Restore button resets individual role to YAML base_snapshot
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
@@ -321,10 +322,10 @@ sidebar tabs:
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
 - MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
-- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
+- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather; retry logic configured at pipeline level via YAML
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in workspace/_templates/pipelines/system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
+- System prompts consolidation: 3 shared system prompt presets in workspace/_templates/pipelines/system_prompts.yaml (coding_general, design_and_planning, review_and_quality); mng_agent_roles.system_prompt_preset references presets by ID; new roles default to canonical preset on creation
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section with activate/deactivate/edit cards
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

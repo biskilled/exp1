@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 20:01 UTC -->
+<!-- Last updated: 2026-04-29 20:08 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,6 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit push hook: repeatedly triggered after Claude Code session 1f8ecc78 (2026-04-29 17:13–19:53); investigating hook deduplication and commit coalescing logic
+- Backlog pipeline chore commits: repeated auto-commit cycles after Claude CLI session 1f8ecc78 (15 commits 17:32–20:07 on 2026-04-29); indicates automated backlog sync or deployment hook activity post-session
+- UI visual polish: colored pill backgrounds for Provider+Model in role list items matching Settings design; styled reset buttons with opacity; full background shapes for model display
+- Role base snapshot feature: POST /agent-roles/{id}/set-base snapshots current system_prompt, provider, model, tools, mcp as base_snapshot; Restore button resets individual role to last saved base
+- Workflow section navigation: consolidated Roles, Pipelines, MCP Catalog under new left nav Workflows group; MCP Catalog accessible as dedicated view with activate/deactivate/edit cards
 
-_Last updated: 2026-04-29 20:01 UTC_
+_Last updated: 2026-04-29 20:08 UTC_

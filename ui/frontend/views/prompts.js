@@ -251,8 +251,8 @@ function _renderRoleItem(r) {
       style="font-size:0.5rem;padding:0.15rem 0.4rem;border-radius:4px;
              background:rgba(251,146,60,0.18);color:#fb923c;font-weight:700;
              letter-spacing:0.05em;flex-shrink:0;white-space:nowrap">UPDATED</span>`;
-  } else if (status === 'base' && r.has_snapshot) {
-    statusBadge = `<span title="Matches saved base"
+  } else if (status === 'base') {
+    statusBadge = `<span title="${r.has_snapshot ? 'Matches saved base' : 'Pristine — at template defaults'}"
       style="font-size:0.5rem;padding:0.15rem 0.4rem;border-radius:4px;
              background:rgba(74,222,128,0.15);color:#4ade80;font-weight:700;
              letter-spacing:0.05em;flex-shrink:0;white-space:nowrap">BASED</span>`;
