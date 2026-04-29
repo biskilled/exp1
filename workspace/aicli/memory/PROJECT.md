@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Tool and MCP catalog UI: multi-select dropdowns for tools (by category: files, git, bash, etc.) and MCPs in role editor; MCP Catalog page under main left nav with activate/deactivate buttons
-- Project workspace structure consolidation: aligned workspace/aicli/pipelines with backend config (role_*.yaml in roles/, pl_*.yaml in root); removed old prompt folder, features/ folder, documents/ folder at project root
+- Tool and MCP catalog UI: multi-select dropdowns for tools (by category: files, git, bash, etc.) and MCPs in role editor; MCP Catalog page added to main left nav with activate/deactivate buttons
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
 - Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
-- Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
+- Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added or removed; missing state refresh trigger
+- System prompts consolidation: merged 10+ system prompts into 3-4 logical presets (coding_general, design_and_planning, etc.) in workspace/_templates/pipelines/system_prompts.yaml; simplified role configuration
 
 ## Key Decisions
 
@@ -321,11 +321,11 @@ sidebar tabs:
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
 - MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens; pl_*.yaml files reference roles only (no embedded task_prompt)
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select dropdown per role; MCPs stored in settings catalog with provider-specific enable/disable; no provider-specific tool restrictions beyond built-in availability
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select dropdown per role in UI; MCPs stored in settings catalog with provider-specific enable/disable; no provider-specific tool restrictions beyond built-in availability
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

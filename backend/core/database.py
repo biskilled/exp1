@@ -342,6 +342,19 @@ class _Database:
         if not templates_dir.exists():
             return
 
+        # Load shared system prompt presets (system_prompts.yaml → {name: content})
+        _presets: dict[str, str] = {}
+        _presets_file = templates_dir.parent / "system_prompts.yaml"
+        if _presets_file.exists():
+            try:
+                _sp_data = _yaml.safe_load(_presets_file.read_text())
+                for p in (_sp_data or {}).get("presets", []):
+                    if p.get("name") and p.get("content"):
+                        _presets[p["name"]] = p["content"].rstrip()
+                log.debug(f"Loaded {len(_presets)} system prompt presets")
+            except Exception as _pe:
+                log.warning(f"system_prompts.yaml load error: {_pe}")
+
         # Look up _global project_id once, before iterating YAML files
         cur.execute(
             "SELECT id FROM mng_projects WHERE client_id=1 AND name='_global'"
@@ -360,7 +373,16 @@ class _Database:
 
                 name          = data["name"]
                 description   = data.get("description", "")
-                system_prompt = data.get("system_prompt", "")
+                role_prompt   = (data.get("system_prompt") or "").rstrip()
+                # Merge preset + role-specific system_prompt
+                preset_name   = data.get("system_prompt_preset", "")
+                preset_content = _presets.get(preset_name, "") if preset_name else ""
+                if preset_content and role_prompt:
+                    system_prompt = preset_content + "\n\n---\n\n" + role_prompt
+                elif preset_content:
+                    system_prompt = preset_content
+                else:
+                    system_prompt = role_prompt
                 provider      = data.get("provider", "claude")
                 model         = data.get("model", "")
                 auto_commit   = bool(data.get("auto_commit", False))

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 17:33 UTC -->
+<!-- Last updated: 2026-04-29 17:43 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
 - Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
 
-_Last updated: 2026-04-29 17:33 UTC_
+_Last updated: 2026-04-29 17:43 UTC_
