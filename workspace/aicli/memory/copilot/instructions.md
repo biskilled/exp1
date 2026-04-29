@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 17:54 UTC -->
+<!-- Last updated: 2026-04-29 18:01 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multiple auto-commit pushes after Claude CLI sessions (15 commits over 2h 5m span from 15:49–17:54 UTC on 2026-04-29); suggests active development with frequent saves/sessions
-- System prompts consolidation: 3 presets (coding_general, design_and_planning, requirements_and_documentation) implemented in workspace/_templates/pipelines/system_prompts.yaml with all 10 roles correctly mapped
-- Tool and MCP catalog UI: multi-select category dropdowns for tools/MCPs in role editor; MCP Catalog page added to main nav under Workflows with activate/deactivate buttons
-- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 migration but route code still references them
+- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
+- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices on mem_work_items or mem_ai_events
+- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
+- Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added or removed; missing state refresh trigger in planner.js render loop
 
-_Last updated: 2026-04-29 17:54 UTC_
+_Last updated: 2026-04-29 18:01 UTC_

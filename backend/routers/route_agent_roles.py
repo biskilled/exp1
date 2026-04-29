@@ -280,18 +280,20 @@ def _require_admin(user):
         raise HTTPException(403, "Admin access required")
 
 
-def _row_to_role(row, admin: bool = False) -> dict:
+def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> dict:
     """Serialize a DB row to a role dict.
 
     Non-admin users receive ONLY id / name / description — the full definition
     (system_prompt, provider, model, tools, output schema) is
     admin-only so customers cannot reverse-engineer proprietary role logic.
     """
+    name = row[2]
     r = {
-        "id":          row[0],
-        "name":        row[2],
-        "description": row[3],
-        "is_active":   row[8],
+        "id":           row[0],
+        "name":         name,
+        "description":  row[3],
+        "is_active":    row[8],
+        "has_template": (name in tmpl_names) if tmpl_names is not None else None,
     }
     if not admin:
         return r
@@ -306,7 +308,7 @@ def _row_to_role(row, admin: bool = False) -> dict:
 
     r.update({
         "project":        row[1],
-        "system_prompt":  row[4],
+        "system_prompt":  row[4] or "",
         "provider":       row[5],
         "model":          row[6],
         "tags":           row[7] or [],
@@ -354,8 +356,9 @@ async def list_roles(
         with conn.cursor() as cur:
             cur.execute(_SQL_LIST_ROLES, (global_pid, project_pid))
             rows = cur.fetchall()
+    tmpl = _template_names()
     return {
-        "roles": [_row_to_role(r, admin=admin) for r in rows],
+        "roles": [_row_to_role(r, admin=admin, tmpl_names=tmpl) for r in rows],
         "is_admin": admin,
     }
 
@@ -394,8 +397,7 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
             )
             row = cur.fetchone()
     result = _row_to_role(row, admin=True)
-    # Write new role to YAML immediately
-    _write_role_to_yaml(result)
+    _write_role_to_yaml(result, project=body.project)
     return result
 
 
@@ -416,7 +418,7 @@ class RoleUpdate(BaseModel):
 
 
 @router.patch("/{role_id}")
-async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_user)):
+async def update_role(role_id: int, body: RoleUpdate, project: str = Query("aicli"), user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
 
@@ -484,8 +486,7 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
             cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
             row = cur.fetchone()
     result = _row_to_role(row, admin=True)
-    # Keep YAML in sync with DB
-    _write_role_to_yaml(result)
+    _write_role_to_yaml(result, project=project)
     return result
 
 
@@ -589,51 +590,67 @@ def _get_project_code_dir(project: str) -> str | None:
         return None
 
 
-def _find_role_yaml_path(name: str) -> "Path":
-    """Return the YAML file path for a role by name.
+_TEMPLATES_ROLES_DIR = _TEMPLATES_PIPELINES_DIR / "roles"
 
-    Scans workspace/_templates/pipelines/roles/role_*.yaml for a matching 'name' field.
-    Falls back to a slug-based new filename if no existing file matches.
-    """
-    import re
+
+def _template_yaml_for(name: str) -> "Path | None":
+    """Find the template YAML whose 'name' field matches. Returns None if not found."""
     import yaml as _yaml
-    roles_dir = _TEMPLATES_PIPELINES_DIR / "roles"
-    roles_dir.mkdir(parents=True, exist_ok=True)
-    for p in sorted(roles_dir.glob("role_*.yaml")):
+    if not _TEMPLATES_ROLES_DIR.exists():
+        return None
+    for p in _TEMPLATES_ROLES_DIR.glob("role_*.yaml"):
         try:
             d = _yaml.safe_load(p.read_text()) or {}
             if d.get("name") == name:
                 return p
         except Exception:
             continue
+    return None
+
+
+def _project_roles_dir(project: str) -> "Path":
+    """Return workspace/{project}/pipelines/roles/, creating it if needed."""
+    d = project_paths.pipelines_dir(project) / "roles"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _project_yaml_for(name: str, project: str) -> "Path | None":
+    """Find a project-specific YAML override for this role name. Returns None if not found."""
+    import yaml as _yaml
+    roles_dir = _project_roles_dir(project)
+    for p in roles_dir.glob("role_*.yaml"):
+        try:
+            d = _yaml.safe_load(p.read_text()) or {}
+            if d.get("name") == name:
+                return p
+        except Exception:
+            continue
+    return None
+
+
+def _role_yaml_write_path(name: str, project: str) -> "Path":
+    """Return the path to write a role YAML — project dir, slugified filename."""
+    import re
+    roles_dir = _project_roles_dir(project)
+    # Reuse existing file if one already exists for this name
+    existing = _project_yaml_for(name, project)
+    if existing:
+        return existing
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
     return roles_dir / f"role_{slug}.yaml"
 
 
-def _write_role_to_yaml(role: dict) -> None:
-    """Write a role dict back to its YAML file, keeping it in sync with the DB."""
-    import yaml as _yaml
-
-    # Representer for multiline strings using literal block style (|)
-    class _LiteralStr(str):
-        pass
-
-    def _literal_representer(dumper, data):
-        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
-
-    _yaml.add_representer(_LiteralStr, _literal_representer)
-
+def _build_role_yaml_dict(role: dict) -> dict:
+    """Build a clean YAML-serialisable dict from a role dict."""
+    import json as _j
     tools = role.get("tools") or []
     if isinstance(tools, str):
-        import json as _j
         try:
             tools = _j.loads(tools)
         except Exception:
             tools = []
-
-    system_prompt = role.get("system_prompt") or ""
-
-    yaml_dict = {
+    return {
         "name":           role.get("name", ""),
         "description":    role.get("description", ""),
         "provider":       role.get("provider", "claude"),
@@ -643,17 +660,74 @@ def _write_role_to_yaml(role: dict) -> None:
         "max_iterations": int(role.get("max_iterations") or 10),
         "auto_commit":    bool(role.get("auto_commit", False)),
         "tools":          tools,
-        "system_prompt":  _LiteralStr(system_prompt),
+        "system_prompt":  role.get("system_prompt") or "",
     }
 
-    path = _find_role_yaml_path(role["name"])
+
+def _write_role_to_yaml(role: dict, project: str = "aicli") -> None:
+    """Write a role dict to workspace/{project}/pipelines/roles/, keeping it in sync with DB."""
+    import yaml as _yaml
+
+    class _LiteralStr(str):
+        pass
+
+    def _literal_rep(dumper, data):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+
+    _yaml.add_representer(_LiteralStr, _literal_rep)
+
+    d = _build_role_yaml_dict(role)
+    d["system_prompt"] = _LiteralStr(d["system_prompt"])
+
+    path = _role_yaml_write_path(role["name"], project)
     try:
         with open(path, "w", encoding="utf-8") as fh:
-            _yaml.dump(yaml_dict, fh, allow_unicode=True,
-                       default_flow_style=False, sort_keys=False)
-        log.debug(f"Role YAML synced: {path.name}")
+            _yaml.dump(d, fh, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        log.debug(f"Role YAML synced → {path}")
     except Exception as e:
         log.warning(f"Role YAML write failed ({path}): {e}")
+
+
+def _load_presets() -> dict[str, str]:
+    """Load system prompt presets from system_prompts.yaml → {name: content}."""
+    import yaml as _yaml
+    f = _TEMPLATES_PIPELINES_DIR / "system_prompts.yaml"
+    if not f.exists():
+        return {}
+    try:
+        data = _yaml.safe_load(f.read_text()) or {}
+        return {p["name"]: p["content"].rstrip()
+                for p in data.get("presets", [])
+                if p.get("name") and p.get("content")}
+    except Exception as e:
+        log.warning(f"system_prompts.yaml load error: {e}")
+        return {}
+
+
+def _merge_preset(data: dict, presets: dict) -> str:
+    """Return the merged system_prompt (preset + role-specific)."""
+    role_prompt    = (data.get("system_prompt") or "").rstrip()
+    preset_name    = data.get("system_prompt_preset", "")
+    preset_content = presets.get(preset_name, "") if preset_name else ""
+    if preset_content and role_prompt:
+        return preset_content + "\n\n---\n\n" + role_prompt
+    return preset_content or role_prompt
+
+
+def _template_names() -> set[str]:
+    """Return set of role names that have a template YAML."""
+    import yaml as _yaml
+    names: set[str] = set()
+    if not _TEMPLATES_ROLES_DIR.exists():
+        return names
+    for p in _TEMPLATES_ROLES_DIR.glob("role_*.yaml"):
+        try:
+            d = _yaml.safe_load(p.read_text()) or {}
+            if d.get("name"):
+                names.add(d["name"])
+        except Exception:
+            continue
+    return names
 
 
 def _load_mcp_catalog(project: str) -> list[dict]:
@@ -812,6 +886,167 @@ async def get_system_prompts():
     except Exception as e:
         log.warning(f"system_prompts load error: {e}")
         return {"presets": []}
+
+
+# ── Reload all roles from YAML files → DB ─────────────────────────────────────
+
+@router.post("/reload")
+async def reload_roles_from_yaml(project: str = Query("aicli"), user=Depends(get_optional_user)):
+    """Re-read all YAML role files (project overrides first, templates fallback) and
+    UPSERT into DB. Call this after editing YAML files directly, or via the UI refresh button.
+    Returns the updated role list."""
+    _require_admin(user)
+    import yaml as _yaml
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    presets   = _load_presets()
+    proj_dir  = _project_roles_dir(project)
+    tmpl_dir  = _TEMPLATES_ROLES_DIR
+
+    # Collect all YAMLs: project overrides keyed by role name, then templates
+    role_data: dict[str, dict] = {}
+
+    # Templates first (lower priority)
+    if tmpl_dir.exists():
+        for p in sorted(tmpl_dir.glob("role_*.yaml")):
+            try:
+                d = _yaml.safe_load(p.read_text()) or {}
+                name = d.get("name")
+                if name:
+                    role_data[name] = d
+            except Exception as e:
+                log.warning(f"reload: template YAML error {p.name}: {e}")
+
+    # Project overrides (higher priority — overwrites template entry for same name)
+    if proj_dir.exists():
+        for p in sorted(proj_dir.glob("role_*.yaml")):
+            try:
+                d = _yaml.safe_load(p.read_text()) or {}
+                name = d.get("name")
+                if name:
+                    role_data[name] = d
+            except Exception as e:
+                log.warning(f"reload: project YAML error {p.name}: {e}")
+
+    if not role_data:
+        return {"reloaded": 0, "roles": []}
+
+    global_pid = db.get_project_id("_global") or 0
+    updated = []
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            for name, data in role_data.items():
+                system_prompt = _merge_preset(data, presets)
+                tools         = _json.dumps(data.get("tools", []))
+                try:
+                    cur.execute(
+                        """INSERT INTO mng_agent_roles
+                               (project_id, name, description, system_prompt,
+                                provider, model, auto_commit, tools, react, max_iterations)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (project_id, name) DO UPDATE SET
+                               description    = EXCLUDED.description,
+                               system_prompt  = EXCLUDED.system_prompt,
+                               provider       = EXCLUDED.provider,
+                               model          = EXCLUDED.model,
+                               auto_commit    = EXCLUDED.auto_commit,
+                               tools          = EXCLUDED.tools,
+                               react          = EXCLUDED.react,
+                               max_iterations = EXCLUDED.max_iterations,
+                               updated_at     = NOW()
+                           RETURNING id""",
+                        (global_pid, name,
+                         data.get("description", ""), system_prompt,
+                         data.get("provider", "claude"), data.get("model", ""),
+                         bool(data.get("auto_commit", False)), tools,
+                         bool(data.get("react", True)),
+                         int(data.get("max_iterations", 10))),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        updated.append({"id": row[0], "name": name})
+                except Exception as e:
+                    log.warning(f"reload: upsert failed for '{name}': {e}")
+
+    log.info(f"Roles reloaded from YAML: {len(updated)} roles updated")
+    return {"reloaded": len(updated), "roles": updated}
+
+
+# ── Restore a single role to its template defaults ────────────────────────────
+
+@router.post("/{role_id}/restore")
+async def restore_role_default(role_id: int, user=Depends(get_optional_user)):
+    """Reset a role's content in DB to its template YAML defaults.
+    Also deletes any project-specific YAML override for this role."""
+    _require_db()
+    _require_admin(user)
+    import yaml as _yaml
+
+    # Get current role name from DB
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM mng_agent_roles WHERE id=%s AND is_active=TRUE", (role_id,))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"Role {role_id} not found")
+    name = row[0]
+
+    # Find template YAML
+    tmpl_path = _template_yaml_for(name)
+    if not tmpl_path:
+        raise HTTPException(400, f"No template found for role '{name}' — it is an external role and cannot be restored.")
+
+    # Load template + merge preset
+    try:
+        data = _yaml.safe_load(tmpl_path.read_text()) or {}
+    except Exception as e:
+        raise HTTPException(500, f"Could not read template YAML: {e}")
+
+    presets       = _load_presets()
+    system_prompt = _merge_preset(data, presets)
+    tools         = _json.dumps(data.get("tools", []))
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE mng_agent_roles SET
+                       description    = %s,
+                       system_prompt  = %s,
+                       provider       = %s,
+                       model          = %s,
+                       auto_commit    = %s,
+                       tools          = %s,
+                       react          = %s,
+                       max_iterations = %s,
+                       updated_at     = NOW()
+                   WHERE id = %s""",
+                (data.get("description", ""), system_prompt,
+                 data.get("provider", "claude"), data.get("model", ""),
+                 bool(data.get("auto_commit", False)), tools,
+                 bool(data.get("react", True)),
+                 int(data.get("max_iterations", 10)),
+                 role_id),
+            )
+            cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
+            row = cur.fetchone()
+
+    result = _row_to_role(row, admin=True)
+
+    # Delete any project-specific override so future reloads use the template
+    for project in ("aicli",):  # iterate known projects if needed
+        proj_yaml = _project_yaml_for(name, project)
+        if proj_yaml and proj_yaml.exists():
+            try:
+                proj_yaml.unlink()
+                log.debug(f"Deleted project override YAML: {proj_yaml}")
+            except Exception:
+                pass
+
+    log.info(f"Role '{name}' (id={role_id}) restored to template defaults")
+    return result
 
 
 # ── Shared YAML parse helper ──────────────────────────────────────────────────

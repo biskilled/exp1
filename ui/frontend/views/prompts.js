@@ -107,8 +107,12 @@ export async function renderPrompts(container, projectName) {
         <!-- Agent Roles section (top, takes most space) -->
         <div class="prompts-tree-header" style="flex-shrink:0">
           <span class="prompts-tree-label">Agent Roles</span>
-          <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
-            onclick="window._rolesNew()" title="New agent role">+</button>
+          <div style="display:flex;gap:0.25rem;margin-left:auto">
+            <button class="btn btn-ghost btn-sm" id="roles-reload-btn"
+              style="padding:0.15rem 0.4rem;font-size:0.6rem" title="Reload all roles from YAML files">↺</button>
+            <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
+              onclick="window._rolesNew()" title="New agent role">+</button>
+          </div>
         </div>
         <div id="roles-list-body" style="overflow-y:auto;flex:1;min-height:120px;border-bottom:1px solid var(--border)">
           <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
@@ -156,12 +160,17 @@ export async function renderPrompts(container, projectName) {
   window._rolesExportYaml     = _rolesExportYaml;
   window._rolesEditYaml       = _rolesEditYaml;
   window._rolesProviderChange = _rolesProviderChange;
+  window._rolesRestoreDefault = _rolesRestoreDefault;
   window._sysRolesNew         = _sysRolesNew;
   window._sysRolesSelect      = _sysRolesSelect;
   window._sysRolesSave        = _sysRolesSave;
   window._sysRolesDelete      = _sysRolesDelete;
   window._sysRolesAttach      = _sysRolesAttach;
   window._sysRolesDetach      = _sysRolesDetach;
+
+  // Wire reload button (after HTML is set)
+  const reloadBtn = document.getElementById('roles-reload-btn');
+  if (reloadBtn) reloadBtn.addEventListener('click', () => _rolesReloadFromYaml(projectName));
 
   _initPromptsResize();
 
@@ -203,7 +212,23 @@ async function _loadRoles(projectName) {
 }
 
 function _renderRoleItem(r) {
-  const isActive = _activeRole?.id === r.id;
+  const isActive  = _activeRole?.id === r.id;
+  const isExt     = r.has_template === false;
+  const canRestore = r.has_template === true;
+  const extBadge  = isExt
+    ? `<span title="External role — no template, cannot restore"
+             style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
+                    background:rgba(255,165,0,0.18);color:#f59e0b;font-weight:600;
+                    letter-spacing:0.04em;flex-shrink:0">EXT</span>`
+    : '';
+  const restoreBtn = canRestore
+    ? `<button onclick="event.stopPropagation();window._rolesRestoreDefault(${r.id},${JSON.stringify(_esc(r.name))})"
+               title="Restore this role to template defaults"
+               style="opacity:0.5;font-size:0.55rem;padding:0.1rem 0.3rem;border-radius:4px;
+                      background:none;border:1px solid var(--border);color:var(--muted);
+                      cursor:pointer;flex-shrink:0;line-height:1" onmouseenter="this.style.opacity='1'"
+               onmouseleave="this.style.opacity='0.5'">reset</button>`
+    : '';
   return `
     <div onclick="window._rolesSelect(${r.id})"
          style="padding:0.4rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);
@@ -217,6 +242,7 @@ function _renderRoleItem(r) {
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</div>
         <div style="font-size:0.55rem;color:var(--muted)">${_esc(r.provider || '')} ${r.model ? '· ' + _esc(r.model) : ''}</div>
       </div>
+      ${extBadge}${restoreBtn}
     </div>`;
 }
 
@@ -229,6 +255,43 @@ function _renderRolesList() {
     return;
   }
   body.innerHTML = _roles.map(_renderRoleItem).join('');
+}
+
+async function _rolesReloadFromYaml(projectName) {
+  const btn = document.getElementById('roles-reload-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const data = await api.agentRoles.reloadFromYaml(projectName || 'aicli');
+    toast(`Reloaded ${data.reloaded} role(s) from YAML`, 'success');
+    await _loadRoles(projectName);
+    // Re-open active role if still selected
+    if (_activeRole) {
+      const fresh = _roles.find(r => r.id === _activeRole.id);
+      if (fresh) _rolesSelect(fresh.id);
+    }
+  } catch (e) {
+    toast('Reload failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↺'; }
+  }
+}
+
+async function _rolesRestoreDefault(id, name) {
+  if (!confirm(`Restore "${name}" to template defaults?\nAll your changes to this role will be lost.`)) return;
+  try {
+    const updated = await api.agentRoles.restoreDefault(id);
+    const idx = _roles.findIndex(r => r.id === id);
+    if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated };
+    _renderRolesList();
+    if (_activeRole?.id === id) {
+      _activeRole = _roles[idx];
+      _renderRoleEditor(_activeRole);
+      _loadRoleTools(_activeRole);
+    }
+    toast(`"${name}" restored to defaults`, 'success');
+  } catch (e) {
+    toast('Restore failed: ' + e.message, 'error');
+  }
 }
 
 async function _rolesNew() {
@@ -939,7 +1002,7 @@ async function _rolesSave(id) {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
       tools, max_iterations: maxIterations,
-    });
+    }, _project || 'aicli');
     const idx = _roles.findIndex(r => r.id === id);
     if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
       name, provider, model, description, system_prompt: systemPrompt,

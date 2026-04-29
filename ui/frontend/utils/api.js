@@ -349,12 +349,14 @@ api.tags = {
 api.agentRoles = {
   list:           (project = '_global') => _get(`/agent-roles/?project=${enc(project)}`),
   create:         (body)                => _post('/agent-roles/', body),
-  patch:          (id, body)            => fetch(_base() + `/agent-roles/${id}`, {
+  patch:          (id, body, project = 'aicli') => fetch(_base() + `/agent-roles/${id}?project=${enc(project)}`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   delete:         (id)                  => _del(`/agent-roles/${id}`),
   versions:       (id)                  => _get(`/agent-roles/${id}/versions`),
   restore:        (id, versionId)       => _post(`/agent-roles/${id}/restore/${versionId}`, {}),
+  restoreDefault: (id)                  => _post(`/agent-roles/${id}/restore`, {}),
+  reloadFromYaml: (project = 'aicli')  => _post(`/agent-roles/reload?project=${enc(project)}`, {}),
   providers:      ()                    => _get('/agent-roles/providers'),
   availableTools: ()                    => _get('/agent-roles/available-tools'),
   validateYaml:   (body)                => _post('/agent-roles/validate-yaml', body),
