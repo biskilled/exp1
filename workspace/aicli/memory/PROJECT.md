@@ -302,30 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated; causing UndefinedColumn psycopg2 errors
-- Fix backend startup race condition and project selector: active project not displaying in selector after startup; recent projects list missing aiCli project; init sequencing issue in project loader
-- Remove lifecycle tags and drag-and-drop issues from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; also fix [object object] display bug in tag additions
-- Fix PROJECT.md file loading timeout: >60 second load time when opening project; performance audit needed for database indices or single-pass read refactoring
-- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations
-- Consolidate YAML configuration: memory-related prompts moved to backend/memory/yaml_config/, pipeline-related to backend/prompts/yaml_config/; deleted samples/ folder and dead pipeline YAML files; removed deprecated role UI fields (inputs, outputs, role_type)
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code still references them; causing psycopg2 UndefinedColumn errors at runtime
+- Fix backend startup race condition and project selector: active project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
+- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; fix [object object] display bug in tag additions
+- Fix PROJECT.md file loading timeout: >60 second load time when opening project; likely caused by N+1 queries or missing database indices; performance audit needed
+- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE; refactor to separate INSERT and UPDATE operations to avoid duplicate row constraint violations
+- Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; likely missing UI refresh trigger
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack, enabling intelligent pipeline routing without hardcoded regex
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
-- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters) dispatched via REST; stdio transport, local machine, no auth required
+- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- All backend LLM prompts consolidated in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with prefix role_*.yaml (no inline Python definitions); role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
-- Pipeline YAML consolidation: pl_*.yaml format in workspace/_templates/pipelines/ with stages referencing only role keys; task_prompt blocks removed (users update roles if workflow needs changes)
+- Consolidated YAML configuration: backend/memory/yaml_config/ stores memory-related prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol) and backend/prompts/yaml_config/ stores pipeline prompts (react_pipeline_base, react_suffix, tag_suggestion, feature_auto_detect)
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with role_*.yaml naming, no inline Python definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
+- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); user-specific pipeline/role customizations go in workspace/aicli/pipelines/ with same naming convention
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

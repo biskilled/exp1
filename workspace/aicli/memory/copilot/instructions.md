@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:49 UTC -->
+<!-- Last updated: 2026-04-29 15:54 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Remove lifecycle tags and drag-and-drop issues from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; also fix [object object] display bug in tag additions
 - Fix PROJECT.md file loading timeout: >60 second load time when opening project; performance audit needed for database indices or single-pass read refactoring
 
-_Last updated: 2026-04-29 15:49 UTC_
+_Last updated: 2026-04-29 15:54 UTC_
