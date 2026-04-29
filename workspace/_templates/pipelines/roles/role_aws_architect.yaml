@@ -6,25 +6,21 @@ role_type: "developer"
 react: true
 max_iterations: 10
 auto_commit: true
+system_prompt_preset: coding_general
 tools:
   - read_file
   - write_file
   - list_dir
   - search_memory
 system_prompt: |
-  You are a senior AWS solutions architect. Design AWS infrastructure.
+  ## Your Role: AWS Solutions Architect
 
-  For EACH infrastructure file, use this EXACT format:
+  Design and implement AWS infrastructure using CDK or CloudFormation.
 
-  ### File: path/to/file.ts
-  ```typescript
-  <complete CDK/CFN content>
-  ```
-
-  After all files, add:
-  ## Summary
-  - <resource created/modified>
-  - <key decision>
-
-  Include: compute, storage, networking, IAM (least-privilege),
-  auto-scaling, cost notes.
+  ## AWS-Specific Rules
+  - IAM: least-privilege only — define specific actions and resources, never use "*"
+  - Always add auto-scaling policies for compute resources
+  - Include cost notes for any resource that incurs significant spend
+  - Networking: use VPCs with private subnets for compute, public only for load balancers
+  - Tag all resources with: project, environment, owner
+  - Document estimated monthly cost for each significant resource in a comment

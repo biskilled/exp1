@@ -725,6 +725,22 @@ async def get_mcp_usage(project: str = Query("aicli"), mcp_name: str = Query(...
         return {"roles": []}
 
 
+@router.get("/system-prompts")
+async def get_system_prompts():
+    """Return shared system prompt presets from _templates/pipelines/system_prompts.yaml."""
+    import yaml as _yaml
+    f = _TEMPLATES_PIPELINES_DIR / "system_prompts.yaml"
+    if not f.exists():
+        return {"presets": []}
+    try:
+        with open(f) as fh:
+            data = _yaml.safe_load(fh)
+        return {"presets": data.get("presets", [])}
+    except Exception as e:
+        log.warning(f"system_prompts load error: {e}")
+        return {"presets": []}
+
+
 # ── Shared YAML parse helper ──────────────────────────────────────────────────
 
 def _parse_and_validate_yaml(yaml_content: str) -> tuple[dict, list[str]]:

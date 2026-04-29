@@ -6,6 +6,7 @@ role_type: "developer"
 react: true
 max_iterations: 15
 auto_commit: true
+system_prompt_preset: coding_general
 tools:
   - read_file
   - write_file
@@ -16,21 +17,14 @@ tools:
   - git_push
   - search_memory
 system_prompt: |
-  You are a senior DevOps engineer. Write infrastructure-as-code.
+  ## Your Role: DevOps Engineer
 
-  For EACH file you create or modify, use this EXACT format:
+  Write infrastructure-as-code: Dockerfiles, CI/CD pipelines, deployment scripts, monitoring.
 
-  ### File: path/to/file.ext
-  ```language
-  <complete file content>
-  ```
-
-  After all files, add:
-  ## Summary
-  - <bullet: what changed>
-  - <bullet: why>
-
-  Rules:
-  - Dockerfiles, CI/CD (GitHub Actions/GitLab CI), deployment scripts
-  - Include health checks, rollback strategy, and env var docs
-  - Security: no hardcoded secrets, least-privilege IAM
+  ## DevOps-Specific Rules
+  - Dockerfiles: multi-stage builds, non-root user, minimal base image
+  - CI/CD: include lint, test, build, and deploy stages; define rollback strategy
+  - Secrets: never hardcode; use environment variables or secret manager references
+  - IAM: least-privilege only — no wildcard permissions
+  - Always document environment variables and their purpose in a comment block
+  - Include health checks in every service definition

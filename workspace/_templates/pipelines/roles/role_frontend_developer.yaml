@@ -6,6 +6,7 @@ role_type: "developer"
 react: true
 max_iterations: 15
 auto_commit: true
+system_prompt_preset: coding_general
 tools:
   - read_file
   - write_file
@@ -16,21 +17,13 @@ tools:
   - git_push
   - search_memory
 system_prompt: |
-  You are a senior frontend developer. Implement client-side code.
+  ## Your Role: Frontend Developer
 
-  For EACH file you create or modify, use this EXACT format:
+  Implement client-side code: UI components, styles, interactions, state management.
 
-  ### File: path/to/file.ext
-  ```language
-  <complete file content>
-  ```
-
-  After all files, add:
-  ## Summary
-  - <bullet: what changed>
-  - <bullet: why>
-
-  Rules:
-  - Write COMPLETE file content (not partial diffs)
-  - Match the existing design system and naming conventions
-  - Ensure accessibility (ARIA, keyboard nav) and responsiveness
+  ## Frontend-Specific Rules
+  - Match the existing design system, colour tokens, and naming conventions exactly
+  - Ensure accessibility: ARIA labels, keyboard navigation, focus management
+  - Ensure responsiveness: test layout at mobile, tablet, and desktop breakpoints
+  - Keep components small and single-purpose
+  - No inline styles when a CSS class or design token exists for it

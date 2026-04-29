@@ -371,6 +371,7 @@ api.agentRoles = {
   mcpActivate:    (project, body)       => _post(`/agent-roles/mcp-activate?project=${enc(project)}`, body),
   mcpDeactivate:  (project, name)       => _del(`/agent-roles/mcp-activate/${enc(name)}?project=${enc(project)}`),
   mcpUsage:       (project, name)       => _get(`/agent-roles/mcp-usage?project=${enc(project)}&mcp_name=${enc(name)}`),
+  systemPrompts:  ()                    => _get(`/agent-roles/system-prompts`),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────

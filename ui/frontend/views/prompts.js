@@ -705,7 +705,21 @@ function _renderRoleEditor(role) {
 
       <!-- System Prompt -->
       <div style="flex:1">
-        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">System Prompt</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem">
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em">System Prompt</label>
+          <div style="display:flex;align-items:center;gap:0.4rem">
+            <label style="font-size:0.6rem;color:var(--muted)">Preset:</label>
+            <select id="role-prompt-preset"
+              style="font-size:0.62rem;background:var(--surface2);border:1px solid var(--border);
+                     color:var(--text);border-radius:4px;padding:0.15rem 0.35rem;outline:none;cursor:pointer">
+              <option value="">— custom —</option>
+            </select>
+            <button id="role-preset-apply" title="Prepend selected preset to system prompt"
+              style="font-size:0.6rem;padding:0.15rem 0.45rem;border-radius:4px;
+                     background:var(--surface2);border:1px solid var(--border);
+                     color:var(--text);cursor:pointer">Apply</button>
+          </div>
+        </div>
         <textarea id="role-system-prompt"
           style="width:100%;box-sizing:border-box;min-height:320px;resize:vertical;
                  background:var(--bg);border:1px solid var(--border);
@@ -713,6 +727,7 @@ function _renderRoleEditor(role) {
                  padding:0.5rem;border-radius:var(--radius);outline:none;
                  line-height:1.55"
           placeholder="You are a senior software architect…">${_esc(role.system_prompt || '')}</textarea>
+        <div id="role-preset-desc" style="font-size:0.6rem;color:var(--muted);margin-top:0.25rem;min-height:1rem"></div>
       </div>
 
       <!-- Tags / extra info -->
@@ -722,9 +737,12 @@ function _renderRoleEditor(role) {
     </div>
   `;
 
-  // Wire provider change after innerHTML is set (safe — no onclick in HTML)
+  // Wire provider change
   const providerSel = document.getElementById('role-provider');
   if (providerSel) providerSel.addEventListener('change', e => _rolesProviderChange(e.target.value));
+
+  // Load and wire system prompt presets
+  _loadPromptPresets();
 }
 
 // ── MCP tools helpers ─────────────────────────────────────────────────────────
@@ -983,6 +1001,52 @@ async function _rolesDelete(id) {
     if (toolbar) toolbar.innerHTML = `<span class="prompts-editor-path" id="prompts-path">Select a role or file</span>`;
     toast('Role deleted', 'success');
   } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ── System Prompt Presets ──────────────────────────────────────────────────────
+
+let _promptPresets = [];
+
+async function _loadPromptPresets() {
+  const sel  = document.getElementById('role-prompt-preset');
+  const desc = document.getElementById('role-preset-desc');
+  const btn  = document.getElementById('role-preset-apply');
+  if (!sel) return;
+
+  // Fetch presets (cached after first load)
+  if (!_promptPresets.length) {
+    try {
+      const data = await api.agentRoles.systemPrompts();
+      _promptPresets = data.presets || [];
+    } catch { _promptPresets = []; }
+  }
+
+  // Populate dropdown
+  _promptPresets.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = p.label || p.name;
+    sel.appendChild(opt);
+  });
+
+  // Show description when selection changes
+  sel.addEventListener('change', () => {
+    const p = _promptPresets.find(x => x.name === sel.value);
+    if (desc) desc.textContent = p ? p.description : '';
+  });
+
+  // Apply button — prepend preset content to textarea
+  if (btn) btn.addEventListener('click', () => {
+    const p = _promptPresets.find(x => x.name === sel.value);
+    if (!p) return;
+    const ta = document.getElementById('role-system-prompt');
+    if (!ta) return;
+    const existing = ta.value.trim();
+    const divider  = existing ? '\n\n---\n\n' : '';
+    ta.value = p.content.trimEnd() + divider + existing;
+    ta.focus();
+    if (desc) desc.textContent = `Preset "${p.label}" prepended. Edit the role-specific section below the divider.`;
+  });
 }
 
 function _rolesProviderChange(provider) {
