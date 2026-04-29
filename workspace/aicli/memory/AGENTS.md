@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-29 15:26 UTC -->
+<!-- Last updated: 2026-04-29 15:31 UTC -->
 # aicli
-_2026-04-29 15:26 UTC | Memory synced: 2026-04-29_
+_2026-04-29 15:31 UTC | Memory synced: 2026-04-29_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -42,12 +42,12 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **frontend_framework**: Vanilla JS + Electron + Vite
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML config + per-node retry
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML role config + per-node retry
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **mcp_transport**: Stdio MCP server with 14 tools; unified REST dispatch
-- **prompt_storage**: YAML backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis only)
+- **prompt_storage**: YAML backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction) and backend/prompts/yaml_config/ (pipeline + agents)
 
 ## Key Architectural Decisions
 
@@ -59,17 +59,22 @@ No more copy-pasting context. No more re-explaining your architecture.
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather; delivery_type classification uses full project tech_stack context
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) only; delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
+- All backend LLM prompts stored in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion, feature_auto_detect)
+- Role YAML consolidation: all 10 roles (developer.yaml, reviewer.yaml, etc.) stored in workspace/_templates/roles/; no inline Python role definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, and remove_react flag (always use pipeline execution, react checkbox deprecated)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token)
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
-- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; agent always uses ReAct framework in pipeline execution
+- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases; shows creation time context to users
 
 ## In Progress
 
-- `TA4001` Audit and clean planner_tags table schema
+- Fix backend startup race condition and project selector: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader or database connection timing
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup; needs immediate column reference audit
+- Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but 11 active references remain in drag-and-drop, category display, archive toggle, and tagging UI; also fix [object object] display bug in tag additions
+- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations to avoid double-update issue
+- YAML configuration reorganization: consolidate all prompts under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); rename misc.yaml to feature_detect.yaml and place under memory/yaml_config/
 
 ## Coding Conventions
 
@@ -82,47 +87,10 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **LLM prompts**: all prompts in `backend/prompts/*.yaml`; load via `prompt_loader.prompts.content(key)`; never inline strings
 - **Work items**: `user_status` is TEXT (`open|pending|
 
-## Active Features
+## Recently Changed
 
-- `BU3008` `Work Item UI Category Display Bug` [pending] — Planner UI not displaying bug/category labels properly—only shows 'work_item' category. When AI tag (due 2026-05-02)
-- `US1002` `Work Item Management & Metadata System` [open] — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and (due 2026-05-02)
-- `US1001` `MCP Configuration` [open] — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
-- `TA4009` `Verify Hook-Log DB Storage After Migration` [pending] — Verify that hook-log endpoint correctly stores all prompts to database after migration m050. Ensure (due 2026-05-02)
-- `TA4001` `Audit and clean planner_tags table schema` [in-progress] — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
-
-## Code Hotspots
-
-- `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
-- `backend/memory/memory_work_items.py` — score 29.0 (27 commits, 1378 lines)
-- `backend/memory/memory_files.py` — score 20.0 (18 commits, 1176 lines)
-- `backend/routers/route_projects.py` — score 18.0 (16 commits, 1693 lines)
-- `backend/core/db_migrations.py` — score 13.0 (11 commits, 3304 lines)
-- `backend/agents/mcp/server.py` — score 11.0 (9 commits, 854 lines)
-- `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
-- `backend/routers/route_git.py` — score 9.0 (7 commits, 1691 lines)
-- `backend/routers/route_work_items.py` — score 7.0 (7 commits, 594 lines)
-- `backend/routers/route_memory.py` — score 5.0 (3 commits, 836 lines)
-
-## Recently Changed (last commits)
-
-- `m051_schema_refactor_user_id_updated_at` — modified in b3d2fda3 — This migration function refactors the database schema to convert user IDs from U
-- `_resolve_user_id` — modified in b3d2fda3 — The function now handles multiple input types (int, str, or None) and defaults t
-- `MemoryFiles` — modified in b3d2fda3 — The MemoryFiles class was updated to include additional fields (event_type, crea
-- `MemoryFiles.get_top_events` — modified in b3d2fda3 — The `get_top_events` method now converts database query results into a structure
-- `_loadSessions` — modified in b48376c2 — The `_loadSessions` function was updated to restore the last known session ID fr
-- `chat_history` — modified in b48376c2 — The `chat_history` function was modified to fetch a larger set of database rows 
-- `_normalize_jsonl_entry` — modified in b4a10441 — This new function normalizes history.jsonl entries to match the database respons
-- `m050_prompts_source_id_index` — modified in d45c125b — Added a database migration to create a unique partial index on `mem_mrr_prompts(
-- `_Database` — modified in 18dc4454 — The `_Database` class now validates database connections before use by testing t
-- `_Database.conn` — modified in 18dc4454 — The `conn` method now validates database connections before returning them and a
-- `MemoryEmbedding.process_item` — modified in 25e5c306 — The method now includes error handling to catch and log exceptions during item p
-- `MemoryEmbedding` — modified in 25e5c306 — I don't see a diff provided in your message. Could you please share the actual d
-- `m047_events_is_system` — modified in ec75b516 — Added a database migration to add an `is_system` BOOLEAN column to the `mem_ai_e
-- `_is_system_commit` — modified in ec75b516 — The function `_is_system_commit` was added to detect auto-generated system file 
-- `sync_commits` — modified in ec75b516
-- `_embed_commits_background` — modified in ec75b516 — The `_embed_commits_background` function was enhanced to asynchronously batch-pr
-- `MemoryEmbedding.process_commit_batch` — modified in ec75b516 — The method now detects and flags commits that only modify system files (PROJECT.
+(no commit history indexed yet)
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-29 15:26 UTC_
+_Last updated: 2026-04-29 15:31 UTC_

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:26 UTC -->
+<!-- Last updated: 2026-04-29 15:31 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -23,19 +23,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
 ## In Progress
 
-- Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Remove lifecycle tags from Planner UI: 11 active drag-and-drop, category display, archive toggle, and tagging UI errors related to deprecated lifecycle field
-- Fix backend startup race condition: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed; may require database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix backend startup race condition and project selector: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader or database connection timing
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup; needs immediate column reference audit
+- Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but 11 active references remain in drag-and-drop, category display, archive toggle, and tagging UI; also fix [object object] display bug in tag additions
+- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
 
-_Last updated: 2026-04-29 15:26 UTC_
+_Last updated: 2026-04-29 15:31 UTC_

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:29 UTC -->
+<!-- Last updated: 2026-04-29 15:31 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -11,6 +11,7 @@ aicli/
 │   │   ├── mcp/
 │   │   ├── providers/
 │   │   ├── tools/
+│   │   ├── yaml_config/
 │   │   ├── __init__.py
 │   │   ├── agent.py
 │   │   └── orchestrator.py
@@ -34,14 +35,11 @@ aicli/
 │   │   └── dl_user.py
 │   ├── memory/
 │   │   ├── templates/
+│   │   ├── yaml_config/
 │   │   ├── __init__.py
 │   │   ├── _wi_classify.py
 │   │   ├── _wi_helpers.py
 │   │   ├── _wi_markdown.py
-│   │   ├── command_memory.yaml
-│   │   ├── command_work_items.yaml
-│   │   ├── event_commit.yaml
-│   │   ├── memory.yaml
 │   │   ├── memory_code_parser.py
 │   │   ├── memory_files.py
 │   │   ├── memory_mirroring.py
@@ -53,10 +51,6 @@ aicli/
 │   │   ├── pipeline_git.py
 │   │   ├── pipeline_graph_runner.py
 │   │   └── pipeline_runner.py
-│   ├── prompts/
-│   │   ├── agent_react.yaml
-│   │   ├── misc.yaml
-│   │   └── providers.yaml
 │   ├── routers/
 │   │   ├── __init__.py
 │   │   ├── route_admin.py
