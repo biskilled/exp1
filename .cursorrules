@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:57 UTC -->
+<!-- Last updated: 2026-04-29 16:00 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code still references them; causing psycopg2 UndefinedColumn errors at runtime
-- Fix backend startup race condition and project selector: active project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
-- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; fix [object object] display bug in tag additions
-- Fix PROJECT.md file loading timeout: >60 second load time when opening project; likely caused by N+1 queries or missing database indices; performance audit needed
+- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for t.lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
+- Fix backend startup race condition and active project selector: project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
+- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE; refactor to separate INSERT and UPDATE operations
+- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 
-_Last updated: 2026-04-29 15:57 UTC_
+_Last updated: 2026-04-29 16:00 UTC_

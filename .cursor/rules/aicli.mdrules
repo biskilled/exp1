@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:57 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:59 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -22,12 +22,11 @@ _Last updated: 2026-04-29_
 - **frontend_framework**: Vanilla JS + Electron + Vite
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML role config + per-node retry
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML role + pipeline config + per-node retry
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **mcp_transport**: Stdio MCP server with 10 tools; unified REST dispatch
-- **prompt_storage**: YAML backend/memory/yaml_config/ (synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect) and backend/agents/yaml_config/ (agent_react, event_tag_detection)
 
 ## Key Decisions
 
@@ -42,15 +41,15 @@ _Last updated: 2026-04-29_
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with role_*.yaml naming; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations; no inline Python definitions
-- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); pipeline stages execute role-based agents; user-specific customizations in workspace/aicli/pipelines/roles/ and workspace/aicli/pipelines/system/
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/role_*.yaml with system_prompt, model, provider, temperature, max_tokens, max_iterations; no inline Python definitions
+- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); pipeline stages execute role-based agents; user-specific context in workspace/aicli/pipelines/system/
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] yes
 - [2026-04-29] pipeline suppose to use only roles. I do see pipeline with hardcoded steps. how can it be ?
 - [2026-04-29] please do option A. user can update roles if they want , so it is enough.ALso rename all roles yaml to atart with prefix
 - [2026-04-29] I would like to make sure that pipeline foder under the aiCli is aligned. prompt folder - i think it is old and shoud be
 - [2026-04-29] I mention that have added all yaml related to pipeline under the pipeline folder (and remove prompt folder) - but I do n
+- [2026-04-29] I do 2 folder - documents and features under the project root. are they needed. is it possible to remove them ?
