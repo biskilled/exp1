@@ -362,6 +362,15 @@ api.agentRoles = {
   exportYaml:     (id)                  => fetch(_base() + `/agent-roles/${id}/export-yaml`, {
     headers: _headers(),
   }).then(r => r.ok ? r.text() : r.text().then(t => { try { const e = JSON.parse(t); return Promise.reject(new Error(e.detail || r.statusText)); } catch(_){ return Promise.reject(new Error(t || r.statusText)); } })),
+  // MCP Catalog
+  mcpCatalog:     (project)             => _get(`/agent-roles/mcp-catalog?project=${enc(project)}`),
+  mcpCatalogSave: (project, body)       => fetch(_base() + `/agent-roles/mcp-catalog?project=${enc(project)}`, {
+    method: 'PUT', headers: _headers(), body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  mcpActive:      (project)             => _get(`/agent-roles/mcp-active?project=${enc(project)}`),
+  mcpActivate:    (project, body)       => _post(`/agent-roles/mcp-activate?project=${enc(project)}`, body),
+  mcpDeactivate:  (project, name)       => _del(`/agent-roles/mcp-activate/${enc(name)}?project=${enc(project)}`),
+  mcpUsage:       (project, name)       => _get(`/agent-roles/mcp-usage?project=${enc(project)}&mcp_name=${enc(name)}`),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────

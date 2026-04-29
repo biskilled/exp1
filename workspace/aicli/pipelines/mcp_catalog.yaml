@@ -1,0 +1,94 @@
+# MCP Catalog — well-known MCP servers available for activation per project.
+# Copy to workspace/{project}/pipelines/mcp_catalog.yaml to customise per project.
+# Fields: name, label, description, url, install, type (stdio|http), tags, project_types
+
+mcps:
+  - name: aws
+    label: "AWS MCP"
+    description: "Manage AWS resources — EC2, S3, Lambda, RDS, IAM, and more via natural language."
+    url: "https://github.com/awslabs/mcp"
+    install: "npx @aws/mcp-server"
+    type: stdio
+    tags: [aws, cloud, infra]
+    project_types: [backend, infra, devops]
+
+  - name: terraform
+    label: "Terraform MCP"
+    description: "Plan, apply, and manage Terraform infrastructure as code from the agent loop."
+    url: "https://github.com/hashicorp/terraform-mcp-server"
+    install: "npx @hashicorp/terraform-mcp-server"
+    type: stdio
+    tags: [terraform, iac, devops]
+    project_types: [infra, devops]
+
+  - name: gcp
+    label: "GCP MCP"
+    description: "Interact with Google Cloud Platform services — GCS, GKE, BigQuery, Pub/Sub."
+    url: "https://github.com/googlecloudplatform/gcp-mcp"
+    install: "npx @google-cloud/mcp-server"
+    type: stdio
+    tags: [gcp, cloud, infra]
+    project_types: [backend, infra, devops]
+
+  - name: github
+    label: "GitHub MCP"
+    description: "Create issues, PRs, manage branches, and search code across GitHub repositories."
+    url: "https://github.com/github/github-mcp-server"
+    install: "npx @github/mcp-server"
+    type: stdio
+    tags: [git, github, collab]
+    project_types: [backend, frontend, devops]
+
+  - name: postgres
+    label: "PostgreSQL MCP"
+    description: "Query and inspect PostgreSQL databases — schema exploration, SELECT, explain."
+    url: "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres"
+    install: "npx @modelcontextprotocol/server-postgres"
+    type: stdio
+    tags: [postgres, database, sql]
+    project_types: [backend, data]
+
+  - name: filesystem
+    label: "Filesystem MCP"
+    description: "Read, write, list, and search files on the local filesystem with path controls."
+    url: "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+    install: "npx @modelcontextprotocol/server-filesystem"
+    type: stdio
+    tags: [files, local, io]
+    project_types: [backend, frontend, devops]
+
+  - name: slack
+    label: "Slack MCP"
+    description: "Send messages, read channels, and manage Slack workspaces programmatically."
+    url: "https://github.com/modelcontextprotocol/servers/tree/main/src/slack"
+    install: "npx @modelcontextprotocol/server-slack"
+    type: stdio
+    tags: [slack, messaging, collab]
+    project_types: [backend, devops]
+
+  - name: trading
+    label: "Trading MCP"
+    description: "Live market data, OHLCV bars, order book snapshots, and trade execution hooks."
+    url: "https://github.com/thetradinglab/trading-mcp"
+    install: "npx @trading/mcp-server"
+    type: stdio
+    tags: [trading, finance, market-data]
+    project_types: [data, backend]
+
+  - name: kubernetes
+    label: "Kubernetes MCP"
+    description: "Inspect and manage Kubernetes clusters — pods, deployments, logs, and events."
+    url: "https://github.com/manishrjain/k8s-mcp"
+    install: "npx @k8s/mcp-server"
+    type: stdio
+    tags: [kubernetes, k8s, devops, infra]
+    project_types: [infra, devops]
+
+  - name: brave-search
+    label: "Brave Search MCP"
+    description: "Web and local search powered by Brave Search API — no tracking, privacy-first."
+    url: "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search"
+    install: "npx @modelcontextprotocol/server-brave-search"
+    type: stdio
+    tags: [search, web, research]
+    project_types: [backend, frontend, data]

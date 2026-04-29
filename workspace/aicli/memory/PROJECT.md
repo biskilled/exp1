@@ -322,10 +322,10 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role YAML consolidation: all roles stored in workspace/_templates/pipelines/roles/role_*.yaml with system_prompt, model, provider, temperature, max_tokens, max_iterations; no inline Python definitions
-- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); pipeline stages execute role-based agents; user-specific context in workspace/aicli/pipelines/system/
+- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); memory/agent prompts in backend/memory/yaml_config/ and backend/agents/yaml_config/
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags are validated against actual project technologies, enabling accurate delivery_type routing to pipelines
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

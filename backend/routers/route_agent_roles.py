@@ -17,22 +17,33 @@ Routes:
   POST   /agent-roles/validate-yaml         validate YAML without writing to DB (admin only)
   POST   /agent-roles/sync-yaml             validate + upsert role from YAML (admin only)
   GET    /agent-roles/{id}/export-yaml      export role to YAML (admin only)
+
+MCP Catalog routes:
+  GET    /agent-roles/mcp-catalog           read project mcp_catalog.yaml (fallback to _templates)
+  PUT    /agent-roles/mcp-catalog           write project mcp_catalog.yaml
+  GET    /agent-roles/mcp-active            list active MCP server names from .mcp.json
+  POST   /agent-roles/mcp-activate          add/update server in .mcp.json
+  DELETE /agent-roles/mcp-activate/{name}   remove server from .mcp.json
+  GET    /agent-roles/mcp-usage             list roles that reference a given MCP
 """
 from __future__ import annotations
 
+import json as _json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from core.auth import get_optional_user
 from core.database import db, build_update
+from core import project_paths
 
 log = logging.getLogger(__name__)
 
 _PROVIDERS_FILE = Path(__file__).parent.parent / "agents" / "yaml_config" / "providers.yaml"
+_TEMPLATES_PIPELINES_DIR = Path(__file__).parent.parent.parent / "workspace" / "_templates" / "pipelines"
 
 # ── Validation constants ──────────────────────────────────────────────────────
 
@@ -540,28 +551,178 @@ async def restore_version(role_id: int, version_id: int, user=Depends(get_option
 
 @router.get("/available-tools")
 async def list_available_tools():
-    """Return all registered agent tool names + descriptions (for UI checkboxes)."""
+    """Return all registered agent tool names + categories (for UI category bundles)."""
     from agents.tools import AGENT_TOOLS
     tools = []
     for name, entry in AGENT_TOOLS.items():
-        defn = entry["definition"]
-        # Infer category from tool name prefix
-        if name.startswith("git_"):
-            category = "git"
-        elif name in ("read_file", "write_file", "list_dir"):
-            category = "file"
-        elif name in ("search_memory", "get_recent_history", "get_project_facts"):
-            category = "memory"
-        elif name in ("list_work_items", "create_work_item"):
-            category = "work_items"
-        else:
-            category = "other"
         tools.append({
             "name":        name,
-            "description": defn.get("description", ""),
-            "category":    category,
+            "description": entry["definition"].get("description", ""),
+            "category":    entry.get("category", "other"),
         })
     return {"tools": tools}
+
+
+# ── MCP Catalog helpers ───────────────────────────────────────────────────────
+
+def _get_project_code_dir(project: str) -> str | None:
+    """Return code_dir for a project from mng_projects. None if not found or DB unavailable."""
+    if not db.is_available():
+        return None
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT code_dir FROM mng_projects WHERE name=%s AND client_id=1 LIMIT 1",
+                    (project,),
+                )
+                row = cur.fetchone()
+        return row[0] if row else None
+    except Exception as e:
+        log.warning(f"_get_project_code_dir({project}): {e}")
+        return None
+
+
+def _load_mcp_catalog(project: str) -> list[dict]:
+    """Load mcp_catalog.yaml — project-specific first, then _templates fallback."""
+    import yaml as _yaml
+    # Project-specific
+    proj_file = project_paths.pipelines_dir(project) / "mcp_catalog.yaml"
+    if proj_file.exists():
+        try:
+            data = _yaml.safe_load(proj_file.read_text()) or {}
+            return data.get("mcps", [])
+        except Exception as e:
+            log.warning(f"mcp_catalog load error ({proj_file}): {e}")
+    # Template fallback
+    tmpl_file = _TEMPLATES_PIPELINES_DIR / "mcp_catalog.yaml"
+    if tmpl_file.exists():
+        try:
+            data = _yaml.safe_load(tmpl_file.read_text()) or {}
+            return data.get("mcps", [])
+        except Exception as e:
+            log.warning(f"mcp_catalog load error ({tmpl_file}): {e}")
+    return []
+
+
+def _save_mcp_catalog(project: str, mcps: list[dict]) -> None:
+    """Write mcp_catalog.yaml to project pipelines dir."""
+    import yaml as _yaml
+    out_file = project_paths.pipelines_dir(project) / "mcp_catalog.yaml"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(_yaml.dump({"mcps": mcps}, allow_unicode=True, default_flow_style=False))
+
+
+def _load_mcp_json(code_dir: str) -> dict:
+    """Load .mcp.json from code_dir. Returns empty mcpServers dict if missing/invalid."""
+    mcp_file = Path(code_dir) / ".mcp.json"
+    if mcp_file.exists():
+        try:
+            return _json.loads(mcp_file.read_text())
+        except Exception:
+            pass
+    return {"mcpServers": {}}
+
+
+def _save_mcp_json(code_dir: str, data: dict) -> None:
+    """Write .mcp.json to code_dir."""
+    mcp_file = Path(code_dir) / ".mcp.json"
+    mcp_file.write_text(_json.dumps(data, indent=2))
+
+
+# ── MCP Catalog endpoints ─────────────────────────────────────────────────────
+
+@router.get("/mcp-catalog")
+async def get_mcp_catalog(project: str = Query("aicli")):
+    """Return mcp_catalog.yaml for the project (falls back to _templates)."""
+    mcps = _load_mcp_catalog(project)
+    return {"mcps": mcps}
+
+
+class McpCatalogBody(BaseModel):
+    mcps: list[dict[str, Any]]
+
+
+@router.put("/mcp-catalog")
+async def put_mcp_catalog(body: McpCatalogBody, project: str = Query("aicli"), user=Depends(get_optional_user)):
+    """Write mcp_catalog.yaml to workspace/{project}/pipelines/."""
+    _require_admin(user)
+    _save_mcp_catalog(project, body.mcps)
+    return {"ok": True, "count": len(body.mcps)}
+
+
+@router.get("/mcp-active")
+async def get_mcp_active(project: str = Query("aicli")):
+    """Return list of active MCP server names from project code_dir/.mcp.json."""
+    code_dir = _get_project_code_dir(project)
+    if not code_dir:
+        return {"servers": []}
+    data = _load_mcp_json(code_dir)
+    return {"servers": list(data.get("mcpServers", {}).keys())}
+
+
+class McpActivateBody(BaseModel):
+    name:    str
+    command: str
+    args:    list[str] = []
+    env:     dict[str, str] = {}
+
+
+@router.post("/mcp-activate")
+async def mcp_activate(body: McpActivateBody, project: str = Query("aicli")):
+    """Add or update an MCP server in project code_dir/.mcp.json."""
+    code_dir = _get_project_code_dir(project)
+    if not code_dir:
+        raise HTTPException(404, f"code_dir not found for project '{project}'")
+    data = _load_mcp_json(code_dir)
+    if "mcpServers" not in data:
+        data["mcpServers"] = {}
+    entry: dict[str, Any] = {"command": body.command, "args": body.args}
+    if body.env:
+        entry["env"] = body.env
+    data["mcpServers"][body.name] = entry
+    _save_mcp_json(code_dir, data)
+    return {"ok": True, "name": body.name}
+
+
+@router.delete("/mcp-activate/{name}")
+async def mcp_deactivate(name: str, project: str = Query("aicli")):
+    """Remove an MCP server from project code_dir/.mcp.json."""
+    code_dir = _get_project_code_dir(project)
+    if not code_dir:
+        raise HTTPException(404, f"code_dir not found for project '{project}'")
+    data = _load_mcp_json(code_dir)
+    servers = data.get("mcpServers", {})
+    if name not in servers:
+        raise HTTPException(404, f"MCP server '{name}' not found in .mcp.json")
+    del servers[name]
+    _save_mcp_json(code_dir, data)
+    return {"ok": True, "name": name}
+
+
+@router.get("/mcp-usage")
+async def get_mcp_usage(project: str = Query("aicli"), mcp_name: str = Query(...)):
+    """Return agent roles that reference mcp:{mcp_name} in their tools array."""
+    if not db.is_available():
+        return {"roles": []}
+    project_id = db.get_project_id(project)
+    global_id = db.get_project_id("_global") or 0
+    mcp_key = f"mcp:{mcp_name}"
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, name FROM mng_agent_roles
+                       WHERE is_active=TRUE
+                         AND (project_id=%s OR project_id=%s)
+                         AND tools @> %s::jsonb""",
+                    (project_id or 0, global_id, _json.dumps([mcp_key])),
+                )
+                rows = cur.fetchall()
+        return {"roles": [{"id": r[0], "name": r[1]} for r in rows]}
+    except Exception as e:
+        log.warning(f"mcp_usage query error: {e}")
+        return {"roles": []}
 
 
 # ── Shared YAML parse helper ──────────────────────────────────────────────────

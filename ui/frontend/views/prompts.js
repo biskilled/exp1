@@ -11,16 +11,17 @@ import { toast }    from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _activeFile    = '';
-let _fileOrig      = '';
-let _editMode      = false;
-let _activeRole    = null;   // {id, name, provider, model, description, system_prompt, ...}
-let _roles         = [];
-let _project       = null;
-let _isAdmin       = false;
-let _systemRoles   = [];     // all available system roles loaded once at tab init
-let _roleLinks     = {};     // {roleId: [{id, name, category, order_index}]}
-let _activeSysRole = null;   // system role being edited (admin panel)
+let _activeFile      = '';
+let _fileOrig        = '';
+let _editMode        = false;
+let _activeRole      = null;   // {id, name, provider, model, description, system_prompt, ...}
+let _roles           = [];
+let _project         = null;
+let _isAdmin         = false;
+let _systemRoles     = [];     // all available system roles loaded once at tab init
+let _roleLinks       = {};     // {roleId: [{id, name, category, order_index}]}
+let _activeSysRole   = null;   // system role being edited (admin panel)
+let _toolsByCategory = {};     // {category: [toolName, ...]} — populated by _loadRoleTools
 
 function _promptModal(title, label, placeholder = '') {
   return new Promise(resolve => {
@@ -79,15 +80,16 @@ function _providerModels(providerId) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function renderPrompts(container, projectName) {
-  _activeFile    = '';
-  _fileOrig      = '';
-  _editMode      = false;
-  _activeRole    = null;
-  _activeSysRole = null;
-  _project       = projectName;
-  _isAdmin       = false;
-  _systemRoles   = [];
-  _roleLinks     = {};
+  _activeFile      = '';
+  _fileOrig        = '';
+  _editMode        = false;
+  _activeRole      = null;
+  _activeSysRole   = null;
+  _project         = projectName;
+  _isAdmin         = false;
+  _systemRoles     = [];
+  _roleLinks       = {};
+  _toolsByCategory = {};
 
   const savedW = parseInt(localStorage.getItem('aicli_prompts_tree_w') || '220', 10);
 
@@ -269,6 +271,23 @@ async function _rolesSelect(id) {
 async function _loadRoleTools(role) {
   const grid = document.getElementById('role-tools-grid');
   if (!grid) return;
+
+  // Check provider tool_support
+  const providerData  = _providers.find(p => p.id === role.provider) || {};
+  const toolSupport   = providerData.tool_support || 'full';
+
+  if (toolSupport === 'native') {
+    grid.closest('div')?.querySelector('[data-tools-label]')?.remove();
+    grid.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;
+                  background:rgba(100,108,255,0.08);border:1px solid rgba(100,108,255,0.25);
+                  border-radius:6px;font-size:0.68rem;color:rgba(255,255,255,0.7)">
+        <span style="font-size:0.9rem">ℹ</span>
+        <span>${_esc(providerData.tool_note || 'This provider manages its own tools natively.')}</span>
+      </div>`;
+    return;
+  }
+
   let allTools = [];
   try {
     const data = await api.agentRoles.availableTools();
@@ -277,27 +296,68 @@ async function _loadRoleTools(role) {
     grid.innerHTML = '<div style="font-size:0.65rem;color:var(--muted)">Tools unavailable</div>';
     return;
   }
-  const enabled = new Set(role.tools || []);
-  const byCategory = {};
+
+  // Group by category and store in module-level variable for _collectTools
+  _toolsByCategory = {};
   for (const t of allTools) {
-    if (!byCategory[t.category]) byCategory[t.category] = [];
-    byCategory[t.category].push(t);
+    if (!_toolsByCategory[t.category]) _toolsByCategory[t.category] = [];
+    _toolsByCategory[t.category].push(t.name);
   }
-  const catColors = { git: '#e8834e', file: '#5b8af5', memory: '#9b7ef8', work_items: '#4ec9a6', other: '#888' };
-  let html = '';
-  for (const [cat, tools] of Object.entries(byCategory)) {
-    const col = catColors[cat] || '#888';
-    html += tools.map(t => `
-      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;
-                    padding:0.2rem 0.4rem;border-radius:4px;border:1px solid var(--border);
-                    background:var(--surface2);font-size:0.65rem;color:var(--text)">
-        <input type="checkbox" value="${t.name}" ${enabled.has(t.name) ? 'checked' : ''}
-          style="width:12px;height:12px;accent-color:${col};cursor:pointer">
-        <span style="color:${col};font-size:0.55rem;font-weight:600;text-transform:uppercase">${cat}</span>
-        <span>${t.name}</span>
-      </label>`).join('');
+
+  const enabledSet = new Set(role.tools || []);
+  const catColors  = { git: '#e8834e', files: '#5b8af5', memory: '#9b7ef8', other: '#888' };
+  const catOrder   = ['git', 'files', 'memory', 'other'];
+  const sortedCats = [...catOrder.filter(c => _toolsByCategory[c]),
+                      ...Object.keys(_toolsByCategory).filter(c => !catOrder.includes(c))];
+
+  let warningHtml = '';
+  if (toolSupport === 'limited') {
+    warningHtml = `
+      <div style="grid-column:1/-1;display:flex;align-items:center;gap:0.5rem;
+                  padding:0.4rem 0.65rem;background:rgba(230,180,50,0.1);
+                  border:1px solid rgba(230,180,50,0.35);border-radius:5px;
+                  font-size:0.65rem;color:rgba(230,180,50,0.9)">
+        ⚠ ${_esc(providerData.tool_note || 'Tool calling may not be supported by this provider.')}
+      </div>`;
+  }
+
+  let html = warningHtml;
+  for (const cat of sortedCats) {
+    const tools  = _toolsByCategory[cat] || [];
+    const col    = catColors[cat] || '#888';
+    // Category is checked if ALL its tools are enabled
+    const allOn  = tools.every(t => enabledSet.has(t));
+    const someOn = tools.some(t => enabledSet.has(t));
+    html += `
+      <label data-cat="${_esc(cat)}"
+             style="display:flex;flex-direction:column;gap:0.2rem;cursor:pointer;
+                    padding:0.35rem 0.5rem;border-radius:5px;border:1px solid var(--border);
+                    background:var(--surface2)">
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <input type="checkbox" data-category="${_esc(cat)}"
+            ${allOn ? 'checked' : ''} ${someOn && !allOn ? 'data-indeterminate="true"' : ''}
+            style="width:13px;height:13px;accent-color:${col};cursor:pointer;flex-shrink:0"
+            onchange="window._toolCatToggle('${_esc(cat)}', this.checked)">
+          <span style="font-size:0.68rem;font-weight:600;color:${col};text-transform:uppercase;letter-spacing:0.04em">${_esc(cat)}</span>
+        </div>
+        <div style="font-size:0.58rem;color:var(--muted);padding-left:1.4rem;line-height:1.5">
+          ${tools.map(t => `<span>${_esc(t)}</span>`).join(' · ')}
+        </div>
+      </label>`;
   }
   grid.innerHTML = html || '<div style="font-size:0.65rem;color:var(--muted)">No tools registered</div>';
+
+  // Apply indeterminate state to checkboxes
+  grid.querySelectorAll('input[data-indeterminate="true"]').forEach(cb => { cb.indeterminate = true; });
+
+  // Wire category toggle handler
+  window._toolCatToggle = (cat, checked) => {
+    // Check/uncheck all tools in the category — stored in _toolsByCategory
+    // No DOM per-tool checkboxes exist; the expansion happens in _collectTools()
+    // Update visual state of the category label
+    const cb = grid.querySelector(`input[data-category="${cat}"]`);
+    if (cb) { cb.checked = checked; cb.indeterminate = false; }
+  };
 }
 
 function _renderRoleSystemRolesSection(roleId) {
@@ -520,8 +580,14 @@ function _mcpToolsFromText(text) {
 }
 
 function _collectTools() {
-  const builtin = Array.from(document.querySelectorAll('#role-tools-grid input[type=checkbox]'))
-    .filter(c => c.checked).map(c => c.value);
+  // Expand checked category checkboxes → individual tool names
+  const builtin = [];
+  document.querySelectorAll('#role-tools-grid input[data-category]').forEach(cb => {
+    if (cb.checked) {
+      const tools = _toolsByCategory[cb.dataset.category] || [];
+      builtin.push(...tools);
+    }
+  });
   const mcpText = document.getElementById('role-mcp-tools')?.value || '';
   return [...builtin, ..._mcpToolsFromText(mcpText)];
 }
