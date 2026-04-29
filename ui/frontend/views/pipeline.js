@@ -1,116 +1,862 @@
 /**
- * pipeline.js — Dashboard view.
+ * pipeline.js — Pipeline Execution UI
  *
- * Sections:
- *   1. Events       — mem_mrr_* mirror counts (commits, prompts, items, messages)
- *   2. LLM Costs    — mng_usage_logs source='memory' (24h + all-time)
- *   3. Pipeline Runs — last-24h health per background job
- *   4. Recent Workflow Runs
+ * Layout:
+ *   Left panel (220px): Activated pipelines + activated roles
+ *   Right panel:
+ *     Section 1 (Properties) — always visible, top
+ *     Section 2 (Execution)  — collapsible, middle
+ *     Section 3 (History)    — toggleable, bottom
  */
 
 import { api } from '../utils/api.js';
 
-let _refreshTimer = null;
-let _currentProject = null;
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let _project       = null;
+let _selected      = null;   // { type: 'pipeline'|'role', name, data }
+let _runId         = null;
+let _pollTimer     = null;
+let _histLimit     = 10;
+let _histVisible   = false;
+let _execVisible   = true;
 
 export function destroyPipeline() {
-  if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; }
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
 }
+
+// ── Entry ─────────────────────────────────────────────────────────────────────
 
 export async function renderPipeline(container, project) {
   destroyPipeline();
-  _currentProject = project;
+  _project     = project;
+  _selected    = null;
+  _runId       = null;
+  _histVisible = false;
+  _execVisible = true;
 
   container.innerHTML = `
-    <div style="padding:1.5rem 1.5rem 2rem;max-width:1000px;margin:0 auto;overflow-y:auto;height:100%;box-sizing:border-box">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.4rem">
-        <h2 style="margin:0;font-size:1.05rem;font-weight:600">Dashboard</h2>
-        <button id="dd-refresh-btn" class="btn btn-ghost btn-sm" style="font-size:0.78rem">↻ Refresh</button>
+    <div id="pl-root" style="display:flex;height:100%;overflow:hidden">
+      <!-- Left panel -->
+      <div id="pl-left" style="
+        width:220px;min-width:160px;flex-shrink:0;
+        border-right:1px solid var(--border);
+        display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:0.7rem 0.75rem 0.4rem;font-size:0.65rem;font-weight:700;
+                    text-transform:uppercase;letter-spacing:0.07em;color:var(--muted)">
+          Pipelines
+        </div>
+        <div id="pl-pipelines-list" style="overflow-y:auto;flex:0 0 auto;max-height:50%">
+          <div style="padding:0 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div>
+        </div>
+        <div style="padding:0.6rem 0.75rem 0.4rem;font-size:0.65rem;font-weight:700;
+                    text-transform:uppercase;letter-spacing:0.07em;color:var(--muted);
+                    border-top:1px solid var(--border);margin-top:0.25rem">
+          Roles
+        </div>
+        <div id="pl-roles-list" style="overflow-y:auto;flex:1">
+          <div style="padding:0 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div>
+        </div>
       </div>
 
-      <div class="dd-section-label">Events</div>
-      <div id="dd-mirror" class="dd-grid dd-grid-4" style="margin-bottom:1.5rem">
-        ${_skeleton(4)}
+      <!-- Right panel -->
+      <div id="pl-right" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0">
+        <div id="pl-props"  style="flex-shrink:0;padding:1rem 1.25rem 0.75rem"></div>
+        <div id="pl-exec"   style="flex-shrink:0;border-top:1px solid var(--border)"></div>
+        <div id="pl-hist"   style="flex-shrink:0;border-top:1px solid var(--border)"></div>
       </div>
-
-      <div class="dd-section-label">LLM Pipeline Costs</div>
-      <div id="dd-costs" style="margin-bottom:1.5rem">
-        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
-      </div>
-
-      <div class="dd-section-label">Pipeline Runs <span style="font-weight:400;color:var(--muted)">(last 24h)</span></div>
-      <div id="dd-pipeline" class="dd-grid dd-grid-6" style="margin-bottom:1.5rem">
-        ${_skeleton(6)}
-      </div>
-
-      <div id="dd-errors" style="margin-bottom:1.2rem"></div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
-        <div class="dd-section-label" style="margin-bottom:0">Recent Workflow Runs</div>
-        <button class="btn btn-ghost btn-sm" style="font-size:0.72rem" onclick="window._nav('workflow')">→ Pipelines</button>
-      </div>
-      <div id="dd-runs"><div style="color:var(--muted);font-size:0.8rem">Loading…</div></div>
     </div>
 
     <style>
-      .dd-section-label {
-        font-size:0.7rem;font-weight:700;text-transform:uppercase;
-        letter-spacing:0.07em;color:var(--muted);margin-bottom:0.6rem
-      }
-      .dd-grid { display:grid;gap:0.65rem }
-      .dd-grid-4 { grid-template-columns:repeat(4,1fr) }
-      .dd-grid-6 { grid-template-columns:repeat(6,1fr) }
-      @media(max-width:780px){
-        .dd-grid-4{grid-template-columns:repeat(2,1fr)}
-        .dd-grid-6{grid-template-columns:repeat(3,1fr)}
-      }
-      .dd-card {
-        background:var(--surface2);border:1px solid var(--border);
-        border-radius:var(--radius);padding:0.8rem 0.85rem 0.65rem;
-        display:flex;flex-direction:column;gap:0.4rem;min-width:0
-      }
-      .dd-card-hdr {
+      .pl-item {
+        padding:0.35rem 0.75rem;cursor:pointer;font-size:0.78rem;
         display:flex;align-items:center;gap:0.4rem;
-        font-size:0.72rem;font-weight:600;color:var(--muted);
-        text-transform:uppercase;letter-spacing:0.04em
+        border-left:2px solid transparent;
+        transition:background 0.1s;
       }
-      .dd-card-icon { font-size:0.85rem;flex-shrink:0 }
-      .dd-card-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-      .dd-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0 }
-      .dd-stats { display:flex;gap:1rem;align-items:flex-end }
-      .dd-stat { display:flex;flex-direction:column }
-      .dd-stat-val { font-size:1.35rem;font-weight:700;color:var(--text);line-height:1 }
-      .dd-stat-lbl { font-size:0.62rem;color:var(--muted);margin-top:0.15rem;text-transform:uppercase }
-      .dd-card-footer {
-        font-size:0.65rem;color:var(--muted);
-        display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.1rem
+      .pl-item:hover { background:var(--surface2) }
+      .pl-item.active {
+        background:var(--surface2);
+        border-left-color:var(--accent);
+        font-weight:600;
       }
-      .dd-tag { background:var(--surface3,rgba(128,128,128,.12));padding:0.1rem 0.35rem;
-                border-radius:3px;white-space:nowrap }
-      .dd-pipe-card {
+      .pl-badge {
+        margin-left:auto;font-size:0.6rem;padding:0.1rem 0.3rem;
+        border-radius:3px;background:var(--surface3,rgba(128,128,128,.15));
+        color:var(--muted);white-space:nowrap;flex-shrink:0
+      }
+      .pl-prop-row {
+        display:flex;align-items:center;gap:0.75rem;
+        padding:0.3rem 0;font-size:0.78rem
+      }
+      .pl-prop-label {
+        width:180px;flex-shrink:0;color:var(--muted);font-size:0.75rem
+      }
+      .pl-stage-row {
+        display:grid;grid-template-columns:120px 140px 50px 80px 100px;
+        gap:0.25rem;font-size:0.72rem;padding:0.25rem 0;
+        border-bottom:1px solid var(--border)
+      }
+      .pl-stage-row.header { font-weight:700;color:var(--muted) }
+      .pl-log {
+        font-family:monospace;font-size:0.7rem;line-height:1.5;
         background:var(--surface2);border:1px solid var(--border);
-        border-radius:var(--radius);padding:0.55rem 0.6rem;min-width:0
+        border-radius:4px;padding:0.5rem;height:220px;overflow-y:auto;
+        color:var(--text)
       }
-      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
-                      font-family:monospace;margin-bottom:0.35rem;
-                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-      .dd-pipe-counts { display:flex;gap:0.4rem;font-size:0.72rem;align-items:center }
-      .dd-pipe-last { font-size:0.6rem;color:var(--muted);margin-top:0.25rem }
-      .dd-skel { background:var(--surface2);border:1px solid var(--border);
-                 border-radius:var(--radius);padding:0.8rem;opacity:.5;min-height:90px }
+      .pl-log .log-error { color:#e74c3c }
+      .pl-log .log-warn  { color:#f39c12 }
+      .pl-stage-dots { display:flex;flex-direction:column;gap:0.35rem;margin:0.75rem 0 }
+      .pl-dot-row {
+        display:flex;align-items:center;gap:0.6rem;font-size:0.78rem
+      }
+      .pl-dot {
+        width:10px;height:10px;border-radius:50%;flex-shrink:0;
+        border:2px solid var(--border)
+      }
+      .pl-dot.done    { background:var(--green,#27ae60);border-color:var(--green,#27ae60) }
+      .pl-dot.running { background:var(--accent);border-color:var(--accent);animation:pl-pulse 1s infinite }
+      .pl-dot.error   { background:#e74c3c;border-color:#e74c3c }
+      .pl-dot.pending { background:transparent }
+      @keyframes pl-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      .pl-approval {
+        border:2px solid #9b59b6;border-radius:6px;padding:0.75rem;
+        margin:0.75rem 0;background:rgba(155,89,182,0.06)
+      }
+      .pl-hist-row {
+        display:grid;grid-template-columns:160px 70px 80px 70px 80px;
+        gap:0.25rem;font-size:0.72rem;padding:0.3rem 0;
+        border-bottom:1px solid var(--border)
+      }
+      .pl-hist-row.header { font-weight:700;color:var(--muted) }
+      .pl-stars span { cursor:pointer;font-size:1rem }
+      .pl-stars span:hover { opacity:0.7 }
+      .pl-section-hdr {
+        display:flex;align-items:center;gap:0.5rem;
+        padding:0.6rem 1.25rem;cursor:pointer;user-select:none;
+        font-size:0.8rem;font-weight:600
+      }
+      .pl-section-hdr:hover { background:var(--surface2) }
     </style>
   `;
 
-  document.getElementById('dd-refresh-btn').onclick = () => _loadAll(container, project);
-  await _loadAll(container, project);
-
-  _refreshTimer = setInterval(() => {
-    if (_currentProject === project) _loadAll(container, project);
-  }, 30_000);
+  _renderEmpty();
+  await Promise.all([_loadPipelines(), _loadRoles()]);
 }
 
-function _skeleton(n) {
-  return Array(n).fill('<div class="dd-skel"></div>').join('');
+// ── Left panel loaders ────────────────────────────────────────────────────────
+
+async function _loadPipelines() {
+  const el = document.getElementById('pl-pipelines-list');
+  if (!el) return;
+  try {
+    const cfg = await api.agentRoles.pipelinesConfig(_project);
+    const pipes = (cfg.pipelines || []).filter(p => p.activated && !p.error);
+    if (!pipes.length) {
+      el.innerHTML = '<div style="padding:0 0.75rem;color:var(--muted);font-size:0.72rem">No activated pipelines</div>';
+      return;
+    }
+    el.innerHTML = pipes.map(p => `
+      <div class="pl-item" data-type="pipeline" data-name="${_esc(p.name)}">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${_esc(p.name)}</span>
+        <span class="pl-badge">${p.required_roles?.length || 0} stages</span>
+      </div>
+    `).join('');
+    el.querySelectorAll('.pl-item').forEach(item => {
+      item.addEventListener('click', () => _selectPipeline(item.dataset.name));
+    });
+  } catch (e) {
+    el.innerHTML = `<div style="padding:0 0.75rem;color:#e74c3c;font-size:0.72rem">Error: ${e.message}</div>`;
+  }
+}
+
+async function _loadRoles() {
+  const el = document.getElementById('pl-roles-list');
+  if (!el) return;
+  try {
+    const roles = await api.agentRoles.list(_project);
+    const activated = (roles || []).filter(r => r.activated !== false);
+    if (!activated.length) {
+      el.innerHTML = '<div style="padding:0 0.75rem;color:var(--muted);font-size:0.72rem">No activated roles</div>';
+      return;
+    }
+    el.innerHTML = activated.map(r => `
+      <div class="pl-item" data-type="role" data-name="${_esc(r.name)}">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${_esc(r.name)}</span>
+        <span class="pl-badge" style="text-transform:capitalize">${r.provider || 'claude'}</span>
+      </div>
+    `).join('');
+    el.querySelectorAll('.pl-item').forEach(item => {
+      item.addEventListener('click', () => _selectRole(item.dataset.name));
+    });
+  } catch (e) {
+    el.innerHTML = `<div style="padding:0 0.75rem;color:#e74c3c;font-size:0.72rem">Error: ${e.message}</div>`;
+  }
+}
+
+// ── Selection ─────────────────────────────────────────────────────────────────
+
+async function _selectPipeline(name) {
+  _markActive('pipeline', name);
+  _runId = null;
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+
+  const propsEl = document.getElementById('pl-props');
+  propsEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Loading pipeline config…</div>';
+
+  try {
+    const cfg = await api.agentRoles.getPipelineConfig(name, _project);
+    _selected = { type: 'pipeline', name, data: cfg };
+    _renderPipelineProps(cfg);
+    _renderExecSection(cfg);
+    _renderHistSection();
+  } catch (e) {
+    propsEl.innerHTML = `<div style="color:#e74c3c;font-size:0.8rem">Error loading config: ${e.message}</div>`;
+  }
+}
+
+async function _selectRole(name) {
+  _markActive('role', name);
+  _runId = null;
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+
+  const propsEl = document.getElementById('pl-props');
+  propsEl.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Loading role…</div>';
+
+  document.getElementById('pl-exec').innerHTML = '';
+  document.getElementById('pl-hist').innerHTML = '';
+
+  try {
+    const roles = await api.agentRoles.list(_project);
+    const role  = (roles || []).find(r => r.name === name);
+    _selected = { type: 'role', name, data: role };
+    _renderRoleProps(role || { name });
+  } catch (e) {
+    propsEl.innerHTML = `<div style="color:#e74c3c;font-size:0.8rem">Error loading role: ${e.message}</div>`;
+  }
+}
+
+function _markActive(type, name) {
+  document.querySelectorAll('#pl-left .pl-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.type === type && el.dataset.name === name);
+  });
+}
+
+function _renderEmpty() {
+  document.getElementById('pl-props').innerHTML =
+    '<div style="padding:2rem;color:var(--muted);font-size:0.85rem">Select a pipeline or role from the left panel.</div>';
+  document.getElementById('pl-exec').innerHTML = '';
+  document.getElementById('pl-hist').innerHTML = '';
+}
+
+// ── Section 1: Pipeline properties ───────────────────────────────────────────
+
+function _renderPipelineProps(cfg) {
+  const el = document.getElementById('pl-props');
+  const stageRows = (cfg.stages || []).map(s => `
+    <div class="pl-stage-row">
+      <span style="font-family:monospace">${_esc(s.key)}</span>
+      <span>
+        <a href="#" onclick="_navToRole('${_esc(s.role)}')" style="color:var(--accent)">${_esc(s.role)}</a>
+      </span>
+      <span>${s.retry ?? 1}</span>
+      <span>${s.timeout_seconds != null ? s.timeout_seconds + 's' : '—'}</span>
+      <span>${s.temperature_override != null ? s.temperature_override : '—'}</span>
+    </div>
+  `).join('');
+
+  const stageKeys = (cfg.stages || []).map(s => s.key);
+  const approvalOptions = ['<option value="">none</option>']
+    .concat(stageKeys.map(k => `<option value="${_esc(k)}" ${cfg.require_approval_after === k ? 'selected' : ''}>${_esc(k)}</option>`))
+    .join('');
+
+  el.innerHTML = `
+    <div style="margin-bottom:1rem">
+      <div style="display:flex;align-items:baseline;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.3rem">
+        <span style="font-size:1rem;font-weight:700">${_esc(cfg.name)}</span>
+        <span style="font-size:0.7rem;color:var(--muted);font-family:monospace">v${_esc(cfg.version)}</span>
+        <span class="pl-badge">${(cfg.stages||[]).length} stages</span>
+      </div>
+      ${cfg.description ? `<div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem">${_esc(cfg.description)}</div>` : ''}
+    </div>
+
+    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                color:var(--muted);margin-bottom:0.5rem">Properties</div>
+
+    <div class="pl-prop-row">
+      <span class="pl-prop-label">Max rejection retries</span>
+      <input id="prop-max-retries" type="number" min="1" max="10"
+             value="${cfg.max_rejection_retries ?? 2}"
+             style="width:60px;background:var(--surface2);border:1px solid var(--border);
+                    border-radius:4px;padding:0.2rem 0.4rem;color:var(--text);font-size:0.78rem">
+    </div>
+    <div class="pl-prop-row">
+      <span class="pl-prop-label">Continue on failure</span>
+      <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+        <input id="prop-continue" type="checkbox" ${cfg.continue_on_failure ? 'checked' : ''}>
+        <span style="font-size:0.78rem;color:var(--muted)">proceed to next stage even if a stage errors</span>
+      </label>
+    </div>
+    <div class="pl-prop-row">
+      <span class="pl-prop-label">Save to memory</span>
+      <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+        <input id="prop-save-memory" type="checkbox" ${cfg.save_memory !== false ? 'checked' : ''}>
+        <span style="font-size:0.78rem;color:var(--muted)">persist run output to mem_mrr_prompts</span>
+      </label>
+    </div>
+    <div class="pl-prop-row">
+      <span class="pl-prop-label">Default temperature</span>
+      <input id="prop-temp-slider" type="range" min="0" max="1" step="0.05"
+             value="${cfg.default_temperature ?? 0.7}" style="width:120px">
+      <span id="prop-temp-val" style="font-size:0.75rem;color:var(--muted);width:2.5rem">
+        ${cfg.default_temperature != null ? Number(cfg.default_temperature).toFixed(2) : 'role'}
+      </span>
+      <label style="font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:0.25rem">
+        <input id="prop-temp-null" type="checkbox" ${cfg.default_temperature == null ? 'checked' : ''}>
+        use role default
+      </label>
+    </div>
+    <div class="pl-prop-row">
+      <span class="pl-prop-label">Require approval after</span>
+      <select id="prop-approval" style="background:var(--surface2);border:1px solid var(--border);
+              border-radius:4px;padding:0.2rem 0.4rem;color:var(--text);font-size:0.78rem">
+        ${approvalOptions}
+      </select>
+    </div>
+
+    <div id="pl-save-status" style="font-size:0.72rem;color:var(--muted);min-height:1rem;margin:0.25rem 0"></div>
+
+    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                color:var(--muted);margin:0.75rem 0 0.4rem">Stages (read-only)</div>
+    <div style="overflow-x:auto">
+      <div class="pl-stage-row header">
+        <span>Stage Key</span><span>Role</span><span>Retry</span><span>Timeout</span><span>Temp Override</span>
+      </div>
+      ${stageRows || '<div style="color:var(--muted);font-size:0.75rem;padding:0.3rem 0">No stages defined</div>'}
+    </div>
+  `;
+
+  // Temp slider sync
+  const slider = document.getElementById('prop-temp-slider');
+  const valEl  = document.getElementById('prop-temp-val');
+  const nullCk = document.getElementById('prop-temp-null');
+  slider.addEventListener('input', () => { valEl.textContent = Number(slider.value).toFixed(2); });
+  nullCk.addEventListener('change', () => {
+    slider.disabled = nullCk.checked;
+    valEl.textContent = nullCk.checked ? 'role' : Number(slider.value).toFixed(2);
+  });
+  slider.disabled = nullCk.checked;
+
+  // Auto-save on any property change
+  const saveStatus = document.getElementById('pl-save-status');
+  let _saveTimer = null;
+  const _scheduleSave = () => {
+    if (_saveStatus) saveStatus.textContent = 'Unsaved changes…';
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => _savePipelineProps(cfg.name, saveStatus), 800);
+  };
+  ['prop-max-retries','prop-continue','prop-save-memory','prop-temp-slider','prop-temp-null','prop-approval']
+    .forEach(id => {
+      const inp = document.getElementById(id);
+      if (inp) inp.addEventListener('change', _scheduleSave);
+    });
+  document.getElementById('prop-temp-slider')?.addEventListener('input', _scheduleSave);
+}
+
+async function _savePipelineProps(pipelineName, statusEl) {
+  const maxRetries = parseInt(document.getElementById('prop-max-retries')?.value || '2', 10);
+  const continueOn = document.getElementById('prop-continue')?.checked ?? false;
+  const saveMem    = document.getElementById('prop-save-memory')?.checked ?? true;
+  const tempNull   = document.getElementById('prop-temp-null')?.checked ?? false;
+  const tempVal    = tempNull ? null : parseFloat(document.getElementById('prop-temp-slider')?.value || '0.7');
+  const approval   = document.getElementById('prop-approval')?.value || null;
+
+  const body = {
+    activated:              true,
+    max_rejection_retries:  maxRetries,
+    continue_on_failure:    continueOn,
+    save_memory:            saveMem,
+    default_temperature:    tempVal,
+    require_approval_after: approval || null,
+  };
+
+  try {
+    await api.agentRoles.patchPipeline(pipelineName, body, _project);
+    if (statusEl) { statusEl.textContent = 'Saved'; statusEl.style.color = 'var(--green,#27ae60)'; }
+    setTimeout(() => { if (statusEl) { statusEl.textContent = ''; statusEl.style.color = 'var(--muted)'; } }, 2000);
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = `Save error: ${e.message}`; statusEl.style.color = '#e74c3c'; }
+  }
+}
+
+// ── Section 1: Role properties ─────────────────────────────────────────────
+
+function _renderRoleProps(role) {
+  const el = document.getElementById('pl-props');
+  const sp = role.system_prompt || '';
+  el.innerHTML = `
+    <div style="margin-bottom:1rem">
+      <div style="display:flex;align-items:baseline;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.3rem">
+        <span style="font-size:1rem;font-weight:700">${_esc(role.name)}</span>
+        ${role.provider ? `<span class="pl-badge" style="text-transform:capitalize">${_esc(role.provider)}${role.model ? ' · ' + _esc(role.model) : ''}</span>` : ''}
+      </div>
+      ${role.description ? `<div style="font-size:0.78rem;color:var(--muted);margin-bottom:0.75rem">${_esc(role.description)}</div>` : ''}
+    </div>
+
+    ${sp ? `
+    <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                color:var(--muted);margin-bottom:0.4rem">System Prompt</div>
+    <pre style="font-family:monospace;font-size:0.7rem;line-height:1.5;
+                background:var(--surface2);border:1px solid var(--border);
+                border-radius:4px;padding:0.6rem;max-height:200px;overflow-y:auto;
+                white-space:pre-wrap;word-break:break-word;color:var(--text)">${_esc(sp)}</pre>
+    ` : ''}
+
+    <div style="margin-top:0.75rem">
+      <a href="#" onclick="window._nav && window._nav('prompts');return false"
+         style="font-size:0.78rem;color:var(--accent)">Open in Roles editor →</a>
+    </div>
+  `;
+}
+
+// ── Section 2: Execution ──────────────────────────────────────────────────────
+
+function _renderExecSection(cfg) {
+  const el = document.getElementById('pl-exec');
+  _execVisible = true;
+  el.innerHTML = `
+    <div class="pl-section-hdr" id="pl-exec-hdr">
+      <span id="pl-exec-arrow">▼</span>
+      <span id="pl-exec-title">New Run</span>
+    </div>
+    <div id="pl-exec-body" style="padding:0 1.25rem 1rem">
+      <!-- Input mode -->
+      <div style="display:flex;gap:1.25rem;align-items:center;margin-bottom:0.6rem;font-size:0.78rem">
+        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+          <input type="radio" name="pl-input-mode" value="prompt" checked> Prompt
+        </label>
+        <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer">
+          <input type="radio" name="pl-input-mode" value="file"> File
+        </label>
+      </div>
+
+      <!-- Prompt input -->
+      <div id="pl-input-prompt">
+        <textarea id="pl-task-input" rows="4"
+          placeholder="Describe the task for this pipeline run…"
+          style="width:100%;box-sizing:border-box;background:var(--surface2);
+                 border:1px solid var(--border);border-radius:4px;padding:0.5rem;
+                 color:var(--text);font-size:0.8rem;resize:vertical;font-family:inherit">
+        </textarea>
+      </div>
+
+      <!-- File input -->
+      <div id="pl-input-file" style="display:none">
+        <div style="margin-bottom:0.4rem;font-size:0.75rem;color:var(--muted)">Pick from project docs:</div>
+        <select id="pl-doc-select" style="width:100%;background:var(--surface2);border:1px solid var(--border);
+                border-radius:4px;padding:0.35rem 0.5rem;color:var(--text);font-size:0.78rem;margin-bottom:0.5rem">
+          <option value="">— loading docs… —</option>
+        </select>
+        <div style="margin-bottom:0.4rem;font-size:0.75rem;color:var(--muted)">Or upload a file:</div>
+        <input id="pl-file-upload" type="file" style="font-size:0.78rem">
+        <div id="pl-file-name" style="font-size:0.72rem;color:var(--muted);margin-top:0.3rem"></div>
+      </div>
+
+      <!-- Run button -->
+      <div style="display:flex;gap:0.75rem;align-items:center;margin-top:0.6rem">
+        <button id="pl-run-btn" class="btn btn-primary btn-sm"
+                style="font-size:0.78rem;padding:0.3rem 0.8rem">▶ Run</button>
+        <button id="pl-cancel-btn" class="btn btn-ghost btn-sm"
+                style="font-size:0.78rem;display:none">■ Cancel</button>
+        <span id="pl-run-error" style="font-size:0.75rem;color:#e74c3c"></span>
+      </div>
+
+      <!-- Progress -->
+      <div id="pl-progress" style="display:none;margin-top:1rem">
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                    color:var(--muted);margin-bottom:0.4rem">Progress</div>
+        <div id="pl-stage-dots" class="pl-stage-dots"></div>
+        <div id="pl-rejection-counter" style="font-size:0.72rem;color:var(--muted)"></div>
+
+        <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
+                    color:var(--muted);margin:0.6rem 0 0.3rem">Live Log</div>
+        <div id="pl-log" class="pl-log"></div>
+
+        <!-- Approval gate -->
+        <div id="pl-approval-gate" style="display:none" class="pl-approval">
+          <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.4rem;color:#9b59b6">
+            Approval Required
+          </div>
+          <div id="pl-approval-msg" style="font-size:0.78rem;color:var(--text);margin-bottom:0.5rem"></div>
+          <div id="pl-approval-preview" style="font-family:monospace;font-size:0.7rem;
+               background:var(--surface3,rgba(128,128,128,.1));border-radius:4px;padding:0.5rem;
+               max-height:120px;overflow-y:auto;margin-bottom:0.6rem;white-space:pre-wrap;
+               word-break:break-word"></div>
+          <textarea id="pl-approval-feedback" rows="2" placeholder="Feedback (optional)…"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);
+                   border:1px solid var(--border);border-radius:4px;padding:0.35rem;
+                   color:var(--text);font-size:0.78rem;margin-bottom:0.5rem;resize:vertical"></textarea>
+          <div style="display:flex;gap:0.5rem">
+            <button id="pl-approve-btn" class="btn btn-primary btn-sm" style="font-size:0.78rem">
+              ✓ Approve and continue
+            </button>
+            <button id="pl-reject-btn" class="btn btn-ghost btn-sm"
+                    style="font-size:0.78rem;color:#e74c3c;border-color:#e74c3c">
+              ✗ Reject
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Toggle collapse
+  document.getElementById('pl-exec-hdr').addEventListener('click', () => {
+    _execVisible = !_execVisible;
+    document.getElementById('pl-exec-body').style.display = _execVisible ? '' : 'none';
+    document.getElementById('pl-exec-arrow').textContent  = _execVisible ? '▼' : '▶';
+  });
+
+  // Input mode toggle
+  document.querySelectorAll('input[name="pl-input-mode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const isFile = r.value === 'file' && r.checked;
+      document.getElementById('pl-input-prompt').style.display = isFile ? 'none' : '';
+      document.getElementById('pl-input-file').style.display   = isFile ? '' : 'none';
+      if (isFile) _loadDocs();
+    });
+  });
+
+  // File upload label
+  document.getElementById('pl-file-upload')?.addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    document.getElementById('pl-file-name').textContent = f ? `Selected: ${f.name}` : '';
+  });
+
+  // Run button
+  document.getElementById('pl-run-btn').addEventListener('click', () => _startRun(cfg));
+
+  // Approval buttons
+  document.getElementById('pl-approve-btn')?.addEventListener('click', () => _sendApproval(true));
+  document.getElementById('pl-reject-btn')?.addEventListener('click',  () => _sendApproval(false));
+}
+
+async function _loadDocs() {
+  const sel = document.getElementById('pl-doc-select');
+  if (!sel) return;
+  try {
+    const docs = await api.documents.list(_project);
+    sel.innerHTML = '<option value="">— select a document —</option>' +
+      (docs || []).map(d => `<option value="${_esc(d.path)}">${_esc(d.path)}</option>`).join('');
+  } catch (_) {
+    sel.innerHTML = '<option value="">— could not load docs —</option>';
+  }
+}
+
+async function _startRun(cfg) {
+  const mode = document.querySelector('input[name="pl-input-mode"]:checked')?.value || 'prompt';
+  let task = '';
+  let inputFiles = [];
+
+  if (mode === 'file') {
+    const docSel = document.getElementById('pl-doc-select');
+    const fileEl = document.getElementById('pl-file-upload');
+    if (docSel?.value) {
+      task = `Process document: ${docSel.value}`;
+      inputFiles = [{ path: docSel.value }];
+    } else if (fileEl?.files?.[0]) {
+      task = `Process uploaded file: ${fileEl.files[0].name}`;
+      inputFiles = [{ name: fileEl.files[0].name }];
+    }
+  } else {
+    task = (document.getElementById('pl-task-input')?.value || '').trim();
+  }
+
+  if (!task) {
+    const errEl = document.getElementById('pl-run-error');
+    if (errEl) { errEl.textContent = 'Please enter a task or select a file.'; }
+    return;
+  }
+
+  document.getElementById('pl-run-error').textContent = '';
+  document.getElementById('pl-run-btn').style.display    = 'none';
+  document.getElementById('pl-cancel-btn').style.display = '';
+  document.getElementById('pl-exec-title').textContent   = 'Running…';
+  document.getElementById('pl-progress').style.display   = '';
+
+  // Pre-populate stage dots
+  _renderStageDots(cfg.stages || [], []);
+  _clearLog();
+
+  try {
+    const res = await api.agents.startPipelineRun({
+      pipeline: cfg.name,
+      task,
+      project:  _project,
+      input_files: inputFiles,
+    });
+    _runId = res.run_id;
+    _appendLog(`Run started: ${_runId}`, 'info');
+    _startPolling(cfg);
+  } catch (e) {
+    document.getElementById('pl-run-error').textContent = `Error: ${e.message}`;
+    _resetRunUI();
+  }
+}
+
+function _startPolling(cfg) {
+  if (_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(async () => {
+    if (!_runId) { clearInterval(_pollTimer); return; }
+    try {
+      const data = await api.agents.getPipelineRun(_runId);
+      _updateProgress(cfg, data);
+      if (['done','error','rejected','approved'].includes(data.status) && data.status !== 'running' && data.status !== 'waiting_approval') {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+        _onRunComplete(data);
+      }
+    } catch (e) {
+      _appendLog(`Poll error: ${e.message}`, 'error');
+    }
+  }, 1500);
+}
+
+function _updateProgress(cfg, data) {
+  _renderStageDots(cfg.stages || [], data.stages || []);
+
+  // Log new lines from stages
+  const logEl = document.getElementById('pl-log');
+  if (logEl) {
+    for (const stage of (data.stages || [])) {
+      for (const entry of (stage.log_lines || [])) {
+        const key = `${stage.stage_key}:${entry.ts}`;
+        if (!logEl.dataset.seen) logEl.dataset.seen = '';
+        if (!logEl.dataset.seen.includes(key)) {
+          logEl.dataset.seen += key + '|';
+          _appendLog(`[${stage.stage_key}] ${entry.text}`, entry.level || 'info');
+        }
+      }
+    }
+  }
+
+  // Approval gate
+  const approvalEl = document.getElementById('pl-approval-gate');
+  if (data.status === 'waiting_approval' && approvalEl) {
+    approvalEl.style.display = '';
+    const lastDoneStage = (data.stages || []).filter(s => s.status === 'done').at(-1);
+    const msgEl = document.getElementById('pl-approval-msg');
+    if (msgEl && lastDoneStage) {
+      msgEl.textContent = `${lastDoneStage.stage_key} stage complete. Review output before next stage continues.`;
+    }
+    const previewEl = document.getElementById('pl-approval-preview');
+    if (previewEl && lastDoneStage?.output_preview) {
+      previewEl.textContent = lastDoneStage.output_preview;
+    }
+    document.getElementById('pl-exec-title').textContent = 'Waiting for Approval…';
+  } else if (approvalEl) {
+    approvalEl.style.display = 'none';
+  }
+
+  // Title update
+  if (data.status === 'running') {
+    document.getElementById('pl-exec-title').textContent = 'Running…';
+  }
+}
+
+function _onRunComplete(data) {
+  _appendLog(
+    `Run complete. Verdict: ${data.final_verdict || data.status}. ` +
+    `Cost: $${(data.total_cost_usd || 0).toFixed(4)}. ` +
+    `Tokens: ${(data.total_input_tokens || 0) + (data.total_output_tokens || 0)}`,
+    data.status === 'error' ? 'error' : 'info',
+  );
+
+  const title = data.final_verdict === 'approved' ? '✓ Approved'
+    : data.final_verdict === 'rejected' ? '✗ Rejected'
+    : data.status === 'error' ? '✗ Error'
+    : '✓ Done';
+  document.getElementById('pl-exec-title').textContent = title;
+
+  _resetRunUI(false);
+  _runId = null;
+
+  // Reload history section
+  if (_selected?.type === 'pipeline') _renderHistSection();
+}
+
+function _resetRunUI(hideProgress = true) {
+  document.getElementById('pl-run-btn').style.display    = '';
+  document.getElementById('pl-cancel-btn').style.display = 'none';
+  if (hideProgress) document.getElementById('pl-progress').style.display = 'none';
+  document.getElementById('pl-approval-gate').style.display = 'none';
+}
+
+async function _sendApproval(approved) {
+  if (!_runId) return;
+  const feedback = document.getElementById('pl-approval-feedback')?.value || '';
+  try {
+    await api.agents.approvePipelineRun(_runId, { approved, feedback });
+    document.getElementById('pl-approval-gate').style.display = 'none';
+  } catch (e) {
+    _appendLog(`Approval error: ${e.message}`, 'error');
+  }
+}
+
+// ── Stage dots ────────────────────────────────────────────────────────────────
+
+function _renderStageDots(stageDefs, stageResults) {
+  const el = document.getElementById('pl-stage-dots');
+  if (!el) return;
+
+  const resultMap = {};
+  for (const sr of stageResults) resultMap[sr.stage_key] = sr;
+
+  el.innerHTML = stageDefs.map(s => {
+    const sr  = resultMap[s.key] || {};
+    const st  = sr.status || 'pending';
+    const dur = sr.duration_s != null ? `${sr.duration_s.toFixed(1)}s` : '';
+    const cost = sr.cost_usd != null ? `$${Number(sr.cost_usd).toFixed(4)}` : '';
+    const tok  = (sr.input_tokens || 0) + (sr.output_tokens || 0);
+    const tokStr = tok > 0 ? `${_fmtNum(tok)} tok` : '';
+    return `
+      <div class="pl-dot-row">
+        <div class="pl-dot ${st}" title="${st}"></div>
+        <span style="font-family:monospace;font-size:0.76rem;min-width:80px">${_esc(s.key)}</span>
+        <span style="font-size:0.7rem;color:var(--muted);min-width:60px">[${st}]</span>
+        ${dur    ? `<span style="font-size:0.7rem;color:var(--muted)">${dur}</span>` : ''}
+        ${cost   ? `<span style="font-size:0.7rem;color:var(--accent)">${cost}</span>` : ''}
+        ${tokStr ? `<span style="font-size:0.7rem;color:var(--muted)">${tokStr}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function _appendLog(text, level = 'info') {
+  const el = document.getElementById('pl-log');
+  if (!el) return;
+  const ts  = new Date().toLocaleTimeString();
+  const cls = level === 'error' ? 'log-error' : level === 'warn' ? 'log-warn' : '';
+  el.insertAdjacentHTML('beforeend', `<div class="${cls}">${ts} ${_esc(text)}</div>`);
+  el.scrollTop = el.scrollHeight;
+}
+
+function _clearLog() {
+  const el = document.getElementById('pl-log');
+  if (el) { el.innerHTML = ''; el.dataset.seen = ''; }
+}
+
+// ── Section 3: History ────────────────────────────────────────────────────────
+
+function _renderHistSection() {
+  const el = document.getElementById('pl-hist');
+  if (!el || !_selected) return;
+
+  el.innerHTML = `
+    <div class="pl-section-hdr" id="pl-hist-hdr">
+      <span id="pl-hist-arrow">${_histVisible ? '▾' : '▸'}</span>
+      <span>History</span>
+      <span style="margin-left:auto;font-size:0.72rem;color:var(--muted)">
+        Show:
+        <button class="btn btn-ghost btn-xs" style="font-size:0.7rem;padding:0.05rem 0.3rem" onclick="window._plHistLimit(10)">10</button>
+        <button class="btn btn-ghost btn-xs" style="font-size:0.7rem;padding:0.05rem 0.3rem" onclick="window._plHistLimit(20)">20</button>
+        <button class="btn btn-ghost btn-xs" style="font-size:0.7rem;padding:0.05rem 0.3rem" onclick="window._plHistLimit(50)">50</button>
+      </span>
+    </div>
+    <div id="pl-hist-body" style="display:${_histVisible ? '' : 'none'};padding:0 1.25rem 1rem">
+      <div style="color:var(--muted);font-size:0.78rem">Loading…</div>
+    </div>
+  `;
+
+  document.getElementById('pl-hist-hdr').addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    _histVisible = !_histVisible;
+    document.getElementById('pl-hist-body').style.display = _histVisible ? '' : 'none';
+    document.getElementById('pl-hist-arrow').textContent  = _histVisible ? '▾' : '▸';
+    if (_histVisible) _loadHistory();
+  });
+
+  window._plHistLimit = (n) => { _histLimit = n; _loadHistory(); };
+
+  if (_histVisible) _loadHistory();
+}
+
+async function _loadHistory() {
+  const el = document.getElementById('pl-hist-body');
+  if (!el || !_selected) return;
+
+  const pipelineName = _selected.type === 'pipeline' ? _selected.name : null;
+  if (!pipelineName) { el.innerHTML = '<div style="color:var(--muted);font-size:0.78rem">Select a pipeline to see run history.</div>'; return; }
+
+  try {
+    const data = await api.agents.listPipelineRuns(_project, pipelineName, _histLimit);
+    const runs = data.runs || [];
+    if (!runs.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:0.78rem">No runs yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div class="pl-hist-row header">
+        <span>Run At</span><span>Duration</span><span>Tokens</span><span>Cost</span><span>Score</span>
+      </div>
+      ${runs.map(r => _renderHistRow(r)).join('')}
+    `;
+    // Bind star clicks
+    el.querySelectorAll('.pl-stars span').forEach(star => {
+      star.addEventListener('click', async () => {
+        const runId = star.closest('[data-run-id]')?.dataset.runId;
+        const score = parseInt(star.dataset.score, 10);
+        if (!runId) return;
+        try {
+          await api.agents.scoreRun(runId, score);
+          _loadHistory();
+        } catch (e) {
+          console.warn('score error', e);
+        }
+      });
+    });
+  } catch (e) {
+    el.innerHTML = `<div style="color:#e74c3c;font-size:0.78rem">Error: ${e.message}</div>`;
+  }
+}
+
+function _renderHistRow(r) {
+  const startedAt = r.started_at ? new Date(r.started_at).toLocaleString() : '—';
+  const dur = r.duration_s != null ? _fmtDur(r.duration_s) : '—';
+  const tok  = (r.total_input_tokens || 0) + (r.total_output_tokens || 0);
+  const cost = r.total_cost_usd != null ? `$${Number(r.total_cost_usd).toFixed(4)}` : '—';
+  const score = r.score ?? null;
+  const stars = [1,2,3,4,5].map(n =>
+    `<span data-score="${n}" title="Rate ${n}" style="color:${score != null && n <= score ? '#f39c12' : 'var(--muted)'}">★</span>`
+  ).join('');
+
+  return `
+    <div class="pl-hist-row" data-run-id="${r.run_id}">
+      <span style="font-size:0.7rem;color:var(--muted)">${startedAt}</span>
+      <span>${dur}</span>
+      <span>${_fmtNum(tok)}</span>
+      <span style="color:var(--accent)">${cost}</span>
+      <span class="pl-stars" style="display:flex;gap:0.1rem">${stars}</span>
+    </div>
+    <div style="font-size:0.7rem;color:var(--muted);padding:0.1rem 0 0.5rem;
+                border-bottom:1px solid var(--border)">
+      Verdict: <strong>${r.final_verdict || r.status || '—'}</strong>
+      &nbsp;|&nbsp; Task: ${_esc((r.task || '').slice(0, 80))}
+      &nbsp;|&nbsp;
+      <a href="#" onclick="window._nav && window._nav('workflow');return false"
+         style="color:var(--accent);font-size:0.7rem">Open in History →</a>
+    </div>
+  `;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function _esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function _fmtNum(n) {
@@ -118,243 +864,9 @@ function _fmtNum(n) {
   return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
 }
 
-function _fmtTime(iso) {
-  if (!iso) return 'never';
-  const d = new Date(iso), now = new Date(), diff = now - d;
-  if (diff < 60_000)    return `${Math.floor(diff / 1000)}s ago`;
-  if (diff < 3600_000)  return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`;
-  if (diff < 604800_000) return `${Math.floor(diff / 86400_000)}d ago`;
-  return d.toLocaleDateString();
-}
-
-/** Status dot: green=active 24h, orange=stale, gray=empty, red=errors */
-function _dot(total, last24h, hasError) {
-  if (hasError)    return '#e74c3c';
-  if (last24h > 0) return 'var(--green, #27ae60)';
-  if (total > 0)   return '#f39c12';
-  return 'var(--muted)';
-}
-
-async function _loadAll(container, project) {
-  if (!project) {
-    container.querySelector('#dd-mirror').innerHTML =
-      '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">No project selected</div>';
-    return;
-  }
-  try {
-    const [dash, runsData, costsData] = await Promise.all([
-      api.pipeline.dashboard(project).catch(() => null),
-      api.graphWorkflows.recentRuns(project, 8).catch(() => null),
-      api.pipeline.llmCosts(project).catch(() => null),
-    ]);
-    _renderMirror(container, dash?.mirror);
-    _renderCosts(container, costsData);
-    _renderPipeline(container, dash?.pipeline);
-    _renderErrors(container, dash?.recent_errors);
-    _renderRuns(container, runsData);
-  } catch (e) {
-    console.warn('Dashboard load error:', e);
-  }
-}
-
-// ── Events cards ──────────────────────────────────────────────────────────────
-
-const _MIRROR_DEFS = [
-  { key: 'commits',  icon: '⊙', label: 'Commits',  extra: d => _pendingTag(d?.pending_embed, 'pending') },
-  { key: 'prompts',  icon: '◎', label: 'Prompts',  extra: d => _pendingTag(d?.pending_embed, 'pending') },
-  { key: 'items',    icon: '◈', label: 'Items',    extra: () => '' },
-  { key: 'messages', icon: '✉', label: 'Messages', extra: () => '' },
-];
-
-function _pendingTag(n, label) {
-  if (!n) return '';
-  return `<span class="dd-tag" style="color:#f39c12">${label}: ${n}</span>`;
-}
-
-function _renderMirror(container, mirror) {
-  const el = container.querySelector('#dd-mirror');
-  if (!el) return;
-  if (!mirror) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">Events data unavailable</div>';
-    return;
-  }
-  el.innerHTML = _MIRROR_DEFS.map(({ key, icon, label, extra }) => {
-    const d = mirror[key] || { total: 0, last_24h: 0, last_at: null };
-    return `
-      <div class="dd-card">
-        <div class="dd-card-hdr">
-          <span class="dd-card-icon">${icon}</span>
-          <span class="dd-card-title">${label}</span>
-          <div class="dd-dot" style="background:${_dot(d.total, d.last_24h, false)}"
-               title="${d.last_24h > 0 ? 'Active' : d.total > 0 ? 'Stale' : 'Empty'}"></div>
-        </div>
-        <div class="dd-stats">
-          <div class="dd-stat">
-            <div class="dd-stat-val">${_fmtNum(d.total)}</div>
-            <div class="dd-stat-lbl">Total</div>
-          </div>
-          <div class="dd-stat">
-            <div class="dd-stat-val" style="color:${d.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(d.last_24h)}</div>
-            <div class="dd-stat-lbl">24h</div>
-          </div>
-        </div>
-        <div class="dd-card-footer">
-          <span>Last: ${_fmtTime(d.last_at)}</span>
-          ${extra(d)}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-// ── LLM Costs ─────────────────────────────────────────────────────────────────
-
-function _renderCosts(container, data) {
-  const el = container.querySelector('#dd-costs');
-  if (!el) return;
-  if (!data) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Cost data unavailable</div>';
-    return;
-  }
-
-  function _table(title, bucket) {
-    const rows = bucket?.by_model || [];
-    const total = bucket?.total_cost_usd ?? 0;
-    const calls = bucket?.total_calls ?? 0;
-    return `
-      <div style="flex:1;min-width:280px">
-        <div style="font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;
-                    letter-spacing:0.06em;margin-bottom:0.45rem">${title}</div>
-        <table style="width:100%;border-collapse:collapse;font-size:0.72rem">
-          <thead>
-            <tr style="color:var(--muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:.04em">
-              <th style="text-align:left;padding:0.1rem 0.4rem 0.1rem 0;font-weight:600">Provider</th>
-              <th style="text-align:left;padding:0.1rem 0.4rem;font-weight:600">Model</th>
-              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Calls</th>
-              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Tokens</th>
-              <th style="text-align:right;padding:0.1rem 0 0.1rem 0.4rem;font-weight:600">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.length ? rows.map(m => `
-              <tr style="border-top:1px solid var(--border)">
-                <td style="padding:0.2rem 0.4rem 0.2rem 0;color:var(--text)">${m.provider}</td>
-                <td style="padding:0.2rem 0.4rem;color:var(--muted);font-family:monospace;font-size:0.65rem">${m.model}</td>
-                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right">${m.calls}</td>
-                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right">${_fmtNum(m.input_tokens + m.output_tokens)}</td>
-                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right;color:var(--accent)">$${m.cost_usd.toFixed(4)}</td>
-              </tr>
-            `).join('') : `
-              <tr><td colspan="5" style="color:var(--muted);padding:0.5rem 0">No data</td></tr>
-            `}
-            <tr style="border-top:2px solid var(--border);font-weight:700">
-              <td colspan="2" style="padding:0.25rem 0">Total</td>
-              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem">${calls}</td>
-              <td></td>
-              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem;color:var(--accent)">$${total.toFixed(4)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  el.innerHTML = `
-    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;
-                background:var(--surface2);border:1px solid var(--border);
-                border-radius:var(--radius);padding:0.85rem 1rem">
-      ${_table('Last 24h', data.last_24h)}
-      <div style="width:1px;background:var(--border);flex-shrink:0"></div>
-      ${_table('All Time', data.all_time)}
-    </div>
-  `;
-}
-
-// ── Pipeline tiles ────────────────────────────────────────────────────────────
-
-const _PL_LABELS = {
-  commit_embed:        'commit_embed',
-  commit_store:        'commit_store',
-  commit_code_extract: 'commit_code',
-  session_summary:     'session',
-  tag_match:           'tag_match',
-  work_item_embed:     'wi_embed',
-  work_item_promote:   'wi_promote',
-};
-
-function _renderPipeline(container, pipeline) {
-  const el = container.querySelector('#dd-pipeline');
-  if (!el) return;
-  if (!pipeline) { el.innerHTML = ''; return; }
-
-  el.innerHTML = Object.entries(_PL_LABELS).map(([key, label]) => {
-    const s = pipeline[key] || { ok: 0, error: 0, skipped: 0, last_run: null };
-    const hasActivity = s.ok > 0 || s.error > 0 || s.skipped > 0;
-    const dotColor = !hasActivity ? 'var(--muted)' : s.error > 0 ? '#e74c3c' : 'var(--green,#27ae60)';
-    return `
-      <div class="dd-pipe-card">
-        <div style="display:flex;align-items:center;gap:0.35rem;margin-bottom:0.3rem">
-          <div class="dd-dot" style="background:${dotColor}"></div>
-          <div class="dd-pipe-name" title="${key}">${label}</div>
-        </div>
-        <div class="dd-pipe-counts">
-          <span style="color:var(--green,#27ae60)">✓${s.ok}</span>
-          <span style="color:${s.error > 0 ? '#e74c3c' : 'var(--muted)'}">✗${s.error}</span>
-          <span style="color:var(--muted)">⊘${s.skipped}</span>
-        </div>
-        <div class="dd-pipe-last">${_fmtTime(s.last_run)}</div>
-      </div>
-    `;
-  }).join('');
-}
-
-// ── Errors ────────────────────────────────────────────────────────────────────
-
-function _renderErrors(container, errors) {
-  const el = container.querySelector('#dd-errors');
-  if (!el) return;
-  if (!errors?.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `
-    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
-                color:var(--muted);margin-bottom:0.5rem">Recent Errors</div>
-    ${errors.map(e => `
-      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.25rem;
-                  display:flex;gap:0.5rem;align-items:baseline">
-        <span style="color:#e74c3c;font-family:monospace;flex-shrink:0">${e.pipeline}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-              title="${e.error_msg}">${e.error_msg || '(no message)'}</span>
-        <span style="flex-shrink:0">${_fmtTime(e.at)}</span>
-      </div>
-    `).join('')}
-  `;
-}
-
-// ── Workflow runs ─────────────────────────────────────────────────────────────
-
-function _renderRuns(container, data) {
-  const el = container.querySelector('#dd-runs');
-  if (!el) return;
-  const runs = data?.runs || data || [];
-  if (!Array.isArray(runs) || !runs.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">No recent runs</div>';
-    return;
-  }
-  el.innerHTML = runs.slice(0, 8).map(r => {
-    const statusColor = r.status === 'done' ? 'var(--green,#27ae60)'
-      : r.status === 'running' ? 'var(--accent)'
-      : r.status === 'error'   ? '#e74c3c'
-      : 'var(--muted)';
-    return `
-      <div style="display:flex;gap:0.75rem;align-items:baseline;font-size:0.78rem;
-                  padding:0.35rem 0;border-bottom:1px solid var(--border)">
-        <span style="color:var(--muted);font-family:monospace;font-size:0.65rem;flex-shrink:0"
-              >${r.workflow_name || r.workflow_id?.slice(0, 8) || '?'}</span>
-        <span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-              title="${r.user_input || ''}">${(r.user_input || '').slice(0, 65)}</span>
-        <span style="color:${statusColor};flex-shrink:0">${r.status}</span>
-        <span style="color:var(--muted);flex-shrink:0">${_fmtTime(r.started_at)}</span>
-      </div>
-    `;
-  }).join('');
+function _fmtDur(secs) {
+  if (secs == null) return '—';
+  const s = Math.round(secs);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }

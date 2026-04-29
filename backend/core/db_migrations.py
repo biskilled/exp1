@@ -3287,6 +3287,71 @@ def m082_role_base_snapshot(conn) -> None:
     log.info("m082: base_snapshot JSONB column added to mng_agent_roles")
 
 
+def m085_pipeline_runs_tables(conn) -> None:
+    """Add properties to mng_agent_pipelines; create pr_pipeline_runs + pr_pipeline_run_stages."""
+    with conn.cursor() as cur:
+        # Pipeline-level persistent properties
+        cur.execute("""
+            ALTER TABLE mng_agent_pipelines
+              ADD COLUMN IF NOT EXISTS max_rejection_retries  INT     NOT NULL DEFAULT 2,
+              ADD COLUMN IF NOT EXISTS continue_on_failure    BOOLEAN NOT NULL DEFAULT FALSE,
+              ADD COLUMN IF NOT EXISTS save_memory            BOOLEAN NOT NULL DEFAULT TRUE,
+              ADD COLUMN IF NOT EXISTS default_temperature    FLOAT   DEFAULT NULL,
+              ADD COLUMN IF NOT EXISTS require_approval_after TEXT    DEFAULT NULL
+        """)
+        # One row per pipeline execution
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pr_pipeline_runs (
+                id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+                client_id           INT         NOT NULL DEFAULT 1,
+                project_id          INT         NOT NULL REFERENCES mng_projects(id) ON DELETE CASCADE,
+                pipeline_name       TEXT        NOT NULL,
+                task                TEXT        NOT NULL DEFAULT '',
+                input_files         JSONB       NOT NULL DEFAULT '[]',
+                status              TEXT        NOT NULL DEFAULT 'running',
+                final_verdict       TEXT,
+                score               SMALLINT    DEFAULT NULL,
+                total_cost_usd      NUMERIC(12,8) NOT NULL DEFAULT 0,
+                total_input_tokens  INT         NOT NULL DEFAULT 0,
+                total_output_tokens INT         NOT NULL DEFAULT 0,
+                duration_s          FLOAT       DEFAULT NULL,
+                error               TEXT,
+                context             JSONB       NOT NULL DEFAULT '{}',
+                started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at         TIMESTAMPTZ,
+                created_by          TEXT        DEFAULT NULL
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_pr_pipeline_runs_project
+              ON pr_pipeline_runs (project_id, started_at DESC)
+        """)
+        # One row per stage per run
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS pr_pipeline_run_stages (
+                id              SERIAL      PRIMARY KEY,
+                run_id          UUID        NOT NULL REFERENCES pr_pipeline_runs(id) ON DELETE CASCADE,
+                stage_key       TEXT        NOT NULL,
+                role_name       TEXT        NOT NULL,
+                status          TEXT        NOT NULL DEFAULT 'pending',
+                attempt         INT         NOT NULL DEFAULT 1,
+                input_text      TEXT        NOT NULL DEFAULT '',
+                output_text     TEXT        NOT NULL DEFAULT '',
+                structured_out  JSONB,
+                log_lines       JSONB       NOT NULL DEFAULT '[]',
+                input_tokens    INT         NOT NULL DEFAULT 0,
+                output_tokens   INT         NOT NULL DEFAULT 0,
+                cost_usd        NUMERIC(12,8) NOT NULL DEFAULT 0,
+                duration_s      FLOAT       DEFAULT NULL,
+                temperature_used FLOAT      DEFAULT NULL,
+                started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                finished_at     TIMESTAMPTZ
+            )
+        """)
+    conn.commit()
+    log.info("m085: added properties to mng_agent_pipelines; created pr_pipeline_runs + pr_pipeline_run_stages")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3359,4 +3424,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m082_role_base_snapshot", m082_role_base_snapshot),
     ("m083_role_temperature", m083_role_temperature),
     ("m084_roles_activated_and_pipelines_table", m084_roles_activated_and_pipelines_table),
+    ("m085_pipeline_runs_tables", m085_pipeline_runs_tables),
 ]

@@ -216,3 +216,554 @@ async def get_run(run_id: str) -> dict:
     if run_id not in _run_cache:
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found in cache")
     return _run_cache[run_id]
+
+
+# ── Async pipeline run endpoints ───────────────────────────────────────────────
+
+import asyncio as _asyncio
+import json as _json
+from datetime import datetime as _datetime
+
+from fastapi import Query
+
+# Approval gate registry (run_id → event + result)
+_approval_events:  dict[str, _asyncio.Event] = {}
+_approval_results: dict[str, dict]           = {}
+
+
+class AsyncPipelineRunRequest(BaseModel):
+    pipeline:    str  = "standard"
+    task:        str
+    project:     str  = "aicli"
+    input_files: list = []
+
+
+def _append_stage_log(conn, stage_id: int, text: str, level: str = "info") -> None:
+    """Append one log entry to pr_pipeline_run_stages.log_lines."""
+    entry = _json.dumps([{"ts": _datetime.utcnow().isoformat(), "text": text, "level": level}])
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pr_pipeline_run_stages SET log_lines = log_lines || %s::jsonb WHERE id=%s",
+            (entry, stage_id),
+        )
+    conn.commit()
+
+
+async def _run_pipeline_bg(
+    run_id: str,
+    pipeline_name: str,
+    task: str,
+    project: str,
+    input_files: list,
+) -> None:
+    """Background coroutine: execute a pipeline and persist stage results to DB."""
+    from agents.orchestrator import AgentWorkflow, PipelineDef
+    from core.database import db
+    import time as _time
+
+    log.info("Async pipeline run starting: run_id=%s pipeline=%s", run_id, pipeline_name)
+
+    if not db.is_available():
+        log.error("DB unavailable for async pipeline run %s", run_id)
+        return
+
+    project_id = db.get_or_create_project_id(project)
+
+    # Load pipeline + DB overrides
+    try:
+        pipeline_def = PipelineDef.load(pipeline_name)
+    except FileNotFoundError as e:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pr_pipeline_runs SET status='error', error=%s, finished_at=NOW() WHERE id=%s",
+                    (str(e), run_id),
+                )
+            conn.commit()
+        return
+
+    # Load DB property overrides
+    continue_on_failure = False
+    require_approval_after = None
+    max_rejection_retries = pipeline_def.rejection_max_retries
+    save_memory = pipeline_def.save_memory
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT max_rejection_retries, continue_on_failure, save_memory,
+                              require_approval_after
+                       FROM mng_agent_pipelines WHERE client_id=1 AND name=%s""",
+                    (pipeline_name,),
+                )
+                row = cur.fetchone()
+        if row:
+            max_rejection_retries   = row[0] if row[0] is not None else max_rejection_retries
+            continue_on_failure     = bool(row[1])
+            save_memory             = bool(row[2])
+            require_approval_after  = row[3]
+    except Exception as e:
+        log.warning("Could not load pipeline DB overrides: %s", e)
+
+    # Pre-create all stage rows as 'pending'
+    stage_ids: dict[str, int] = {}
+    try:
+        with db.conn() as conn:
+            for stage in pipeline_def.stages:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """INSERT INTO pr_pipeline_run_stages
+                               (run_id, stage_key, role_name, status)
+                           VALUES (%s, %s, %s, 'pending')
+                           RETURNING id""",
+                        (run_id, stage.key, stage.role),
+                    )
+                    stage_ids[stage.key] = cur.fetchone()[0]
+            conn.commit()
+    except Exception as e:
+        log.error("Could not pre-create stage rows: %s", e)
+
+    # Execute stages
+    from agents.agent import Agent, AgentResult
+    t_run_start = _time.monotonic()
+    handoff = None
+    stage_order = [s.key for s in pipeline_def.stages]
+    stage_map   = {s.key: s for s in pipeline_def.stages}
+    total_cost  = 0.0
+    total_in    = 0
+    total_out   = 0
+    rejection_retries = 0
+    final_verdict = "error"
+    final_error   = None
+    approval_gate_done = False
+
+    i = 0
+    while i < len(stage_order):
+        stage_def = stage_map[stage_order[i]]
+        stage_id  = stage_ids.get(stage_def.key)
+        attempt   = 1 + (rejection_retries if stage_order[i] == pipeline_def.rejection_loops_back_to else 0)
+        t0        = _time.monotonic()
+
+        # Mark stage running
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE pr_pipeline_run_stages SET status='running', attempt=%s, started_at=NOW() WHERE id=%s",
+                        (attempt, stage_id),
+                    )
+                conn.commit()
+        except Exception:
+            pass
+
+        # Approval gate BEFORE this stage (if required after previous)
+        if require_approval_after and stage_order[i - 1] == require_approval_after if i > 0 else False:
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE pr_pipeline_runs SET status='waiting_approval' WHERE id=%s",
+                            (run_id,),
+                        )
+                    conn.commit()
+            except Exception:
+                pass
+
+            event = _asyncio.Event()
+            _approval_events[run_id] = event
+            log.info("Approval gate waiting for run_id=%s before stage=%s", run_id, stage_def.key)
+            try:
+                await _asyncio.wait_for(event.wait(), timeout=600)
+            except _asyncio.TimeoutError:
+                log.warning("Approval gate timed out for run_id=%s", run_id)
+                final_error = "Approval gate timed out after 600s"
+                break
+
+            result_info = _approval_results.pop(run_id, {})
+            if not result_info.get("approved", False):
+                final_error = f"Run rejected at approval gate: {result_info.get('feedback', '')}"
+                break
+
+            # Restore running status
+            try:
+                with db.conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE pr_pipeline_runs SET status='running' WHERE id=%s",
+                            (run_id,),
+                        )
+                    conn.commit()
+            except Exception:
+                pass
+
+        if stage_id:
+            try:
+                with db.conn() as conn:
+                    _append_stage_log(conn, stage_id, f"[{stage_def.key}] Stage starting (role={stage_def.role}, attempt={attempt})")
+            except Exception:
+                pass
+
+        # Run the stage
+        stage_result = None
+        stage_error  = None
+        max_attempts = max(1, stage_def.retry)
+        for retry_num in range(max_attempts):
+            try:
+                agent = await Agent.from_role(stage_def.role)
+                if stage_def.temperature_override is not None:
+                    agent.temperature = stage_def.temperature_override
+                if stage_def.max_iterations_override is not None:
+                    agent.max_iterations = stage_def.max_iterations_override
+
+                coro = agent.run_pipeline(task=task, handoff=handoff, project=project)
+                if stage_def.timeout_seconds:
+                    import asyncio
+                    stage_result = await asyncio.wait_for(coro, timeout=stage_def.timeout_seconds)
+                else:
+                    stage_result = await coro
+
+                if stage_result.status not in ("error",):
+                    break
+                stage_error = stage_result.error or stage_result.status
+            except Exception as e:
+                stage_error = str(e)
+                log.exception("Stage '%s' raised exception: %s", stage_def.key, e)
+                from agents.agent import AgentResult
+                stage_result = AgentResult(output=str(e), status="error", error=str(e))
+
+        dur_s = _time.monotonic() - t0
+
+        # Log stage result
+        if stage_id:
+            try:
+                with db.conn() as conn:
+                    out_preview = (stage_result.output or "")[:500] if stage_result else ""
+                    _append_stage_log(
+                        conn, stage_id,
+                        f"[{stage_def.key}] Stage {'done' if not stage_error else 'error'}. "
+                        f"Cost=${stage_result.cost_usd if stage_result else 0:.4f} "
+                        f"Tokens={stage_result.input_tokens + stage_result.output_tokens if stage_result else 0}"
+                        + (f"\nError: {stage_error}" if stage_error else ""),
+                        level="error" if stage_error else "info",
+                    )
+            except Exception:
+                pass
+
+        # Persist stage result
+        if stage_result:
+            total_cost += stage_result.cost_usd
+            total_in   += stage_result.input_tokens
+            total_out  += stage_result.output_tokens
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    so = _json.dumps(stage_result.structured_output) if (stage_result and stage_result.structured_output) else None
+                    cur.execute(
+                        """UPDATE pr_pipeline_run_stages
+                           SET status=%s, output_text=%s, structured_out=%s::jsonb,
+                               input_tokens=%s, output_tokens=%s, cost_usd=%s,
+                               duration_s=%s, finished_at=NOW(),
+                               temperature_used=%s
+                           WHERE id=%s""",
+                        (
+                            "error" if stage_error else "done",
+                            (stage_result.output or "")[:8000] if stage_result else "",
+                            so,
+                            stage_result.input_tokens if stage_result else 0,
+                            stage_result.output_tokens if stage_result else 0,
+                            float(stage_result.cost_usd) if stage_result else 0,
+                            round(dur_s, 2),
+                            stage_def.temperature_override,
+                            stage_id,
+                        ),
+                    )
+                conn.commit()
+        except Exception as e:
+            log.warning("Could not persist stage result: %s", e)
+
+        # Handle stage error
+        if stage_error:
+            if continue_on_failure:
+                log.warning("Stage '%s' failed (continue_on_failure=True): %s", stage_def.key, stage_error)
+                i += 1
+                continue
+            else:
+                final_error = f"Stage '{stage_def.key}' failed: {stage_error}"
+                break
+
+        # Update handoff
+        handoff = (stage_result.structured_output if stage_result else None) or {
+            "role": stage_def.role,
+            "raw_output": (stage_result.output or "")[:2000] if stage_result else "",
+        }
+
+        # Reviewer rejection handling
+        if stage_order[i] == "reviewer":
+            verdict = (handoff or {}).get("verdict", "approved")
+            if verdict in ("rejected", "needs_changes"):
+                if rejection_retries < max_rejection_retries:
+                    rejection_retries += 1
+                    handoff["reviewer_feedback"] = handoff.get("issues", [])
+                    handoff["suggested_fixes"]   = handoff.get("suggested_fixes", [])
+                    i = stage_order.index(pipeline_def.rejection_loops_back_to)
+                    continue
+                else:
+                    final_verdict = "rejected"
+                    break
+            else:
+                final_verdict = "approved"
+
+        i += 1
+
+    if final_verdict == "error" and not final_error:
+        final_verdict = "done"
+
+    # Map verdict to score
+    score_map = {"approved": 5, "needs_changes": 3, "rejected": 1, "error": 0}
+    auto_score = score_map.get(final_verdict, None)
+    dur_total  = _time.monotonic() - t_run_start
+
+    # Finalize run row
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE pr_pipeline_runs
+                       SET status=%s, final_verdict=%s, score=%s,
+                           total_cost_usd=%s, total_input_tokens=%s, total_output_tokens=%s,
+                           duration_s=%s, error=%s, finished_at=NOW()
+                       WHERE id=%s""",
+                    (
+                        "done" if not final_error else "error",
+                        final_verdict,
+                        auto_score,
+                        round(total_cost, 8),
+                        total_in,
+                        total_out,
+                        round(dur_total, 2),
+                        final_error,
+                        run_id,
+                    ),
+                )
+            conn.commit()
+    except Exception as e:
+        log.error("Could not finalize pipeline run: %s", e)
+
+    log.info(
+        "Async pipeline run done: run_id=%s verdict=%s cost=$%.4f dur=%.1fs",
+        run_id, final_verdict, total_cost, dur_total,
+    )
+
+
+@router.post("/pipeline-runs")
+async def start_pipeline_run(req: AsyncPipelineRunRequest) -> dict:
+    """Start a pipeline run asynchronously. Returns run_id immediately."""
+    from core.database import db
+    import uuid as _uuid
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    run_id     = str(_uuid.uuid4())
+    project_id = db.get_or_create_project_id(req.project)
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO pr_pipeline_runs
+                           (id, project_id, pipeline_name, task, input_files, status)
+                       VALUES (%s, %s, %s, %s, %s::jsonb, 'running')""",
+                    (run_id, project_id, req.pipeline, req.task, _json.dumps(req.input_files)),
+                )
+            conn.commit()
+    except Exception as e:
+        log.exception("Could not create pipeline run row: %s", e)
+        raise HTTPException(500, f"Could not create run: {e}")
+
+    # Fire off background task
+    _asyncio.create_task(
+        _run_pipeline_bg(run_id, req.pipeline, req.task, req.project, req.input_files)
+    )
+
+    return {"run_id": run_id, "status": "running"}
+
+
+@router.get("/pipeline-runs/{run_id}")
+async def get_pipeline_run(run_id: str) -> dict:
+    """Poll status and stage details for a pipeline run."""
+    from core.database import db
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, pipeline_name, task, status, final_verdict, score,
+                              total_cost_usd, total_input_tokens, total_output_tokens,
+                              duration_s, error, started_at, finished_at
+                       FROM pr_pipeline_runs WHERE id=%s""",
+                    (run_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(404, "Run not found")
+
+                cur.execute(
+                    """SELECT id, stage_key, role_name, status, attempt,
+                              output_text, log_lines, input_tokens, output_tokens,
+                              cost_usd, duration_s, temperature_used, started_at, finished_at
+                       FROM pr_pipeline_run_stages
+                       WHERE run_id=%s ORDER BY id""",
+                    (run_id,),
+                )
+                stage_rows = cur.fetchall()
+
+        stages = [
+            {
+                "id":              sr[0],
+                "stage_key":       sr[1],
+                "role_name":       sr[2],
+                "status":          sr[3],
+                "attempt":         sr[4],
+                "output_preview":  (sr[5] or "")[-500:],
+                "log_lines":       sr[6] or [],
+                "input_tokens":    sr[7],
+                "output_tokens":   sr[8],
+                "cost_usd":        float(sr[9] or 0),
+                "duration_s":      sr[10],
+                "temperature_used":sr[11],
+                "started_at":      sr[12].isoformat() if sr[12] else None,
+                "finished_at":     sr[13].isoformat() if sr[13] else None,
+            }
+            for sr in stage_rows
+        ]
+
+        return {
+            "run_id":              str(row[0]),
+            "pipeline_name":       row[1],
+            "task":                row[2],
+            "status":              row[3],
+            "final_verdict":       row[4],
+            "score":               row[5],
+            "total_cost_usd":      float(row[6] or 0),
+            "total_input_tokens":  row[7],
+            "total_output_tokens": row[8],
+            "duration_s":          row[9],
+            "error":               row[10],
+            "started_at":          row[11].isoformat() if row[11] else None,
+            "finished_at":         row[12].isoformat() if row[12] else None,
+            "stages":              stages,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("get_pipeline_run failed: %s", e)
+        raise HTTPException(500, str(e))
+
+
+@router.post("/pipeline-runs/{run_id}/approve")
+async def approve_pipeline_run(run_id: str, body: dict) -> dict:
+    """Resolve an approval gate — body: {approved: bool, feedback?: str}."""
+    approved = bool(body.get("approved", True))
+    feedback = str(body.get("feedback", ""))
+    _approval_results[run_id] = {"approved": approved, "feedback": feedback}
+    event = _approval_events.pop(run_id, None)
+    if event:
+        event.set()
+    return {"ok": True, "run_id": run_id, "approved": approved}
+
+
+@router.get("/pipeline-runs")
+async def list_pipeline_runs(
+    project: str = Query("aicli"),
+    pipeline_name: str | None = Query(None),
+    limit: int = Query(20),
+) -> dict:
+    """List recent pipeline runs for a project."""
+    from core.database import db
+
+    if not db.is_available():
+        return {"runs": []}
+
+    try:
+        project_id = db.get_or_create_project_id(project)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                if pipeline_name:
+                    cur.execute(
+                        """SELECT id, pipeline_name, task, status, final_verdict, score,
+                                  total_cost_usd, total_input_tokens, total_output_tokens,
+                                  duration_s, error, started_at, finished_at
+                           FROM pr_pipeline_runs
+                           WHERE project_id=%s AND pipeline_name=%s
+                           ORDER BY started_at DESC LIMIT %s""",
+                        (project_id, pipeline_name, min(limit, 200)),
+                    )
+                else:
+                    cur.execute(
+                        """SELECT id, pipeline_name, task, status, final_verdict, score,
+                                  total_cost_usd, total_input_tokens, total_output_tokens,
+                                  duration_s, error, started_at, finished_at
+                           FROM pr_pipeline_runs
+                           WHERE project_id=%s
+                           ORDER BY started_at DESC LIMIT %s""",
+                        (project_id, min(limit, 200)),
+                    )
+                rows = cur.fetchall()
+
+        runs = [
+            {
+                "run_id":              str(r[0]),
+                "pipeline_name":       r[1],
+                "task":                (r[2] or "")[:120],
+                "status":              r[3],
+                "final_verdict":       r[4],
+                "score":               r[5],
+                "total_cost_usd":      float(r[6] or 0),
+                "total_input_tokens":  r[7],
+                "total_output_tokens": r[8],
+                "duration_s":          r[9],
+                "error":               r[10],
+                "started_at":          r[11].isoformat() if r[11] else None,
+                "finished_at":         r[12].isoformat() if r[12] else None,
+            }
+            for r in rows
+        ]
+        return {"runs": runs}
+    except Exception as e:
+        log.exception("list_pipeline_runs failed: %s", e)
+        return {"runs": []}
+
+
+class ScorePatch(BaseModel):
+    score: int
+
+
+@router.patch("/pipeline-runs/{run_id}/score")
+async def score_pipeline_run(run_id: str, body: ScorePatch) -> dict:
+    """Set the user-adjusted score (0-5) for a pipeline run."""
+    from core.database import db
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    score = max(0, min(5, body.score))
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pr_pipeline_runs SET score=%s WHERE id=%s RETURNING id",
+                    (score, run_id),
+                )
+                if not cur.fetchone():
+                    raise HTTPException(404, "Run not found")
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+    return {"ok": True, "run_id": run_id, "score": score}

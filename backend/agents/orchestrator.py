@@ -208,9 +208,16 @@ class AgentWorkflow:
         self,
         pipeline: str = "standard",
         project: str | None = None,
+        on_stage_event=None,
+        continue_on_failure: bool = False,
+        require_approval_after: str | None = None,
     ) -> None:
         self.pipeline_def = PipelineDef.load(pipeline)
         self.project = project or settings.active_project
+        self.on_stage_event = on_stage_event          # Callable | None
+        self.continue_on_failure = continue_on_failure
+        self.require_approval_after = require_approval_after
+        self._approval_events: dict[str, "asyncio.Event"] = {}
 
     async def run(self, task: str, api_key: str | None = None) -> WorkflowResult:
         """Execute the pipeline for the given task.
@@ -250,6 +257,15 @@ class AgentWorkflow:
                 stage_def.key, stage_def.role, attempt,
             )
 
+            # ── Emit stage_start ──────────────────────────────────────────────
+            if self.on_stage_event:
+                self.on_stage_event("stage_start", stage_def.key, {
+                    "role": stage_def.role,
+                    "attempt": attempt,
+                    "stage_index": i,
+                    "total_stages": len(stage_order),
+                })
+
             stage_result = await self._run_stage(
                 stage_def=stage_def,
                 task=task,
@@ -271,13 +287,60 @@ class AgentWorkflow:
                     + (stage_result.result.error or "")
                 )
                 log.error("Pipeline '%s' aborted: %s", self.pipeline_def.name, wf.error)
+                if self.on_stage_event:
+                    self.on_stage_event("stage_error", stage_def.key, {
+                        "status": stage_result.result.status,
+                        "error": wf.error,
+                        "cost_usd": stage_result.result.cost_usd,
+                        "duration_s": stage_result.duration_s,
+                    })
+                if self.continue_on_failure:
+                    log.warning(
+                        "Pipeline '%s': continue_on_failure=True, skipping failed stage '%s'",
+                        self.pipeline_def.name, stage_def.key,
+                    )
+                    wf.final_verdict = "unknown"  # reset so pipeline can still complete
+                    i += 1
+                    continue
                 break
+
+            # ── Emit stage_done ────────────────────────────────────────────────
+            if self.on_stage_event:
+                self.on_stage_event("stage_done", stage_def.key, {
+                    "role": stage_def.role,
+                    "attempt": attempt,
+                    "status": stage_result.result.status,
+                    "cost_usd": stage_result.result.cost_usd,
+                    "input_tokens": stage_result.result.input_tokens,
+                    "output_tokens": stage_result.result.output_tokens,
+                    "duration_s": stage_result.duration_s,
+                })
 
             # Update handoff for next stage
             handoff = stage_result.result.structured_output or {
                 "role": stage_def.role,
                 "raw_output": stage_result.result.output[:2000],
             }
+
+            # ── Approval gate ──────────────────────────────────────────────────
+            if self.require_approval_after and stage_def.key == self.require_approval_after:
+                import asyncio as _asyncio
+                gate = _asyncio.Event()
+                self._approval_events[stage_def.key] = gate
+                if self.on_stage_event:
+                    self.on_stage_event("approval_wait", stage_def.key, {})
+                log.info(
+                    "Pipeline '%s': waiting for approval after stage '%s' (timeout 600s)",
+                    self.pipeline_def.name, stage_def.key,
+                )
+                try:
+                    await _asyncio.wait_for(gate.wait(), timeout=600)
+                    log.info("Pipeline '%s': approval received for stage '%s'", self.pipeline_def.name, stage_def.key)
+                except _asyncio.TimeoutError:
+                    log.warning(
+                        "Pipeline '%s': approval timeout after 600s at stage '%s' — continuing",
+                        self.pipeline_def.name, stage_def.key,
+                    )
 
             # ── Reviewer rejection handling ────────────────────────────────────
             if stage_order[i] == "reviewer":

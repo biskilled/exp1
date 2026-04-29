@@ -383,6 +383,7 @@ api.agentRoles = {
     headers: _headers(),
     body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e))))),
+  getPipelineConfig: (name, project = 'aicli') => _get(`/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────
@@ -403,11 +404,23 @@ api.systemRoles = {
 // ── ReAct Agents API ─────────────────────────────────────────────────────────
 
 api.agents = {
-  listRoles:    ()           => _get('/agents/roles'),
-  listPipelines:()           => _get('/agents/pipelines'),
-  runAgent:     (body)       => _post('/agents/run', body),
-  runPipeline:  (body)       => _post('/agents/run-pipeline', body),
-  getRun:       (runId)      => _get(`/agents/runs/${enc(runId)}`),
+  listRoles:         ()                  => _get('/agents/roles'),
+  listPipelines:     ()                  => _get('/agents/pipelines'),
+  runAgent:          (body)              => _post('/agents/run', body),
+  runPipeline:       (body)              => _post('/agents/run-pipeline', body),
+  getRun:            (runId)             => _get(`/agents/runs/${enc(runId)}`),
+  // Async pipeline run endpoints
+  startPipelineRun:  (body)              => _post('/agents/pipeline-runs', body),
+  getPipelineRun:    (id)                => _get(`/agents/pipeline-runs/${enc(id)}`),
+  listPipelineRuns:  (project, pipeline, limit = 20) => {
+    const q = new URLSearchParams({ project: enc(project) || '', limit });
+    if (pipeline) q.set('pipeline_name', pipeline);
+    return _get(`/agents/pipeline-runs?${q}`);
+  },
+  approvePipelineRun:(id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/approve`, body),
+  scoreRun:          (id, score)         => fetch(_base() + `/agents/pipeline-runs/${enc(id)}/score`, {
+    method: 'PATCH', headers: _headers(), body: JSON.stringify({ score }),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 };
 
 // ── Graph Workflows API ───────────────────────────────────────────────────────

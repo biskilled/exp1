@@ -726,6 +726,47 @@ async def workflow_runs(
                     "error": r[6],
                     "current_node": r[7],
                 })
+            # Also include pr_pipeline_runs rows
+            try:
+                with db.conn() as _pl_conn:
+                    with _pl_conn.cursor() as _pl_cur:
+                        _pl_cur.execute(
+                            """SELECT id, pipeline_name, task, status, final_verdict,
+                                      total_cost_usd, error, started_at, finished_at,
+                                      duration_s,
+                                      COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0) AS steps
+                               FROM pr_pipeline_runs
+                               WHERE project_id=%s
+                               ORDER BY started_at DESC LIMIT %s""",
+                            (project_id, min(limit, 200)),
+                        )
+                        pl_rows = _pl_cur.fetchall()
+                for r in pl_rows:
+                    started  = r[7]
+                    finished = r[8]
+                    dur_s    = r[9]
+                    if dur_s is None and started and finished:
+                        dur_s = round((finished - started).total_seconds(), 1)
+                    runs.append({
+                        "id":            str(r[0]),
+                        "file":          str(r[0]),
+                        "workflow":      f"Pipeline: {r[1]}",
+                        "status":        r[3],
+                        "user_input":    (r[2] or "")[:120],
+                        "started_at":    started.isoformat() if started else None,
+                        "finished_at":   finished.isoformat() if finished else None,
+                        "total_cost_usd": float(r[5] or 0),
+                        "duration_secs": round(float(dur_s), 1) if dur_s is not None else 0,
+                        "steps":         int(r[10] or 0),
+                        "error":         r[6],
+                        "current_node":  r[4],  # final_verdict
+                        "source":        "pipeline",
+                    })
+            except Exception as _ple:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"pr_pipeline_runs query failed: {_ple}")
+            runs.sort(key=lambda x: x.get("started_at") or "", reverse=True)
+            runs = runs[:limit]
             return {"runs": runs}
         except Exception as _dbe:
             import logging

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 22:35 UTC -->
+<!-- Last updated: 2026-04-29 22:46 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multi-session auto-commit workflow: chore commits after each Claude CLI session (1f8ecc78 and 45ca1683) indicate active session-based commit hook integration
-- Role UI and system prompts finalization: 3 canonical presets (Coding—General, Design & Planning, Review & Quality) mapped to all 10 roles with status badges (BASED/UPDATED/EXTERNAL)
-- Temperature/top_p parameter support: implemented in mng_agent_roles DB schema (migration m082) and provider adapters; pipeline stage-level override ready for execution phase
-- Navigation structure finalized: Roles, Pipelines, MCP Catalog unified under Workflows group; MCP Catalog wired with activate/deactivate/edit modals; role library shows provider+model pills
+- Multi-session auto-commit workflow: repeated chore commits after Claude CLI sessions 1f8ecc78 (12 commits) and 45ca1683 (2+ commits) indicate active session-based commit hook integration with high commit frequency
+- Pipeline execution and testing: async DAG executor architecture in place; focus on validating multi-LLM agent coordination (PM → Architect → Developer → Reviewer) with temperature/top_p overrides per stage
+- Work item classification and embedding: approved work items (UC/FE/BU/TA prefix) ready for pgvector embedding; auto-closure via commit message regex patterns in validation
+- Role UI finalization: 3 canonical system prompt presets (Coding—General, Design & Planning, Review & Quality) mapped across 10 roles with status badges; provider/model pills and MCP multi-select wired in role editor
 
-_Last updated: 2026-04-29 22:35 UTC_
+_Last updated: 2026-04-29 22:46 UTC_

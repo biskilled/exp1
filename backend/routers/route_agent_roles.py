@@ -781,6 +781,75 @@ async def get_pipelines_config(project: str = Query("aicli")):
     return {"pipelines": result}
 
 
+@router.get("/pipelines/{pipeline_name}")
+async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli")):
+    """Return full config for a single pipeline: YAML definition + DB overrides."""
+    import yaml as _yaml
+
+    pl_file = _TEMPLATES_PIPELINES_DIR / f"pl_{pipeline_name}.yaml"
+    if not pl_file.exists():
+        raise HTTPException(404, f"Pipeline \'{pipeline_name}\' not found")
+
+    try:
+        raw = _yaml.safe_load(pl_file.read_text()) or {}
+    except Exception as e:
+        raise HTTPException(500, f"Could not read pipeline YAML: {e}")
+
+    stages = []
+    for s in raw.get("stages", []):
+        stages.append({
+            "key":                    s.get("key", ""),
+            "role":                   s.get("role", ""),
+            "description":            s.get("description", ""),
+            "retry":                  s.get("retry", 1),
+            "timeout_seconds":        s.get("timeout_seconds"),
+            "temperature_override":   s.get("temperature_override"),
+            "max_iterations_override":s.get("max_iterations_override"),
+        })
+
+    # DB overrides
+    db_row: dict = {}
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT activated, max_rejection_retries, continue_on_failure,
+                                  save_memory, default_temperature, require_approval_after
+                           FROM mng_agent_pipelines
+                           WHERE client_id=1 AND name=%s""",
+                        (pipeline_name,),
+                    )
+                    row = cur.fetchone()
+            if row:
+                db_row = {
+                    "activated":              bool(row[0]),
+                    "max_rejection_retries":  row[1],
+                    "continue_on_failure":    bool(row[2]),
+                    "save_memory":            bool(row[3]),
+                    "default_temperature":    row[4],
+                    "require_approval_after": row[5],
+                }
+        except Exception as e:
+            log.warning(f"get_pipeline_config: DB query failed: {e}")
+
+    rejection = raw.get("on_rejection", {})
+    completion = raw.get("on_completion", {})
+
+    return {
+        "name":                   raw.get("name", pipeline_name),
+        "version":                raw.get("version", "1.0"),
+        "description":            (raw.get("description") or "").strip(),
+        "stages":                 stages,
+        "activated":              db_row.get("activated", True),
+        "max_rejection_retries":  db_row.get("max_rejection_retries", int(rejection.get("max_retries", 2))),
+        "continue_on_failure":    db_row.get("continue_on_failure", False),
+        "save_memory":            db_row.get("save_memory", bool(completion.get("save_memory", True))),
+        "default_temperature":    db_row.get("default_temperature"),
+        "require_approval_after": db_row.get("require_approval_after"),
+    }
+
+
 @router.patch("/pipelines/{pipeline_name}")
 async def patch_pipeline(
     pipeline_name: str,
@@ -788,16 +857,20 @@ async def patch_pipeline(
     project: str = Query("aicli"),
     user=Depends(get_optional_user),
 ):
-    """Toggle pipeline activated. Rejects activation if pipeline is not eligible."""
+    """Update pipeline properties (activated, max_rejection_retries, etc.).
+
+    `activated` is optional — if omitted, only the other properties are updated.
+    """
     _require_db()
     _require_admin(user)
 
     activated = body.get("activated")
-    if activated is None:
-        raise HTTPException(400, "Body must contain 'activated' boolean")
-    activated = bool(activated)
+    # If activated not in body, skip eligibility check and just update other fields
+    updating_activation = activated is not None
+    if updating_activation:
+        activated = bool(activated)
 
-    if activated:
+    if updating_activation and activated:
         # Verify eligibility: all required roles must be activated
         import yaml as _yaml
         pl_file = _TEMPLATES_PIPELINES_DIR / f"pl_{pipeline_name}.yaml"
@@ -831,15 +904,41 @@ async def patch_pipeline(
 
     with db.conn() as conn:
         with conn.cursor() as cur:
+            # Build update fields — only include fields present in body
+            update_fields: dict = {}
+            if updating_activation:
+                update_fields["activated"] = activated
+            if "max_rejection_retries" in body:
+                update_fields["max_rejection_retries"] = int(body["max_rejection_retries"])
+            if "continue_on_failure" in body:
+                update_fields["continue_on_failure"] = bool(body["continue_on_failure"])
+            if "save_memory" in body:
+                update_fields["save_memory"] = bool(body["save_memory"])
+            if "default_temperature" in body:
+                val = body["default_temperature"]
+                update_fields["default_temperature"] = float(val) if val is not None else None
+            if "require_approval_after" in body:
+                val = body["require_approval_after"]
+                update_fields["require_approval_after"] = str(val) if val else None
+
+            if not update_fields:
+                return {"ok": True, "name": pipeline_name, "message": "Nothing to update"}
+
+            cols = list(update_fields.keys())
+            vals = list(update_fields.values())
+            set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols)
+            insert_cols = ", ".join(cols)
+            insert_placeholders = ", ".join(["%s"] * len(cols))
+
             cur.execute(
-                """INSERT INTO mng_agent_pipelines (client_id, name, activated)
-                   VALUES (1, %s, %s)
-                   ON CONFLICT (client_id, name) DO UPDATE SET activated = EXCLUDED.activated""",
-                (pipeline_name, activated),
+                f"""INSERT INTO mng_agent_pipelines (client_id, name, {insert_cols})
+                    VALUES (1, %s, {insert_placeholders})
+                    ON CONFLICT (client_id, name) DO UPDATE SET {set_clause}""",
+                (pipeline_name, *vals),
             )
 
-    log.info(f"Pipeline '{pipeline_name}' activated={activated}")
-    return {"ok": True, "name": pipeline_name, "activated": activated}
+    log.info(f"Pipeline '{pipeline_name}' updated: {list(update_fields.keys())}")
+    return {"ok": True, "name": pipeline_name, **update_fields}
 
 
 # ── MCP Catalog helpers ───────────────────────────────────────────────────────
