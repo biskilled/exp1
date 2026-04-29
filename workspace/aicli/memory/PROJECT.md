@@ -306,15 +306,16 @@ sidebar tabs:
 - Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
 - Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
-- Audit and remove unused columns from mem_ai_events table and deprecated fields from database schema (language, file_path, etc.)
-- Consolidate project workspace structure: aligned workspace/aicli/pipelines with backend config locations; removed old prompt folder, cli/ folder, documents/ and features/ folders
+- Tool and MCP catalog UI: multi-select dropdowns for tools (by category: files, git, bash, etc.) and MCPs in role editor; MCP Catalog page under Settings
+- Project workspace structure consolidation: aligned workspace/aicli/pipelines with backend config (role_*.yaml in roles/, pl_*.yaml in root); removed old prompt folder, features/ folder, documents/ folder at project root
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack (no hardcoded regex), enabling intelligent pipeline routing
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
+- Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
@@ -322,10 +323,9 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files reference roles only (no embedded task_prompt)
+- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens; pl_*.yaml files reference roles only (no embedded task_prompt)
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
-- Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies, enabling accurate delivery_type routing to pipelines
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select dropdown per role; MCPs stored in settings catalog with provider-specific enable/disable; no provider-specific tool restrictions beyond built-in availability
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

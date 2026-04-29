@@ -8,6 +8,7 @@ import { renderHome } from './views/home.js';
 import { renderSummary } from './views/summary.js';
 import { renderChat } from './views/chat.js';
 import { renderPrompts } from './views/prompts.js';
+import { renderMcpCatalog } from './views/mcp.js';
 import { renderCode } from './views/code.js';
 import { renderDocuments } from './views/documents.js';
 import { renderGraphWorkflow, destroyGraphWorkflow } from './views/graph_workflow.js';
@@ -58,19 +59,21 @@ function renderHistory(container) {
 // ── Project nav tabs ───────────────────────────────────────────────────────────
 
 const PROJECT_TABS = [
-  { id: 'summary',  icon: '📄', label: 'Summary'  },
-  { id: 'chat',     icon: '◉',  label: 'Chat'     },
-  { id: 'prompts',  icon: '≡',  label: 'Roles'    },
-  { id: 'code',      icon: '</>',label: 'Code'      },
-  { id: 'workflow',  icon: '◈',  label: 'Pipelines' },
-  { id: 'pipeline',  icon: '◫',  label: 'Dashboard' },
-  { id: 'history',    icon: '⏱',  label: 'History'    },
-  { id: 'settings', icon: '⚙',  label: 'Settings' },
+  { id: 'summary',  icon: '📄', label: 'Summary'   },
+  { id: 'chat',     icon: '◉',  label: 'Chat'      },
+  { id: 'code',     icon: '</>',label: 'Code'       },
+  { id: 'pipeline', icon: '◫',  label: 'Dashboard' },
+  { id: 'history',  icon: '⏱',  label: 'History'   },
+  { id: 'settings', icon: '⚙',  label: 'Settings'  },
   { type: 'group', label: 'Planning' },
   { id: 'backlog',    icon: '📥', label: 'Work Items', group: true },
   { id: 'use_cases',  icon: '◻',  label: 'Use Cases',  group: true },
   { id: 'documents',  icon: '📋', label: 'Documents',  group: true },
   { id: 'completed',  icon: '✓',  label: 'Completed',  group: true },
+  { type: 'group', label: 'Workflows' },
+  { id: 'prompts',  icon: '≡',  label: 'Roles',       group: true },
+  { id: 'workflow', icon: '◈',  label: 'Pipelines',   group: true },
+  { id: 'mcp',      icon: '⬡',  label: 'MCP Catalog', group: true },
 ];
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -574,6 +577,7 @@ export function navigateTo(viewId, opts = {}) {
     case 'completed':  renderCompleted(view, proj?.name);       break;
     case 'history':    renderHistory(view);                     break;
     case 'settings': renderSettings(view);                    break;
+    case 'mcp':      renderMcpCatalog(view, proj?.name);      break;
     case 'admin':    _renderAdminView(view);                  break;
     default:
       view.innerHTML = `<div class="empty-state"><p>View not found: ${viewId}</p></div>`;
