@@ -161,6 +161,7 @@ export async function renderPrompts(container, projectName) {
   window._rolesEditYaml       = _rolesEditYaml;
   window._rolesProviderChange = _rolesProviderChange;
   window._rolesRestoreDefault = _rolesRestoreDefault;
+  window._roleClearBase       = _roleClearBase;
   window._sysRolesNew         = _sysRolesNew;
   window._sysRolesSelect      = _sysRolesSelect;
   window._sysRolesSave        = _sysRolesSave;
@@ -767,30 +768,59 @@ function _renderRoleEditor(role) {
       </div>
 
       <!-- System Prompt -->
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.35rem">
-          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em">System Prompt</label>
+      <div style="flex:1;display:flex;flex-direction:column;gap:0.5rem">
+
+        <!-- Base preset panel (shown when a shared preset is active) -->
+        <div id="role-base-panel" style="display:none;border:1px solid var(--border);border-radius:var(--radius);
+             background:var(--surface2);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.6rem;cursor:pointer"
+               onclick="document.getElementById('role-base-preview').style.display=
+                        document.getElementById('role-base-preview').style.display==='none'?'block':'none'">
+            <span style="font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:4px;
+                          background:rgba(100,108,255,0.18);color:var(--accent);font-weight:600">BASE</span>
+            <span id="role-base-label" style="font-size:0.65rem;font-weight:500;color:var(--text);flex:1"></span>
+            <span style="font-size:0.6rem;color:var(--muted)">▾ click to expand</span>
+            <button onclick="event.stopPropagation();window._roleClearBase()"
+              style="font-size:0.58rem;padding:0.1rem 0.4rem;border-radius:4px;
+                     background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer"
+              title="Remove base preset from this role">Remove</button>
+          </div>
+          <pre id="role-base-preview"
+               style="display:none;margin:0;padding:0.5rem 0.75rem;font-size:0.62rem;
+                      color:var(--text2);line-height:1.5;border-top:1px solid var(--border);
+                      overflow-x:auto;max-height:200px;overflow-y:auto;white-space:pre-wrap"></pre>
+          <!-- Hidden store for base content used on save -->
+          <textarea id="role-base-content" style="display:none"></textarea>
+        </div>
+
+        <!-- Header row: label + preset picker -->
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em">
+            Role-specific prompt</label>
           <div style="display:flex;align-items:center;gap:0.4rem">
-            <label style="font-size:0.6rem;color:var(--muted)">Preset:</label>
+            <label style="font-size:0.6rem;color:var(--muted)">Add base preset:</label>
             <select id="role-prompt-preset"
               style="font-size:0.62rem;background:var(--surface2);border:1px solid var(--border);
                      color:var(--text);border-radius:4px;padding:0.15rem 0.35rem;outline:none;cursor:pointer">
-              <option value="">— custom —</option>
+              <option value="">— select —</option>
             </select>
-            <button id="role-preset-apply" title="Prepend selected preset to system prompt"
+            <button id="role-preset-apply"
               style="font-size:0.6rem;padding:0.15rem 0.45rem;border-radius:4px;
                      background:var(--surface2);border:1px solid var(--border);
-                     color:var(--text);cursor:pointer">Apply</button>
+                     color:var(--text);cursor:pointer" title="Set selected preset as base">Set</button>
           </div>
         </div>
+
+        <!-- Editable: role-specific content only -->
         <textarea id="role-system-prompt"
-          style="width:100%;box-sizing:border-box;min-height:320px;resize:vertical;
+          style="width:100%;box-sizing:border-box;min-height:280px;resize:vertical;
                  background:var(--bg);border:1px solid var(--border);
                  color:var(--text);font-family:var(--font);font-size:0.72rem;
                  padding:0.5rem;border-radius:var(--radius);outline:none;
                  line-height:1.55"
-          placeholder="You are a senior software architect…">${_esc(role.system_prompt || '')}</textarea>
-        <div id="role-preset-desc" style="font-size:0.6rem;color:var(--muted);margin-top:0.25rem;min-height:1rem"></div>
+          placeholder="Role-specific instructions (e.g. output format, domain rules)…"></textarea>
+
+        <div id="role-preset-desc" style="font-size:0.6rem;color:var(--muted);min-height:1rem"></div>
       </div>
 
       <!-- Tags / extra info -->
@@ -993,8 +1023,13 @@ async function _rolesSave(id) {
   const provider      = document.getElementById('role-provider')?.value;
   const model         = document.getElementById('role-model')?.value?.trim();
   const description   = document.getElementById('role-description')?.value?.trim();
-  const systemPrompt  = document.getElementById('role-system-prompt')?.value;
   const maxIterations = parseInt(document.getElementById('role-max-iterations')?.value || '10', 10);
+
+  // Reconstruct merged system_prompt: base (if any) + divider + role-specific
+  const _DIVIDER    = '\n\n---\n\n';
+  const baseContent = document.getElementById('role-base-content')?.value?.trimEnd() || '';
+  const roleSpec    = document.getElementById('role-system-prompt')?.value || '';
+  const systemPrompt  = baseContent ? baseContent + _DIVIDER + roleSpec : roleSpec;
   const tools         = _collectTools();
   if (!name) { toast('Name required', 'error'); return; }
   _rolesShowErrors([]);  // clear any previous errors
@@ -1069,6 +1104,35 @@ async function _rolesDelete(id) {
 // ── System Prompt Presets ──────────────────────────────────────────────────────
 
 let _promptPresets = [];
+const _BASE_DIVIDER = '\n\n---\n\n';
+
+/** Show or hide the base preset panel. Pass empty string to hide. */
+function _setBasePanel(content) {
+  const panel   = document.getElementById('role-base-panel');
+  const preview = document.getElementById('role-base-preview');
+  const hidden  = document.getElementById('role-base-content');
+  const label   = document.getElementById('role-base-label');
+  if (!panel) return;
+  if (!content?.trim()) {
+    panel.style.display = 'none';
+    if (hidden)  hidden.value    = '';
+    if (preview) preview.textContent = '';
+    return;
+  }
+  panel.style.display = 'block';
+  if (hidden)  hidden.value    = content;
+  if (preview) preview.textContent = content;
+  // Extract readable label from first heading line
+  const firstHeading = content.split('\n').find(l => l.trim().startsWith('#'));
+  if (label) label.textContent = firstHeading?.replace(/^#+\s*/, '') || 'Base preset';
+}
+
+/** Called by the Remove button inside the base preset panel. */
+function _roleClearBase() {
+  _setBasePanel('');
+  const desc = document.getElementById('role-preset-desc');
+  if (desc) desc.textContent = 'Base preset removed.';
+}
 
 async function _loadPromptPresets() {
   const sel  = document.getElementById('role-prompt-preset');
@@ -1085,6 +1149,7 @@ async function _loadPromptPresets() {
   }
 
   // Populate dropdown
+  sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove()); // clear stale options
   _promptPresets.forEach(p => {
     const opt = document.createElement('option');
     opt.value = p.name;
@@ -1092,23 +1157,37 @@ async function _loadPromptPresets() {
     sel.appendChild(opt);
   });
 
+  // Split the role's existing system_prompt into base + role-specific
+  const sp = _activeRole?.system_prompt || '';
+  const divIdx = sp.indexOf(_BASE_DIVIDER);
+  if (divIdx !== -1) {
+    const basePart    = sp.slice(0, divIdx);
+    const roleSpecific = sp.slice(divIdx + _BASE_DIVIDER.length);
+    _setBasePanel(basePart);
+    const ta = document.getElementById('role-system-prompt');
+    if (ta) ta.value = roleSpecific;
+    // Pre-select matching preset in dropdown
+    const matchedPreset = _promptPresets.find(p => sp.startsWith(p.content.trimEnd()));
+    if (matchedPreset) sel.value = matchedPreset.name;
+  } else {
+    // No divider — full content is role-specific, base panel stays hidden
+    const ta = document.getElementById('role-system-prompt');
+    if (ta) ta.value = sp;
+    _setBasePanel('');
+  }
+
   // Show description when selection changes
   sel.addEventListener('change', () => {
     const p = _promptPresets.find(x => x.name === sel.value);
-    if (desc) desc.textContent = p ? p.description : '';
+    if (desc) desc.textContent = p?.description || '';
   });
 
-  // Apply button — prepend preset content to textarea
+  // "Set" button — set selected preset as the base panel
   if (btn) btn.addEventListener('click', () => {
     const p = _promptPresets.find(x => x.name === sel.value);
-    if (!p) return;
-    const ta = document.getElementById('role-system-prompt');
-    if (!ta) return;
-    const existing = ta.value.trim();
-    const divider  = existing ? '\n\n---\n\n' : '';
-    ta.value = p.content.trimEnd() + divider + existing;
-    ta.focus();
-    if (desc) desc.textContent = `Preset "${p.label}" prepended. Edit the role-specific section below the divider.`;
+    if (!p) { if (desc) desc.textContent = 'Select a preset first.'; return; }
+    _setBasePanel(p.content.trimEnd());
+    if (desc) desc.textContent = `"${p.label}" set as base. Add role-specific instructions below.`;
   });
 }
 

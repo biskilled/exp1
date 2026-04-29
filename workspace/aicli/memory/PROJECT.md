@@ -302,18 +302,19 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
+- Role YAML sync design finalized (2026-04-29 18:06): UI edits persist in DB across backend restarts via mng_agent_roles; Refresh button re-seeds all YAML defaults; Restore button resets individual roles to YAML defaults only
+- System prompts consolidation (2026-04-29 18:15): investigating why multiple system prompts visible; likely duplicate entries in mng_agent_roles or system_prompts.yaml needing deduplication
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
-- Fix PROJECT.md file loading timeout (>60 second load): likely N+1 queries or missing database indices on mem_work_items or mem_ai_events
+- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices on mem_work_items or mem_ai_events
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
 - Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added or removed; missing state refresh trigger in planner.js render loop
-- System prompts consolidation: verify all 10 roles seeded with correct system_prompt_preset references (coding_general, design_and_planning, requirements_and_documentation)
-- Fix commit sync batch upsert error: /history/commits/sync API execute_values() error in route_history.py when syncing commit batches
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Role YAML → DB sync: YAML files in workspace/_templates/pipelines/roles/ are read-only factory defaults; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB table is single source of truth for runtime; UI edits persist in DB across restarts; Refresh button re-seeds YAML; Restore button resets individual role to YAML defaults
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
@@ -323,9 +324,8 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt_preset field; pl_*.yaml files reference roles only (no embedded task_prompt); 3 shared system prompt presets (coding_general, design_and_planning, requirements_and_documentation) in system_prompts.yaml
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table with provider-specific enable/disable; MCP Catalog accessible from main left nav under Workflows section
-- YAML → DB sync strategy: YAML files are source of truth at backend startup; on-conflict-do-nothing seeds only new roles; UI edits persist to DB and YAML unchanged; YAML edits only take effect on backend restart (user chooses restart vs. immediate DB-only persistence)
+- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (default, advanced, minimal); mng_agent_roles.system_prompt_id references presets by ID; eliminates duplicate prompt definitions
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
