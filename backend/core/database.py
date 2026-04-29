@@ -358,40 +358,33 @@ class _Database:
                 if not data or not isinstance(data, dict) or not data.get("name"):
                     continue
 
-                name           = data["name"]
-                description    = data.get("description", "")
-                system_prompt  = data.get("system_prompt", "")
-                provider       = data.get("provider", "claude")
-                model          = data.get("model", "")
-                role_type      = data.get("role_type", "agent")
-                auto_commit    = bool(data.get("auto_commit", False))
-                tools          = _json.dumps(data.get("tools", []))
-                react          = bool(data.get("react", True))
-                max_it         = int(data.get("max_iterations", 10))
-                inputs         = _json.dumps(data.get("inputs", []))
-                outputs        = _json.dumps(data.get("outputs", []))
+                name          = data["name"]
+                description   = data.get("description", "")
+                system_prompt = data.get("system_prompt", "")
+                provider      = data.get("provider", "claude")
+                model         = data.get("model", "")
+                auto_commit   = bool(data.get("auto_commit", False))
+                tools         = _json.dumps(data.get("tools", []))
+                react         = bool(data.get("react", True))
+                max_it        = int(data.get("max_iterations", 10))
 
                 cur.execute(
                     """INSERT INTO mng_agent_roles
                            (project_id, name, description, system_prompt,
-                            provider, model, role_type, auto_commit,
-                            tools, react, max_iterations, inputs, outputs)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            provider, model, auto_commit, tools, react, max_iterations)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (project_id, name) DO UPDATE SET
                            description    = EXCLUDED.description,
                            system_prompt  = EXCLUDED.system_prompt,
                            provider       = EXCLUDED.provider,
                            model          = EXCLUDED.model,
-                           role_type      = EXCLUDED.role_type,
                            auto_commit    = EXCLUDED.auto_commit,
                            tools          = EXCLUDED.tools,
                            react          = EXCLUDED.react,
                            max_iterations = EXCLUDED.max_iterations,
-                           inputs         = EXCLUDED.inputs,
-                           outputs        = EXCLUDED.outputs,
                            updated_at     = NOW()""",
                     (global_pid, name, description, system_prompt, provider, model,
-                     role_type, auto_commit, tools, react, max_it, inputs, outputs),
+                     auto_commit, tools, react, max_it),
                 )
                 log.debug(f"YAML role upserted: '{name}' ({yaml_path.name})")
             except Exception as yaml_err:

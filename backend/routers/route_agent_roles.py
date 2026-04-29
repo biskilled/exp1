@@ -38,15 +38,9 @@ _PROVIDERS_FILE = Path(__file__).parent.parent / "prompts" / "providers.yaml"
 
 _KNOWN_FIELDS = {
     "name", "description", "system_prompt", "provider", "model",
-    "role_type", "auto_commit", "react", "max_iterations",
-    "tools", "mcp_tools", "inputs", "outputs", "output_schema", "tags",
+    "auto_commit", "react", "max_iterations",
+    "tools", "mcp_tools", "output_schema", "tags",
 }
-
-_VALID_ROLE_TYPES = {
-    "agent", "system_designer", "reviewer", "developer",
-}
-
-_VALID_IO_TYPES = {"prompt", "md", "json", "code", "text", "yaml", "csv"}
 
 
 def _load_providers() -> list[dict]:
@@ -94,12 +88,6 @@ def _validate_role_data(data: dict) -> list[str]:
             errors.append(f"'provider' value '{prov}' is not recognised. "
                           f"Valid: {', '.join(sorted(valid_p))}")
 
-    # role_type
-    rt = data.get("role_type")
-    if rt and rt not in _VALID_ROLE_TYPES:
-        errors.append(f"'role_type' value '{rt}' is not recognised. "
-                      f"Valid: {', '.join(sorted(_VALID_ROLE_TYPES))}")
-
     # max_iterations
     max_it = data.get("max_iterations")
     if max_it is not None:
@@ -129,27 +117,6 @@ def _validate_role_data(data: dict) -> list[str]:
     if mcp_tools is not None and not isinstance(mcp_tools, list):
         errors.append("'mcp_tools' must be a list")
 
-    # inputs / outputs structure
-    for field in ("inputs", "outputs"):
-        items = data.get(field)
-        if items is None:
-            continue
-        if not isinstance(items, list):
-            errors.append(f"'{field}' must be a list")
-            continue
-        for i, item in enumerate(items):
-            if not isinstance(item, dict):
-                errors.append(f"'{field}[{i}]' must be a mapping with at least a 'name' key")
-                continue
-            if not item.get("name", "").strip():
-                errors.append(f"'{field}[{i}]' is missing a non-empty 'name'")
-            io_type = item.get("type")
-            if io_type and io_type not in _VALID_IO_TYPES:
-                errors.append(
-                    f"'{field}[{i}].type' value '{io_type}' is not recognised. "
-                    f"Valid: {', '.join(sorted(_VALID_IO_TYPES))}"
-                )
-
     return errors
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
@@ -157,7 +124,7 @@ def _validate_role_data(data: dict) -> list[str]:
 _SQL_LIST_ROLES = (
     """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
-              ar.inputs, ar.outputs, ar.role_type, ar.output_schema, ar.auto_commit,
+              ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.react, TRUE),
               COALESCE(ar.max_iterations, 10)
        FROM mng_agent_roles ar
@@ -169,7 +136,7 @@ _SQL_LIST_ROLES = (
 _SQL_GET_ROLE_BY_ID = (
     """SELECT ar.id, p.name AS project, ar.name, ar.description, ar.system_prompt,
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
-              ar.inputs, ar.outputs, ar.role_type, ar.output_schema, ar.auto_commit,
+              ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.react, TRUE),
               COALESCE(ar.max_iterations, 10)
        FROM mng_agent_roles ar
@@ -181,18 +148,17 @@ _SQL_INSERT_ROLE = (
     """WITH ins AS (
        INSERT INTO mng_agent_roles
            (project_id, name, description, system_prompt, provider, model, tags,
-            inputs, outputs, role_type, output_schema, auto_commit,
-            tools, react, max_iterations)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            output_schema, auto_commit, tools, react, max_iterations)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
        RETURNING id, project_id, name, description, system_prompt,
                  provider, model, tags, is_active, created_at, updated_at,
-                 inputs, outputs, role_type, output_schema, auto_commit,
+                 output_schema, auto_commit,
                  COALESCE(tools, '[]'::jsonb), COALESCE(react, TRUE),
                  COALESCE(max_iterations, 10)
     )
     SELECT ins.id, p.name AS project, ins.name, ins.description, ins.system_prompt,
            ins.provider, ins.model, ins.tags, ins.is_active, ins.created_at, ins.updated_at,
-           ins.inputs, ins.outputs, ins.role_type, ins.output_schema, ins.auto_commit,
+           ins.output_schema, ins.auto_commit,
            ins.tools, ins.react, ins.max_iterations
     FROM ins JOIN mng_projects p ON p.id = ins.project_id"""
 )
@@ -243,62 +209,52 @@ _BUILTIN_ROLES = [
     {"id": None, "project": "_global", "name": "Product Manager",
      "description": "Produces a concise task spec with acceptance criteria.",
      "provider": "claude", "model": "claude-haiku-4-5-20251001",
-     "role_type": "agent", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": False,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Sr. Architect",
      "description": "Produces a concise numbered implementation plan with file paths.",
      "provider": "claude", "model": "claude-sonnet-4-6",
-     "role_type": "system_designer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": False,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Web Developer",
      "description": "Implements full-stack features; outputs complete files ready to commit.",
      "provider": "claude", "model": "claude-sonnet-4-6",
-     "role_type": "developer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": True,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Backend Developer",
      "description": "Writes server-side code: APIs, DB schemas, business logic; auto-commits.",
      "provider": "deepseek", "model": "deepseek-chat",
-     "role_type": "developer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": True,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Frontend Developer",
      "description": "Writes client-side code: UI components, styles, interactions; auto-commits.",
      "provider": "openai", "model": "gpt-4o",
-     "role_type": "developer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": True,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "DevOps Engineer",
      "description": "Writes CI/CD configs, Dockerfiles, deployment infrastructure; auto-commits.",
      "provider": "claude", "model": "claude-haiku-4-5-20251001",
-     "role_type": "developer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": True,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Code Reviewer",
      "description": "Reviews code quality; returns score + issues as JSON.",
      "provider": "claude", "model": "claude-sonnet-4-6",
-     "role_type": "reviewer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": False,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "Security Reviewer",
      "description": "Audits code for OWASP Top 10 vulnerabilities; returns JSON.",
      "provider": "claude", "model": "claude-haiku-4-5-20251001",
-     "role_type": "reviewer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": False,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "QA Engineer",
      "description": "Writes comprehensive test cases including edge cases.",
      "provider": "openai", "model": "gpt-4o",
-     "role_type": "agent", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": False,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": False,
      "created_at": None, "updated_at": None},
     {"id": None, "project": "_global", "name": "AWS Architect",
      "description": "Designs AWS infrastructure using CDK/CloudFormation.",
      "provider": "claude", "model": "claude-sonnet-4-6",
-     "role_type": "developer", "tags": [], "is_active": True,
-     "inputs": [], "outputs": [], "output_schema": None, "auto_commit": True,
+     "tags": [], "is_active": True, "output_schema": None, "auto_commit": True,
      "created_at": None, "updated_at": None},
 ]
 
@@ -334,7 +290,7 @@ def _row_to_role(row, admin: bool = False) -> dict:
         return r
 
     import json as _json
-    _tools_raw = row[16] if len(row) > 16 else []
+    _tools_raw = row[13] if len(row) > 13 else []
     if isinstance(_tools_raw, str):
         try:
             _tools_raw = _json.loads(_tools_raw)
@@ -349,14 +305,11 @@ def _row_to_role(row, admin: bool = False) -> dict:
         "tags":           row[7] or [],
         "created_at":     row[9].isoformat()  if row[9]  else None,
         "updated_at":     row[10].isoformat() if row[10] else None,
-        "inputs":         row[11] if len(row) > 11 and row[11] is not None else [],
-        "outputs":        row[12] if len(row) > 12 and row[12] is not None else [],
-        "role_type":      row[13] if len(row) > 13 and row[13] else "agent",
-        "output_schema":  row[14] if len(row) > 14 else None,
-        "auto_commit":    row[15] if len(row) > 15 else False,
+        "output_schema":  row[11] if len(row) > 11 else None,
+        "auto_commit":    row[12] if len(row) > 12 else False,
         "tools":          _tools_raw if isinstance(_tools_raw, list) else [],
-        "react":          bool(row[17]) if len(row) > 17 else True,
-        "max_iterations": int(row[18]) if len(row) > 18 else 10,
+        "react":          bool(row[14]) if len(row) > 14 else True,
+        "max_iterations": int(row[15]) if len(row) > 15 else 10,
     })
     return r
 
@@ -411,9 +364,6 @@ class RoleCreate(BaseModel):
     provider:       str       = "claude"
     model:          str       = ""
     tags:           list[str] = []
-    inputs:         list      = []
-    outputs:        list      = []
-    role_type:      str       = "agent"
     output_schema:  Optional[dict] = None
     auto_commit:    bool      = False
     tools:          list[str] = []
@@ -433,8 +383,6 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
                 _SQL_INSERT_ROLE,
                 (project_id, body.name, body.description, body.system_prompt,
                  body.provider, body.model, body.tags,
-                 _json.dumps(body.inputs), _json.dumps(body.outputs),
-                 body.role_type,
                  _json.dumps(body.output_schema) if body.output_schema else None,
                  body.auto_commit,
                  _json.dumps(body.tools), body.react, body.max_iterations),
@@ -452,9 +400,6 @@ class RoleUpdate(BaseModel):
     provider:       Optional[str]       = None
     model:          Optional[str]       = None
     tags:           Optional[list[str]] = None
-    inputs:         Optional[list]      = None
-    outputs:        Optional[list]      = None
-    role_type:      Optional[str]       = None
     output_schema:  Optional[dict]      = None
     auto_commit:    Optional[bool]      = None
     tools:          Optional[list[str]] = None
@@ -499,7 +444,6 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         ("provider",       body.provider),
         ("model",          body.model),
         ("tags",           body.tags),
-        ("role_type",      body.role_type),
         ("auto_commit",    body.auto_commit),
         ("react",          body.react),
         ("max_iterations", body.max_iterations),
@@ -507,12 +451,6 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
         if val is not None:
             fields.append(f"{col}=%s")
             values.append(val)
-    if body.inputs is not None:
-        fields.append("inputs=%s")
-        values.append(_json.dumps(body.inputs))
-    if body.outputs is not None:
-        fields.append("outputs=%s")
-        values.append(_json.dumps(body.outputs))
     if body.output_schema is not None:
         fields.append("output_schema=%s")
         values.append(_json.dumps(body.output_schema))
@@ -704,39 +642,31 @@ async def sync_yaml(body: SyncYamlBody, user=Depends(get_optional_user)):
     max_iterations = int(data.get("max_iterations", 10))
     provider       = data.get("provider", "claude")
     model          = data.get("model", "")
-    role_type      = data.get("role_type", "agent")
     description    = data.get("description", "")
     system_prompt  = data.get("system_prompt", "")
     auto_commit    = bool(data.get("auto_commit", False))
-    inputs         = data.get("inputs", [])
-    outputs        = data.get("outputs", [])
 
     with db.conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO mng_agent_roles
                        (client_id, project, name, description, system_prompt,
-                        provider, model, role_type, auto_commit,
-                        tools, react, max_iterations, inputs, outputs)
-                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        provider, model, auto_commit, tools, react, max_iterations)
+                   VALUES (1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (client_id, project, name) DO UPDATE SET
                        description    = EXCLUDED.description,
                        system_prompt  = EXCLUDED.system_prompt,
                        provider       = EXCLUDED.provider,
                        model          = EXCLUDED.model,
-                       role_type      = EXCLUDED.role_type,
                        auto_commit    = EXCLUDED.auto_commit,
                        tools          = EXCLUDED.tools,
                        react          = EXCLUDED.react,
                        max_iterations = EXCLUDED.max_iterations,
-                       inputs         = EXCLUDED.inputs,
-                       outputs        = EXCLUDED.outputs,
                        updated_at     = NOW()
                    RETURNING id""",
                 (body.project, name, description, system_prompt,
-                 provider, model, role_type, auto_commit,
-                 _json.dumps(tools), react, max_iterations,
-                 _json.dumps(inputs), _json.dumps(outputs)),
+                 provider, model, auto_commit,
+                 _json.dumps(tools), react, max_iterations),
             )
             row = cur.fetchone()
     return {
@@ -780,13 +710,10 @@ async def export_yaml(role_id: int, user=Depends(get_optional_user)):
         "description":    role.get("description", ""),
         "provider":       role.get("provider", "claude"),
         "model":          role.get("model", ""),
-        "role_type":      role.get("role_type", "agent"),
         "react":          role.get("react", True),
         "max_iterations": role.get("max_iterations", 10),
         "auto_commit":    role.get("auto_commit", False),
         "tools":          role.get("tools", []),
-        "inputs":         role.get("inputs", []),
-        "outputs":        role.get("outputs", []),
         "system_prompt":  role.get("system_prompt", ""),
     }
     yaml_str = _yaml.dump(doc, allow_unicode=True, default_flow_style=False, sort_keys=False)

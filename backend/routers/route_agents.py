@@ -57,7 +57,7 @@ async def list_roles() -> list[dict]:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT name, description, provider, model, role_type,
+                    """SELECT name, description, provider, model,
                               react, max_iterations, tools
                        FROM mng_agent_roles
                        WHERE client_id=1 AND is_active=true
@@ -67,8 +67,8 @@ async def list_roles() -> list[dict]:
         return [
             {
                 "name": r[0], "description": r[1], "provider": r[2],
-                "model": r[3], "role_type": r[4], "react": r[5],
-                "max_iterations": r[6], "tools": r[7] or [],
+                "model": r[3], "react": r[4],
+                "max_iterations": r[5], "tools": r[6] or [],
             }
             for r in rows
         ]
