@@ -12,6 +12,7 @@ Routes:
   DELETE /agent-roles/{id}                  soft-delete (admin only)
   GET    /agent-roles/{id}/versions         version history (admin only)
   POST   /agent-roles/{id}/restore/{vid}    restore to previous version (admin only)
+  GET    /agent-roles/providers             list LLM providers + models from providers.yaml (no auth)
   GET    /agent-roles/available-tools       list all registered tool names + categories
   POST   /agent-roles/validate-yaml         validate YAML without writing to DB (admin only)
   POST   /agent-roles/sync-yaml             validate + upsert role from YAML (admin only)
@@ -19,6 +20,8 @@ Routes:
 """
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,16 +30,16 @@ from pydantic import BaseModel
 from core.auth import get_optional_user
 from core.database import db, build_update
 
+log = logging.getLogger(__name__)
+
+_PROVIDERS_FILE = Path(__file__).parent.parent / "prompts" / "providers.yaml"
+
 # ── Validation constants ──────────────────────────────────────────────────────
 
 _KNOWN_FIELDS = {
     "name", "description", "system_prompt", "provider", "model",
     "role_type", "auto_commit", "react", "max_iterations",
-    "tools", "inputs", "outputs", "output_schema", "tags",
-}
-
-_VALID_PROVIDERS = {
-    "claude", "anthropic", "openai", "deepseek", "gemini", "grok", "xai", "ollama",
+    "tools", "mcp_tools", "inputs", "outputs", "output_schema", "tags",
 }
 
 _VALID_ROLE_TYPES = {
@@ -44,6 +47,26 @@ _VALID_ROLE_TYPES = {
 }
 
 _VALID_IO_TYPES = {"prompt", "md", "json", "code", "text", "yaml", "csv"}
+
+
+def _load_providers() -> list[dict]:
+    """Load provider list from providers.yaml. Returns list of {id, label, models} dicts."""
+    try:
+        import yaml as _yaml
+        data = _yaml.safe_load(_PROVIDERS_FILE.read_text()) if _PROVIDERS_FILE.exists() else {}
+        return data.get("providers", []) if isinstance(data, dict) else []
+    except Exception as e:
+        log.warning(f"providers.yaml load error: {e}")
+        return []
+
+
+def _valid_providers() -> set[str]:
+    """Set of valid provider ids, loaded live from providers.yaml."""
+    providers = _load_providers()
+    if providers:
+        return {p["id"] for p in providers}
+    # Fallback if YAML missing
+    return {"claude", "anthropic", "openai", "deepseek", "gemini", "grok", "xai", "ollama"}
 
 
 def _validate_role_data(data: dict) -> list[str]:
@@ -63,11 +86,13 @@ def _validate_role_data(data: dict) -> list[str]:
     if "name" in data and not str(data.get("name", "")).strip():
         errors.append("'name' must not be empty")
 
-    # provider
+    # provider — loaded live from providers.yaml
     prov = data.get("provider")
-    if prov and prov not in _VALID_PROVIDERS:
-        errors.append(f"'provider' value '{prov}' is not recognised. "
-                      f"Valid: {', '.join(sorted(_VALID_PROVIDERS))}")
+    if prov:
+        valid_p = _valid_providers()
+        if prov not in valid_p:
+            errors.append(f"'provider' value '{prov}' is not recognised. "
+                          f"Valid: {', '.join(sorted(valid_p))}")
 
     # role_type
     rt = data.get("role_type")
@@ -81,15 +106,16 @@ def _validate_role_data(data: dict) -> list[str]:
         if not isinstance(max_it, int) or max_it < 1 or max_it > 100:
             errors.append("'max_iterations' must be an integer between 1 and 100")
 
-    # tools — validate against registered AGENT_TOOLS
+    # tools — validate against registered AGENT_TOOLS; mcp: prefixed entries are exempt
     tools = data.get("tools")
     if tools is not None:
         if not isinstance(tools, list):
             errors.append("'tools' must be a list of tool name strings")
         else:
+            builtin = [t for t in tools if not str(t).startswith("mcp:")]
             try:
                 from agents.tools import AGENT_TOOLS
-                unknown_tools = [t for t in tools if t not in AGENT_TOOLS]
+                unknown_tools = [t for t in builtin if t not in AGENT_TOOLS]
                 if unknown_tools:
                     errors.append(
                         f"Unknown tool(s): {', '.join(unknown_tools)}. "
@@ -97,6 +123,11 @@ def _validate_role_data(data: dict) -> list[str]:
                     )
             except ImportError:
                 pass  # tools module not available (test env)
+
+    # mcp_tools — list of {server, tools?} or plain strings
+    mcp_tools = data.get("mcp_tools")
+    if mcp_tools is not None and not isinstance(mcp_tools, list):
+        errors.append("'mcp_tools' must be a list")
 
     # inputs / outputs structure
     for field in ("inputs", "outputs"):
@@ -328,6 +359,18 @@ def _row_to_role(row, admin: bool = False) -> dict:
         "max_iterations": int(row[18]) if len(row) > 18 else 10,
     })
     return r
+
+
+# ── Static GET routes (must come before /{role_id} to avoid 405 on parameterised match) ──
+
+@router.get("/providers")
+async def list_providers_endpoint():
+    """Return LLM provider + model list from providers.yaml. No auth required.
+
+    UI uses this to populate provider/model dropdowns without hardcoding.
+    """
+    providers = _load_providers()
+    return {"providers": providers}
 
 
 # ── List ──────────────────────────────────────────────────────────────────────

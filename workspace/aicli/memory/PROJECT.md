@@ -303,11 +303,11 @@ sidebar tabs:
 ## Recent Work
 
 - Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
-- Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner UI when tags added/removed
 - Remove lifecycle tags from Planner UI (11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining)
 - Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
 - Optimize PROJECT.md file loading (currently >60s timeout) — performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
-- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches (e.g., TA4001 'planner' confusion)
+- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches
+- Improve classifier accuracy by including full tech_stack context in system prompt to prevent frontend/backend/database classification errors (e.g., TA4001 'planner' confusion resolved)
 
 ## Key Decisions
 
@@ -321,11 +321,11 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML under backend/memory/prompts/ with roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml, react_base.yaml); delivery_type classification uses project tech_stack context (frontend/backend/database/infrastructure) to improve pipeline routing accuracy
+- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) + workspace/_templates/roles/ (role definitions); delivery_type classification uses project tech_stack context (frontend/backend/database/infrastructure) to improve pipeline routing accuracy
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany instead of N execute calls
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases; user_status display bars show item lifecycle state
-- Delivery type routing: work items classified with delivery_type (code_change/feature/bug/refactor/doc/infrastructure) using Haiku classifier with full project tech stack and file coupling context; maps to appropriate pipeline (developer, architect, infrastructure, etc.)
+- Delivery type routing: work items classified with delivery_type (code_change/feature/bug/refactor/doc/infrastructure) using Haiku classifier with full project tech_stack + file coupling context; maps to appropriate pipeline (developer, architect, infrastructure, etc.)
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

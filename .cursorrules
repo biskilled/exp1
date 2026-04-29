@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 13:47 UTC -->
+<!-- Last updated: 2026-04-29 13:52 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -15,12 +15,12 @@ llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gem
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small)
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state in _write_root_files_with_ctx()
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
-- Code.md generation: per-symbol diffs via tree-sitter (Python/JavaScript/TypeScript) with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
-- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints; stdio transport running locally on developer machine with no auth
+- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 
 ## Active Features (do not break)
@@ -35,7 +35,7 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 - Fix undefined column errors in route_entities (line 359: t.lifecycle) and route_history (line 228: event_type) — columns removed in migration m080 but route code not yet updated
 - Fix commit sync batch upsert error in /history/commits/sync API and tag counter not updating in Planner UI when tags added/removed
-- Remove lifecycle tags from Planner UI (11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining)
-- Fix backend startup race condition; active project not displayed in project selector after startup; recent projects list missing aiCli project
+- Backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
+- Optimize PROJECT.md file loading (currently >60s timeout) — performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
 
-_Last updated: 2026-04-29 13:47 UTC_
+_Last updated: 2026-04-29 13:52 UTC_

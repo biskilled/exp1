@@ -52,15 +52,29 @@ function _promptModal(title, label, placeholder = '') {
   });
 }
 
-const PROVIDERS = ['anthropic', 'openai', 'deepseek', 'gemini', 'xai', 'ollama'];
-const MODELS    = {
-  anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'],
-  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  deepseek:  ['deepseek-chat', 'deepseek-coder'],
-  gemini:    ['gemini-1.5-pro', 'gemini-1.5-flash'],
-  xai:       ['grok-2-latest', 'grok-vision-beta'],
-  ollama:    ['llama3', 'mistral', 'codellama'],
-};
+// Providers loaded from /agent-roles/providers (backed by backend/prompts/providers.yaml).
+// Fallback used only if the API call fails on first load.
+let _providers = [];
+const _PROVIDERS_FALLBACK = [
+  { id: 'claude',   label: 'Claude API',    models: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-6'] },
+  { id: 'openai',   label: 'OpenAI API',    models: ['gpt-4o', 'gpt-4o-mini'] },
+  { id: 'deepseek', label: 'DeepSeek Cloud',models: ['deepseek-chat', 'deepseek-coder'] },
+  { id: 'gemini',   label: 'Gemini API',    models: ['gemini-1.5-pro', 'gemini-1.5-flash'] },
+  { id: 'grok',     label: 'Grok API',      models: ['grok-2-latest'] },
+];
+
+async function _loadProviders() {
+  try {
+    const data = await api.agentRoles.providers();
+    if (data?.providers?.length) _providers = data.providers;
+  } catch (_) { /* use fallback */ }
+  if (!_providers.length) _providers = _PROVIDERS_FALLBACK;
+}
+
+function _providerModels(providerId) {
+  const p = _providers.find(x => x.id === providerId);
+  return p?.models || [];
+}
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -135,6 +149,7 @@ export async function renderPrompts(container, projectName) {
   window._rolesDelete         = _rolesDelete;
   window._rolesSave           = _rolesSave;
   window._rolesExportYaml     = _rolesExportYaml;
+  window._rolesEditYaml       = _rolesEditYaml;
   window._rolesProviderChange = _rolesProviderChange;
   window._sysRolesNew         = _sysRolesNew;
   window._sysRolesSelect      = _sysRolesSelect;
@@ -163,6 +178,7 @@ async function _loadRoles(projectName) {
     const [rolesData, sysData] = await Promise.all([
       api.agentRoles.list(projectName || '_global'),
       api.systemRoles.list().catch(() => ({ system_roles: [], is_admin: false })),
+      _loadProviders(),
     ]);
     _roles       = rolesData.roles || rolesData || [];
     _isAdmin     = rolesData.is_admin || sysData.is_admin || false;
@@ -411,17 +427,28 @@ function _renderRoleEditor(role) {
   const toolbar = document.getElementById('prompts-toolbar');
   if (!body) return;
 
-  if (toolbar) toolbar.innerHTML = `
-    <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
-    <button class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem"
-           onclick="window._rolesDelete(${role.id})">Delete</button>
-    <button class="btn btn-ghost btn-sm" style="font-size:0.62rem"
-      onclick="window._rolesExportYaml(${role.id}, ${JSON.stringify(role.name)})">↓ YAML</button>
-    <button class="btn btn-primary btn-sm" id="roles-save-btn"
-      onclick="window._rolesSave(${role.id})">Save</button>
-  `;
+  // Toolbar — use event listeners to avoid onclick attribute quoting issues
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
+      <button id="roles-delete-btn" class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem">Delete</button>
+      <button id="roles-edit-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">Edit YAML</button>
+      <button id="roles-export-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">↓ YAML</button>
+      <button id="roles-save-btn" class="btn btn-primary btn-sm">Save</button>
+    `;
+    toolbar.querySelector('#roles-delete-btn').addEventListener('click', () => _rolesDelete(role.id));
+    toolbar.querySelector('#roles-edit-yaml-btn').addEventListener('click', () => _rolesEditYaml(role));
+    toolbar.querySelector('#roles-export-yaml-btn').addEventListener('click', () => _rolesExportYaml(role.id, role.name));
+    toolbar.querySelector('#roles-save-btn').addEventListener('click', () => _rolesSave(role.id));
+  }
 
-  const modelsForProvider = (MODELS[role.provider] || []).concat(role.model && !(MODELS[role.provider]||[]).includes(role.model) ? [role.model] : []);
+  // Provider options from loaded providers list
+  const providerOpts = _providers.map(p =>
+    `<option value="${_esc(p.id)}" ${role.provider === p.id ? 'selected' : ''}>${_esc(p.label || p.id)}</option>`
+  ).join('');
+
+  const modelsForProvider = _providerModels(role.provider)
+    .concat(role.model && !_providerModels(role.provider).includes(role.model) ? [role.model] : []);
 
   body.style.cssText = 'flex:1;overflow-y:auto;padding:1.5rem';
   body.innerHTML = `
@@ -438,11 +465,11 @@ function _renderRoleEditor(role) {
         </div>
         <div>
           <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;display:block;margin-bottom:0.25rem">Provider</label>
-          <select id="role-provider" onchange="window._rolesProviderChange(this.value)"
+          <select id="role-provider"
             style="width:100%;background:var(--bg);border:1px solid var(--border);
                    color:var(--text);font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
                    border-radius:var(--radius);outline:none">
-            ${PROVIDERS.map(p => `<option value="${p}" ${role.provider === p ? 'selected' : ''}>${p}</option>`).join('')}
+            ${providerOpts}
           </select>
         </div>
         <div>
@@ -472,9 +499,10 @@ function _renderRoleEditor(role) {
             style="background:var(--bg);border:1px solid var(--border);color:var(--text);
                    font-family:var(--font);font-size:0.72rem;padding:0.35rem 0.5rem;
                    border-radius:var(--radius);outline:none;white-space:nowrap">
-            <option value="agent" ${(role.role_type||'agent')==='agent'?'selected':''}>Agent</option>
-            <option value="system_designer" ${role.role_type==='system_designer'?'selected':''}>System Designer</option>
-            <option value="reviewer" ${role.role_type==='reviewer'?'selected':''}>Reviewer</option>
+            <option value="agent"         ${(role.role_type||'agent')==='agent'        ?'selected':''}>Agent</option>
+            <option value="developer"     ${role.role_type==='developer'               ?'selected':''}>Developer</option>
+            <option value="system_designer" ${role.role_type==='system_designer'       ?'selected':''}>System Designer</option>
+            <option value="reviewer"      ${role.role_type==='reviewer'                ?'selected':''}>Reviewer</option>
           </select>
         </div>
       </div>
@@ -524,13 +552,29 @@ function _renderRoleEditor(role) {
         <div></div>
       </div>
 
-      <!-- Tools -->
+      <!-- Built-in Tools -->
       <div>
         <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
-          Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(allowed in agentic loop)</span>
+          Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(built-in tools available in agentic loop)</span>
         </div>
         <div id="role-tools-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.25rem">
           <div style="font-size:0.65rem;color:var(--muted)">Loading tools…</div>
+        </div>
+      </div>
+
+      <!-- MCP Tools -->
+      <div>
+        <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.25rem">
+          MCP Tools <span style="text-transform:none;font-weight:400;opacity:0.7">(one per line: <code>server_name</code> or <code>server_name/tool_name</code>)</span>
+        </div>
+        <textarea id="role-mcp-tools" rows="3"
+          style="width:100%;box-sizing:border-box;resize:vertical;background:var(--bg);
+                 border:1px solid var(--border);color:var(--text);font-family:var(--font);
+                 font-size:0.68rem;padding:0.4rem 0.5rem;border-radius:var(--radius);outline:none;
+                 line-height:1.6"
+          placeholder="filesystem&#10;github/create_issue&#10;my_mcp_server/run_query">${_esc(_mcpToolsToText(role.tools || []))}</textarea>
+        <div style="font-size:0.58rem;color:var(--muted);margin-top:0.2rem">
+          Stored as <code>mcp:{entry}</code> in the tools list. MCP server must be configured in <code>.claude/mcp.json</code>.
         </div>
       </div>
 
@@ -562,11 +606,29 @@ function _renderRoleEditor(role) {
       </div>
     </div>
   `;
+
+  // Wire provider change after innerHTML is set (safe — no onclick in HTML)
+  const providerSel = document.getElementById('role-provider');
+  if (providerSel) providerSel.addEventListener('change', e => _rolesProviderChange(e.target.value));
+}
+
+// ── MCP tools helpers ─────────────────────────────────────────────────────────
+
+/** Extract mcp: entries from the tools array and return as newline-separated text */
+function _mcpToolsToText(tools) {
+  return tools.filter(t => t.startsWith('mcp:')).map(t => t.slice(4)).join('\n');
+}
+
+/** Parse the MCP textarea into mcp: prefixed strings */
+function _mcpToolsFromText(text) {
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => `mcp:${l}`);
 }
 
 function _collectTools() {
-  const checks = document.querySelectorAll('#role-tools-grid input[type=checkbox]');
-  return Array.from(checks).filter(c => c.checked).map(c => c.value);
+  const builtin = Array.from(document.querySelectorAll('#role-tools-grid input[type=checkbox]'))
+    .filter(c => c.checked).map(c => c.value);
+  const mcpText = document.getElementById('role-mcp-tools')?.value || '';
+  return [...builtin, ..._mcpToolsFromText(mcpText)];
 }
 
 async function _rolesExportYaml(id, name) {
@@ -580,6 +642,155 @@ async function _rolesExportYaml(id, name) {
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) { toast('Export failed: ' + e.message, 'error'); }
+}
+
+// ── Inline YAML editor ────────────────────────────────────────────────────────
+
+let _yamlValidateTimer = null;
+
+async function _rolesEditYaml(role) {
+  const body    = document.getElementById('prompts-editor-body');
+  const toolbar = document.getElementById('prompts-toolbar');
+  if (!body) return;
+
+  // Load current YAML from backend (export-yaml returns the canonical serialisation)
+  let initialYaml = '';
+  try {
+    initialYaml = await api.agentRoles.exportYaml(role.id);
+  } catch (_) {
+    // Fallback: build minimal YAML from in-memory role
+    initialYaml = [
+      `name: ${role.name}`,
+      `description: ${role.description || ''}`,
+      `provider: ${role.provider || 'claude'}`,
+      `model: ${role.model || ''}`,
+      `role_type: ${role.role_type || 'agent'}`,
+      `react: ${role.react !== false}`,
+      `max_iterations: ${role.max_iterations || 10}`,
+      `auto_commit: ${role.auto_commit || false}`,
+      `tools: []`,
+      `system_prompt: |`,
+      (role.system_prompt || '').split('\n').map(l => `  ${l}`).join('\n'),
+    ].join('\n');
+  }
+
+  // Toolbar for YAML mode
+  if (toolbar) {
+    toolbar.innerHTML = `
+      <span class="prompts-editor-path" id="prompts-path">Role (YAML): ${_esc(role.name)}</span>
+      <span id="yaml-validation-status" style="font-size:0.65rem;color:var(--muted)">—</span>
+      <button id="yaml-back-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">← Form</button>
+      <button id="yaml-save-btn" class="btn btn-primary btn-sm">Save YAML</button>
+    `;
+    toolbar.querySelector('#yaml-back-btn').addEventListener('click', () => _renderRoleEditor(role));
+    toolbar.querySelector('#yaml-save-btn').addEventListener('click', () => _rolesSaveYaml(role));
+  }
+
+  body.style.cssText = 'flex:1;overflow-y:auto;padding:1.5rem';
+  body.innerHTML = `
+    <div style="max-width:700px;display:flex;flex-direction:column;gap:0.75rem;height:100%">
+      <div id="yaml-errors" style="display:none;background:rgba(220,53,69,0.12);border:1px solid rgba(220,53,69,0.4);
+           border-radius:6px;padding:0.6rem 0.8rem;font-size:0.7rem;color:#f08080"></div>
+      <textarea id="role-yaml-editor"
+        style="flex:1;width:100%;box-sizing:border-box;min-height:480px;resize:vertical;
+               background:#0d1117;border:1px solid var(--border);color:#e6edf3;
+               font-family:'Fira Code','Cascadia Code',monospace;font-size:0.75rem;
+               padding:0.75rem;border-radius:var(--radius);outline:none;line-height:1.6;
+               tab-size:2"
+        spellcheck="false">${_esc(initialYaml)}</textarea>
+      <div style="font-size:0.6rem;color:var(--muted)">
+        Tip: YAML is validated against the backend schema on every keystroke (debounced 600ms).
+        Save writes directly to the database via <code>POST /agent-roles/sync-yaml</code>.
+      </div>
+    </div>
+  `;
+
+  // Wire live validation
+  const editor = document.getElementById('role-yaml-editor');
+  if (editor) {
+    editor.addEventListener('input', () => {
+      clearTimeout(_yamlValidateTimer);
+      _setYamlStatus('validating…', 'var(--muted)');
+      _yamlValidateTimer = setTimeout(() => _validateYamlLive(editor.value), 600);
+    });
+    // Initial validation
+    setTimeout(() => _validateYamlLive(initialYaml), 200);
+  }
+}
+
+function _setYamlStatus(text, color) {
+  const el = document.getElementById('yaml-validation-status');
+  if (el) { el.textContent = text; el.style.color = color; }
+}
+
+async function _validateYamlLive(yamlText) {
+  const errBox = document.getElementById('yaml-errors');
+  if (!errBox) return;
+  try {
+    const res = await api.agentRoles.validateYaml({ yaml_content: yamlText, project: _project || '_global' });
+    if (res.valid) {
+      errBox.style.display = 'none';
+      _setYamlStatus(`✓ valid  (${res.name || '?'})`, '#4ade80');
+    } else {
+      _showYamlErrors(res.errors || ['Validation failed']);
+      _setYamlStatus(`✗ ${res.errors?.length || 1} error(s)`, '#f08080');
+    }
+  } catch (e) {
+    // Try to extract a YAML parse error with line/col info
+    let msg = e.message || 'Validation error';
+    try {
+      const body = JSON.parse(msg.match(/\{.*\}/s)?.[0] || '{}');
+      const errs = body.errors || body.detail?.errors || [body.detail] || [];
+      if (errs.length) { _showYamlErrors(errs); _setYamlStatus(`✗ ${errs.length} error(s)`, '#f08080'); return; }
+    } catch (_) {}
+    _showYamlErrors([msg]);
+    _setYamlStatus('✗ error', '#f08080');
+  }
+}
+
+function _showYamlErrors(errors) {
+  const errBox = document.getElementById('yaml-errors');
+  if (!errBox) return;
+  errBox.style.display = 'block';
+  errBox.innerHTML =
+    '<div style="font-weight:600;margin-bottom:0.3rem">YAML errors:</div>' +
+    errors.map(e => {
+      // Extract line:col from PyYAML error format "line X column Y"
+      const loc = e.match(/line (\d+)(?:.*?column (\d+))?/i);
+      const badge = loc
+        ? `<span style="font-size:0.6rem;background:rgba(240,128,128,0.2);padding:0.05rem 0.3rem;border-radius:3px;margin-right:0.3rem">line ${loc[1]}${loc[2] ? ':' + loc[2] : ''}</span>`
+        : '';
+      return `<div style="margin-top:0.15rem">${badge}${_esc(String(e))}</div>`;
+    }).join('');
+}
+
+async function _rolesSaveYaml(role) {
+  const editor = document.getElementById('role-yaml-editor');
+  if (!editor) return;
+  const yamlText = editor.value;
+  _setYamlStatus('saving…', 'var(--muted)');
+  try {
+    await api.agentRoles.syncYaml({ yaml_content: yamlText, project: _project || '_global' });
+    _setYamlStatus('✓ saved', '#4ade80');
+    toast('Role saved from YAML', 'success');
+    // Reload roles list and re-render the form view with fresh data
+    await _loadRoles(_project);
+    const updated = _roles.find(r => r.id === role.id) || _activeRole;
+    if (updated) _renderRoleEditor(updated);
+  } catch (e) {
+    let errs = [];
+    try {
+      const body = JSON.parse(e.message.match(/\{.*\}/s)?.[0] || '{}');
+      errs = body.errors || body.detail?.errors || [];
+    } catch (_) {}
+    if (errs.length) {
+      _showYamlErrors(errs);
+      _setYamlStatus(`✗ ${errs.length} error(s)`, '#f08080');
+    } else {
+      _setYamlStatus('✗ save failed', '#f08080');
+      toast('Save failed: ' + e.message, 'error');
+    }
+  }
 }
 
 async function _rolesSave(id) {
@@ -667,7 +878,7 @@ async function _rolesDelete(id) {
 function _rolesProviderChange(provider) {
   const datalist = document.getElementById('role-model-list');
   if (!datalist) return;
-  datalist.innerHTML = (MODELS[provider] || []).map(m => `<option value="${_esc(m)}">`).join('');
+  datalist.innerHTML = _providerModels(provider).map(m => `<option value="${_esc(m)}">`).join('');
 }
 
 // ── System Roles (admin panel) ────────────────────────────────────────────────
