@@ -307,7 +307,7 @@ sidebar tabs:
 - Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but active references remain in drag-and-drop, category display, and tagging UI; also fix [object object] display bug in tag additions
 - Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
 - Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations to avoid double-update issue
-- YAML configuration reorganization: consolidate all prompts under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); ensure migration of all prompt references
+- YAML configuration cleanup: consolidate all prompts under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); delete unused pipeline samples/ folder; remove dead role UI fields (inputs, outputs, role_type)
 
 ## Key Decisions
 
@@ -318,11 +318,11 @@ sidebar tabs:
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
 - MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints in agents/mcp/server.py; stdio transport running locally on developer machine with no auth
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion, feature_auto_detect)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/; no inline Python role definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens
+- All backend LLM prompts stored in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/ (no inline Python role definitions); role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token)
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
