@@ -307,7 +307,7 @@ sidebar tabs:
 - Remove lifecycle tags from Planner UI (11 active drag-and-drop, category display, archive toggles, and tagging UI errors remaining)
 - Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
 - Optimize PROJECT.md file loading (currently >60s timeout) — performance audit ongoing; may need database indices on project, wi_type, user_status or single-pass read refactoring
-- Verify MCP server 14-tool suite fully operational for Claude Code sessions with shared project memory; ensure stdio transport stability, tool dispatch correctness, and context compression
+- Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches (e.g., TA4001 'planner' confusion)
 
 ## Key Decisions
 
