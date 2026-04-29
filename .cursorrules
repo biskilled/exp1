@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 14:54 UTC -->
+<!-- Last updated: 2026-04-29 14:59 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Fix backend startup race condition on first load; active project not displayed in project selector after startup; recent projects list missing aiCli project
 - Improve delivery_type and pipeline routing accuracy using full project tech_stack context and file coupling signals to reduce classifier mismatches
 
-_Last updated: 2026-04-29 14:54 UTC_
+_Last updated: 2026-04-29 14:59 UTC_

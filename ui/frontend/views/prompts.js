@@ -437,22 +437,14 @@ function _renderRoleEditor(role) {
                  border-radius:var(--radius);outline:none">
       </div>
 
-      <!-- ReAct + Max Iterations -->
-      <div style="display:grid;grid-template-columns:auto auto 1fr;gap:1rem;align-items:center">
-        <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.72rem;color:var(--text)">
-          <input type="checkbox" id="role-react" ${role.react !== false ? 'checked' : ''}
-            onchange="document.getElementById('role-max-iter-wrap').style.display=this.checked?'flex':'none'"
-            style="width:14px;height:14px;cursor:pointer">
-          Use ReAct reasoning (Thought / Action / Observation)
-        </label>
-        <div id="role-max-iter-wrap" style="display:${role.react !== false ? 'flex' : 'none'};align-items:center;gap:0.4rem">
-          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
-          <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="50"
-            style="width:60px;background:var(--bg);border:1px solid var(--border);
-                   color:var(--text);font-family:var(--font);font-size:0.72rem;
-                   padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
-        </div>
-        <div></div>
+      <!-- Max Iterations -->
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
+        <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="50"
+          style="width:60px;background:var(--bg);border:1px solid var(--border);
+                 color:var(--text);font-family:var(--font);font-size:0.72rem;
+                 padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
+        <span style="font-size:0.62rem;color:var(--muted)">(pipeline loop limit)</span>
       </div>
 
       <!-- Built-in Tools -->
@@ -567,7 +559,6 @@ async function _rolesEditYaml(role) {
       `description: ${role.description || ''}`,
       `provider: ${role.provider || 'claude'}`,
       `model: ${role.model || ''}`,
-      `react: ${role.react !== false}`,
       `max_iterations: ${role.max_iterations || 10}`,
       `auto_commit: ${role.auto_commit || false}`,
       `tools: []`,
@@ -701,7 +692,6 @@ async function _rolesSave(id) {
   const model         = document.getElementById('role-model')?.value?.trim();
   const description   = document.getElementById('role-description')?.value?.trim();
   const systemPrompt  = document.getElementById('role-system-prompt')?.value;
-  const react         = document.getElementById('role-react')?.checked ?? true;
   const maxIterations = parseInt(document.getElementById('role-max-iterations')?.value || '10', 10);
   const tools         = _collectTools();
   if (!name) { toast('Name required', 'error'); return; }
@@ -709,12 +699,12 @@ async function _rolesSave(id) {
   try {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
-      tools, react, max_iterations: maxIterations,
+      tools, max_iterations: maxIterations,
     });
     const idx = _roles.findIndex(r => r.id === id);
     if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
       name, provider, model, description, system_prompt: systemPrompt,
-      tools, react, max_iterations: maxIterations };
+      tools, max_iterations: maxIterations };
     _activeRole = _roles[idx] || _activeRole;
     _renderRolesList();
     toast('Role saved', 'success');
