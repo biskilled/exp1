@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-28 20:31 UTC -->
+<!-- Last updated: 2026-04-28 20:44 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -14,14 +14,14 @@ llm_providers: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gem
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → work items (mem_work_items); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
-- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON
-- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement) and wi_parent_id linking children to use_case parents; wi_id: AI0001 (draft) → UC/FE/BU/TA0001 (approved)
-- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
-- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables: prompts, commits, commits_code, file_stats, file_coupling, items, messages) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
+- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
+- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
 - Embeddings strategy: ONLY approved work items embed to pgvector (1536-dim, text-embedding-3-small); code.md, project_state.json, project facts, prompts, and commits never embed
-- MCP server: 10 tools (search_memory, get_project_state, tags, backlog, etc.) dispatched via REST endpoints in agents/mcp/server.py with stdio transport
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract
+- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, etc.) dispatched via REST endpoints in agents/mcp/server.py with unified dispatch; stdio transport running locally on developer machine
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multiple commit/chore updates after Claude CLI sessions (2026-04-28 11:46–20:30) on branch ebf898a3 — likely auto_commit_push.sh hook firing repeatedly
-- Stabilize memory file loading and project context generation — prior sessions identified N+1 query issues and missing database indices causing >60s timeouts
-- Fix undefined column errors in route_entities and route_history referencing removed lifecycle field from migration m080
-- Fix commit sync batch upsert error in /history/commits/sync API and tag counter UI updates
+- Batch auto-commit push hooks after Claude Code sessions: auto_commit_push.sh executed post-session to automatically sync changes to git
+- MCP server operational testing with 14 tools for Claude Code sessions with shared project memory; verify stdio transport stability and context compression
+- Fix PROJECT.md file loading timeout (>60s) — likely N+1 queries in project context loading or missing database indices; performance audit ongoing
+- Remove lifecycle field references from route_entities (line 359) and route_history (line 228) after migration m080
 
-_Last updated: 2026-04-28 20:31 UTC_
+_Last updated: 2026-04-28 20:44 UTC_

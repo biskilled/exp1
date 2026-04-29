@@ -4,8 +4,8 @@ You are working on **aicli**.
 
 ## Key Architectural Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables: prompts, commits, commits_code, file_stats, file_coupling, items, messages) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
-- Single source of truth: /memory POST endpoint is the ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
@@ -14,11 +14,11 @@ You are working on **aicli**.
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server currently runs with no auth (stdio-only, local machine)
-- Prompts: all backend LLM prompts stored in YAML under backend/memory/prompts/; loaded via prompt_loader utility; no inline Python prompts; roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml) defined in workspace/_templates/
+- All backend LLM prompts stored in YAML under backend/memory/prompts/ with roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml) defined in workspace/_templates/; no inline Python prompts
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; templates/ holds seed files; memory.yaml not copied to projects; _load_context() split into _query_db_into_ctx() and _parse_project_md()
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany instead of N execute calls
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases in Planner
+- File management: backend/memory/memory.yaml is canonical single-source mapping for output files; _load_context() split into _query_db_into_ctx() and _parse_project_md() for robustness; PROJECT.md read once in single pass
 
 ---
 

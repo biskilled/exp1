@@ -377,11 +377,110 @@ class _ClassifyMixin:
 
     # ── LLM classification call ────────────────────────────────────────────────
 
+    def _build_tech_tags_block(self) -> str:
+        """Read tech_stack from this project's project_state.json and emit a TECH TAGS block."""
+        try:
+            from core.project_paths import ProjectPaths
+            pid = self._get_project_id()  # type: ignore[attr-defined]
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT name FROM mng_projects WHERE id=%s", (pid,))
+                    row = cur.fetchone()
+            if not row:
+                return ""
+            project_name = row[0]
+            pp = ProjectPaths(project_name)
+            state_file = pp.state_dir() / "project_state.json"
+            if not state_file.exists():
+                return ""
+            import json as _json
+            ps = _json.loads(state_file.read_text())
+            ts = ps.get("tech_stack", {})
+        except Exception:
+            return ""
+
+        if not ts:
+            return ""
+
+        # Map tech_stack dict → layer buckets with specific technology names
+        layer_map: dict[str, list[str]] = {
+            "frontend":  [],
+            "backend":   [],
+            "database":  [],
+            "cli":       [],
+            "mcp":       [],
+            "agents":    [],
+            "devops":    [],
+            "memory":    [],
+            "tests":     [],
+            "documents": [],
+            "config":    [],
+        }
+        # Normalise: collapse whitespace, unify "vanilla js" → "vanilla-js"
+        tech_text = " ".join(str(v) for v in ts.values()).lower()
+        tech_text = tech_text.replace("vanilla js", "vanilla-js")
+
+        def _has(*terms: str) -> list[str]:
+            return [t for t in terms if t in tech_text]
+
+        # Frontend
+        layer_map["frontend"]  = _has("javascript", "typescript", "react", "vue", "svelte",
+                                       "vanilla-js", "electron", "vite", "html", "css",
+                                       "xterm", "monaco", "angular", "nextjs", "nuxt")
+        # Backend
+        layer_map["backend"]   = _has("python", "fastapi", "uvicorn", "flask", "django",
+                                       "rust", "go", "node", "express", "jwt", "bcrypt",
+                                       "auth", "fastify")
+        # Database
+        layer_map["database"]  = _has("postgres", "postgresql", "pgvector", "mysql",
+                                       "sqlite", "redis", "psycopg2", "sqlalchemy",
+                                       "migration", "sql", "mongodb", "prisma")
+        # CLI
+        layer_map["cli"]       = _has("prompt_toolkit", "rich", "typer", "click",
+                                       "argparse", "cobra")
+        # MCP
+        layer_map["mcp"]       = _has("mcp", "stdio", "model context protocol")
+        # Agents / LLM
+        layer_map["agents"]    = _has("haiku", "sonnet", "opus", "openai", "deepseek",
+                                       "gemini", "grok", "llm", "agent", "pipeline",
+                                       "workflow", "tree-sitter")
+        # DevOps
+        layer_map["devops"]    = _has("railway", "docker", "dockerfile", "kubernetes",
+                                       "terraform", "aws", "electron-builder", "vercel",
+                                       "heroku", "github actions")
+        # Memory / embedding
+        layer_map["memory"]    = _has("embedding", "vector", "pgvector", "synthesis",
+                                       "project_state", "haiku synthesis")
+
+        # Build the prompt block
+        lines = [
+            "\n\nTECH TAGS — use these for delivery_type (pipe-separated, most specific first):",
+            "  Format: \"<layer>|<specific-tech>|<specific-tech>|...\"",
+            "  Layers: frontend | backend | database | cli | mcp | agents | devops | memory | documents | config | tests | fullstack",
+            "  Specific techs detected in this project:",
+        ]
+        for layer, tags in layer_map.items():
+            if tags:
+                lines.append(f"    {layer}: {', '.join(dict.fromkeys(tags))}")  # dedup, ordered
+
+        lines += [
+            "  RULES:",
+            "  - Use the LAYER first, then specific techs: \"backend|python|fastapi\"",
+            "  - A database schema change is 'database|postgres|migration' NOT 'frontend' even if a",
+            "    planner UI references it — look at WHAT changes, not WHAT references it",
+            "  - Table/column/schema/index/SQL keywords → always include 'database'",
+            "  - JS/HTML/CSS/UI/component/modal/button/drag-drop → always include 'frontend'",
+            "  - LLM/agent/pipeline/MCP tool → 'agents' or 'mcp'",
+            "  - fullstack only if BOTH backend and frontend layers are genuinely changed",
+        ]
+        return "\n".join(lines)
+
     async def _classify_group(self, group: dict, existing_ctx: str,
                                max_use_cases: int = 8) -> list[dict]:
         """Call Haiku to classify one event group. Returns list of item dicts."""
         cfg = self._prompts_cfg().get("classification", {})  # type: ignore[attr-defined]
         system = cfg.get("system", "Classify development events into work items.")
+        system += self._build_tech_tags_block()
         system += (
             f"\n\nIMPORTANT CONSTRAINTS:"
             f"\n1. USE CASES: The entire project should have at most {max_use_cases} use cases total."

@@ -159,7 +159,7 @@ classification:
         "suggested_parent_name": "<exact name of the use_case above>",
         "summary": "<requirement / user story / bug description>",
         "deliveries": "<what was actually done, empty if nothing yet>",
-        "delivery_type": "backend|frontend|fullstack|documents|config|tests|",
+        "delivery_type": "<pipe-separated tech tags — see TECH TAGS section in system prompt>",
         "score_importance": 0,
         "score_status": 0,
         "mrr_ids": {"prompts":[],"commits":[],"messages":[],"items":[]}
