@@ -238,7 +238,7 @@ function _renderRoleItem(r) {
   const isActive   = _activeRole?.id === r.id;
   const status     = r.status || (r.has_template === false ? 'ext' : 'base');
   const canRestore = r.has_template === true;
-  const provColor  = _PROVIDER_COLORS[r.provider] || 'var(--muted)';
+  const provColor  = _PROVIDER_COLORS[r.provider] || '#888888';
 
   // Status indicator: shown as a small pill at the right edge
   let statusBadge = '';
@@ -262,14 +262,16 @@ function _renderRoleItem(r) {
   const restoreBtn = canRestore
     ? `<button onclick="event.stopPropagation();window._rolesRestoreDefault(${r.id},${JSON.stringify(_esc(r.name))})"
                title="Restore this role to template defaults"
-               style="opacity:0;font-size:0.55rem;padding:0.1rem 0.3rem;border-radius:4px;
-                      background:none;border:1px solid var(--border);color:var(--muted);
-                      cursor:pointer;flex-shrink:0;line-height:1;transition:opacity 0.15s"
+               style="opacity:0.3;font-size:0.55rem;padding:0.1rem 0.35rem;border-radius:4px;
+                      background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);
+                      color:rgba(255,255,255,0.7);cursor:pointer;flex-shrink:0;line-height:1;
+                      transition:opacity 0.15s,background 0.15s"
                class="role-reset-btn">reset</button>`
     : '';
 
   // Short model name: strip date suffixes like -20251001
   const modelShort = (r.model || '').replace(/-\d{8}$/, '').replace(/^claude-/, '').replace(/^gpt-/, '');
+  const provLabel   = r.provider ? (modelShort ? `${r.provider} · ${modelShort}` : r.provider) : '';
 
   return `
     <div onclick="window._rolesSelect(${r.id})"
@@ -277,16 +279,20 @@ function _renderRoleItem(r) {
                 display:flex;align-items:center;gap:0.5rem;
                 background:${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'};
                 border-left:3px solid ${isActive ? 'var(--accent)' : 'transparent'}"
-         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}';this.querySelector('.role-reset-btn')&&(this.querySelector('.role-reset-btn').style.opacity='0.6')"
-         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}';this.querySelector('.role-reset-btn')&&(this.querySelector('.role-reset-btn').style.opacity='0')">
+         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}';
+           const rb=this.querySelector('.role-reset-btn');if(rb){rb.style.opacity='1';rb.style.background='rgba(255,255,255,0.1)';}"
+         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}';
+           const rb=this.querySelector('.role-reset-btn');if(rb){rb.style.opacity='0.3';rb.style.background='rgba(255,255,255,0.06)';}">
       <div style="flex:1;min-width:0">
         <div style="font-size:0.72rem;font-weight:700;color:var(--text);
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
                     letter-spacing:-0.01em">${_esc(r.name)}</div>
-        <div style="font-size:0.58rem;margin-top:0.1rem;display:flex;align-items:center;gap:0.3rem;overflow:hidden">
-          <span style="color:${provColor};font-weight:500">${_esc(r.provider || '')}</span>
-          ${modelShort ? `<span style="color:var(--muted)">·</span>
-          <span style="color:rgba(255,255,255,0.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(modelShort)}</span>` : ''}
+        <div style="margin-top:0.15rem">
+          ${provLabel ? `<span style="display:inline-block;font-size:0.56rem;font-weight:500;
+                              color:${provColor};background:${provColor}22;border:1px solid ${provColor}44;
+                              padding:0.05rem 0.4rem;border-radius:6px;white-space:nowrap;
+                              max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle"
+                         >${_esc(provLabel)}</span>` : ''}
         </div>
       </div>
       ${statusBadge}${restoreBtn}
@@ -784,14 +790,17 @@ function _renderRoleEditor(role) {
     const resetLabel  = hasSnapshot ? '↩ Reset to base' : '';
     toolbar.innerHTML = `
       <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
-      <button id="roles-delete-btn" class="btn btn-ghost btn-sm" style="color:var(--red);border-color:var(--red);font-size:0.62rem">Delete</button>
-      <button id="roles-edit-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">Edit YAML</button>
-      <button id="roles-export-yaml-btn" class="btn btn-ghost btn-sm" style="font-size:0.62rem">↓ YAML</button>
+      <button id="roles-delete-btn" class="btn btn-ghost btn-sm"
+        style="font-size:0.62rem;color:var(--red);border-color:rgba(239,68,68,0.45);background:rgba(239,68,68,0.1)">Delete</button>
+      <button id="roles-edit-yaml-btn" class="btn btn-ghost btn-sm"
+        style="font-size:0.62rem;background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.2)">Edit YAML</button>
+      <button id="roles-export-yaml-btn" class="btn btn-ghost btn-sm"
+        style="font-size:0.62rem;background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.2)">↓ YAML</button>
       <button id="roles-set-base-btn" class="btn btn-ghost btn-sm"
-        style="font-size:0.62rem;color:#4ade80;border-color:rgba(74,222,128,0.4)"
+        style="font-size:0.62rem;color:#4ade80;border-color:rgba(74,222,128,0.45);background:rgba(74,222,128,0.12)"
         title="Snapshot current state as the base — future changes show as CHANGED">Save as base</button>
       ${hasSnapshot ? `<button id="roles-reset-base-btn" class="btn btn-ghost btn-sm"
-        style="font-size:0.62rem;color:#fb923c;border-color:rgba(251,146,60,0.4)"
+        style="font-size:0.62rem;color:#fb923c;border-color:rgba(251,146,60,0.45);background:rgba(251,146,60,0.12)"
         title="Restore role to saved base snapshot">↩ Reset to base</button>` : ''}
       <button id="roles-save-btn" class="btn btn-primary btn-sm">Save</button>
     `;
