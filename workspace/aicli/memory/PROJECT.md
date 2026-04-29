@@ -305,9 +305,9 @@ sidebar tabs:
 - Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup; audit all column references
 - Fix backend startup race condition and project selector: active project not displayed in project selector after startup; recent projects list missing aiCli project; likely init sequencing issue in project loader or database connection timing
 - Remove lifecycle tags and drag-and-drop issues from Planner UI: lifecycle field deprecated but active references remain in drag-and-drop, category display, and tagging UI; also fix [object object] display bug in tag additions
-- Optimize PROJECT.md file loading: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
+- Fix PROJECT.md file loading timeout: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
 - Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE with duplicate row constraint; refactor to separate INSERT and UPDATE operations to avoid double-update issue
-- YAML configuration cleanup: consolidate all prompts under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); delete unused pipeline samples/ folder; remove dead role UI fields (inputs, outputs, role_type)
+- Consolidate YAML configuration: all prompts moved under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); deleted unused samples/ folder and dead pipeline YAML files; removed deprecated role UI fields
 
 ## Key Decisions
 
@@ -321,8 +321,8 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/ (no inline Python role definitions); role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
+- All backend LLM prompts consolidated in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/ (web_developer.yaml, code_reviewer.yaml, etc.) with no inline Python role definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations; removed deprecated inputs, outputs, role_type fields
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token)
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
