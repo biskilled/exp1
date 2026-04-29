@@ -322,9 +322,9 @@ sidebar tabs:
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
 - All backend LLM prompts consolidated in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/ with no inline Python definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations; removed deprecated inputs, outputs, role_type fields
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with prefix role_*.yaml (no inline Python definitions); role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
+- Pipeline YAML consolidation: pl_*.yaml format in workspace/_templates/pipelines/ with stages referencing only role keys; task_prompt blocks removed (users update roles if workflow needs changes)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
 
 ## Deprecated

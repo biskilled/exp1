@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:45 UTC -->
+<!-- Last updated: 2026-04-29 15:49 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -14,13 +14,13 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small)
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
-- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
-- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
-- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date_before filter, etc.) dispatched via REST endpoints; stdio transport running locally on developer machine with no auth
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
+- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
+- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
+- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 
 ## Active Features (do not break)
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multiple auto-commit chore sessions after Claude CLI session ebf898a3 (15 commits 2026-04-29 09:21–15:44) — indicates active CI/CD integration with auto_commit_push.sh triggered after each Claude Code session
-- Consolidate YAML configuration: all prompts moved under backend/memory/yaml_config/ (memory-related) and backend/prompts/yaml_config/ (pipeline-related); deleted unused samples/ folder and dead pipeline YAML files; removed deprecated role UI fields
-- Fix PROJECT.md file loading timeout: currently >60s timeout when opening project; performance audit needed for database indices on project, wi_type, user_status or single-pass read refactoring
-- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated — causing UndefinedColumn psycopg2 errors on startup
+- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code not yet updated; causing UndefinedColumn psycopg2 errors
+- Fix backend startup race condition and project selector: active project not displaying in selector after startup; recent projects list missing aiCli project; init sequencing issue in project loader
+- Remove lifecycle tags and drag-and-drop issues from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; also fix [object object] display bug in tag additions
+- Fix PROJECT.md file loading timeout: >60 second load time when opening project; performance audit needed for database indices or single-pass read refactoring
 
-_Last updated: 2026-04-29 15:45 UTC_
+_Last updated: 2026-04-29 15:49 UTC_

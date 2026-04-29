@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 15:45 UTC -->
+<!-- Last updated: 2026-04-29 15:49 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -216,7 +216,7 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_code_parser.py` | 58.9626 | 2 | 788 | 0 | 2026-04-22 |
 | `backend/memory/memory_work_items.py` | 29.0 | 27 | 1378 | 0 | 2026-04-27 |
 | `backend/memory/memory_files.py` | 20.0 | 18 | 1176 | 0 | 2026-04-27 |
-| `backend/routers/route_projects.py` | 18.0 | 16 | 1693 | 0 | 2026-04-29 |
+| `backend/routers/route_projects.py` | 19.0 | 17 | 1693 | 0 | 2026-04-29 |
 | `backend/core/db_migrations.py` | 13.0 | 11 | 3304 | 0 | 2026-04-29 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `ui/frontend/views/work_items.js` | 11.0 | 9 | 2595 | 0 | 2026-04-24 |

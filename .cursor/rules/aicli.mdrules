@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:49 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -42,15 +42,15 @@ _Last updated: 2026-04-29_
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
 - All backend LLM prompts consolidated in YAML: backend/memory/yaml_config/ (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol, feature_detect) and backend/prompts/yaml_config/ (react_pipeline_base, react_suffix, tag_suggestion)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/roles/ with no inline Python definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations; removed deprecated inputs, outputs, role_type fields
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with prefix role_*.yaml (no inline Python definitions); role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
+- Pipeline YAML consolidation: pl_*.yaml format in workspace/_templates/pipelines/ with stages referencing only role keys; task_prompt blocks removed (users update roles if workflow needs changes)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4
 - UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] I would like to have all pipeline configs files and prompts related to pipeline. it can be under dedicated folder. confi
 - [2026-04-29] please place all yaml confing under memroy in yaml_config folder . also add misc.yaml and rename that to feature_detect 
 - [2026-04-29] I would like to clean also the _tamplate/pipelines folder. what is sample is used for - can it merge with roles (only ya
 - [2026-04-29] yes
 - [2026-04-29] pipeline suppose to use only roles. I do see pipeline with hardcoded steps. how can it be ?
+- [2026-04-29] please do option A. user can update roles if they want , so it is enough.ALso rename all roles yaml to atart with prefix
