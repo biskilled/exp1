@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:06 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 15:10 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -27,7 +27,7 @@ _Last updated: 2026-04-29_
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **mcp_transport**: Stdio MCP server with 14 tools; unified REST dispatch
-- **memory_config**: YAML under backend/prompts/ + workspace/_templates/roles/
+- **prompt_storage**: YAML under backend/prompts/ (command_memory.yaml only; unused pipeline YAML removed)
 
 ## Key Decisions
 
@@ -41,8 +41,16 @@ _Last updated: 2026-04-29_
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
-- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) + workspace/_templates/roles/ (role YAML only); delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
+- All backend LLM prompts stored in YAML: backend/prompts/command_memory.yaml (fact_extraction, conflict_detection, project_synthesis) only; role YAML removed from unused pipelines; delivery_type classification uses full project tech_stack context to improve pipeline routing accuracy
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 - Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category for hotspot/coupling checks; token counting: len(text) // 4 (~4 chars per token); _update_item_tags uses executemany
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📋 X days open' for approved use cases
-- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; ReAct checkbox enables/disables Thought/Action/Observation framework in agent execution
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() showing '📂 X days open' for approved use cases
+- Shared LLM memory across tools: Claude Code, aicli CLI, Cursor, and web UI all read the same knowledge base via /memory POST endpoint and project_state.json; ReAct checkbox removed (misleading); agent always uses ReAct framework in pipeline execution
+
+## Recent Context (last 5 changes)
+
+- [2026-04-29] When I am usign the UI there are some issues. when I change the Provider, model is not updated (showing all avilable mod
+- [2026-04-29] Remove them completely (from db as well) Alos remove role type as it is not used. About direct mode vs pipeline mode - I
+- [2026-04-29] Please explain again why there is checkbox for ReAct in the role creation? when is it used ?
+- [2026-04-29] Lets remove that as it is missleading. leave max iteration
+- [2026-04-29] When I am using the cluade sdk - do I need to provide tool ? is there is a set of tools that I know which one to use, or
