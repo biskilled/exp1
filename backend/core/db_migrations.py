@@ -3232,6 +3232,21 @@ def m081_wi_embedding_index_and_cleanup(conn) -> None:
     log.info("m081: added ivfflat index on mem_work_items.embedding; dropped coupling_score column")
 
 
+def m083_role_temperature(conn) -> None:
+    """Add temperature FLOAT column to mng_agent_roles.
+
+    Stored as NULL (= use provider default) or a float 0.0–1.0.
+    Lower values → deterministic/precise output (good for code generation).
+    Higher values → creative/varied output (good for PM/planning roles).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mng_agent_roles ADD COLUMN IF NOT EXISTS temperature FLOAT DEFAULT NULL"
+        )
+    conn.commit()
+    log.info("m083: temperature FLOAT column added to mng_agent_roles")
+
+
 def m082_role_base_snapshot(conn) -> None:
     """Add base_snapshot JSONB column to mng_agent_roles for the save-as-base feature.
 
@@ -3317,4 +3332,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m080_wi_pipeline_columns", m080_wi_pipeline_columns),
     ("m081_wi_embedding_index_and_cleanup", m081_wi_embedding_index_and_cleanup),
     ("m082_role_base_snapshot", m082_role_base_snapshot),
+    ("m083_role_temperature", m083_role_temperature),
 ]

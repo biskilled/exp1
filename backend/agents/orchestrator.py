@@ -138,6 +138,11 @@ class PipelineStage:
     key: str
     role: str
     description: str = ""
+    # Optional per-stage overrides (override the role's default)
+    retry: int = 1                          # how many attempts on error (1 = no retry)
+    timeout_seconds: float | None = None    # asyncio.wait_for timeout; None = no limit
+    temperature_override: float | None = None
+    max_iterations_override: int | None = None
 
 
 @dataclass
@@ -166,6 +171,10 @@ class PipelineDef:
                 key=s["key"],
                 role=s["role"],
                 description=s.get("description", ""),
+                retry=int(s.get("retry", 1)),
+                timeout_seconds=float(s["timeout_seconds"]) if s.get("timeout_seconds") else None,
+                temperature_override=float(s["temperature_override"]) if s.get("temperature_override") is not None else None,
+                max_iterations_override=int(s["max_iterations_override"]) if s.get("max_iterations_override") is not None else None,
             )
             for s in raw.get("stages", [])
         ]
@@ -325,27 +334,81 @@ class AgentWorkflow:
         attempt: int,
         api_key: str | None,
     ) -> StageResult:
-        """Load the agent for this stage and run it with run_pipeline()."""
+        """Load the agent for this stage and run it with run_pipeline().
+
+        Applies per-stage overrides (temperature, max_iterations) to the agent,
+        wraps the call with asyncio.wait_for if timeout_seconds is set,
+        and retries on error up to stage_def.retry times.
+        """
+        import asyncio
+
         t0 = time.monotonic()
-        try:
-            agent = await Agent.from_role(stage_def.role)
-            result = await agent.run_pipeline(
-                task=task,
-                handoff=handoff,
-                project=self.project,
-                api_key=api_key,
-            )
-        except Exception as e:
-            log.exception("Stage '%s' raised exception: %s", stage_def.key, e)
-            result = AgentResult(
-                output=str(e),
-                status="error",
-                error=str(e),
-            )
+        last_result: AgentResult | None = None
+        last_exc: Exception | None = None
+        max_attempts = max(1, stage_def.retry)
+
+        for retry_num in range(max_attempts):
+            if retry_num > 0:
+                log.warning(
+                    "Stage '%s' retry %d/%d after error: %s",
+                    stage_def.key, retry_num, max_attempts - 1, last_exc or last_result,
+                )
+            try:
+                agent = await Agent.from_role(stage_def.role)
+
+                # Apply per-stage overrides
+                if stage_def.temperature_override is not None:
+                    agent.temperature = stage_def.temperature_override
+                if stage_def.max_iterations_override is not None:
+                    agent.max_iterations = stage_def.max_iterations_override
+
+                coro = agent.run_pipeline(
+                    task=task,
+                    handoff=handoff,
+                    project=self.project,
+                    api_key=api_key,
+                )
+
+                if stage_def.timeout_seconds:
+                    result = await asyncio.wait_for(coro, timeout=stage_def.timeout_seconds)
+                else:
+                    result = await coro
+
+                # Don't retry on successful terminal states
+                if result.status not in ("error",):
+                    return StageResult(
+                        key=stage_def.key,
+                        role=stage_def.role,
+                        result=result,
+                        attempt=attempt,
+                        duration_s=time.monotonic() - t0,
+                    )
+                last_result = result
+
+            except asyncio.TimeoutError as e:
+                last_exc = e
+                log.warning(
+                    "Stage '%s' timed out after %.1fs (attempt %d/%d)",
+                    stage_def.key, stage_def.timeout_seconds, retry_num + 1, max_attempts,
+                )
+                last_result = AgentResult(
+                    output=f"Stage timed out after {stage_def.timeout_seconds}s",
+                    status="error",
+                    error=f"Timeout after {stage_def.timeout_seconds}s",
+                )
+            except Exception as e:
+                last_exc = e
+                log.exception("Stage '%s' raised exception: %s", stage_def.key, e)
+                last_result = AgentResult(
+                    output=str(e),
+                    status="error",
+                    error=str(e),
+                )
+
         return StageResult(
             key=stage_def.key,
             role=stage_def.role,
-            result=result,
+            result=last_result or AgentResult(output="", status="error", error="Unknown error"),
             attempt=attempt,
             duration_s=time.monotonic() - t0,
         )

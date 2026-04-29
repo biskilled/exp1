@@ -51,7 +51,7 @@ _TEMPLATES_PIPELINES_DIR = Path(__file__).parent.parent.parent / "workspace" / "
 
 _KNOWN_FIELDS = {
     "name", "description", "system_prompt", "provider", "model",
-    "auto_commit", "max_iterations",
+    "auto_commit", "max_iterations", "temperature",
     "tools", "mcp_tools", "output_schema", "tags",
 }
 
@@ -107,6 +107,16 @@ def _validate_role_data(data: dict) -> list[str]:
         if not isinstance(max_it, int) or max_it < 1 or max_it > 100:
             errors.append("'max_iterations' must be an integer between 1 and 100")
 
+    # temperature
+    temp = data.get("temperature")
+    if temp is not None:
+        try:
+            temp_f = float(temp)
+            if not (0.0 <= temp_f <= 1.0):
+                errors.append("'temperature' must be a float between 0.0 and 1.0")
+        except (TypeError, ValueError):
+            errors.append("'temperature' must be a float between 0.0 and 1.0")
+
     # tools — validate against registered AGENT_TOOLS; mcp: prefixed entries are exempt
     tools = data.get("tools")
     if tools is not None:
@@ -139,7 +149,7 @@ _SQL_LIST_ROLES = (
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
-              ar.base_snapshot
+              ar.base_snapshot, ar.temperature
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
        WHERE ar.is_active=TRUE AND (ar.project_id=%s OR ar.project_id=%s)
@@ -151,7 +161,7 @@ _SQL_GET_ROLE_BY_ID = (
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
-              ar.base_snapshot
+              ar.base_snapshot, ar.temperature
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
        WHERE ar.id=%s"""
@@ -159,7 +169,8 @@ _SQL_GET_ROLE_BY_ID = (
 
 _SQL_GET_ROLE_SNAPSHOT = (
     """SELECT system_prompt, provider, model, description,
-              COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10)
+              COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10),
+              temperature
        FROM mng_agent_roles WHERE id=%s AND is_active=TRUE"""
 )
 
@@ -177,6 +188,7 @@ _SQL_RESET_FROM_SNAPSHOT = (
            description    = base_snapshot->>'description',
            tools          = (base_snapshot->'tools')::jsonb,
            max_iterations = COALESCE((base_snapshot->>'max_iterations')::int, 10),
+           temperature    = (base_snapshot->>'temperature')::float,
            updated_at     = NOW()
        WHERE id=%s AND is_active=TRUE AND base_snapshot IS NOT NULL
        RETURNING id"""
@@ -186,17 +198,19 @@ _SQL_INSERT_ROLE = (
     """WITH ins AS (
        INSERT INTO mng_agent_roles
            (project_id, name, description, system_prompt, provider, model, tags,
-            output_schema, auto_commit, tools, max_iterations)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            output_schema, auto_commit, tools, max_iterations, temperature)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
        RETURNING id, project_id, name, description, system_prompt,
                  provider, model, tags, is_active, created_at, updated_at,
                  output_schema, auto_commit,
-                 COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10)
+                 COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10),
+                 NULL AS base_snapshot, temperature
     )
     SELECT ins.id, p.name AS project, ins.name, ins.description, ins.system_prompt,
            ins.provider, ins.model, ins.tags, ins.is_active, ins.created_at, ins.updated_at,
            ins.output_schema, ins.auto_commit,
-           ins.tools, ins.max_iterations
+           ins.tools, ins.max_iterations,
+           ins.base_snapshot, ins.temperature
     FROM ins JOIN mng_projects p ON p.id = ins.project_id"""
 )
 
@@ -349,6 +363,14 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         except Exception:
             base_snap = None
 
+    # temperature (index 16, may not exist on older rows)
+    temperature = row[16] if len(row) > 16 else None
+    if temperature is not None:
+        try:
+            temperature = float(temperature)
+        except (TypeError, ValueError):
+            temperature = None
+
     # Compute role status: "ext" | "base" | "changed"
     if not has_tmpl:
         status = "ext"
@@ -361,6 +383,7 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         current_desc  = row[3] or ""
         current_tools = sorted(_tools_raw) if isinstance(_tools_raw, list) else []
         current_max   = int(row[14]) if len(row) > 14 else 10
+        current_temp  = temperature
 
         snap_sp    = base_snap.get("system_prompt") or ""
         snap_prov  = base_snap.get("provider")
@@ -368,6 +391,12 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         snap_desc  = base_snap.get("description") or ""
         snap_tools = sorted(base_snap.get("tools") or [])
         snap_max   = int(base_snap.get("max_iterations") or 10)
+        snap_temp  = base_snap.get("temperature")
+        if snap_temp is not None:
+            try:
+                snap_temp = float(snap_temp)
+            except (TypeError, ValueError):
+                snap_temp = None
 
         changed = (
             current_sp != snap_sp
@@ -376,6 +405,7 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
             or current_desc  != snap_desc
             or current_tools != snap_tools
             or current_max   != snap_max
+            or current_temp  != snap_temp
         )
         status = "changed" if changed else "base"
 
@@ -391,6 +421,7 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         "auto_commit":    row[12] if len(row) > 12 else False,
         "tools":          _tools_raw if isinstance(_tools_raw, list) else [],
         "max_iterations": int(row[14]) if len(row) > 14 else 10,
+        "temperature":    temperature,
         "status":         status,
         "has_snapshot":   base_snap is not None,
     })
@@ -448,7 +479,8 @@ class RoleCreate(BaseModel):
     provider:       str       = "claude"
     model:          str       = ""
     tags:           list[str] = []
-    output_schema:  Optional[dict] = None
+    output_schema:  Optional[dict]  = None
+    temperature:    Optional[float] = None
     auto_commit:    bool      = False
     tools:          list[str] = []
     max_iterations: int       = 10
@@ -468,7 +500,7 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
                  body.provider, body.model, body.tags,
                  _json.dumps(body.output_schema) if body.output_schema else None,
                  body.auto_commit,
-                 _json.dumps(body.tools), body.max_iterations),
+                 _json.dumps(body.tools), body.max_iterations, body.temperature),
             )
             row = cur.fetchone()
     result = _row_to_role(row, admin=True)
@@ -489,6 +521,7 @@ class RoleUpdate(BaseModel):
     auto_commit:    Optional[bool]      = None
     tools:          Optional[list[str]] = None
     max_iterations: Optional[int]       = None
+    temperature:    Optional[float]     = None
     note:           str                 = ""
 
 
@@ -530,6 +563,7 @@ async def update_role(role_id: int, body: RoleUpdate, project: str = Query("aicl
         ("tags",           body.tags),
         ("auto_commit",    body.auto_commit),
         ("max_iterations", body.max_iterations),
+        ("temperature",    body.temperature),
     ]:
         if val is not None:
             fields.append(f"{col}=%s")
@@ -1150,6 +1184,7 @@ async def set_role_base(role_id: int, user=Depends(get_optional_user)):
         except Exception:
             tools = []
 
+    temp_val = row[6] if len(row) > 6 else None
     snapshot = {
         "system_prompt":  row[0] or "",
         "provider":       row[1],
@@ -1157,6 +1192,7 @@ async def set_role_base(role_id: int, user=Depends(get_optional_user)):
         "description":    row[3] or "",
         "tools":          tools if isinstance(tools, list) else [],
         "max_iterations": int(row[5]) if row[5] is not None else 10,
+        "temperature":    float(temp_val) if temp_val is not None else None,
     }
 
     with db.conn() as conn:

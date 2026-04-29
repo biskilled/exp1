@@ -84,13 +84,14 @@ _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
                           ) AS sys_content,
                           COALESCE(ar.tools, '[]'::jsonb),
                           COALESCE(ar.react, TRUE),
-                          COALESCE(ar.max_iterations, 10)
+                          COALESCE(ar.max_iterations, 10),
+                          ar.temperature
                    FROM   mng_agent_roles ar
                    LEFT JOIN mng_role_system_links rl ON rl.role_id = ar.id
                    LEFT JOIN mng_system_roles sr ON sr.id = rl.system_role_id
                    WHERE  ar.name = %s AND ar.client_id = 1
                    GROUP  BY ar.id, ar.system_prompt, ar.provider, ar.model,
-                             ar.tools, ar.react, ar.max_iterations
+                             ar.tools, ar.react, ar.max_iterations, ar.temperature
                    LIMIT 1"""
 
 _SQL_SAVE_INTERACTION = """INSERT INTO mem_mrr_prompts
@@ -136,6 +137,7 @@ class Agent:
         tools: list[dict] | None = None,
         react: bool = False,
         max_iterations: int = 10,
+        temperature: float | None = None,
     ) -> None:
         self.name = name
         self.system_prompt = system_prompt
@@ -144,6 +146,7 @@ class Agent:
         self.tools = tools or []
         self.react = react
         self.max_iterations = max_iterations
+        self.temperature = temperature
 
     # ── Factory ───────────────────────────────────────────────────────────────
 
@@ -167,6 +170,7 @@ class Agent:
         role_tool_names: list[str] = []
         react          = True
         max_iterations = 10
+        temperature: float | None = None
 
         if db.is_available():
             try:
@@ -182,6 +186,7 @@ class Agent:
                             role_tool_names = row[4] or []
                             react           = bool(row[5])
                             max_iterations  = int(row[6] or 10)
+                            temperature     = float(row[7]) if row[7] is not None else None
                             system_prompt   = (
                                 f"{base}\n\n{sys_content}".strip() if sys_content else base
                             )
@@ -209,6 +214,7 @@ class Agent:
             tools=tools,
             react=react,
             max_iterations=max_iterations,
+            temperature=temperature,
         )
 
     # ── Prompt construction ───────────────────────────────────────────────────
@@ -325,26 +331,28 @@ class Agent:
         """Dispatch to the correct provider and return a standard response dict."""
         system = system_override if system_override is not None else self.system_prompt
 
+        t = self.temperature  # None = use provider default
+
         if self.provider in ("claude", "anthropic", ""):
             from agents.providers.pr_claude import call_claude
             return await call_claude(
                 messages, system=system,
                 model=self.model, tools=self.tools or None,
-                max_tokens=max_tokens, api_key=api_key,
+                max_tokens=max_tokens, api_key=api_key, temperature=t,
             )
         elif self.provider == "openai":
             from agents.providers.pr_openai import call_openai
             return await call_openai(
                 messages, system=system,
                 model=self.model, tools=self.tools or None,
-                max_tokens=max_tokens, api_key=api_key,
+                max_tokens=max_tokens, api_key=api_key, temperature=t,
             )
         elif self.provider == "deepseek":
             from agents.providers.pr_deepseek import call_deepseek
             return await call_deepseek(
                 messages, system=system,
                 tools=self.tools or None,
-                max_tokens=max_tokens, api_key=api_key,
+                max_tokens=max_tokens, api_key=api_key, temperature=t,
             )
         elif self.provider == "gemini":
             from agents.providers.pr_gemini import call_gemini
@@ -354,13 +362,13 @@ class Agent:
             )
             return await call_gemini(
                 user_text, system=system,
-                model=self.model, api_key=api_key,
+                model=self.model, api_key=api_key, temperature=t,
             )
         elif self.provider == "grok":
             from agents.providers.pr_grok import call_grok
             return await call_grok(
                 messages, system=system,
-                model=self.model, max_tokens=max_tokens, api_key=api_key,
+                model=self.model, max_tokens=max_tokens, api_key=api_key, temperature=t,
             )
         else:
             raise ValueError(f"Unknown provider: {self.provider!r} for agent '{self.name}'")

@@ -36,6 +36,7 @@ async def call_openai(
     max_tokens: int = 4096,
     model: str | None = None,
     api_key: str | None = None,
+    temperature: float | None = None,
 ) -> dict:
     """Async OpenAI chat completion."""
     client = _async_client(api_key)
@@ -49,6 +50,8 @@ async def call_openai(
     kwargs: dict = {"model": chosen_model, "max_tokens": max_tokens, "messages": full_msgs}
     if tools:
         kwargs["tools"] = tools
+    if temperature is not None:
+        kwargs["temperature"] = temperature
 
     response = await client.chat.completions.create(**kwargs)
     msg = response.choices[0].message
@@ -68,6 +71,7 @@ async def call_openai(
 
 class OpenAIProvider(AsyncProvider):
     async def call(self, messages, system="", model=None, tools=None,
-                   max_tokens=4096, api_key=None) -> dict:
+                   max_tokens=4096, api_key=None, temperature=None) -> dict:
         return await call_openai(messages, system=system, model=model,
-                                 tools=tools, max_tokens=max_tokens, api_key=api_key)
+                                 tools=tools, max_tokens=max_tokens,
+                                 api_key=api_key, temperature=temperature)

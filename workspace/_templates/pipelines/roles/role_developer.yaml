@@ -6,6 +6,7 @@ model: claude-sonnet-4-6
 role_type: agent
 react: true
 max_iterations: 15
+temperature: 0.2
 auto_commit: true
 tools:
 - search_memory

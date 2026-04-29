@@ -6,6 +6,12 @@ description: |
 
 # Each stage key maps to a role name in mng_agent_roles.
 # Stages execute in order; each stage receives the previous stage's structured output as handoff.
+#
+# Optional per-stage overrides (all optional — omit to use role defaults):
+#   retry: 2                    # retry stage this many times on error (default: 1 = no retry)
+#   timeout_seconds: 120        # abort stage if it takes longer than this
+#   temperature_override: 0.1   # override role's temperature for this stage only
+#   max_iterations_override: 5  # override role's max_iterations for this stage only
 stages:
   - key: "project_manager"
     role: "Product Manager"

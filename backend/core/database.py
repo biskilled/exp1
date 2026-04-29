@@ -389,15 +389,20 @@ class _Database:
                 tools         = _json.dumps(data.get("tools", []))
                 react         = bool(data.get("react", True))
                 max_it        = int(data.get("max_iterations", 10))
+                temp_raw      = data.get("temperature")
+                temperature   = float(temp_raw) if temp_raw is not None else None
 
                 cur.execute(
                     """INSERT INTO mng_agent_roles
                            (project_id, name, description, system_prompt,
-                            provider, model, auto_commit, tools, react, max_iterations)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (project_id, name) DO NOTHING""",
+                            provider, model, auto_commit, tools, react, max_iterations,
+                            temperature)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (project_id, name) DO UPDATE
+                           SET temperature = EXCLUDED.temperature
+                           WHERE mng_agent_roles.temperature IS NULL""",
                     (global_pid, name, description, system_prompt, provider, model,
-                     auto_commit, tools, react, max_it),
+                     auto_commit, tools, react, max_it, temperature),
                 )
                 log.debug(f"YAML role seeded (new only): '{name}' ({yaml_path.name})")
             except Exception as yaml_err:

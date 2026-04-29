@@ -15,6 +15,7 @@ async def call_gemini(
     tools: list | None = None,
     model: str | None = None,
     api_key: str | None = None,
+    temperature: float | None = None,
 ) -> dict:
     """Async Gemini call via asyncio.to_thread."""
     key = api_key or settings.gemini_api_key
@@ -28,7 +29,12 @@ async def call_gemini(
         from google.genai import types as genai_types
 
         client = google_genai.Client(api_key=key)
-        cfg = genai_types.GenerateContentConfig(system_instruction=system) if system else None
+        cfg_kwargs: dict = {}
+        if system:
+            cfg_kwargs["system_instruction"] = system
+        if temperature is not None:
+            cfg_kwargs["temperature"] = temperature
+        cfg = genai_types.GenerateContentConfig(**cfg_kwargs) if cfg_kwargs else None
         kwargs: dict = {"model": model_name, "contents": prompt}
         if cfg:
             kwargs["config"] = cfg
@@ -49,9 +55,10 @@ async def call_gemini(
 
 class GeminiProvider(AsyncProvider):
     async def call(self, messages, system="", model=None, tools=None,
-                   max_tokens=4096, api_key=None) -> dict:
+                   max_tokens=4096, api_key=None, temperature=None) -> dict:
         # Gemini takes a string prompt; combine messages into one string
         user_text = " ".join(
             m["content"] for m in messages if m.get("role") == "user"
         )
-        return await call_gemini(user_text, system=system, model=model, api_key=api_key)
+        return await call_gemini(user_text, system=system, model=model,
+                                 api_key=api_key, temperature=temperature)

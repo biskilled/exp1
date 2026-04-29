@@ -17,6 +17,7 @@ async def call_deepseek(
     max_tokens: int = 4096,
     reasoner: bool = False,
     api_key: str | None = None,
+    temperature: float | None = None,
 ) -> dict:
     """Async DeepSeek call via AsyncOpenAI."""
     key = api_key or settings.deepseek_api_key
@@ -34,6 +35,8 @@ async def call_deepseek(
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice
+    if temperature is not None:
+        kwargs["temperature"] = temperature
 
     response = await client.chat.completions.create(**kwargs)
     msg = response.choices[0].message
@@ -53,6 +56,7 @@ async def call_deepseek(
 
 class DeepSeekProvider(AsyncProvider):
     async def call(self, messages, system="", model=None, tools=None,
-                   max_tokens=4096, api_key=None) -> dict:
+                   max_tokens=4096, api_key=None, temperature=None) -> dict:
         return await call_deepseek(messages, system=system, tools=tools,
-                                   max_tokens=max_tokens, api_key=api_key)
+                                   max_tokens=max_tokens, api_key=api_key,
+                                   temperature=temperature)

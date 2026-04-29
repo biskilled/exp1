@@ -15,6 +15,7 @@ async def call_grok(
     max_tokens: int = 2048,
     model: str | None = None,
     api_key: str | None = None,
+    temperature: float | None = None,
 ) -> dict:
     """Async Grok call via AsyncOpenAI."""
     key = api_key or settings.grok_api_key
@@ -28,11 +29,11 @@ async def call_grok(
         full_msgs.append({"role": "system", "content": system})
     full_msgs.extend(messages)
 
-    response = await client.chat.completions.create(
-        model=chosen_model,
-        max_tokens=max_tokens,
-        messages=full_msgs,
-    )
+    kwargs: dict = {"model": chosen_model, "max_tokens": max_tokens, "messages": full_msgs}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+
+    response = await client.chat.completions.create(**kwargs)
     usage = response.usage
 
     return {
@@ -49,6 +50,7 @@ async def call_grok(
 
 class GrokProvider(AsyncProvider):
     async def call(self, messages, system="", model=None, tools=None,
-                   max_tokens=2048, api_key=None) -> dict:
+                   max_tokens=2048, api_key=None, temperature=None) -> dict:
         return await call_grok(messages, system=system, model=model,
-                               max_tokens=max_tokens, api_key=api_key)
+                               max_tokens=max_tokens, api_key=api_key,
+                               temperature=temperature)

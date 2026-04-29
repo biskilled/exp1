@@ -33,6 +33,7 @@ async def call_claude(
     max_tokens: int = 4096,
     model: str | None = None,
     api_key: str | None = None,
+    temperature: float | None = None,
 ) -> dict:
     """Async Claude call — uses AsyncAnthropic to avoid blocking the event loop."""
     client = _client(api_key)
@@ -47,6 +48,8 @@ async def call_claude(
         kwargs["system"] = system
     if tools:
         kwargs["tools"] = tools
+    if temperature is not None:
+        kwargs["temperature"] = temperature
 
     response = await client.messages.create(**kwargs)
 
@@ -68,6 +71,7 @@ async def call_claude(
 
 class ClaudeProvider(AsyncProvider):
     async def call(self, messages, system="", model=None, tools=None,
-                   max_tokens=4096, api_key=None) -> dict:
+                   max_tokens=4096, api_key=None, temperature=None) -> dict:
         return await call_claude(messages, system=system, model=model,
-                                 tools=tools, max_tokens=max_tokens, api_key=api_key)
+                                 tools=tools, max_tokens=max_tokens,
+                                 api_key=api_key, temperature=temperature)

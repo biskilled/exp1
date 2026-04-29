@@ -850,14 +850,30 @@ function _renderRoleEditor(role) {
                  border-radius:var(--radius);outline:none">
       </div>
 
-      <!-- Max Iterations -->
-      <div style="display:flex;align-items:center;gap:0.5rem">
-        <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
-        <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="100"
-          style="width:60px;background:var(--bg);border:1px solid var(--border);
-                 color:var(--text);font-family:var(--font);font-size:0.72rem;
-                 padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
-        <span style="font-size:0.62rem;color:var(--muted)">agent ReAct loop limit · pipeline stage overrides this</span>
+      <!-- Max Iterations + Temperature -->
+      <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
+          <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="100"
+            style="width:60px;background:var(--bg);border:1px solid var(--border);
+                   color:var(--text);font-family:var(--font);font-size:0.72rem;
+                   padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Temperature</label>
+          <input type="range" id="role-temperature" min="0" max="1" step="0.05"
+            value="${role.temperature != null ? role.temperature : 0.3}"
+            style="width:90px;accent-color:var(--accent)"
+            oninput="document.getElementById('role-temperature-val').textContent=parseFloat(this.value).toFixed(2)">
+          <span id="role-temperature-val"
+            style="font-size:0.68rem;color:var(--text);min-width:2.4rem;text-align:right">
+            ${role.temperature != null ? parseFloat(role.temperature).toFixed(2) : '0.30'}
+          </span>
+          <span style="font-size:0.58rem;color:var(--muted)">0 = precise · 1 = creative</span>
+        </div>
+      </div>
+      <div style="font-size:0.58rem;color:var(--muted);margin-top:-0.4rem">
+        ReAct loop limit and temperature defaults · pipeline stages can override both
       </div>
 
       <!-- Tools & MCP (multi-select dropdowns, loaded async by _loadRoleTools) -->
@@ -989,6 +1005,7 @@ async function _rolesEditYaml(role) {
       `provider: ${role.provider || 'claude'}`,
       `model: ${role.model || ''}`,
       `max_iterations: ${role.max_iterations || 10}`,
+      `temperature: ${role.temperature != null ? role.temperature : 0.3}`,
       `auto_commit: ${role.auto_commit || false}`,
       `tools: []`,
       `system_prompt: |`,
@@ -1121,6 +1138,8 @@ async function _rolesSave(id) {
   const model         = document.getElementById('role-model')?.value?.trim();
   const description   = document.getElementById('role-description')?.value?.trim();
   const maxIterations = parseInt(document.getElementById('role-max-iterations')?.value || '10', 10);
+  const tempRaw       = document.getElementById('role-temperature')?.value;
+  const temperature   = tempRaw != null ? parseFloat(tempRaw) : null;
 
   const systemPrompt = document.getElementById('role-system-prompt')?.value || '';
   const tools        = _collectTools();
@@ -1129,12 +1148,12 @@ async function _rolesSave(id) {
   try {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
-      tools, max_iterations: maxIterations,
+      tools, max_iterations: maxIterations, temperature,
     }, _project || 'aicli');
     const idx = _roles.findIndex(r => r.id === id);
     if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
       name, provider, model, description, system_prompt: systemPrompt,
-      tools, max_iterations: maxIterations };
+      tools, max_iterations: maxIterations, temperature };
     _activeRole = _roles[idx] || _activeRole;
     _renderRolesList();
     toast('Role saved', 'success');

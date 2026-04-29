@@ -5,6 +5,7 @@ model: "claude-haiku-4-5-20251001"
 role_type: "developer"
 react: true
 max_iterations: 15
+temperature: 0.2
 auto_commit: true
 system_prompt_preset: coding_general
 tools:
