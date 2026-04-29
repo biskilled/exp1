@@ -393,7 +393,10 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
                  _json.dumps(body.tools), body.max_iterations),
             )
             row = cur.fetchone()
-    return _row_to_role(row, admin=True)
+    result = _row_to_role(row, admin=True)
+    # Write new role to YAML immediately
+    _write_role_to_yaml(result)
+    return result
 
 
 # ── Update (auto-versions on prompt/model/provider change) ────────────────────
@@ -480,7 +483,10 @@ async def update_role(role_id: int, body: RoleUpdate, user=Depends(get_optional_
             )
             cur.execute(_SQL_GET_ROLE_BY_ID, (role_id,))
             row = cur.fetchone()
-    return _row_to_role(row, admin=True)
+    result = _row_to_role(row, admin=True)
+    # Keep YAML in sync with DB
+    _write_role_to_yaml(result)
+    return result
 
 
 # ── Soft delete ───────────────────────────────────────────────────────────────
@@ -581,6 +587,73 @@ def _get_project_code_dir(project: str) -> str | None:
     except Exception as e:
         log.warning(f"_get_project_code_dir({project}): {e}")
         return None
+
+
+def _find_role_yaml_path(name: str) -> "Path":
+    """Return the YAML file path for a role by name.
+
+    Scans workspace/_templates/pipelines/roles/role_*.yaml for a matching 'name' field.
+    Falls back to a slug-based new filename if no existing file matches.
+    """
+    import re
+    import yaml as _yaml
+    roles_dir = _TEMPLATES_PIPELINES_DIR / "roles"
+    roles_dir.mkdir(parents=True, exist_ok=True)
+    for p in sorted(roles_dir.glob("role_*.yaml")):
+        try:
+            d = _yaml.safe_load(p.read_text()) or {}
+            if d.get("name") == name:
+                return p
+        except Exception:
+            continue
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return roles_dir / f"role_{slug}.yaml"
+
+
+def _write_role_to_yaml(role: dict) -> None:
+    """Write a role dict back to its YAML file, keeping it in sync with the DB."""
+    import yaml as _yaml
+
+    # Representer for multiline strings using literal block style (|)
+    class _LiteralStr(str):
+        pass
+
+    def _literal_representer(dumper, data):
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+
+    _yaml.add_representer(_LiteralStr, _literal_representer)
+
+    tools = role.get("tools") or []
+    if isinstance(tools, str):
+        import json as _j
+        try:
+            tools = _j.loads(tools)
+        except Exception:
+            tools = []
+
+    system_prompt = role.get("system_prompt") or ""
+
+    yaml_dict = {
+        "name":           role.get("name", ""),
+        "description":    role.get("description", ""),
+        "provider":       role.get("provider", "claude"),
+        "model":          role.get("model", ""),
+        "role_type":      role.get("role_type", "agent"),
+        "react":          bool(role.get("react", True)),
+        "max_iterations": int(role.get("max_iterations") or 10),
+        "auto_commit":    bool(role.get("auto_commit", False)),
+        "tools":          tools,
+        "system_prompt":  _LiteralStr(system_prompt),
+    }
+
+    path = _find_role_yaml_path(role["name"])
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            _yaml.dump(yaml_dict, fh, allow_unicode=True,
+                       default_flow_style=False, sort_keys=False)
+        log.debug(f"Role YAML synced: {path.name}")
+    except Exception as e:
+        log.warning(f"Role YAML write failed ({path}): {e}")
 
 
 def _load_mcp_catalog(project: str) -> list[dict]:

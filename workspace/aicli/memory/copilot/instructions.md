@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 17:50 UTC -->
+<!-- Last updated: 2026-04-29 17:54 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- System prompts consolidation: merged 10+ system prompts into 3 logical presets (coding_general, design_and_planning, requirements_and_documentation) in workspace/_templates/pipelines/system_prompts.yaml; all 10 roles correctly mapped to presets and seeding fixed to include system_prompt_preset field in DB
-- Tool and MCP catalog UI: multi-select category dropdowns (files, git, bash, etc.) for tools and MCPs in role editor; MCP Catalog page added to main left nav with activate/deactivate buttons; seeding fixed to inject MCP preset data
-- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
-- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
+- Multiple auto-commit pushes after Claude CLI sessions (15 commits over 2h 5m span from 15:49–17:54 UTC on 2026-04-29); suggests active development with frequent saves/sessions
+- System prompts consolidation: 3 presets (coding_general, design_and_planning, requirements_and_documentation) implemented in workspace/_templates/pipelines/system_prompts.yaml with all 10 roles correctly mapped
+- Tool and MCP catalog UI: multi-select category dropdowns for tools/MCPs in role editor; MCP Catalog page added to main nav under Workflows with activate/deactivate buttons
+- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 migration but route code still references them
 
-_Last updated: 2026-04-29 17:50 UTC_
+_Last updated: 2026-04-29 17:54 UTC_

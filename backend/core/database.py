@@ -395,20 +395,11 @@ class _Database:
                            (project_id, name, description, system_prompt,
                             provider, model, auto_commit, tools, react, max_iterations)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (project_id, name) DO UPDATE SET
-                           description    = EXCLUDED.description,
-                           system_prompt  = EXCLUDED.system_prompt,
-                           provider       = EXCLUDED.provider,
-                           model          = EXCLUDED.model,
-                           auto_commit    = EXCLUDED.auto_commit,
-                           tools          = EXCLUDED.tools,
-                           react          = EXCLUDED.react,
-                           max_iterations = EXCLUDED.max_iterations,
-                           updated_at     = NOW()""",
+                       ON CONFLICT (project_id, name) DO NOTHING""",
                     (global_pid, name, description, system_prompt, provider, model,
                      auto_commit, tools, react, max_it),
                 )
-                log.debug(f"YAML role upserted: '{name}' ({yaml_path.name})")
+                log.debug(f"YAML role seeded (new only): '{name}' ({yaml_path.name})")
             except Exception as yaml_err:
                 log.warning(f"YAML role seed failed for {yaml_path.name}: {yaml_err}")
 
