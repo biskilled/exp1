@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Tool and MCP management system: categorize available tools (developer/documents), make tools available per provider type (claude sdk uses native tools, others use MCP), manage tool discovery and assignment to pipeline stages
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
 - Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
 - Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
-- Fix backend startup race condition and active project selector: project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
+- Audit and remove unused columns from mem_ai_events table and deprecated fields from database schema (language, file_path, etc.)
+- Consolidate project workspace structure: aligned workspace/aicli/pipelines with backend config locations; removed old prompt folder, cli/ folder, documents/ and features/ folders
 
 ## Key Decisions
 
@@ -322,10 +322,10 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt)
+- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files reference roles only (no embedded task_prompt)
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags are validated against actual project technologies, enabling accurate delivery_type routing to pipelines
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies, enabling accurate delivery_type routing to pipelines
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

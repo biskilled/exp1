@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 16:36 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 17:13 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -41,15 +41,15 @@ _Last updated: 2026-04-29_
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt)
+- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens, max_iterations; pl_*.yaml files reference roles only (no embedded task_prompt)
 - Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags are validated against actual project technologies, enabling accurate delivery_type routing to pipelines
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies, enabling accurate delivery_type routing to pipelines
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] I do 2 folder - documents and features under the project root. are they needed. is it possible to remove them ?
 - [2026-04-29] under aiCli root folder there are 2 folders  aicli/documents and aicli/features not related to backed or  ui folders. ar
 - [2026-04-29] What about cli folder - is it in used (it used to be old version running claude cli behind.. not sure it is still releva
 - [2026-04-29] pelae run the /momory to update all changes
 - [2026-04-29] I would like to manage all availabe tool and mcp. availabe tools suppose to be avilable per proivder type. for example c
+- [2026-04-29] Where can I see the mcp list ? Alos in the ui I ould like to change the way user choose tools/ msc. instead of click add

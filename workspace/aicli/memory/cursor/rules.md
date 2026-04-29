@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 16:37 UTC -->
+<!-- Last updated: 2026-04-29 17:13 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Multiple chore commits after claude cli session (ebf898a3, 1f8ecc78) indicating rapid iteration on project state management
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
 - Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
+- Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
 
-_Last updated: 2026-04-29 16:37 UTC_
+_Last updated: 2026-04-29 17:13 UTC_

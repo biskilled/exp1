@@ -290,18 +290,22 @@ function _msHtml(id, items, selectedValues, { label = '', placeholder = 'None se
   }).join('');
 
   const listItems = items.map(item => `
-    <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.6rem;
-                  cursor:pointer;font-size:0.68rem;color:var(--text);
-                  border-bottom:1px solid rgba(255,255,255,0.04)"
+    <label style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.35rem 0.6rem;
+                  cursor:pointer;border-bottom:1px solid rgba(255,255,255,0.04)"
            onmouseenter="this.style.background='var(--surface2)'"
            onmouseleave="this.style.background='transparent'">
       <input type="checkbox" value="${_esc(item.value)}" ${selSet.has(item.value) ? 'checked' : ''}
              data-ms="${id}"
              onchange="window._msSel('${id}','${_esc(item.value)}',this.checked)"
-             style="width:13px;height:13px;accent-color:${color};cursor:pointer;flex-shrink:0">
-      <span style="flex:1">${_esc(item.label || item.value)}</span>
-      ${item.tag ? `<span style="font-size:0.55rem;padding:0.05rem 0.3rem;border-radius:8px;
-                               background:var(--surface3);color:var(--muted)">${_esc(item.tag)}</span>` : ''}
+             style="width:13px;height:13px;accent-color:${item.color || color};cursor:pointer;flex-shrink:0;margin-top:2px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:0.4rem">
+          <span style="font-size:0.68rem;color:${item.color || 'var(--text)'};font-weight:500">${_esc(item.label || item.value)}</span>
+          ${item.tag ? `<span style="font-size:0.55rem;padding:0.05rem 0.3rem;border-radius:8px;
+                                     background:var(--surface3);color:var(--muted)">${_esc(item.tag)}</span>` : ''}
+        </div>
+        ${item.subtitle ? `<div style="font-size:0.58rem;color:var(--muted);margin-top:0.1rem;line-height:1.4">${_esc(item.subtitle)}</div>` : ''}
+      </div>
     </label>`).join('');
 
   return `
@@ -392,26 +396,33 @@ function _msRefreshChips(id) {
   const chipsEl = document.getElementById(`ms-chips-${id}`);
   if (!chipsEl) return;
   const selected = _msGetSelected(id);
-  // Determine item label from current list labels
-  const labels = {};
-  document.querySelectorAll(`#ms-list-${id} input[type=checkbox]`).forEach(cb => {
-    const span = cb.closest('label')?.querySelector('span');
-    if (span) labels[cb.value] = span.textContent.trim();
-  });
   if (!selected.length) {
     const placeholder = chipsEl.dataset.placeholder || 'None selected';
     chipsEl.innerHTML = `<span style="font-size:0.65rem;color:var(--muted)">${_esc(placeholder)}</span>`;
     return;
   }
-  chipsEl.innerHTML = selected.map(v => `
-    <span style="display:inline-flex;align-items:center;gap:0.2rem;
-                 padding:0.1rem 0.3rem 0.1rem 0.5rem;border-radius:10px;
-                 background:rgba(100,108,255,0.18);color:var(--accent);
-                 font-size:0.62rem;line-height:1.4;white-space:nowrap">
-      ${_esc(labels[v] || v)}
-      <span onclick="event.stopPropagation();window._msRemove('${id}','${_esc(v)}')"
-            style="cursor:pointer;opacity:0.7;font-size:0.75rem;padding:0 0.1rem">&times;</span>
-    </span>`).join('');
+  // Build label map from current dropdown: value → { label, tag, color }
+  const meta = {};
+  document.querySelectorAll(`#ms-list-${id} input[type=checkbox]`).forEach(cb => {
+    const row   = cb.closest('label');
+    const label = row?.querySelector('div > span:first-child')?.textContent?.trim() || cb.value;
+    const tag   = row?.querySelector('span[style*="border-radius:8px"]')?.textContent?.trim() || '';
+    const color = row?.querySelector('div > span:first-child')?.style?.color || 'var(--accent)';
+    meta[cb.value] = { label, tag, color };
+  });
+  chipsEl.innerHTML = selected.map(v => {
+    const { label, tag, color } = meta[v] || { label: v, tag: '', color: 'var(--accent)' };
+    const display = tag ? `${label} (${tag})` : label;
+    return `
+      <span style="display:inline-flex;align-items:center;gap:0.2rem;
+                   padding:0.1rem 0.3rem 0.1rem 0.5rem;border-radius:10px;
+                   background:${color}22;color:${color};
+                   font-size:0.62rem;line-height:1.4;white-space:nowrap;border:1px solid ${color}44">
+        ${_esc(display)}
+        <span onclick="event.stopPropagation();window._msRemove('${id}','${_esc(v)}')"
+              style="cursor:pointer;opacity:0.7;font-size:0.75rem;padding:0 0.1rem">&times;</span>
+      </span>`;
+  }).join('');
 }
 
 // ── Tools + MCP loader ────────────────────────────────────────────────────────
@@ -444,31 +455,46 @@ async function _loadRoleTools(role) {
     _toolsByCategory[t.category].push(t.name);
   }
 
-  // Parse role's current tools into builtin and mcp
+  // Parse role's current tools into builtin tool names and mcp names
   const roleMcpNames = (role.tools || []).filter(t => t.startsWith('mcp:')).map(t => t.slice(4));
-  const roleBuiltin  = (role.tools || []).filter(t => !t.startsWith('mcp:'));
+  const roleBuiltin  = new Set((role.tools || []).filter(t => !t.startsWith('mcp:')));
 
-  // Tool multi-select items
+  // Category colors
   const catColors = { git: '#e8834e', files: '#5b8af5', memory: '#9b7ef8', other: '#888' };
-  const toolItems = allTools.map(t => ({
-    value: t.name,
-    label: t.name,
-    tag:   t.category,
-  }));
 
-  // MCP multi-select items — catalog + any unknown ones in role.tools
+  // Tool multi-select items = one item per CATEGORY (not per tool)
+  // A category is pre-selected if any of its tools are in roleBuiltin
+  const catOrder     = ['git', 'files', 'memory', 'other'];
+  const sortedCats   = [...catOrder.filter(c => _toolsByCategory[c]),
+                        ...Object.keys(_toolsByCategory).filter(c => !catOrder.includes(c))];
+  const selectedCats = sortedCats.filter(cat =>
+    (_toolsByCategory[cat] || []).some(t => roleBuiltin.has(t))
+  );
+  const toolItems = sortedCats.map(cat => {
+    const tools = _toolsByCategory[cat] || [];
+    return {
+      value:    cat,
+      label:    cat,
+      tag:      `${tools.length}`,
+      subtitle: tools.join(' · '),
+      color:    catColors[cat] || '#888',
+    };
+  });
+
+  // MCP multi-select items — catalog + any unknown mcp: entries already in role.tools
   const catalogNames = new Set(mcps.map(m => m.name));
   const unknownMcps  = roleMcpNames.filter(n => !catalogNames.has(n)).map(n => ({ name: n, label: n }));
   const mcpItems     = [...mcps, ...unknownMcps].map(m => ({
-    value: m.name,
-    label: m.label || m.name,
-    tag:   (m.tags || [])[0] || '',
+    value:    m.name,
+    label:    m.label || m.name,
+    tag:      (m.tags || [])[0] || '',
+    subtitle: m.description ? m.description.slice(0, 60) + (m.description.length > 60 ? '…' : '') : '',
   }));
 
   let html = '';
 
   if (isNative) {
-    // Native: show info badge for tools, still show MCP selector
+    // Native providers: hide built-in tools, show info badge only
     html += `
       <div>
         <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.3rem">Built-in Tools</div>
@@ -480,17 +506,16 @@ async function _loadRoleTools(role) {
         </div>
       </div>`;
   } else {
-    // Warning for limited providers
     const warning = toolSupport === 'limited'
-      ? `<div style="margin-bottom:0.35rem;display:flex;align-items:center;gap:0.4rem;
+      ? `<div style="margin-bottom:0.4rem;display:flex;align-items:center;gap:0.4rem;
                      padding:0.35rem 0.55rem;background:rgba(230,180,50,0.1);
                      border:1px solid rgba(230,180,50,0.3);border-radius:5px;
                      font-size:0.63rem;color:rgba(230,180,50,0.9)">
            ⚠ ${_esc(providerData.tool_note || 'Tool calling varies by model.')}
          </div>` : '';
-    html += `<div>${warning}${_msHtml('tools', toolItems, roleBuiltin, {
+    html += `<div>${warning}${_msHtml('tools', toolItems, selectedCats, {
       label:       'Built-in Tools',
-      placeholder: 'No tools selected',
+      placeholder: 'No tool categories selected',
       color:       'var(--accent)',
     })}</div>`;
   }
@@ -503,17 +528,17 @@ async function _loadRoleTools(role) {
 
   body.innerHTML = html;
 
-  // Store placeholder on chips container for _msRefreshChips
+  // Persist placeholder text for _msRefreshChips
   const toolChips = document.getElementById('ms-chips-tools');
-  if (toolChips) toolChips.dataset.placeholder = 'No tools selected';
+  if (toolChips) toolChips.dataset.placeholder = 'No tool categories selected';
   const mcpChips = document.getElementById('ms-chips-mcps');
   if (mcpChips) mcpChips.dataset.placeholder = 'No MCP servers selected';
 
-  // Wire global multi-select handlers (idempotent — last registration wins)
-  window._msToggle  = _msToggle;
-  window._msRemove  = _msRemove;
-  window._msSel     = _msSel;
-  window._msFilter  = _msFilter;
+  // Register global handlers
+  window._msToggle = _msToggle;
+  window._msRemove = _msRemove;
+  window._msSel    = _msSel;
+  window._msFilter = _msFilter;
 }
 
 function _renderRoleSystemRolesSection(roleId) {
@@ -715,7 +740,9 @@ function _mcpToolsFromText(text) {
 }
 
 function _collectTools() {
-  const builtin = _msGetSelected('tools');
+  // Expand selected categories → individual tool names
+  const selectedCats = _msGetSelected('tools');
+  const builtin = selectedCats.flatMap(cat => _toolsByCategory[cat] || []);
   const mcps    = _msGetSelected('mcps').map(v => `mcp:${v}`);
   return [...builtin, ...mcps];
 }

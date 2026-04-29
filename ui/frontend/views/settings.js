@@ -55,7 +55,7 @@ export function renderSettings(container) {
             <span>◉</span> Agent Roles
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('mcp')" id="snav-mcp">
-            <span>⬡</span> MCP Catalog
+            <span>M</span> MCP Catalog
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('updates')" id="snav-updates">
             <span>⟳</span> Updates
