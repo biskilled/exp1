@@ -52,7 +52,7 @@ export function renderSettings(container) {
             <span>🔐</span> Security
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('roles')" id="snav-roles">
-            <span>◉</span> Agent Roles
+            <span>◉</span> Roles &amp; Pipelines
           </div>
           <div class="settings-nav-item" onclick="window._settingsSection('updates')" id="snav-updates">
             <span>⟳</span> Updates
@@ -1456,30 +1456,36 @@ function _jwtIsAdmin() {
 
 async function renderAgentRoles(content) {
   const isAdmin = _jwtIsAdmin();
-  content.innerHTML = `<div style="color:var(--muted);font-size:0.72rem">Loading roles…</div>`;
+  content.innerHTML = `<div style="color:var(--muted);font-size:0.72rem">Loading…</div>`;
 
-  let roles = [], adminFlag = false;
+  let roles = [], adminFlag = false, pipelines = [];
   try {
-    const data = await api.agentRoles.list();
-    roles = data.roles || [];
-    adminFlag = data.is_admin || isAdmin;
+    const [rolesData, plData] = await Promise.all([
+      api.agentRoles.list('_global', true),   // show_deactivated=true so settings sees all
+      api.agentRoles.pipelinesConfig().catch(() => ({ pipelines: [] })),
+    ]);
+    roles     = rolesData.roles || [];
+    adminFlag = rolesData.is_admin || isAdmin;
+    pipelines = plData.pipelines || [];
   } catch (e) {
     content.innerHTML = `<div style="color:var(--red);font-size:0.72rem">Error: ${_esc(e.message)}</div>`;
     return;
   }
 
-  const PROVIDER_BADGE = { claude: '#e67', openai: '#0a0', deepseek: '#08f', gemini: '#090', grok: '#a70' };
-
   content.innerHTML = `
     <div>
-      <div class="settings-section-title">Agent Roles</div>
+      <!-- ── Roles section ── -->
+      <div class="settings-section-title">Roles &amp; Pipelines</div>
       <div class="settings-section-desc">
-        Reusable LLM personas used in workflow nodes.
-        ${adminFlag ? 'As admin you can view and edit system prompts.' : 'Role names and descriptions are shown. System prompts are admin-only.'}
+        Manage reusable LLM personas and pipeline templates.
+        Deactivated roles and pipelines are hidden from pickers.
+        ${adminFlag ? 'As admin you can edit system prompts and manage activation.' : ''}
       </div>
 
+      <div style="font-size:0.72rem;font-weight:700;margin:1rem 0 0.4rem;color:var(--text)">Agent Roles</div>
+
       ${adminFlag ? `
-      <div style="margin-bottom:1rem">
+      <div style="margin-bottom:0.75rem">
         <button class="btn btn-primary btn-sm" onclick="window._rolesShowCreate()">+ New Role</button>
       </div>
       <div id="roles-create-form" style="display:none;margin-bottom:1rem;padding:0.75rem;
@@ -1510,10 +1516,34 @@ async function renderAgentRoles(content) {
           ? '<div style="color:var(--muted);font-size:0.72rem;padding:1rem">No roles found.</div>'
           : roles.map(r => _renderRoleRow(r, adminFlag)).join('')}
       </div>
+
+      <!-- ── Pipelines section ── -->
+      <div style="font-size:0.72rem;font-weight:700;margin:1.5rem 0 0.4rem;color:var(--text)">Pipelines</div>
+      <div style="font-size:0.67rem;color:var(--muted);margin-bottom:0.75rem">
+        Activate pipelines to make them available in workflow pickers.
+        A pipeline can only be activated when all its required roles are also activated.
+      </div>
+
+      <div id="pipelines-list">
+        ${pipelines.length === 0
+          ? '<div style="color:var(--muted);font-size:0.72rem;padding:0.5rem">No pipelines found.</div>'
+          : `<table style="width:100%;border-collapse:collapse;font-size:0.68rem">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+                  <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:600">Name</th>
+                  <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:600">Required Roles</th>
+                  <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:600;width:80px">Activated</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pipelines.map(pl => _renderPipelineRow(pl, adminFlag)).join('')}
+              </tbody>
+            </table>`}
+      </div>
     </div>
   `;
 
-  // Wire create form
+  // ── Wire create form ──
   window._rolesShowCreate = () => {
     document.getElementById('roles-create-form').style.display = '';
   };
@@ -1533,6 +1563,8 @@ async function renderAgentRoles(content) {
       renderAgentRoles(content);
     } catch (e) { toast('Create failed: ' + e.message, 'error'); }
   };
+
+  // ── Wire role actions ──
   window._rolesDelete = async (id, name) => {
     if (!confirm(`Delete role "${name}"?`)) return;
     try {
@@ -1591,19 +1623,44 @@ async function renderAgentRoles(content) {
       renderAgentRoles(content);
     } catch (e) { toast('Restore failed: ' + e.message, 'error'); }
   };
+
+  // ── Wire activated toggles ──
+  window._toggleRoleActivated = async (id, val) => {
+    try {
+      await api.agentRoles.patch(id, { activated: val });
+      toast(val ? 'Role activated' : 'Role deactivated', 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast('Update failed: ' + e.message, 'error'); renderAgentRoles(content); }
+  };
+  window._togglePipelineActivated = async (name, val) => {
+    try {
+      await api.agentRoles.patchPipeline(name, { activated: val });
+      toast(val ? `Pipeline "${name}" activated` : `Pipeline "${name}" deactivated`, 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast(e.message, 'error'); renderAgentRoles(content); }
+  };
 }
 
 function _renderRoleRow(r, isAdmin) {
   const PROVIDER_COLORS = { claude: '#e67e22', openai: '#27ae60', deepseek: '#2980b9', gemini: '#16a085', grok: '#8e44ad' };
   const col = PROVIDER_COLORS[r.provider] || '#888';
+  const activated = r.activated !== false;
+  const rowOpacity = activated ? '1' : '0.55';
   return `
     <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:0.5rem;
-                background:var(--surface)">
+                background:var(--surface);opacity:${rowOpacity}">
       <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem">
         <span style="font-size:0.75rem;font-weight:600;color:var(--text);flex:1">${_esc(r.name)}</span>
         <span style="font-size:0.6rem;color:#fff;background:${col};padding:0.1rem 0.45rem;
                      border-radius:8px;white-space:nowrap">${_esc(r.provider)}${r.model ? ' · '+_esc(r.model.split('-').slice(0,3).join('-')) : ''}</span>
         ${isAdmin ? `
+          <label title="Activated — show this role in pickers"
+            style="display:flex;align-items:center;gap:0.25rem;font-size:0.6rem;color:var(--muted);cursor:pointer;user-select:none">
+            <input type="checkbox" ${activated ? 'checked' : ''}
+              onchange="window._toggleRoleActivated(${r.id}, this.checked)"
+              style="cursor:pointer" />
+            On
+          </label>
           <button onclick="window._rolesToggleEdit(${r.id})"
             style="font-size:0.6rem;padding:0.15rem 0.45rem;background:var(--surface2);
                    border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
@@ -1654,5 +1711,43 @@ function _renderRoleRow(r, isAdmin) {
            padding:0.5rem 0.75rem;background:var(--bg);max-height:180px;overflow-y:auto"></div>
       ` : ''}
     </div>
+  `;
+}
+
+function _renderPipelineRow(pl, isAdmin) {
+  const activated = pl.activated !== false;
+  const eligible  = pl.eligible !== false;
+  const missing   = pl.missing_roles || [];
+
+  const rolesHtml = (pl.required_roles || []).length === 0
+    ? '<span style="color:var(--muted);font-style:italic">none</span>'
+    : (pl.required_roles || []).map(r => `<span style="display:inline-block;background:var(--surface2);
+        border:1px solid var(--border);border-radius:3px;padding:0.05rem 0.3rem;
+        font-size:0.6rem;margin:0.05rem">${_esc(r)}</span>`).join(' ');
+
+  let checkboxHtml;
+  if (!isAdmin) {
+    // Non-admin: show read-only state
+    checkboxHtml = `<input type="checkbox" ${activated ? 'checked' : ''} disabled />`;
+  } else if (!eligible && !activated) {
+    // Ineligible + deactivated: disabled with tooltip
+    const tip = missing.length ? `Activate roles first: ${missing.join(', ')}` : 'Required roles not activated';
+    checkboxHtml = `<input type="checkbox" disabled title="${_esc(tip)}" />
+      <span style="font-size:0.58rem;color:var(--amber,#f59e0b)" title="${_esc(tip)}">⚠</span>`;
+  } else {
+    checkboxHtml = `<input type="checkbox" ${activated ? 'checked' : ''}
+      onchange="window._togglePipelineActivated('${_esc(pl.name)}', this.checked)" />`;
+  }
+
+  return `
+    <tr style="border-bottom:1px solid var(--border);opacity:${activated ? '1' : '0.6'}">
+      <td style="padding:0.4rem 0.5rem;font-weight:600;color:var(--text)">${_esc(pl.name)}</td>
+      <td style="padding:0.4rem 0.5rem;color:var(--muted)">${rolesHtml}</td>
+      <td style="padding:0.4rem 0.5rem;text-align:center">
+        <label style="display:inline-flex;align-items:center;gap:0.25rem;cursor:${isAdmin ? 'pointer' : 'default'}">
+          ${checkboxHtml}
+        </label>
+      </td>
+    </tr>
   `;
 }

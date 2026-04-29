@@ -347,7 +347,8 @@ api.tags = {
 // ── Agent Roles API ───────────────────────────────────────────────────────────
 
 api.agentRoles = {
-  list:           (project = '_global') => _get(`/agent-roles/?project=${enc(project)}`),
+  list:           (project = '_global', showDeactivated = false) =>
+    _get(`/agent-roles/?project=${enc(project)}${showDeactivated ? '&show_deactivated=true' : ''}`),
   create:         (body)                => _post('/agent-roles/', body),
   patch:          (id, body, project = 'aicli') => fetch(_base() + `/agent-roles/${id}?project=${enc(project)}`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
@@ -376,6 +377,12 @@ api.agentRoles = {
   mcpDeactivate:  (project, name)       => _del(`/agent-roles/mcp-activate/${enc(name)}?project=${enc(project)}`),
   mcpUsage:       (project, name)       => _get(`/agent-roles/mcp-usage?project=${enc(project)}&mcp_name=${enc(name)}`),
   systemPrompts:  ()                    => _get(`/agent-roles/system-prompts`),
+  pipelinesConfig: (project = 'aicli') => _get(`/agent-roles/pipelines-config?project=${enc(project)}`),
+  patchPipeline:  (name, body, project = 'aicli') => fetch(_base() + `/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`, {
+    method: 'PATCH',
+    headers: _headers(),
+    body: JSON.stringify(body),
+  }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e))))),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────

@@ -242,6 +242,7 @@ class _Database:
         _Database._seed_system_roles(conn)
         _Database._seed_role_system_links(conn)
         _Database._seed_tag_categories(conn)
+        _Database._seed_pipelines(conn)
 
     @staticmethod
     def _migration_applied(conn, version: str) -> bool:
@@ -639,6 +640,41 @@ class _Database:
         except Exception as e:
             conn.rollback()
             log.debug(f"_seed_tag_categories skipped: {e}")
+
+    @staticmethod
+    def _seed_pipelines(conn) -> None:
+        """Upsert pipeline names from YAML discovery into mng_agent_pipelines (ON CONFLICT DO NOTHING).
+
+        Discovers pl_*.yaml files in workspace/_templates/pipelines/ and seeds each name.
+        New pipelines default to activated=TRUE; existing rows are untouched (preserving user edits).
+        """
+        try:
+            with conn.cursor() as cur:
+                # Only seed if table exists (migration m084 may not have run yet)
+                cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema='public' AND table_name='mng_agent_pipelines'"
+                )
+                if not cur.fetchone():
+                    return
+                templates_dir = (
+                    Path(__file__).parent.parent.parent
+                    / "workspace" / "_templates" / "pipelines"
+                )
+                if not templates_dir.exists():
+                    return
+                names = [f.stem[3:] for f in templates_dir.glob("pl_*.yaml")]
+                for name in names:
+                    cur.execute(
+                        """INSERT INTO mng_agent_pipelines (client_id, name)
+                           VALUES (1, %s) ON CONFLICT (client_id, name) DO NOTHING""",
+                        (name,),
+                    )
+            conn.commit()
+            log.debug("✅ mng_agent_pipelines seeded")
+        except Exception as e:
+            conn.rollback()
+            log.debug(f"_seed_pipelines skipped: {e}")
 
     # ── Project ID helpers ─────────────────────────────────────────────────────
 

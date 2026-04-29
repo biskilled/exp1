@@ -3247,6 +3247,31 @@ def m083_role_temperature(conn) -> None:
     log.info("m083: temperature FLOAT column added to mng_agent_roles")
 
 
+def m084_roles_activated_and_pipelines_table(conn) -> None:
+    """Add activated BOOLEAN to mng_agent_roles; create mng_agent_pipelines.
+
+    activated=TRUE (default) means the role/pipeline appears in pickers.
+    mng_agent_pipelines tracks per-pipeline activation state seeded from pl_*.yaml names.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE mng_agent_roles "
+            "ADD COLUMN IF NOT EXISTS activated BOOLEAN NOT NULL DEFAULT TRUE"
+        )
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS mng_agent_pipelines (
+                id         SERIAL PRIMARY KEY,
+                client_id  INT  NOT NULL DEFAULT 1,
+                name       TEXT NOT NULL,
+                activated  BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (client_id, name)
+            )
+        """)
+    conn.commit()
+    log.info("m084: activated BOOLEAN added to mng_agent_roles; mng_agent_pipelines created")
+
+
 def m082_role_base_snapshot(conn) -> None:
     """Add base_snapshot JSONB column to mng_agent_roles for the save-as-base feature.
 
@@ -3333,4 +3358,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m081_wi_embedding_index_and_cleanup", m081_wi_embedding_index_and_cleanup),
     ("m082_role_base_snapshot", m082_role_base_snapshot),
     ("m083_role_temperature", m083_role_temperature),
+    ("m084_roles_activated_and_pipelines_table", m084_roles_activated_and_pipelines_table),
 ]

@@ -51,7 +51,7 @@ _TEMPLATES_PIPELINES_DIR = Path(__file__).parent.parent.parent / "workspace" / "
 
 _KNOWN_FIELDS = {
     "name", "description", "system_prompt", "provider", "model",
-    "auto_commit", "max_iterations", "temperature",
+    "auto_commit", "max_iterations", "temperature", "activated",
     "tools", "mcp_tools", "output_schema", "tags",
 }
 
@@ -149,10 +149,13 @@ _SQL_LIST_ROLES = (
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
-              ar.base_snapshot, ar.temperature
+              ar.base_snapshot, ar.temperature,
+              COALESCE(ar.activated, TRUE)
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
-       WHERE ar.is_active=TRUE AND (ar.project_id=%s OR ar.project_id=%s)
+       WHERE ar.is_active=TRUE
+         AND (COALESCE(ar.activated, TRUE)=TRUE OR %s)
+         AND (ar.project_id=%s OR ar.project_id=%s)
        ORDER BY ar.project_id DESC, ar.name"""
 )
 
@@ -161,7 +164,8 @@ _SQL_GET_ROLE_BY_ID = (
               ar.provider, ar.model, ar.tags, ar.is_active, ar.created_at, ar.updated_at,
               ar.output_schema, ar.auto_commit,
               COALESCE(ar.tools, '[]'::jsonb), COALESCE(ar.max_iterations, 10),
-              ar.base_snapshot, ar.temperature
+              ar.base_snapshot, ar.temperature,
+              COALESCE(ar.activated, TRUE)
        FROM mng_agent_roles ar
        JOIN mng_projects p ON p.id = ar.project_id
        WHERE ar.id=%s"""
@@ -198,19 +202,20 @@ _SQL_INSERT_ROLE = (
     """WITH ins AS (
        INSERT INTO mng_agent_roles
            (project_id, name, description, system_prompt, provider, model, tags,
-            output_schema, auto_commit, tools, max_iterations, temperature)
-       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            output_schema, auto_commit, tools, max_iterations, temperature, activated)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
        RETURNING id, project_id, name, description, system_prompt,
                  provider, model, tags, is_active, created_at, updated_at,
                  output_schema, auto_commit,
                  COALESCE(tools, '[]'::jsonb), COALESCE(max_iterations, 10),
-                 NULL AS base_snapshot, temperature
+                 NULL AS base_snapshot, temperature,
+                 COALESCE(activated, TRUE)
     )
     SELECT ins.id, p.name AS project, ins.name, ins.description, ins.system_prompt,
            ins.provider, ins.model, ins.tags, ins.is_active, ins.created_at, ins.updated_at,
            ins.output_schema, ins.auto_commit,
            ins.tools, ins.max_iterations,
-           ins.base_snapshot, ins.temperature
+           ins.base_snapshot, ins.temperature, ins.activated
     FROM ins JOIN mng_projects p ON p.id = ins.project_id"""
 )
 
@@ -333,7 +338,8 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
     Row column indices (0-based):
       0=id, 1=project, 2=name, 3=description, 4=system_prompt,
       5=provider, 6=model, 7=tags, 8=is_active, 9=created_at, 10=updated_at,
-      11=output_schema, 12=auto_commit, 13=tools, 14=max_iterations, 15=base_snapshot
+      11=output_schema, 12=auto_commit, 13=tools, 14=max_iterations, 15=base_snapshot,
+      16=temperature, 17=activated
     """
     name      = row[2]
     has_tmpl  = (name in tmpl_names) if tmpl_names is not None else True
@@ -343,6 +349,7 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         "name":         name,
         "description":  row[3],
         "is_active":    row[8],
+        "activated":    bool(row[17]) if len(row) > 17 else True,
         "has_template": has_tmpl if tmpl_names is not None else None,
     }
     if not admin:
@@ -424,6 +431,7 @@ def _row_to_role(row, admin: bool = False, tmpl_names: "set | None" = None) -> d
         "temperature":    temperature,
         "status":         status,
         "has_snapshot":   base_snap is not None,
+        "activated":      bool(row[17]) if len(row) > 17 else True,
     })
     return r
 
@@ -445,6 +453,7 @@ async def list_providers_endpoint():
 @router.get("/")
 async def list_roles(
     project: str = Query("_global"),
+    show_deactivated: bool = Query(False),
     user=Depends(get_optional_user),
 ):
     admin = _is_admin(user)
@@ -460,7 +469,7 @@ async def list_roles(
     project_pid = db.get_or_create_project_id(project)
     with db.conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(_SQL_LIST_ROLES, (global_pid, project_pid))
+            cur.execute(_SQL_LIST_ROLES, (show_deactivated, global_pid, project_pid))
             rows = cur.fetchall()
     tmpl = _template_names()
     return {
@@ -484,6 +493,7 @@ class RoleCreate(BaseModel):
     auto_commit:    bool      = False
     tools:          list[str] = []
     max_iterations: int       = 10
+    activated:      bool      = True
 
 
 @router.post("/")
@@ -500,7 +510,8 @@ async def create_role(body: RoleCreate, user=Depends(get_optional_user)):
                  body.provider, body.model, body.tags,
                  _json.dumps(body.output_schema) if body.output_schema else None,
                  body.auto_commit,
-                 _json.dumps(body.tools), body.max_iterations, body.temperature),
+                 _json.dumps(body.tools), body.max_iterations, body.temperature,
+                 body.activated),
             )
             row = cur.fetchone()
     result = _row_to_role(row, admin=True)
@@ -522,6 +533,7 @@ class RoleUpdate(BaseModel):
     tools:          Optional[list[str]] = None
     max_iterations: Optional[int]       = None
     temperature:    Optional[float]     = None
+    activated:      Optional[bool]      = None
     note:           str                 = ""
 
 
@@ -564,6 +576,7 @@ async def update_role(role_id: int, body: RoleUpdate, project: str = Query("aicl
         ("auto_commit",    body.auto_commit),
         ("max_iterations", body.max_iterations),
         ("temperature",    body.temperature),
+        ("activated",      body.activated),
     ]:
         if val is not None:
             fields.append(f"{col}=%s")
@@ -677,6 +690,156 @@ async def list_available_tools():
             "category":    entry.get("category", "other"),
         })
     return {"tools": tools}
+
+
+# ── Pipeline config endpoints ─────────────────────────────────────────────────
+
+@router.get("/pipelines-config")
+async def get_pipelines_config(project: str = Query("aicli")):
+    """List all pipelines from YAML + their activated status from mng_agent_pipelines.
+
+    Also computes eligible = all required roles are activated.
+    Response per pipeline:
+      name, description, required_roles, activated, eligible, missing_roles
+    """
+    import yaml as _yaml
+
+    # Load pipeline definitions from YAML
+    pipeline_infos: list[dict] = []
+    if _TEMPLATES_PIPELINES_DIR.exists():
+        for pl_file in sorted(_TEMPLATES_PIPELINES_DIR.glob("pl_*.yaml")):
+            name = pl_file.stem[3:]
+            try:
+                raw = _yaml.safe_load(pl_file.read_text()) or {}
+                required_roles = list({s["role"] for s in raw.get("stages", []) if s.get("role")})
+                pipeline_infos.append({
+                    "name":           name,
+                    "description":    (raw.get("description") or "").strip(),
+                    "required_roles": sorted(required_roles),
+                })
+            except Exception as e:
+                log.warning(f"pipelines-config: error reading {pl_file.name}: {e}")
+                pipeline_infos.append({
+                    "name":           name,
+                    "description":    "",
+                    "required_roles": [],
+                })
+
+    if not db.is_available():
+        return {
+            "pipelines": [
+                {**p, "activated": True, "eligible": True, "missing_roles": []}
+                for p in pipeline_infos
+            ]
+        }
+
+    # Fetch pipeline activation states
+    pipeline_activated: dict[str, bool] = {}
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT name, activated FROM mng_agent_pipelines WHERE client_id=1"
+                )
+                for row in cur.fetchall():
+                    pipeline_activated[row[0]] = bool(row[1])
+    except Exception as e:
+        log.warning(f"pipelines-config: DB pipeline query failed: {e}")
+
+    # Fetch role activation states
+    role_activated: dict[str, bool] = {}
+    try:
+        global_pid = db.get_project_id('_global') or 0
+        project_pid = db.get_or_create_project_id(project)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT name, COALESCE(activated, TRUE)
+                       FROM mng_agent_roles
+                       WHERE is_active=TRUE AND (project_id=%s OR project_id=%s)""",
+                    (global_pid, project_pid),
+                )
+                for row in cur.fetchall():
+                    role_activated[row[0]] = bool(row[1])
+    except Exception as e:
+        log.warning(f"pipelines-config: DB role query failed: {e}")
+
+    result = []
+    for p in pipeline_infos:
+        activated = pipeline_activated.get(p["name"], True)
+        missing = [r for r in p["required_roles"] if not role_activated.get(r, True)]
+        eligible = len(missing) == 0
+        result.append({
+            "name":           p["name"],
+            "description":    p["description"],
+            "required_roles": p["required_roles"],
+            "activated":      activated,
+            "eligible":       eligible,
+            "missing_roles":  missing,
+        })
+
+    return {"pipelines": result}
+
+
+@router.patch("/pipelines/{pipeline_name}")
+async def patch_pipeline(
+    pipeline_name: str,
+    body: dict,
+    project: str = Query("aicli"),
+    user=Depends(get_optional_user),
+):
+    """Toggle pipeline activated. Rejects activation if pipeline is not eligible."""
+    _require_db()
+    _require_admin(user)
+
+    activated = body.get("activated")
+    if activated is None:
+        raise HTTPException(400, "Body must contain 'activated' boolean")
+    activated = bool(activated)
+
+    if activated:
+        # Verify eligibility: all required roles must be activated
+        import yaml as _yaml
+        pl_file = _TEMPLATES_PIPELINES_DIR / f"pl_{pipeline_name}.yaml"
+        if not pl_file.exists():
+            raise HTTPException(404, f"Pipeline '{pipeline_name}' not found")
+        try:
+            raw = _yaml.safe_load(pl_file.read_text()) or {}
+            required_roles = list({s["role"] for s in raw.get("stages", []) if s.get("role")})
+        except Exception as e:
+            raise HTTPException(500, f"Could not read pipeline YAML: {e}")
+
+        global_pid = db.get_project_id('_global') or 0
+        project_pid = db.get_or_create_project_id(project)
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT name, COALESCE(activated, TRUE)
+                       FROM mng_agent_roles
+                       WHERE is_active=TRUE AND (project_id=%s OR project_id=%s)""",
+                    (global_pid, project_pid),
+                )
+                role_activated = {row[0]: bool(row[1]) for row in cur.fetchall()}
+
+        missing = [r for r in required_roles if not role_activated.get(r, True)]
+        if missing:
+            raise HTTPException(
+                400,
+                f"Cannot activate pipeline '{pipeline_name}': "
+                f"activate these roles first: {', '.join(missing)}"
+            )
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO mng_agent_pipelines (client_id, name, activated)
+                   VALUES (1, %s, %s)
+                   ON CONFLICT (client_id, name) DO UPDATE SET activated = EXCLUDED.activated""",
+                (pipeline_name, activated),
+            )
+
+    log.info(f"Pipeline '{pipeline_name}' activated={activated}")
+    return {"ok": True, "name": pipeline_name, "activated": activated}
 
 
 # ── MCP Catalog helpers ───────────────────────────────────────────────────────

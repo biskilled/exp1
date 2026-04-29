@@ -79,10 +79,31 @@ async def list_roles() -> list[dict]:
 
 @router.get("/pipelines")
 async def list_pipelines() -> list[dict]:
-    """List available pipeline YAML definitions."""
+    """List available pipeline YAML definitions, filtered to activated=TRUE."""
+    from core.database import db
+
+    # Fetch activated pipeline names from DB (empty dict = all allowed if DB unavailable)
+    activated_names: set[str] | None = None
+    if db.is_available():
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT name, activated FROM mng_agent_pipelines WHERE client_id=1"
+                    )
+                    rows = cur.fetchall()
+            # Only filter if the table has any rows; if empty, show all (seed not yet run)
+            if rows:
+                activated_names = {r[0] for r in rows if bool(r[1])}
+        except Exception as e:
+            log.warning("list_pipelines: could not query mng_agent_pipelines: %s", e)
+
     names = PipelineDef.list_available()
     pipelines = []
     for name in names:
+        # Skip deactivated pipelines (only if DB has activation data)
+        if activated_names is not None and name not in activated_names:
+            continue
         try:
             pd = PipelineDef.load(name)
             pipelines.append({
