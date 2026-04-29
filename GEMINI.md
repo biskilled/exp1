@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-29 09:22 UTC -->
+<!-- Last updated: 2026-04-29 10:32 UTC -->
 # aicli
-_2026-04-29 09:22 UTC | Memory synced: 2026-04-28_
+_2026-04-29 10:32 UTC | Memory synced: 2026-04-29_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -46,26 +46,26 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 - **mcp**: Stdio MCP server with 14 tools; unified REST dispatch
-- **memory_prompts**: YAML under backend/memory/prompts/ (pm, architect, developer, reviewer, project_synthesis)
-- **memory_files**: /memory POST endpoint writes project_state.json via Haiku synthesis; regenerates CLAUDE.md, CODE.md, PROJECT.md from JSON
+- **memory_prompts**: YAML under backend/memory/prompts/ (react_base, pm, architect, developer, reviewer)
+- **memory_files**: /memory POST endpoint single source of truth for project_state.json
 
 ## Key Architectural Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim, text-embedding-3-small)
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; all 3 output files (CLAUDE.md, CODE.md, PROJECT.md) regenerated from single JSON state
-- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status (open → pending → in-progress → review → done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting
-- Embeddings strategy: ONLY approved work items embed to pgvector (1536-dim); code.md, project_state.json, facts, prompts, commits never embed
-- MCP server: 14 tools (search_memory, get_project_state, list_work_items, etc.) dispatched via REST in agents/mcp/server.py; stdio transport, local machine only, no auth
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items via async DAG executor
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local dev
-- All backend LLM prompts in YAML under backend/memory/prompts/; no inline Python prompts; roles defined in workspace/_templates/
-- Recursive CTE safety: bounded to depth < 20; date cascade validation prevents re-parenting children to use cases with earlier due_dates
-- Database optimization: batch queries, single WHERE name = ANY(%s) per category, token counting via len(text) // 4, executemany for tag updates
-- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4–7d, red >7d) for pending items and _openDaysBadge() for approved use cases
-- File management: backend/memory/memory.yaml canonical mapping; _load_context() split into _query_db_into_ctx() and _parse_project_md() for robustness
+- Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001', 'resolve TA0003') in commit messages auto-set score_status=5 and score_importance=5 for user approval in review queue
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio) to prioritize recent changes
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, and commits never embed
+- MCP server: 14 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, etc.) dispatched via REST endpoints with unified dispatch; stdio transport running locally on developer machine with no auth
+- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role
+- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation plan) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP server runs with no auth (stdio-only, local machine)
+- All backend LLM prompts stored in YAML under backend/memory/prompts/ with roles (pm.yaml, architect.yaml, developer.yaml, reviewer.yaml, react_base.yaml); project facts stored in mem_ai_project_facts table with conflict detection
+- Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
+- Database optimization: batch queries replace N+1 patterns; single WHERE name = ANY(%s) per category; token counting: len(text) // 4; _update_item_tags uses executemany
+- UI transparency badges: _waitingBadge() showing '⏳ X days waiting' (grey ≤3d, amber 4-7d, red >7d) for pending items; _openDaysBadge() for approved use cases; user_status display bars show item lifecycle
+- Delivery type routing: work items classified with delivery_type (code_change/feature/bug/refactor/doc/infrastructure) using Haiku classifier with project tech stack context
 
 ## In Progress
 
@@ -125,4 +125,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-29 09:22 UTC_
+_Last updated: 2026-04-29 10:32 UTC_
