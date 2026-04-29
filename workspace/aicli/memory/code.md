@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 16:00 UTC -->
+<!-- Last updated: 2026-04-29 16:04 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -86,14 +86,6 @@ aicli/
 │   ├── core/
 │   ├── __init__.py
 │   └── cli.py
-├── documents/
-│   └── use_cases/
-│       ├── mcp-configuration.md
-│       └── work-item-management-metadata-system.md
-├── features/
-│   └── shared-memory/
-│       ├── feature_ai.md
-│       └── feature_final.md
 ├── tests/
 │   ├── __init__.py
 │   ├── test_context_builder.py
