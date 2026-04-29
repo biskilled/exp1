@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-29 17:43 UTC -->
+<!-- Last updated: 2026-04-29 17:49 UTC -->
 # aicli
-_2026-04-29 17:43 UTC | Memory synced: 2026-04-29_
+_2026-04-29 17:49 UTC | Memory synced: 2026-04-29_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -50,18 +50,18 @@ No more copy-pasting context. No more re-explaining your architecture.
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block(), enabling accurate delivery_type routing to pipelines
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
 - MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
-- 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
+- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
-- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens; pl_*.yaml files reference roles only (no embedded task_prompt)
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select dropdown per role; MCPs stored in settings catalog with provider-specific enable/disable; no provider-specific tool restrictions beyond built-in availability
+- Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts
+- Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt, model, provider, temperature, max_tokens; pl_*.yaml files reference roles only
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select dropdown per role in UI; MCPs stored in settings catalog with provider-specific enable/disable
 
 ## In Progress
 
@@ -97,7 +97,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 - `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
 - `backend/routers/route_git.py` — score 9.0 (7 commits, 1691 lines)
 - `backend/routers/route_work_items.py` — score 7.0 (7 commits, 594 lines)
-- `ui/frontend/views/prompts.js` — score 5.0 (3 commits, 1224 lines)
+- `backend/core/database.py` — score 5.0 (5 commits, 763 lines)
 
 ## Recently Changed (last commits)
 
@@ -121,4 +121,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-29 17:43 UTC_
+_Last updated: 2026-04-29 17:49 UTC_
