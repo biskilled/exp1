@@ -93,9 +93,9 @@ export async function renderPipeline(container, project) {
         width:180px;flex-shrink:0;color:var(--muted);font-size:0.75rem
       }
       .pl-stage-row {
-        display:grid;grid-template-columns:120px 140px 50px 80px 100px;
-        gap:0.25rem;font-size:0.72rem;padding:0.25rem 0;
-        border-bottom:1px solid var(--border)
+        display:grid;grid-template-columns:110px 130px 70px 140px 1fr;
+        gap:0.4rem;font-size:0.72rem;padding:0.3rem 0;
+        border-bottom:1px solid var(--border);align-items:start
       }
       .pl-stage-row.header { font-weight:700;color:var(--muted) }
       .pl-log {
@@ -253,22 +253,12 @@ function _renderEmpty() {
 
 function _renderPipelineProps(cfg) {
   const el = document.getElementById('pl-props');
-  const stageRows = (cfg.stages || []).map(s => `
-    <div class="pl-stage-row">
-      <span style="font-family:monospace">${_esc(s.key)}</span>
-      <span>
-        <a href="#" onclick="_navToRole('${_esc(s.role)}')" style="color:var(--accent)">${_esc(s.role)}</a>
-      </span>
-      <span>${s.retry ?? 1}</span>
-      <span>${s.timeout_seconds != null ? s.timeout_seconds + 's' : '—'}</span>
-      <span>${s.temperature_override != null ? s.temperature_override : '—'}</span>
-    </div>
-  `).join('');
 
   const stageKeys = (cfg.stages || []).map(s => s.key);
-  const approvalOptions = ['<option value="">none</option>']
-    .concat(stageKeys.map(k => `<option value="${_esc(k)}" ${cfg.require_approval_after === k ? 'selected' : ''}>${_esc(k)}</option>`))
-    .join('');
+  const approvalOptions = ['<option value="">— none —</option>']
+    .concat(stageKeys.map(k =>
+      `<option value="${_esc(k)}" ${cfg.require_approval_after === k ? 'selected' : ''}>${_esc(k)}</option>`
+    )).join('');
 
   el.innerHTML = `
     <div style="margin-bottom:1rem">
@@ -289,6 +279,7 @@ function _renderPipelineProps(cfg) {
              value="${cfg.max_rejection_retries ?? 2}"
              style="width:60px;background:var(--surface2);border:1px solid var(--border);
                     border-radius:4px;padding:0.2rem 0.4rem;color:var(--text);font-size:0.78rem">
+      <span style="font-size:0.72rem;color:var(--muted)">times reviewer can reject before pipeline stops</span>
     </div>
     <div class="pl-prop-row">
       <span class="pl-prop-label">Continue on failure</span>
@@ -301,19 +292,7 @@ function _renderPipelineProps(cfg) {
       <span class="pl-prop-label">Save to memory</span>
       <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
         <input id="prop-save-memory" type="checkbox" ${cfg.save_memory !== false ? 'checked' : ''}>
-        <span style="font-size:0.78rem;color:var(--muted)">persist run output to mem_mrr_prompts</span>
-      </label>
-    </div>
-    <div class="pl-prop-row">
-      <span class="pl-prop-label">Default temperature</span>
-      <input id="prop-temp-slider" type="range" min="0" max="1" step="0.05"
-             value="${cfg.default_temperature ?? 0.7}" style="width:120px">
-      <span id="prop-temp-val" style="font-size:0.75rem;color:var(--muted);width:2.5rem">
-        ${cfg.default_temperature != null ? Number(cfg.default_temperature).toFixed(2) : 'role'}
-      </span>
-      <label style="font-size:0.72rem;color:var(--muted);display:flex;align-items:center;gap:0.25rem">
-        <input id="prop-temp-null" type="checkbox" ${cfg.default_temperature == null ? 'checked' : ''}>
-        use role default
+        <span style="font-size:0.78rem;color:var(--muted)">persist run output to project memory</span>
       </label>
     </div>
     <div class="pl-prop-row">
@@ -322,61 +301,100 @@ function _renderPipelineProps(cfg) {
               border-radius:4px;padding:0.2rem 0.4rem;color:var(--text);font-size:0.78rem">
         ${approvalOptions}
       </select>
+      <span style="font-size:0.72rem;color:var(--muted)">pause for human review before next stage</span>
     </div>
 
     <div id="pl-save-status" style="font-size:0.72rem;color:var(--muted);min-height:1rem;margin:0.25rem 0"></div>
 
     <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
-                color:var(--muted);margin:0.75rem 0 0.4rem">Stages (read-only)</div>
+                color:var(--muted);margin:0.85rem 0 0.4rem">Stages</div>
     <div style="overflow-x:auto">
-      <div class="pl-stage-row header">
-        <span>Stage Key</span><span>Role</span><span>Retry</span><span>Timeout</span><span>Temp Override</span>
+      <div class="pl-stage-row header" style="padding-bottom:0.4rem">
+        <span>Stage</span><span>Role</span><span>Provider · Model</span><span>Temperature</span><span>System Prompt</span>
       </div>
-      ${stageRows || '<div style="color:var(--muted);font-size:0.75rem;padding:0.3rem 0">No stages defined</div>'}
+      ${(cfg.stages || []).map(s => _renderStageRow(s)).join('') ||
+        '<div style="color:var(--muted);font-size:0.75rem;padding:0.3rem 0">No stages defined</div>'}
     </div>
   `;
-
-  // Temp slider sync
-  const slider = document.getElementById('prop-temp-slider');
-  const valEl  = document.getElementById('prop-temp-val');
-  const nullCk = document.getElementById('prop-temp-null');
-  slider.addEventListener('input', () => { valEl.textContent = Number(slider.value).toFixed(2); });
-  nullCk.addEventListener('change', () => {
-    slider.disabled = nullCk.checked;
-    valEl.textContent = nullCk.checked ? 'role' : Number(slider.value).toFixed(2);
-  });
-  slider.disabled = nullCk.checked;
 
   // Auto-save on any property change
   const saveStatus = document.getElementById('pl-save-status');
   let _saveTimer = null;
   const _scheduleSave = () => {
-    if (_saveStatus) saveStatus.textContent = 'Unsaved changes…';
+    saveStatus.textContent = 'Unsaved changes…';
+    saveStatus.style.color = 'var(--muted)';
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(() => _savePipelineProps(cfg.name, saveStatus), 800);
   };
-  ['prop-max-retries','prop-continue','prop-save-memory','prop-temp-slider','prop-temp-null','prop-approval']
-    .forEach(id => {
-      const inp = document.getElementById(id);
-      if (inp) inp.addEventListener('change', _scheduleSave);
+  ['prop-max-retries','prop-continue','prop-save-memory','prop-approval'].forEach(id => {
+    const inp = document.getElementById(id);
+    if (inp) inp.addEventListener('change', _scheduleSave);
+  });
+
+  // System prompt expand/collapse
+  el.querySelectorAll('[data-sp-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.spToggle;
+      const preview = document.getElementById(`sp-preview-${key}`);
+      const full    = document.getElementById(`sp-full-${key}`);
+      if (preview && full) {
+        const expanded = full.style.display !== 'none';
+        preview.style.display = expanded ? '' : 'none';
+        full.style.display    = expanded ? 'none' : '';
+        btn.textContent       = expanded ? '▸' : '▾';
+      }
     });
-  document.getElementById('prop-temp-slider')?.addEventListener('input', _scheduleSave);
+  });
+}
+
+function _renderStageRow(s) {
+  const provModel = [s.role_provider, s.role_model].filter(Boolean).join(' · ') || '—';
+  const temp = s.role_temperature != null
+    ? Number(s.role_temperature).toFixed(2)
+    : (s.temperature_override != null ? `${s.temperature_override} (override)` : 'default');
+
+  const sp = (s.role_system_prompt || '').trim();
+  const spPreview = sp.slice(0, 90).replace(/\n/g, ' ') + (sp.length > 90 ? '…' : '');
+  const spFull    = _esc(sp);
+  const key       = _esc(s.key);
+
+  return `
+    <div class="pl-stage-row">
+      <span style="font-family:monospace;font-weight:600">${_esc(s.key)}</span>
+      <span>
+        <span style="color:var(--text)">${_esc(s.role)}</span>
+      </span>
+      <span style="font-size:0.7rem;color:var(--muted);font-family:monospace">${_esc(provModel)}</span>
+      <span style="font-size:0.7rem;color:var(--muted)">${_esc(temp)}</span>
+      <span style="font-size:0.7rem">
+        ${sp ? `
+          <span id="sp-preview-${key}" style="color:var(--muted)">
+            ${_esc(spPreview)}
+            <button data-sp-toggle="${key}"
+                    style="background:none;border:none;cursor:pointer;color:var(--accent);
+                           font-size:0.68rem;padding:0 0.2rem">▸</button>
+          </span>
+          <pre id="sp-full-${key}" style="display:none;margin:0.3rem 0 0;
+               font-family:monospace;font-size:0.68rem;line-height:1.45;
+               background:var(--surface2);border:1px solid var(--border);
+               border-radius:3px;padding:0.4rem;white-space:pre-wrap;
+               word-break:break-word;max-height:180px;overflow-y:auto">${spFull}</pre>
+        ` : '<span style="color:var(--muted)">—</span>'}
+      </span>
+    </div>
+  `;
 }
 
 async function _savePipelineProps(pipelineName, statusEl) {
   const maxRetries = parseInt(document.getElementById('prop-max-retries')?.value || '2', 10);
   const continueOn = document.getElementById('prop-continue')?.checked ?? false;
   const saveMem    = document.getElementById('prop-save-memory')?.checked ?? true;
-  const tempNull   = document.getElementById('prop-temp-null')?.checked ?? false;
-  const tempVal    = tempNull ? null : parseFloat(document.getElementById('prop-temp-slider')?.value || '0.7');
   const approval   = document.getElementById('prop-approval')?.value || null;
 
   const body = {
-    activated:              true,
     max_rejection_retries:  maxRetries,
     continue_on_failure:    continueOn,
     save_memory:            saveMem,
-    default_temperature:    tempVal,
     require_approval_after: approval || null,
   };
 

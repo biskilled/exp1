@@ -302,22 +302,22 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Role UI finalization: reset-to-base button, base_snapshot JSONB storage, version history browsing, BASED/UPDATED/EXTERNAL status badges (green/orange/amber), provider-model coupling on UI change
-- Settings/Workflow consolidation: renaming to 'Roles & Pipelines', checkbox-based availability toggle, pipeline enable-only-if-all-roles-available validation
-- Temperature/top_p role parameters: added to all 9 role YAML files, provider adapters updated to accept and pass through temperature, pipeline stage-level overrides designed (awaiting pipeline execution phase)
-- YAML config folder structure: memory-related YAML under backend/memory/yaml_config/, pipeline-related YAML under backend/agents/yaml_config/, role YAMLs under workspace/_templates/pipelines/roles/ with role_ prefix
-- Project folder cleanup: removed legacy documents/, features/, cli/ folders; workspace/aicli/pipelines/ aligned with _templates structure; YAML consolidated into yaml_config subfolders
-- Pipeline design phase ahead: role parameters (temperature/top_p) ready; focus shifting to pipeline creation/edit UI, per-stage parameter overrides, and async DAG execution wiring
+- Pipeline design initiation: planning per-stage parameter overrides (temperature/top_p), DAG node creation UI wired to existing roles, pipeline execution wiring via asyncio.gather
+- Settings/Workflow consolidation: renamed to 'Roles & Pipelines' with checkbox-based availability toggle, pipeline enable-only-if-all-roles-available validation implemented
+- Role UI finalization: base_snapshot JSONB storage complete, version history browsing wired, BASED/UPDATED/EXTERNAL status badges (green/orange/amber) displayed per role, provider-model coupling on UI change enforced
+- Temperature/top_p role parameters: added to all 9 role YAML files, all 5 provider adapters updated to accept and pass through temperature, pipeline stage-level overrides designed (awaiting pipeline execution phase)
+- YAML config folder structure: memory-related YAML under backend/memory/yaml_config/, pipeline-related YAML under backend/agents/yaml_config/, role YAMLs under workspace/_templates/pipelines/roles/ with role_ prefix, pipeline YAMLs under workspace/_templates/pipelines/ with pl_ prefix
+- Project folder cleanup complete: removed legacy documents/, features/, cli/ folders; workspace/aicli/pipelines/ aligned with _templates structure; YAML consolidated into yaml_config subfolders; MCP Catalog moved to main left nav
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; reset-to-base restores from base_snapshot JSONB; refresh endpoint reloads all YAML files and updates DB
-- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
+- Role YAML factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates; ON CONFLICT DO NOTHING seeds only new roles on startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state; refresh endpoint reloads YAML and updates DB
+- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all 10 roles default to canonical preset; system roles cleaned to 3 canonical entries only
 - Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, tools (by category: git/files/memory), mcp (multi-select), max_iterations, temperature, top_p configured per role; base_snapshot stores pristine role state for restore
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, tools, mcp, max_iterations); temperature/top_p configurable per role; provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages will override temperature/top_p at execution time
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, tools, mcp, max_iterations, temperature, top_p); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p at execution time
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval

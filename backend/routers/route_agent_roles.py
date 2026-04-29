@@ -795,19 +795,57 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
     except Exception as e:
         raise HTTPException(500, f"Could not read pipeline YAML: {e}")
 
+    raw_stages = raw.get("stages", [])
+    stage_role_names = list({s.get("role", "") for s in raw_stages if s.get("role")})
+
+    # Fetch role details (provider, model, temperature, system_prompt) for each stage role
+    role_details: dict[str, dict] = {}
+    if db.is_available() and stage_role_names:
+        try:
+            global_pid  = db.get_project_id("_global") or 0
+            project_pid = db.get_or_create_project_id(project)
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    placeholders = ",".join(["%s"] * len(stage_role_names))
+                    cur.execute(
+                        f"""SELECT name, provider, model, temperature, system_prompt
+                            FROM mng_agent_roles
+                            WHERE is_active=TRUE
+                              AND name IN ({placeholders})
+                              AND (project_id=%s OR project_id=%s)
+                            ORDER BY project_id DESC""",  # project-specific wins over _global
+                        (*stage_role_names, global_pid, project_pid),
+                    )
+                    for row in cur.fetchall():
+                        role_details[row[0]] = {
+                            "provider":       row[1] or "claude",
+                            "model":          row[2] or "",
+                            "temperature":    row[3],
+                            "system_prompt":  row[4] or "",
+                        }
+        except Exception as e:
+            log.warning(f"get_pipeline_config: role detail query failed: {e}")
+
     stages = []
-    for s in raw.get("stages", []):
+    for s in raw_stages:
+        role_name = s.get("role", "")
+        rd = role_details.get(role_name, {})
         stages.append({
             "key":                    s.get("key", ""),
-            "role":                   s.get("role", ""),
+            "role":                   role_name,
             "description":            s.get("description", ""),
             "retry":                  s.get("retry", 1),
             "timeout_seconds":        s.get("timeout_seconds"),
             "temperature_override":   s.get("temperature_override"),
             "max_iterations_override":s.get("max_iterations_override"),
+            # Role defaults (read-only in UI)
+            "role_provider":          rd.get("provider", "claude"),
+            "role_model":             rd.get("model", ""),
+            "role_temperature":       rd.get("temperature"),
+            "role_system_prompt":     rd.get("system_prompt", ""),
         })
 
-    # DB overrides
+    # DB pipeline overrides
     db_row: dict = {}
     if db.is_available():
         try:
@@ -815,7 +853,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT activated, max_rejection_retries, continue_on_failure,
-                                  save_memory, default_temperature, require_approval_after
+                                  save_memory, require_approval_after
                            FROM mng_agent_pipelines
                            WHERE client_id=1 AND name=%s""",
                         (pipeline_name,),
@@ -827,8 +865,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
                     "max_rejection_retries":  row[1],
                     "continue_on_failure":    bool(row[2]),
                     "save_memory":            bool(row[3]),
-                    "default_temperature":    row[4],
-                    "require_approval_after": row[5],
+                    "require_approval_after": row[4],
                 }
         except Exception as e:
             log.warning(f"get_pipeline_config: DB query failed: {e}")
@@ -845,7 +882,6 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
         "max_rejection_retries":  db_row.get("max_rejection_retries", int(rejection.get("max_retries", 2))),
         "continue_on_failure":    db_row.get("continue_on_failure", False),
         "save_memory":            db_row.get("save_memory", bool(completion.get("save_memory", True))),
-        "default_temperature":    db_row.get("default_temperature"),
         "require_approval_after": db_row.get("require_approval_after"),
     }
 
