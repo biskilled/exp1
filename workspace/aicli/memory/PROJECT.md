@@ -303,7 +303,7 @@ sidebar tabs:
 ## Recent Work
 
 - System prompts consolidation: merged 10+ system prompts into 3 logical presets (coding_general, design_and_planning, requirements_and_documentation) in workspace/_templates/pipelines/system_prompts.yaml; all 10 roles correctly mapped to presets and seeding fixed to include system_prompt_preset field in DB
-- Tool and MCP catalog UI: multi-select category dropdowns (files, git, bash, etc.) for tools and MCPs in role editor; MCP Catalog page added to main left nav with activate/deactivate buttons; seeding fixed to inject MCP preset data
+- Tool and MCP catalog UI: multi-select category dropdowns (files, git, bash, etc.) for tools and MCPs in role editor; MCP Catalog page added to main left nav under Workflows section with activate/deactivate buttons; seeding fixed to inject MCP preset data
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
 - Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
@@ -324,8 +324,8 @@ sidebar tabs:
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
 - Role and pipeline YAML consolidation: role_*.yaml files in workspace/_templates/pipelines/roles/ with system_prompt_preset, model, provider, temperature, max_tokens; pl_*.yaml files reference roles only (no embedded task_prompt)
-- System prompts consolidation: 3 shared presets (coding_general, design_and_planning, requirements_and_documentation) stored in workspace/_templates/pipelines/system_prompts.yaml; roles reference via system_prompt_preset field instead of inline blocks
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in settings catalog with provider-specific enable/disable; MCP Catalog accessible from main left nav
+- System prompts consolidation: 3 shared presets (coding_general, design_and_planning, requirements_and_documentation) stored in workspace/_templates/pipelines/system_prompts.yaml; roles reference via system_prompt_preset field
+- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in settings catalog with provider-specific enable/disable; MCP Catalog accessible from main left nav under Workflows section
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
