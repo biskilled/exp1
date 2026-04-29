@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Fix undefined column errors in route_entities and route_history: columns removed in migration m080 (lifecycle, event_type) but route code still references them; causing psycopg2 UndefinedColumn errors at runtime
-- Fix backend startup race condition and project selector: active project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
-- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop, category display, tagging; fix [object object] display bug in tag additions
-- Fix PROJECT.md file loading timeout: >60 second load time when opening project; likely caused by N+1 queries or missing database indices; performance audit needed
-- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE; refactor to separate INSERT and UPDATE operations to avoid duplicate row constraint violations
-- Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; likely missing UI refresh trigger
+- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for t.lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
+- Fix backend startup race condition and active project selector: project not displaying in selector after startup; recent projects list missing aiCli; init sequencing issue in project loader
+- Fix commit sync batch upsert error: execute_values() failing on ON CONFLICT DO UPDATE; refactor to separate INSERT and UPDATE operations
+- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices
+- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug
+- Fix tag counter update in Planner: counter display next to tags not updating when tags added or removed; missing UI refresh trigger
 
 ## Key Decisions
 
@@ -322,9 +322,9 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; async DAG executor via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- Consolidated YAML configuration: backend/memory/yaml_config/ stores memory-related prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, commit_message, commit_symbol) and backend/prompts/yaml_config/ stores pipeline prompts (react_pipeline_base, react_suffix, tag_suggestion, feature_auto_detect)
-- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with role_*.yaml naming, no inline Python definitions; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations
-- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); user-specific pipeline/role customizations go in workspace/aicli/pipelines/ with same naming convention
+- Role YAML consolidation: all 10 roles stored in workspace/_templates/pipelines/roles/ with role_*.yaml naming; role configuration includes system_prompt, model, provider, temperature, max_tokens, max_iterations; no inline Python definitions
+- Pipeline YAML structure: pl_*.yaml files in workspace/_templates/pipelines/ reference roles only (no embedded task_prompt); pipeline stages execute role-based agents; user-specific customizations in workspace/aicli/pipelines/roles/ and workspace/aicli/pipelines/system/
+- Unified prompt storage: backend/memory/yaml_config/ stores memory command prompts (project_synthesis, conflict_detection, fact_extraction, commit_analysis, feature_detect); backend/agents/yaml_config/ stores agent/pipeline prompts (agent_react, event_tag_detection)
 - Recursive CTE safety: all bounded to depth < 20 with safeguards; date cascade validation prevents re-parenting children to use cases with earlier due_dates
 
 ## Deprecated
