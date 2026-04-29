@@ -220,10 +220,24 @@ async function _loadRoles(projectName) {
   }
 }
 
+// Provider color map for role list items
+const _PROVIDER_COLORS = {
+  claude:      '#a78bfa',  // purple
+  openai:      '#34d399',  // green
+  gemini:      '#fbbf24',  // amber
+  deepseek:    '#60a5fa',  // blue
+  grok:        '#f87171',  // red
+  claude_sdk:  '#c4b5fd',  // light purple
+  codex_sdk:   '#6ee7b7',  // light green
+  ollama:      '#94a3b8',  // slate
+};
+
 function _renderRoleItem(r) {
-  const isActive  = _activeRole?.id === r.id;
-  const isExt     = r.has_template === false;
+  const isActive   = _activeRole?.id === r.id;
+  const isExt      = r.has_template === false;
   const canRestore = r.has_template === true;
+  const provColor  = _PROVIDER_COLORS[r.provider] || 'var(--muted)';
+
   const extBadge  = isExt
     ? `<span title="External role — no template, cannot restore"
              style="font-size:0.5rem;padding:0.1rem 0.3rem;border-radius:4px;
@@ -233,23 +247,32 @@ function _renderRoleItem(r) {
   const restoreBtn = canRestore
     ? `<button onclick="event.stopPropagation();window._rolesRestoreDefault(${r.id},${JSON.stringify(_esc(r.name))})"
                title="Restore this role to template defaults"
-               style="opacity:0.5;font-size:0.55rem;padding:0.1rem 0.3rem;border-radius:4px;
+               style="opacity:0;font-size:0.55rem;padding:0.1rem 0.3rem;border-radius:4px;
                       background:none;border:1px solid var(--border);color:var(--muted);
-                      cursor:pointer;flex-shrink:0;line-height:1" onmouseenter="this.style.opacity='1'"
-               onmouseleave="this.style.opacity='0.5'">reset</button>`
+                      cursor:pointer;flex-shrink:0;line-height:1;transition:opacity 0.15s"
+               class="role-reset-btn">reset</button>`
     : '';
+
+  // Short model name: strip date suffixes like -20251001
+  const modelShort = (r.model || '').replace(/-\d{8}$/, '').replace(/^claude-/, '').replace(/^gpt-/, '');
+
   return `
     <div onclick="window._rolesSelect(${r.id})"
-         style="padding:0.4rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);
+         style="padding:0.45rem 0.75rem 0.4rem;cursor:pointer;border-bottom:1px solid var(--border);
                 display:flex;align-items:center;gap:0.5rem;
                 background:${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'};
-                border-left:2px solid ${isActive ? 'var(--accent)' : 'transparent'}"
-         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}'"
-         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}'">
+                border-left:3px solid ${isActive ? 'var(--accent)' : 'transparent'}"
+         onmouseenter="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'var(--surface2)'}';this.querySelector('.role-reset-btn')&&(this.querySelector('.role-reset-btn').style.opacity='0.6')"
+         onmouseleave="this.style.background='${isActive ? 'rgba(100,108,255,0.1)' : 'transparent'}';this.querySelector('.role-reset-btn')&&(this.querySelector('.role-reset-btn').style.opacity='0')">
       <div style="flex:1;min-width:0">
-        <div style="font-size:0.7rem;font-weight:500;color:var(--text);
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</div>
-        <div style="font-size:0.55rem;color:var(--muted)">${_esc(r.provider || '')} ${r.model ? '· ' + _esc(r.model) : ''}</div>
+        <div style="font-size:0.72rem;font-weight:700;color:var(--text);
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+                    letter-spacing:-0.01em">${_esc(r.name)}</div>
+        <div style="font-size:0.58rem;margin-top:0.1rem;display:flex;align-items:center;gap:0.3rem;overflow:hidden">
+          <span style="color:${provColor};font-weight:500">${_esc(r.provider || '')}</span>
+          ${modelShort ? `<span style="color:var(--muted)">·</span>
+          <span style="color:rgba(255,255,255,0.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(modelShort)}</span>` : ''}
+        </div>
       </div>
       ${extBadge}${restoreBtn}
     </div>`;
@@ -771,11 +794,11 @@ function _renderRoleEditor(role) {
       <!-- Max Iterations -->
       <div style="display:flex;align-items:center;gap:0.5rem">
         <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;white-space:nowrap">Max iterations</label>
-        <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="50"
+        <input type="number" id="role-max-iterations" value="${role.max_iterations || 10}" min="1" max="100"
           style="width:60px;background:var(--bg);border:1px solid var(--border);
                  color:var(--text);font-family:var(--font);font-size:0.72rem;
                  padding:0.3rem 0.4rem;border-radius:var(--radius);outline:none;text-align:center">
-        <span style="font-size:0.62rem;color:var(--muted)">(pipeline loop limit)</span>
+        <span style="font-size:0.62rem;color:var(--muted)">agent ReAct loop limit · pipeline stage overrides this</span>
       </div>
 
       <!-- Tools & MCP (multi-select dropdowns, loaded async by _loadRoleTools) -->
