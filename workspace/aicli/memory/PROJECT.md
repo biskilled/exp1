@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Role YAML sync design finalized (2026-04-29 18:06): UI edits persist in DB across backend restarts via mng_agent_roles; Refresh button re-seeds all YAML defaults; Restore button resets individual roles to YAML defaults only
-- System prompts consolidation (2026-04-29 18:15): investigating why multiple system prompts visible; likely duplicate entries in mng_agent_roles or system_prompts.yaml needing deduplication
+- System prompts consolidation issue: Multiple system prompts visible in UI despite consolidation to 3 presets; investigating duplicate entries in mng_agent_roles or system_prompts.yaml
 - Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
-- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices on mem_work_items or mem_ai_events
+- Fix PROJECT.md file loading timeout (>60 seconds): Likely N+1 queries or missing database indices on mem_work_items or mem_ai_events causing slow project load
 - Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
-- Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added or removed; missing state refresh trigger in planner.js render loop
+- Fix tag counter and UI refresh in Planner: counter display next to tags not updating when tags added/removed; missing state refresh trigger in planner.js render loop
+- Fix commit sync batch upsert error: Database schema migrations not persisting; old tables still appearing after migration; need to verify DB state matches latest migration
 
 ## Key Decisions
 
@@ -324,7 +324,7 @@ sidebar tabs:
 - LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
 - 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
 - Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (default, advanced, minimal); mng_agent_roles.system_prompt_id references presets by ID; eliminates duplicate prompt definitions
+- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (coding_general, design_and_planning, minimal); mng_agent_roles.system_prompt_preset references presets by ID; eliminates duplicate prompt definitions
 - Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
 
 ## Deprecated

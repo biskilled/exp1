@@ -5,23 +5,30 @@ System roles are admin-managed text blocks (coding standards, security rules, et
 that get prepended to an agent role's system_prompt when a graph node executes.
 
 Routes:
-  GET    /system-roles/                              list (content only for admin)
+  GET    /system-roles/                              list all
   POST   /system-roles/                              create (admin)
+  POST   /system-roles/reset-defaults               delete all + seed 3 canonical ones (admin)
   PATCH  /system-roles/{id}                          update (admin)
   DELETE /system-roles/{id}                          soft-delete is_active=FALSE (admin)
-  GET    /system-roles/agent-roles/{role_id}/links   list system roles linked to an agent role
+  GET    /system-roles/agent-roles/{role_id}/links   list system roles linked to an agent role (includes content)
   POST   /system-roles/agent-roles/{role_id}/links   attach system role (admin)
   DELETE /system-roles/agent-roles/{role_id}/links/{system_role_id}  detach (admin)
 """
 from __future__ import annotations
 
+import pathlib
 from typing import Optional
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from core.auth import get_optional_user
 from core.database import db, build_update
+
+# Path to system_prompts.yaml (canonical preset definitions)
+_TEMPLATES_DIR      = pathlib.Path(__file__).resolve().parent.parent.parent / "workspace" / "_templates" / "pipelines"
+_SYSTEM_PROMPTS_YAML = _TEMPLATES_DIR / "system_prompts.yaml"
 
 # ── SQL ──────────────────────────────────────────────────────────────────────
 
@@ -48,7 +55,7 @@ _SQL_DELETE_SYSTEM_ROLE = (
 )
 
 _SQL_LIST_SYSTEM_ROLE_LINKS = (
-    """SELECT sr.id, sr.name, sr.description, sr.category, l.order_index
+    """SELECT sr.id, sr.name, sr.description, sr.category, l.order_index, sr.content
        FROM mng_role_system_links l
        JOIN mng_system_roles sr ON sr.id = l.system_role_id
        WHERE l.role_id = %s AND sr.is_active = TRUE
@@ -228,10 +235,61 @@ async def list_links(role_id: int, user=Depends(get_optional_user)):
                 "description": r[2],
                 "category":    r[3],
                 "order_index": r[4],
+                "content":     r[5] or "",
             }
             for r in rows
         ],
     }
+
+
+# ── Reset to canonical defaults ───────────────────────────────────────────────
+
+@router.post("/reset-defaults")
+async def reset_system_role_defaults(user=Depends(get_optional_user)):
+    """Delete all system roles and re-seed the 3 canonical ones from system_prompts.yaml."""
+    _require_db()
+    _require_admin(user)
+
+    # Load presets from YAML
+    presets: list[dict] = []
+    if _SYSTEM_PROMPTS_YAML.exists():
+        with open(_SYSTEM_PROMPTS_YAML) as f:
+            data = yaml.safe_load(f) or {}
+        presets = data.get("presets", [])
+
+    if not presets:
+        raise HTTPException(400, "system_prompts.yaml not found or has no presets")
+
+    # Map preset category names to system role categories
+    _cat_map = {
+        "coding_general":    "quality",
+        "design_and_planning": "general",
+        "review_and_quality":  "review",
+    }
+
+    with db.conn() as conn:
+        with conn.cursor() as cur:
+            # Soft-delete all existing system roles
+            cur.execute("UPDATE mng_system_roles SET is_active=FALSE, updated_at=NOW() WHERE client_id=1")
+            deleted = cur.rowcount
+
+            # Insert 3 canonical ones
+            created = 0
+            for p in presets:
+                name     = p.get("name", "")
+                label    = p.get("label", name)
+                content  = p.get("content", "").strip()
+                desc     = p.get("description", label)
+                category = _cat_map.get(name, "general")
+                if not name or not content:
+                    continue
+                cur.execute(
+                    _SQL_INSERT_SYSTEM_ROLE,
+                    (label, desc, content, category),
+                )
+                created += 1
+
+    return {"ok": True, "deleted": deleted, "created": created}
 
 
 # ── Links: attach ─────────────────────────────────────────────────────────────

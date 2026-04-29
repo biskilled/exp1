@@ -11,18 +11,19 @@ import { toast }    from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _activeFile      = '';
-let _fileOrig        = '';
-let _editMode        = false;
-let _activeRole      = null;   // {id, name, provider, model, description, system_prompt, ...}
-let _roles           = [];
-let _project         = null;
-let _isAdmin         = false;
-let _systemRoles     = [];     // all available system roles loaded once at tab init
-let _roleLinks       = {};     // {roleId: [{id, name, category, order_index}]}
-let _activeSysRole   = null;   // system role being edited (admin panel)
-let _toolsByCategory = {};     // {category: [toolName, ...]} — populated by _loadRoleTools
-let _mcpCatalog      = [];     // MCP entries from catalog — populated by _loadRoleTools
+let _activeFile          = '';
+let _fileOrig            = '';
+let _editMode            = false;
+let _activeRole          = null;   // {id, name, provider, model, description, system_prompt, ...}
+let _roles               = [];
+let _project             = null;
+let _isAdmin             = false;
+let _systemRoles         = [];     // all available system roles loaded once at tab init
+let _roleLinks           = {};     // {roleId: [{id, name, category, order_index, content}]}
+let _activeSysRole       = null;   // system role being edited (admin panel)
+let _toolsByCategory     = {};     // {category: [toolName, ...]} — populated by _loadRoleTools
+let _mcpCatalog          = [];     // MCP entries from catalog — populated by _loadRoleTools
+let _originalRoleSpecific = '';    // role-specific part of system_prompt when role was opened
 
 function _promptModal(title, label, placeholder = '') {
   return new Promise(resolve => {
@@ -109,7 +110,7 @@ export async function renderPrompts(container, projectName) {
           <span class="prompts-tree-label">Agent Roles</span>
           <div style="display:flex;gap:0.25rem;margin-left:auto">
             <button class="btn btn-ghost btn-sm" id="roles-reload-btn"
-              style="padding:0.15rem 0.4rem;font-size:0.6rem" title="Reload all roles from YAML files">↺</button>
+              style="padding:0.15rem 0.5rem;font-size:0.6rem" title="Reload all roles from YAML files">↺ Refresh</button>
             <button class="btn btn-ghost btn-sm" style="padding:0.15rem 0.4rem;font-size:0.65rem"
               onclick="window._rolesNew()" title="New agent role">+</button>
           </div>
@@ -122,9 +123,14 @@ export async function renderPrompts(container, projectName) {
         <div id="sys-roles-section" style="display:flex;flex-shrink:0;flex-direction:column;max-height:35%">
           <div class="prompts-tree-header" style="flex-shrink:0">
             <span class="prompts-tree-label" style="font-size:0.62rem">System Roles</span>
-            <button id="sys-roles-new-btn" class="btn btn-ghost btn-sm"
-              style="padding:0.12rem 0.35rem;font-size:0.6rem;display:none"
-              onclick="window._sysRolesNew()" title="New system role">+</button>
+            <div style="display:flex;gap:0.2rem;margin-left:auto">
+              <button id="sys-roles-reset-btn" class="btn btn-ghost btn-sm"
+                style="padding:0.12rem 0.35rem;font-size:0.55rem;display:none;color:var(--muted)"
+                onclick="window._sysRolesResetDefaults()" title="Delete all system roles and re-seed defaults">Reset defaults</button>
+              <button id="sys-roles-new-btn" class="btn btn-ghost btn-sm"
+                style="padding:0.12rem 0.35rem;font-size:0.6rem;display:none"
+                onclick="window._sysRolesNew()" title="New system role">+</button>
+            </div>
           </div>
           <div id="sys-roles-list-body" style="overflow-y:auto;flex:1">
             <div style="padding:1rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
@@ -153,21 +159,21 @@ export async function renderPrompts(container, projectName) {
   `;
 
   // Wire globals
-  window._rolesNew            = _rolesNew;
-  window._rolesSelect         = _rolesSelect;
-  window._rolesDelete         = _rolesDelete;
-  window._rolesSave           = _rolesSave;
-  window._rolesExportYaml     = _rolesExportYaml;
-  window._rolesEditYaml       = _rolesEditYaml;
-  window._rolesProviderChange = _rolesProviderChange;
-  window._rolesRestoreDefault = _rolesRestoreDefault;
-  window._roleClearBase       = _roleClearBase;
-  window._sysRolesNew         = _sysRolesNew;
-  window._sysRolesSelect      = _sysRolesSelect;
-  window._sysRolesSave        = _sysRolesSave;
-  window._sysRolesDelete      = _sysRolesDelete;
-  window._sysRolesAttach      = _sysRolesAttach;
-  window._sysRolesDetach      = _sysRolesDetach;
+  window._rolesNew               = _rolesNew;
+  window._rolesSelect            = _rolesSelect;
+  window._rolesDelete            = _rolesDelete;
+  window._rolesSave              = _rolesSave;
+  window._rolesExportYaml        = _rolesExportYaml;
+  window._rolesEditYaml          = _rolesEditYaml;
+  window._rolesProviderChange    = _rolesProviderChange;
+  window._rolesRestoreDefault    = _rolesRestoreDefault;
+  window._sysRolesNew            = _sysRolesNew;
+  window._sysRolesSelect         = _sysRolesSelect;
+  window._sysRolesSave           = _sysRolesSave;
+  window._sysRolesDelete         = _sysRolesDelete;
+  window._sysRolesAttach         = _sysRolesAttach;
+  window._sysRolesDetach         = _sysRolesDetach;
+  window._sysRolesResetDefaults  = _sysRolesResetDefaults;
 
   // Wire reload button (after HTML is set)
   const reloadBtn = document.getElementById('roles-reload-btn');
@@ -200,10 +206,12 @@ async function _loadRoles(projectName) {
     _systemRoles = sysData.system_roles || [];
 
     // Always show system roles section; gate write controls via _isAdmin
-    const sysSection   = document.getElementById('sys-roles-section');
-    const sysNewBtn    = document.getElementById('sys-roles-new-btn');
-    if (sysSection) sysSection.style.display = 'flex';
-    if (sysNewBtn)  sysNewBtn.style.display  = _isAdmin ? '' : 'none';
+    const sysSection    = document.getElementById('sys-roles-section');
+    const sysNewBtn     = document.getElementById('sys-roles-new-btn');
+    const sysResetBtn   = document.getElementById('sys-roles-reset-btn');
+    if (sysSection)  sysSection.style.display  = 'flex';
+    if (sysNewBtn)   sysNewBtn.style.display   = _isAdmin ? '' : 'none';
+    if (sysResetBtn) sysResetBtn.style.display = _isAdmin ? '' : 'none';
 
     _renderRolesList();
     _renderSysRolesList();
@@ -610,6 +618,19 @@ function _renderRoleSystemRolesSection(roleId) {
   if (!container) return;
   const links = _roleLinks[roleId] || [];
 
+  // Update the BASE content preview regardless of admin state
+  const preview    = document.getElementById('role-sys-roles-preview');
+  const previewPre = document.getElementById('role-sys-roles-pre');
+  if (preview && previewPre) {
+    const combined = links.map(l => l.content || '').filter(Boolean).join('\n\n');
+    if (combined.trim()) {
+      preview.style.display = 'block';
+      previewPre.textContent = combined;
+    } else {
+      preview.style.display = 'none';
+    }
+  }
+
   if (!_isAdmin) {
     // Read-only: name chips
     if (!links.length) {
@@ -676,7 +697,13 @@ function _renderRoleEditor(role) {
   const toolbar = document.getElementById('prompts-toolbar');
   if (!body) return;
 
-  // Toolbar — use event listeners to avoid onclick attribute quoting issues
+  // Extract role-specific part (strip base preset divider if present)
+  const _SP_DIVIDER = '\n\n---\n\n';
+  const sp = role.system_prompt || '';
+  const divIdx = sp.indexOf(_SP_DIVIDER);
+  _originalRoleSpecific = divIdx !== -1 ? sp.slice(divIdx + _SP_DIVIDER.length) : sp;
+
+  // Toolbar
   if (toolbar) {
     toolbar.innerHTML = `
       <span class="prompts-editor-path" id="prompts-path">Role: ${_esc(role.name)}</span>
@@ -691,7 +718,6 @@ function _renderRoleEditor(role) {
     toolbar.querySelector('#roles-save-btn').addEventListener('click', () => _rolesSave(role.id));
   }
 
-  // Provider options from loaded providers list
   const providerOpts = _providers.map(p =>
     `<option value="${_esc(p.id)}" ${role.provider === p.id ? 'selected' : ''}>${_esc(p.label || p.id)}</option>`
   ).join('');
@@ -757,85 +783,74 @@ function _renderRoleEditor(role) {
         <div style="font-size:0.65rem;color:var(--muted)">Loading…</div>
       </div>
 
-      <!-- System Roles (prepended fragments) -->
+      <!-- System Roles (base prompt fragments prepended at runtime) -->
       <div id="role-sys-roles-section">
         <div style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-bottom:0.4rem">
-          System Roles <span style="text-transform:none;font-weight:400;opacity:0.7">(prepended to prompt)</span>
+          System Roles
+          <span style="text-transform:none;font-weight:400;opacity:0.7">(shared base — prepended to role prompt)</span>
         </div>
         <div id="role-sys-roles-list" style="display:flex;flex-direction:column;gap:0.3rem">
           <div style="font-size:0.65rem;color:var(--muted)">Loading…</div>
         </div>
+        <!-- Content preview — shown when system roles with content are attached -->
+        <div id="role-sys-roles-preview" style="display:none;margin-top:0.5rem;
+             border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);overflow:hidden">
+          <div id="role-sys-roles-preview-toggle"
+               style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.6rem;cursor:pointer"
+               onclick="const pre=document.getElementById('role-sys-roles-pre');
+                        pre.style.display=pre.style.display==='none'?'block':'none';
+                        this.querySelector('.toggle-arrow').textContent=pre.style.display==='none'?'▸':'▾'">
+            <span style="font-size:0.58rem;padding:0.08rem 0.35rem;border-radius:4px;
+                         background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;letter-spacing:0.04em">BASE</span>
+            <span style="font-size:0.62rem;color:var(--muted);flex:1">Combined system role content</span>
+            <span class="toggle-arrow" style="font-size:0.6rem;color:var(--muted)">▸</span>
+          </div>
+          <pre id="role-sys-roles-pre"
+               style="display:none;margin:0;padding:0.5rem 0.75rem;font-size:0.6rem;
+                      color:var(--text2);line-height:1.5;border-top:1px solid var(--border);
+                      overflow-x:auto;max-height:240px;overflow-y:auto;white-space:pre-wrap"></pre>
+        </div>
       </div>
 
-      <!-- System Prompt -->
+      <!-- Role-specific System Prompt -->
       <div style="flex:1;display:flex;flex-direction:column;gap:0.5rem">
-
-        <!-- Base preset panel (shown when a shared preset is active) -->
-        <div id="role-base-panel" style="display:none;border:1px solid var(--border);border-radius:var(--radius);
-             background:var(--surface2);overflow:hidden">
-          <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.6rem;cursor:pointer"
-               onclick="document.getElementById('role-base-preview').style.display=
-                        document.getElementById('role-base-preview').style.display==='none'?'block':'none'">
-            <span style="font-size:0.6rem;padding:0.1rem 0.4rem;border-radius:4px;
-                          background:rgba(100,108,255,0.18);color:var(--accent);font-weight:600">BASE</span>
-            <span id="role-base-label" style="font-size:0.65rem;font-weight:500;color:var(--text);flex:1"></span>
-            <span style="font-size:0.6rem;color:var(--muted)">▾ click to expand</span>
-            <button onclick="event.stopPropagation();window._roleClearBase()"
-              style="font-size:0.58rem;padding:0.1rem 0.4rem;border-radius:4px;
-                     background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer"
-              title="Remove base preset from this role">Remove</button>
-          </div>
-          <pre id="role-base-preview"
-               style="display:none;margin:0;padding:0.5rem 0.75rem;font-size:0.62rem;
-                      color:var(--text2);line-height:1.5;border-top:1px solid var(--border);
-                      overflow-x:auto;max-height:200px;overflow-y:auto;white-space:pre-wrap"></pre>
-          <!-- Hidden store for base content used on save -->
-          <textarea id="role-base-content" style="display:none"></textarea>
-        </div>
-
-        <!-- Header row: label + preset picker -->
         <div style="display:flex;align-items:center;justify-content:space-between">
           <label style="font-size:0.6rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em">
             Role-specific prompt</label>
-          <div style="display:flex;align-items:center;gap:0.4rem">
-            <label style="font-size:0.6rem;color:var(--muted)">Add base preset:</label>
-            <select id="role-prompt-preset"
-              style="font-size:0.62rem;background:var(--surface2);border:1px solid var(--border);
-                     color:var(--text);border-radius:4px;padding:0.15rem 0.35rem;outline:none;cursor:pointer">
-              <option value="">— select —</option>
-            </select>
-            <button id="role-preset-apply"
-              style="font-size:0.6rem;padding:0.15rem 0.45rem;border-radius:4px;
-                     background:var(--surface2);border:1px solid var(--border);
-                     color:var(--text);cursor:pointer" title="Set selected preset as base">Set</button>
-          </div>
+          <button id="role-prompt-reset"
+            style="font-size:0.58rem;padding:0.15rem 0.5rem;border-radius:4px;
+                   background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer"
+            title="Reset to the value when this role was opened">↩ Reset to original</button>
         </div>
-
-        <!-- Editable: role-specific content only -->
         <textarea id="role-system-prompt"
           style="width:100%;box-sizing:border-box;min-height:280px;resize:vertical;
                  background:var(--bg);border:1px solid var(--border);
                  color:var(--text);font-family:var(--font);font-size:0.72rem;
-                 padding:0.5rem;border-radius:var(--radius);outline:none;
-                 line-height:1.55"
-          placeholder="Role-specific instructions (e.g. output format, domain rules)…"></textarea>
-
-        <div id="role-preset-desc" style="font-size:0.6rem;color:var(--muted);min-height:1rem"></div>
+                 padding:0.5rem;border-radius:var(--radius);outline:none;line-height:1.55"
+          placeholder="Role-specific instructions (output format, domain rules, JSON schema…)"></textarea>
       </div>
 
-      <!-- Tags / extra info -->
+      <!-- Footer info -->
       <div style="font-size:0.6rem;color:var(--muted)">
         ID: ${role.id} · created: ${role.created_at ? new Date(role.created_at).toLocaleDateString() : '—'}
       </div>
     </div>
   `;
 
+  // Set textarea to role-specific content only
+  const ta = document.getElementById('role-system-prompt');
+  if (ta) ta.value = _originalRoleSpecific;
+
+  // Wire reset button
+  const resetBtn = document.getElementById('role-prompt-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => {
+    const t = document.getElementById('role-system-prompt');
+    if (t) { t.value = _originalRoleSpecific; toast('Prompt reset to original', 'success'); }
+  });
+
   // Wire provider change
   const providerSel = document.getElementById('role-provider');
   if (providerSel) providerSel.addEventListener('change', e => _rolesProviderChange(e.target.value));
-
-  // Load and wire system prompt presets
-  _loadPromptPresets();
 }
 
 // ── MCP tools helpers ─────────────────────────────────────────────────────────

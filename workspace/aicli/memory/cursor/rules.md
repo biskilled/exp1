@@ -1,33 +1,16 @@
-# aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 18:15 UTC
+<!-- Last updated: 2026-04-29 18:20 UTC -->
+## Project: aicli
 
-# aicli — Shared AI Memory Platform
+## Stack
 
-_Last updated: 2026-04-29_
-
-> **How this file works**
-> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
-> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
->   You can still edit them; `/memory` will merge its output in without discarding your additions.
-> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
-
-## Tech Stack
-
-- **language_cli**: Python 3.12
-- **cli_framework**: prompt_toolkit + rich
-- **backend_framework**: FastAPI + uvicorn
-- **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE toggle
-- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-- **database_client**: psycopg2
-- **frontend_framework**: Vanilla JS + Electron + Vite
-- **ui_components**: xterm.js + Monaco editor + Cytoscape.js
-- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
-- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML pipeline + per-node retry
-- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
-- **deployment_backend**: Railway (Dockerfile + railway.toml)
-- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **mcp_transport**: Stdio MCP server with 10 tools; unified REST dispatch
-- **role_storage**: mng_agent_roles table with YAML seed defaults
+language_cli: Python 3.12
+cli_framework: prompt_toolkit + rich
+backend_framework: FastAPI + uvicorn
+backend_auth: JWT (python-jose + bcrypt) + DEV_MODE toggle
+database: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+database_client: psycopg2
+frontend_framework: Vanilla JS + Electron + Vite
+ui_components: xterm.js + Monaco editor + Cytoscape.js
 
 ## Key Decisions
 
@@ -39,18 +22,20 @@ _Last updated: 2026-04-29_
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
-- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
-- MCP server: 10 tools (search_memory, get_project_state, list_work_items, get_work_item, list_commits, search_commits, due_date filters, tags, backlog, classify_wi) dispatched via REST; stdio transport, local machine, no auth required
-- LLM provider adapters: Claude/OpenAI/DeepSeek/Gemini/Grok as independent modules in agents/providers/ with send(prompt, system) → str contract; temperature, max_tokens, model configurable per role YAML
-- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
-- System prompts consolidation: 3 shared system prompt presets in system_prompts.yaml (default, advanced, minimal); mng_agent_roles.system_prompt_id references presets by ID; eliminates duplicate prompt definitions
-- Tool and MCP management: tools grouped by category (files, git, bash, etc.) with multi-select category dropdowns per role in UI; MCPs stored in mng_mcp_servers table; MCP Catalog accessible from main left nav under Workflows section
 
-## Recent Context (last 5 changes)
+## Active Features (do not break)
 
-- [2026-04-29] let me understand - system promots are loaded for db , not from yaml files ? what is managned by database, what is manag
-- [2026-04-29] I dont understand. when user edit by UI - it is saved in the databse and yaml is not updated ? Also when user update dir
-- [2026-04-29] Ok. I will take option b, which mean the yaml is only for view there is no point to update the yaml file. when user upda
-- [2026-04-29] backedn wont sto and start in relatiy. I would like to have refresh above at the role section (on top) that will upload 
-- [2026-04-29] Why do I see lots of system prompts . didnt you fix that ?
+Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
+Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
+MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
+Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
+Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
+
+## In Progress
+
+- Role YAML sync and system prompts consolidation: ensuring UI-persisted DB edits survive backend restarts; deduplicating multiple system prompts in mng_agent_roles and system_prompts.yaml
+- Fix PROJECT.md file loading timeout: >60 second load when opening project; likely N+1 queries or missing database indices on mem_work_items or mem_ai_events
+- Fix undefined column errors in route_entities and route_history: psycopg2 UndefinedColumn errors for lifecycle (line 359) and event_type (line 228); columns removed in m080 but route code still references them
+- Remove lifecycle tags and drag-and-drop from Planner UI: deprecated lifecycle field still active in drag-and-drop and category display; fix [object object] tag display bug in tagging interface
+
+_Last updated: 2026-04-29 18:20 UTC_
