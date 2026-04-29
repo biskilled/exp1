@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 13:44 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 13:46 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -48,8 +48,8 @@ _Last updated: 2026-04-29_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-28] As I have laready the role builder - which is basicly yaml editor (at the end there will be yaml file for each role witl
 - [2026-04-28] you have see all tiems in work tiem table. can you check how much data you have for each one of them and map sujjested p
 - [2026-04-29] you mention planer is not working well as fe matched TA401 as planer inseaed of database - is it possilbe to imprve accu
 - [2026-04-29] I do it is using regex and fix wording which I prefer to prevent. is there is beeter way (use prompt like langauege , st
 - [2026-04-29] I would like to start update my Roles section. I do see Internal Prompts - is it still in used ?
+- [2026-04-29] As Far as I remeber fact_extraction using promots stored in yaml config. which config file is it using ?

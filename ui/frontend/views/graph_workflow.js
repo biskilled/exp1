@@ -571,8 +571,7 @@ function _applyListData(workflows, roles, recentRuns) {
 function _renderRoleLibrary() {
   const lib = document.getElementById('gw-role-library');
   if (!lib) return;
-  // Internal roles (fact extraction etc.) are system-managed — not pipeline nodes
-  const pipelineRoles = _roles.filter(r => r.role_type !== 'internal');
+  const pipelineRoles = _roles;
   if (!pipelineRoles.length) {
     lib.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No roles — create them in the Roles tab</div>';
     return;

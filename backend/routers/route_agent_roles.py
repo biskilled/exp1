@@ -40,7 +40,7 @@ _VALID_PROVIDERS = {
 }
 
 _VALID_ROLE_TYPES = {
-    "agent", "system_designer", "reviewer", "developer", "internal",
+    "agent", "system_designer", "reviewer", "developer",
 }
 
 _VALID_IO_TYPES = {"prompt", "md", "json", "code", "text", "yaml", "csv"}
