@@ -1659,27 +1659,51 @@ async function renderAgentRoles(content) {
     } catch (e) { toast('Restore failed: ' + e.message, 'error'); }
   };
 
-  // ── Wire activated toggles ──
+  // ── In-place toggle handlers — update the affected element only, no full re-render ──
   window._toggleRoleActivated = async (id, val) => {
+    const card = document.getElementById(`role-card-${id}`);
     try {
       await api.agentRoles.patch(id, { activated: val });
       toast(val ? 'Role activated' : 'Role deactivated', 'success');
-      renderAgentRoles(content);
-    } catch (e) { toast('Update failed: ' + e.message, 'error'); renderAgentRoles(content); }
+      if (card) card.style.opacity = val ? '1' : '0.55';
+    } catch (e) {
+      toast('Update failed: ' + e.message, 'error');
+      // Revert checkbox to previous state
+      const cb = card?.querySelector('input[type=checkbox]');
+      if (cb) cb.checked = !val;
+    }
   };
+
   window._togglePipelineActivated = async (name, val) => {
+    const row = document.getElementById(`pl-row-${name.replace(/\W+/g, '_')}`);
     try {
       await api.agentRoles.patchPipeline(name, { activated: val });
       toast(val ? `Pipeline "${name}" activated` : `Pipeline "${name}" deactivated`, 'success');
-      renderAgentRoles(content);
-    } catch (e) { toast(e.message, 'error'); renderAgentRoles(content); }
+      if (row) row.style.opacity = val ? '1' : '0.6';
+      window._invalidatePipelineCache?.();
+    } catch (e) {
+      toast(e.message, 'error');
+      // Revert checkbox
+      const cb = row?.querySelector('td:nth-child(3) input[type=checkbox]');
+      if (cb) cb.checked = !val;
+    }
   };
+
   window._togglePipelineMode = async (name, field, val) => {
+    // Browser already toggled the checkbox — just PATCH and handle errors
+    const row = document.getElementById(`pl-row-${name.replace(/\W+/g, '_')}`);
     try {
       await api.agentRoles.patchPipeline(name, { [field]: val });
-      toast(`Pipeline "${name}" ${field.replace('_', ' ')} ${val ? 'enabled' : 'disabled'}`, 'success');
-      renderAgentRoles(content);
-    } catch (e) { toast(e.message, 'error'); renderAgentRoles(content); }
+      const label = field === 'mode_use_case' ? 'Use Case' : 'Item';
+      toast(`Pipeline "${name}" — ${label} mode ${val ? 'on' : 'off'}`, 'success');
+      window._invalidatePipelineCache?.();
+    } catch (e) {
+      toast(e.message, 'error');
+      // Revert the checkbox — col 4 = Use Case, col 5 = Item
+      const colIdx = field === 'mode_use_case' ? 4 : 5;
+      const cb = row?.querySelector(`td:nth-child(${colIdx}) input[type=checkbox]`);
+      if (cb) cb.checked = !val;
+    }
   };
 }
 
@@ -1689,7 +1713,7 @@ function _renderRoleRow(r, isAdmin) {
   const activated = r.activated !== false;
   const rowOpacity = activated ? '1' : '0.55';
   return `
-    <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:0.5rem;
+    <div id="role-card-${r.id}" style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:0.5rem;
                 background:var(--surface);opacity:${rowOpacity}">
       <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem">
         <span style="font-size:0.75rem;font-weight:600;color:var(--text);flex:1">${_esc(r.name)}</span>
@@ -1840,7 +1864,7 @@ function _renderPipelineRow(pl, isAdmin) {
     : `<input type="checkbox" ${val ? 'checked' : ''} disabled />`;
 
   return `
-    <tr style="border-bottom:1px solid var(--border);opacity:${activated ? '1' : '0.6'}">
+    <tr id="pl-row-${pl.name.replace(/\W+/g, '_')}" style="border-bottom:1px solid var(--border);opacity:${activated ? '1' : '0.6'}">
       <td style="padding:0.4rem 0.5rem;font-weight:600;color:var(--text)">${_esc(pl.name)}</td>
       <td style="padding:0.4rem 0.5rem;color:var(--muted)">${rolesHtml}</td>
       <td style="padding:0.4rem 0.5rem;text-align:center">

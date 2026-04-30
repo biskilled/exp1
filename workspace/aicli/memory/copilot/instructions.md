@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 20:58 UTC -->
+<!-- Last updated: 2026-04-30 21:09 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
+- Automatic commit chores after Claude CLI sessions (multiple hook triggers observed across 2026-04-30 sessions)
 - Chat history visibility and session grouping: Backend SQL reads src column for message sourcing; CLI chat sessions grouped by session in History view with prompts/responses properly displayed
 - Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), Work Items/Use Cases sections (approved vs waiting-to-approve), Pipeline Runs health tiles for last 24h
 - Execute bar UI refinement: dropdown styling (background, z-index, width), file picker alignment, docs picker as proper select widget, height/shape alignment across controls
-- Pipeline run results display: execution panel visibility below pipeline diagram, history logs showing per-role execution output, run results persistence and retrieval
 
-_Last updated: 2026-04-30 20:58 UTC_
+_Last updated: 2026-04-30 21:09 UTC_

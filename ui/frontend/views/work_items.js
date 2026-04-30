@@ -30,6 +30,8 @@ let _classifyPoller = null;  // interval polling after background classify
 let _tab            = 'backlog';  // 'backlog' | 'use_cases'
 let _ucItems        = [];         // loaded by _loadUseCases()
 let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
+let _ucCacheProject = '';         // project name when cache was populated
+let _ucCacheData    = null;       // cached _ucItems (skip network on re-entry)
 let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _setUndoAction
 
 // ── UC pipeline run state ─────────────────────────────────────────────────────
@@ -1417,6 +1419,9 @@ async function _loadUseCases() {
     _ucItems   = data.use_cases || [];
     _mrrCounts = mrrData || {};
     _stats     = statsData || {};
+    // Persist in cache so re-entering the tab skips the network call
+    _ucCacheProject = _project;
+    _ucCacheData    = _ucItems;
     _renderStats();
     _renderUseCases();
     _setStatus('');
@@ -2737,7 +2742,19 @@ export async function renderUseCases(container, projectName) {
   destroyUseCases();
   _project = projectName || state.currentProject?.name || '';
   _tab     = 'use_cases';
-  _ucItems = [];
+
+  // Use cached data when re-entering the same project — renders instantly, no network call
+  const hasFreshCache = _ucCacheData !== null && _ucCacheProject === _project;
+  if (hasFreshCache) {
+    _ucItems = _ucCacheData;
+  } else {
+    _ucItems = [];
+  }
+
+  const loadingPlaceholder = hasFreshCache ? '' : `
+    <div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
+      Loading use cases…
+    </div>`;
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -2761,14 +2778,12 @@ export async function renderUseCases(container, projectName) {
       <div id="wi-stats-bar" style="padding:0.55rem 1.25rem;background:var(--surface);
                 border-bottom:1px solid var(--border);flex-shrink:0;
                 display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap">
-        <span style="color:var(--muted);font-size:0.72rem">Loading…</span>
+        <span style="color:var(--muted);font-size:0.72rem">${hasFreshCache ? '' : 'Loading…'}</span>
       </div>
 
       <!-- ── List ── -->
       <div id="wi-list" style="flex:1;overflow-y:auto;padding:1rem 1.25rem">
-        <div style="color:var(--muted);text-align:center;padding:3rem;font-size:0.82rem">
-          Loading use cases…
-        </div>
+        ${loadingPlaceholder}
       </div>
     </div>
 
@@ -2777,9 +2792,22 @@ export async function renderUseCases(container, projectName) {
 
   _setupEvents(container);
   _updateUndoBtn();
-  await _loadUseCases();
+
+  if (hasFreshCache) {
+    // Render immediately from cache; stats + list appear with no network wait
+    _renderStats();
+    _renderUseCases();
+  } else {
+    await _loadUseCases();
+  }
   _checkHookHealth();
 }
+
+// Allow settings.js to invalidate the pipeline name caches after mode/activation changes
+window._invalidatePipelineCache = () => {
+  _ucPipeNamesUC   = null;
+  _ucPipeNamesItem = null;
+};
 
 // ── Completed Use Cases view ───────────────────────────────────────────────
 
