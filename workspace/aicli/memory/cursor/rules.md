@@ -1,16 +1,34 @@
-<!-- Last updated: 2026-04-30 01:40 UTC -->
-## Project: aicli
+# aicli — AI Coding Rules
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 08:46 UTC
 
-## Stack
+# aicli — Shared AI Memory Platform
 
-language_cli: Python 3.12
-cli_framework: prompt_toolkit + rich
-backend_framework: FastAPI + uvicorn
-backend_auth: JWT (python-jose + bcrypt) + DEV_MODE toggle
-database: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-database_client: psycopg2
-frontend_framework: Vanilla JS + Electron + Vite
-ui_components: xterm.js + Monaco editor + Cytoscape.js
+_Last updated: 2026-04-30_
+
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
+
+## Tech Stack
+
+- **language_cli**: Python 3.12
+- **cli_framework**: prompt_toolkit + rich
+- **backend_framework**: FastAPI + uvicorn
+- **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database_client**: psycopg2
+- **frontend_framework**: Vanilla JS + Electron + Vite
+- **ui_components**: xterm.js + Monaco editor + Cytoscape.js
+- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+- **workflow_engine**: Async DAG executor (asyncio.gather) with per-node temperature/top_p/provider/model overrides
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
+- **role_config**: YAML factory defaults (workspace/_templates/pipelines/roles/role_*.yaml) with DB source-of-truth (mng_agent_roles); role versioning via mng_agent_role_versions
+- **system_prompts**: 3 shared canonical presets in workspace/_templates/pipelines/system_prompts.yaml (Coding—General, Design & Planning, Review & Quality)
+- **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
 
 ## Key Decisions
 
@@ -18,24 +36,22 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state; POST /agent-roles/{id}/refresh reloads YAML and updates DB
-- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding–General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
-- Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations configured per role; base_snapshot stores pristine role state for restore and versioning via mng_agent_role_versions
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p per node at execution time
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details and per-node temperature overrides; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
+- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; old system roles table cleaned to 3 canonical entries only
+- Role parameters: system_prompt + system_prompt_preset (references shared preset), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning via mng_agent_role_versions
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); all provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) accept temperature parameter; pipeline stages can override temperature/top_p per node
+- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
+- Pipeline activation: Settings/Roles & Pipelines tab with dual-pane dual-column view shows all roles/pipelines with activation checkboxes; only activated items appear in main Roles/Pipelines tabs and are executable; pipeline can only be activated if all its constituent roles are activated
+- Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select dropdown in role editor; MCP Catalog in main nav as dedicated card-based view showing all 10 MCPs
+- Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
+- Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
+- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
 
-## Active Features (do not break)
+## Recent Context (last 5 changes)
 
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
-## In Progress
-
-- Pipeline execution UI: Pipelines tab (◇ icon) shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, retry); POST /agents/pipeline-runs triggers async DAG execution
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired with BASED (green), UPDATED (orange), EXTERNAL (amber) status badges
-- UI visual design consolidation: role pills styled with provider color backgrounds; status badges (BASED green, UPDATED orange, EXTERNAL amber); buttons and model displays have background fills for clarity
-- Tool category bundles: tool selection now by category (git/files/memory) instead of individual items; categories show tool count; multi-select dropdown in role editor; MCP Catalog moved to main nav as dedicated card-based view showing all 10 MCPs with activate/deactivate/edit modals
-
-_Last updated: 2026-04-30 01:40 UTC_
+- [2026-04-30] Dashboard missing old componenets like total usage per llm (that already had data in it) and total events (promots, item
+- [2026-04-30] Are you working ?
+- [2026-04-30] conintue
+- [2026-04-30] it is started to looks better. inn dashboard  there use to be counters off all event as  you did. AI/LL is old and not r
+- [2026-04-30] Looks much better.  Execute can consume file be reffering  to  exisiting file unde document or by uploading a file from 

@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline execution UI: Pipelines tab (◈ icon) shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, retry); POST /agents/pipeline-runs triggers async DAG execution
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in main Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired with BASED (green), UPDATED (orange), EXTERNAL (amber) status badges
+- Pipeline execution UI: Pipelines tab (◈ icon) shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, max_iterations); POST /agents/pipeline-runs triggers async DAG execution
 - Dashboard restoration: Dashboard tab (◫ icon) restored with Mirror Data cards (commits, prompts, items, messages—total + 24h), LLM Pipeline Costs table, and total usage per LLM (total + 24h); Pipeline Runs health tiles showing last 24h execution status
+- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in main Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired with BASED (green), UPDATED (orange), EXTERNAL (amber) status badges
 - UI visual design: role pills styled with provider color backgrounds; status badges (BASED green, UPDATED orange, EXTERNAL amber); buttons and model displays have background fills for clarity; removed redundant inline reset button from role rows
 - Tool category display: categories show tool names as dim secondary text; git (4), files (3), memory (2) format; multi-select dropdown allows users to pick one or more categories; MCP Catalog shows 10 MCPs with activate/deactivate/edit modals
-- Temperature parameter propagation: all provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) now accept temperature parameter; roles store temperature; pipeline nodes can override per-stage temperature; defaults preserved when None
+- Dashboard work items section: refactored to show approved vs. waiting-to-approve counts, total embeddings, and improved scoring visualization; Pipeline Runs section displays historical execution status tiles
 
 ## Key Decisions
 
