@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 09:17 UTC -->
+<!-- Last updated: 2026-04-30 10:22 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit after Claude CLI sessions: chore commits following session 5cf393d1 (latest: 2026-04-30 09:17); stop hook integration triggering auto_commit_push.sh
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), LLM Pipeline Costs table, Pipeline Runs health tiles showing last 24h execution status
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with activation checkboxes; status badges (BASED green, UPDATED orange, EXTERNAL amber) wired to mng_agent_role_versions
-- Pipeline execution UI: Pipelines tab (◈ icon) with full builder (graph_workflow.js); node configuration panel showing provider, model, temperature, max_iterations; POST /agents/pipeline-runs triggers async DAG execution
+- Continuous chore commits after Claude CLI sessions (session 5cf393d1 and earlier 45ca1683) indicate active development/refinement cycles with auto-commit hooks firing
+- Pipeline execution UI: Pipelines tab (◆ icon) with full builder (graph_workflow.js) showing node configuration; left panel lists activated pipelines/roles; right detail panel displays pipeline flow and per-stage properties
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), LLM Pipeline Costs table, and Pipeline Runs health tiles showing last 24h execution status
+- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with activation checkboxes; versioning status badges (BASED green, UPDATED orange, EXTERNAL amber); reset-to-base via mng_agent_role_versions
 
-_Last updated: 2026-04-30 09:17 UTC_
+_Last updated: 2026-04-30 10:22 UTC_

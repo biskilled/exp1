@@ -299,7 +299,8 @@ export function renderGraphWorkflow(container) {
 
       /* Inline pipeline panels (above/below canvas) */
       .gw-props-bar { background:var(--bg2); flex-shrink:0; border-bottom:1px solid var(--border); }
-      .gw-exec-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:50%; }
+      .gw-exec-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden;
+                      border-top:1px solid var(--border); }
       .gw-hist-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:35%;
                       border-top:1px solid var(--border); }
       .gw-canvas-area { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
@@ -355,7 +356,6 @@ export function renderGraphWorkflow(container) {
             </div>
             <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
           </div>
-          <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
           <!-- Run progress panel (directly below nodes, fills remaining canvas space) -->
           <div class="gw-run-panel" id="gw-run-panel">
             <div class="gw-rp-hdr">
@@ -394,6 +394,8 @@ export function renderGraphWorkflow(container) {
             </div>
           </div>
         </div>
+        <!-- Execution bar — below canvas, always visible when pipeline selected -->
+        <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
         <div id="gw-hist-bar" class="gw-hist-bar" style="display:none"></div>
       </div>
 
@@ -1089,7 +1091,7 @@ function _showPipelineProps() {
       <span style="font-size:0.72rem;font-weight:600;flex:1">Execute</span>
     </div>
     <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
-                                   gap:0.4rem;overflow-y:auto">
+                                   gap:0.4rem;overflow-y:auto;max-height:55vh">
 
       <!-- Row 1: Pipeline name | Doc search | Browse button (side by side) -->
       <div style="display:flex;gap:0.35rem;align-items:flex-start">
@@ -1294,13 +1296,21 @@ function _gwPpDocSearch(q) {
   lst.style.display = '';
   lst.innerHTML = matches.slice(0, 30).map(d => `
     <div style="padding:0.28rem 0.55rem;cursor:pointer;font-size:0.73rem;white-space:nowrap;
-                overflow:hidden;text-overflow:ellipsis"
-         onmouseenter="this.style.background='var(--hover)'"
-         onmouseleave="this.style.background=''"
-         onmousedown="event.preventDefault();window._gwPpDocPick(${JSON.stringify(d.path)},${JSON.stringify(d.name)})">
+                overflow:hidden;text-overflow:ellipsis">
       📄 ${_esc(d.name)}
       ${d.path !== d.name ? `<span style="font-size:0.6rem;color:var(--muted);margin-left:0.3rem">${_esc(d.path)}</span>` : ''}
     </div>`).join('');
+
+  // Attach listeners programmatically — avoids inline-handler issues in Electron
+  Array.from(lst.children).forEach((item, i) => {
+    const d = matches[i];
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    item.addEventListener('mousedown',  (e) => {
+      e.preventDefault();  // keep input focused; prevent blur from hiding list
+      if (window._gwPpDocPick) window._gwPpDocPick(d.path, d.name);
+    });
+  });
 }
 
 function _gwPpRenderChips() {
@@ -1349,12 +1359,21 @@ function _gwPpPipeSearch(q) {
   if (!matches.length) { lst.style.display = 'none'; return; }
   lst.style.display = '';
   lst.innerHTML = matches.map(n => `
-    <div style="padding:0.25rem 0.5rem;cursor:pointer;font-size:0.72rem"
-         onmouseenter="this.style.background='var(--hover)'"
-         onmouseleave="this.style.background=''"
-         onmousedown="event.preventDefault();document.getElementById('pp-pipe-name').value=${JSON.stringify(n)};document.getElementById('pp-pipe-list').style.display='none'">
+    <div style="padding:0.25rem 0.5rem;cursor:pointer;font-size:0.72rem">
       📁 ${_esc(n)}
     </div>`).join('');
+
+  Array.from(lst.children).forEach((item, i) => {
+    const n = matches[i];
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    item.addEventListener('mousedown',  (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('pp-pipe-name');
+      if (inp) { inp.value = n; window._gwPpUpdateCtxPath?.(n); }
+      lst.style.display = 'none';
+    });
+  });
 }
 
 /** Update the output path shown in the node detail panel when the pipe name changes. */

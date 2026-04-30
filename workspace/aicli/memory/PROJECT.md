@@ -303,11 +303,11 @@ sidebar tabs:
 ## Recent Work
 
 - Pipeline execution UI: Pipelines tab (◈ icon) shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, max_iterations); POST /agents/pipeline-runs triggers async DAG execution
-- Dashboard restoration: Dashboard tab (◫ icon) restored with Mirror Data cards (commits, prompts, items, messages—total + 24h), LLM Pipeline Costs table, and total usage per LLM (total + 24h); Pipeline Runs health tiles showing last 24h execution status
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in main Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired with BASED (green), UPDATED (orange), EXTERNAL (amber) status badges
-- UI visual design: role pills styled with provider color backgrounds; status badges (BASED green, UPDATED orange, EXTERNAL amber); buttons and model displays have background fills for clarity; removed redundant inline reset button from role rows
-- Tool category display: categories show tool names as dim secondary text; git (4), files (3), memory (2) format; multi-select dropdown allows users to pick one or more categories; MCP Catalog shows 10 MCPs with activate/deactivate/edit modals
-- Dashboard work items section: refactored to show approved vs. waiting-to-approve counts, total embeddings, and improved scoring visualization; Pipeline Runs section displays historical execution status tiles
+- Execute bar unified input: output folder combobox (default = pipeline name) + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea for prompt/context input; all inputs support multiple selections and can be combined
+- Dashboard restoration: Dashboard tab (◫ icon) restored with Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings, Pipeline Runs health tiles showing last 24h execution status
+- Role activation and versioning: Settings/Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs; BASED (green), UPDATED (orange), EXTERNAL (amber) status badges; reset-to-base and version history fully wired via mng_agent_role_versions
+- Pipeline UI visual polish: role pills styled with provider color pill backgrounds; status badges with appropriate colors; buttons have background fills; checkpoint control (max retry, stateless, continue-on-fail, approval gate) aligned and highlighted in execution bar
+- Tool category display: categories show tool count format (git(4), files(3), memory(2)); multi-select dropdown allows picking one or more categories; MCP Catalog in main nav shows all 10 MCPs with activate/deactivate/edit modals
 
 ## Key Decisions
 
