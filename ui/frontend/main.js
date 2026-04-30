@@ -570,8 +570,8 @@ export function navigateTo(viewId, opts = {}) {
     case 'prompts':  renderPrompts(view, proj?.name);         break;
     case 'code':      renderCode(view, proj?.name, proj);           break;
     case 'documents': renderDocuments(view, proj?.name, opts);       break;
-    case 'workflow':  renderGraphWorkflow(view);                     break;
-    case 'pipeline':  renderPipeline(view, proj?.name);              break;
+    case 'workflow':  renderPipeline(view, proj?.name);              break;
+    case 'pipeline':  renderGraphWorkflow(view);                     break;
     case 'backlog':    renderBacklog(view, proj?.name);          break;
     case 'use_cases':  renderUseCases(view, proj?.name);        break;
     case 'completed':  renderCompleted(view, proj?.name);       break;
