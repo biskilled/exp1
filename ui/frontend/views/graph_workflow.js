@@ -801,20 +801,30 @@ async function _createFromTemplate(tmpl) {
       max_iterations: 5,
     });
 
-    // 2. Create nodes and track IDs
+    // 2. Create nodes and track IDs — populate from matched role
     const nodeIds = [];
     for (let i = 0; i < tmpl.nodes.length; i++) {
       const n = tmpl.nodes[i];
+      // Find matching role for this stage
+      const role = _roles.find(r => r.name === n.name)
+                || _roles.find(r => {
+                     const rL = r.name.toLowerCase(), nL = n.name.toLowerCase();
+                     return rL.includes(nL) || nL.includes(rL) ||
+                            rL.split(/\s+/).some(w => w.length > 3 && nL.includes(w));
+                   });
       const created = await api.graphWorkflows.createNode(wf.id, {
         name:             n.name,
-        provider:         'claude',
-        role_prompt:      n.role_prompt || '',
+        role_id:          role?.id || null,
+        provider:         role?.provider || 'claude',
+        model:            role?.model    || '',
+        temperature:      role?.temperature ?? null,
+        role_prompt:      role?.system_prompt || n.role_prompt || '',
         stateless:        n.stateless || false,
         success_criteria: n.success_criteria || '',
         inputs:           n.inputs  || [],
         outputs:          n.outputs || [],
         order_index:      i,
-        max_retry:        3,
+        max_retry:        role?.max_iterations ?? 3,
         position_x:       100 + i * 220,
         position_y:       150,
       });
@@ -994,16 +1004,20 @@ function _selectNode(nodeId) {
 let _gwPollTimer   = null;   // async pipeline run poll
 let _gwRunId       = null;   // current async run id
 let _gwHistLimit   = 10;
-let _gwPanelMode   = null;   // 'node' | 'pipeline'
-let _gwPpFileData  = null;   // { type: 'doc'|'upload', path?: str, file?: File } or null
-let _gwPpDocsCache = null;   // cached [{name, path}] from api.documents.list
+let _gwPanelMode      = null;  // 'node' | 'pipeline'
+let _gwPpFileList     = [];    // [{type:'doc'|'upload', name:str, path?:str, file?:File}]
+let _gwPpDocsCache    = null;  // cached [{name, path}] from api.documents.list
+let _gwPpPipeNames    = null;  // cached existing pipeline folder names
+let _gwPpFileData     = null;  // legacy compat — always null now
 
 function _showPipelineProps() {
   if (!_currentWf) return;
   _gwPanelMode   = 'pipeline';
   _selectedNodeId = null;
   _gwPpFileData  = null;
-  _gwPpDocsCache = null;  // refresh docs list each time a pipeline is loaded
+  _gwPpFileList  = [];
+  _gwPpDocsCache = null;
+  _gwPpPipeNames = null;
   document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
 
   // Close right detail panel — pipeline props are now inline bars
@@ -1074,75 +1088,69 @@ function _showPipelineProps() {
                 background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
       <span style="font-size:0.72rem;font-weight:600;flex:1">Execute</span>
     </div>
-    <div id="gw-exec-body" style="padding:0.6rem 0.75rem;display:flex;flex-direction:column;
-                                   gap:0.45rem;overflow-y:auto">
+    <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
+                                   gap:0.4rem;overflow-y:auto">
 
-      <!-- Input mode toggle -->
-      <div style="display:flex;align-items:center;gap:0.75rem">
-        <span style="font-size:0.65rem;font-weight:600;color:var(--muted);text-transform:uppercase;
-                     letter-spacing:0.04em">Input</span>
-        <label style="display:flex;align-items:center;gap:0.2rem;font-size:0.72rem;cursor:pointer">
-          <input type="radio" name="pp-input-mode" value="prompt" checked
-            onchange="window._gwPpModeSwitch('prompt')"> Prompt
-        </label>
-        <label style="display:flex;align-items:center;gap:0.2rem;font-size:0.72rem;cursor:pointer">
-          <input type="radio" name="pp-input-mode" value="file"
-            onchange="window._gwPpModeSwitch('file')"> File
-        </label>
-      </div>
+      <!-- Row 1: Pipeline name | Doc search | Browse button (side by side) -->
+      <div style="display:flex;gap:0.35rem;align-items:flex-start">
 
-      <!-- Prompt section -->
-      <div id="pp-prompt-section">
-        <textarea id="pp-task" rows="3"
-          placeholder="Describe what you want the pipeline to do…"
-          style="width:100%;box-sizing:border-box;font-size:0.78rem;resize:vertical;
-                 background:var(--bg1);border:1px solid var(--border);border-radius:4px;
-                 padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"
-          oninput="window._gwPpValidate()"></textarea>
-      </div>
-
-      <!-- File section (hidden initially) -->
-      <div id="pp-file-section" style="display:none;flex-direction:column;gap:0.35rem">
-        <div style="font-size:0.65rem;color:var(--muted);font-weight:500">Project document or local file:</div>
-
-        <!-- Searchable doc combobox -->
-        <div style="position:relative">
-          <input type="text" id="pp-doc-search"
-            placeholder="Search documents…"
-            autocomplete="off"
-            style="width:100%;box-sizing:border-box;padding:0.3rem 0.4rem;font-size:0.76rem;
+        <!-- Pipeline output name (left, fixed width) -->
+        <div style="width:130px;flex-shrink:0;position:relative">
+          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
+                      text-transform:uppercase;letter-spacing:0.04em">Output folder</div>
+          <input type="text" id="pp-pipe-name"
+            placeholder="pipeline name…" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
                    background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
-            oninput="window._gwPpDocSearch(this.value)"
-            onfocus="window._gwPpDocSearch(this.value)"
-            onblur="setTimeout(() => { const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; }, 150)">
-          <input type="hidden" id="pp-doc-select" value="">
-          <div id="pp-doc-list"
-            style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
+            oninput="window._gwPpPipeSearch(this.value)"
+            onfocus="window._gwPpPipeSearch(this.value)"
+            onblur="setTimeout(()=>{ const l=document.getElementById('pp-pipe-list'); if(l) l.style.display='none'; },150)">
+          <div id="pp-pipe-list"
+            style="display:none;position:absolute;top:100%;left:0;right:0;z-index:210;
                    background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
-                   max-height:140px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
+                   max-height:120px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
         </div>
 
-        <div style="text-align:center;font-size:0.62rem;color:var(--muted)">— or —</div>
-
-        <!-- Local file upload -->
-        <label class="btn btn-ghost btn-sm"
-          style="cursor:pointer;font-size:0.72rem;width:100%;box-sizing:border-box;text-align:center">
-          Upload local file…
-          <input type="file" id="pp-file-input" style="display:none"
-            onchange="window._gwPpFileSelect(this)">
-        </label>
-        <div id="pp-file-name" style="font-size:0.65rem;color:var(--muted)"></div>
+        <!-- Doc search + file upload (right, grows) -->
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:0.2rem">
+          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
+                      text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
+          <div style="display:flex;gap:0.3rem;align-items:center">
+            <!-- Searchable doc combobox -->
+            <div style="flex:1;min-width:0;position:relative">
+              <input type="text" id="pp-doc-search"
+                placeholder="Search project docs…" autocomplete="off"
+                style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
+                       background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
+                oninput="window._gwPpDocSearch(this.value)"
+                onfocus="window._gwPpDocSearch(this.value)"
+                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },150)">
+              <div id="pp-doc-list"
+                style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
+                       background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
+                       max-height:130px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
+            </div>
+            <!-- File upload button (multiple) -->
+            <label class="btn btn-ghost btn-sm"
+              style="cursor:pointer;font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap">
+              + Files
+              <input type="file" id="pp-file-input" multiple style="display:none"
+                onchange="window._gwPpFileAdd(this)">
+            </label>
+          </div>
+        </div>
       </div>
 
-      <!-- Optional extra prompt when in file mode -->
-      <div id="pp-file-prompt-wrap" style="display:none">
-        <div style="font-size:0.65rem;color:var(--muted);margin-bottom:0.2rem">Additional instructions (optional):</div>
-        <textarea id="pp-file-task" rows="2"
-          placeholder="e.g. Summarise, Review for errors, Extract requirements…"
-          style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
-                 background:var(--bg1);border:1px solid var(--border);border-radius:4px;
-                 padding:0.25rem 0.4rem;color:var(--fg);font-family:inherit"></textarea>
-      </div>
+      <!-- Selected file/doc chips -->
+      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem;min-height:0"></div>
+
+      <!-- Prompt textarea (always visible) -->
+      <textarea id="pp-task" rows="3"
+        placeholder="Describe what you want the pipeline to do… (optional if files are provided)"
+        style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
+               background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+               padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"
+        oninput="window._gwPpValidate()"></textarea>
 
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
         <button id="pp-run-btn" class="btn btn-primary btn-sm"
@@ -1204,43 +1212,36 @@ function _showPipelineProps() {
   window._gwPpCancel    = _gwPpCancel;
   window._gwPpApprove   = _gwPpApprove;
   window._gwPpHistLimit = n => { _gwHistLimit = n; _gwLoadHistory(); };
-  window._gwPpModeSwitch = (mode) => {
-    const ps = document.getElementById('pp-prompt-section');
-    const fs = document.getElementById('pp-file-section');
-    const fp = document.getElementById('pp-file-prompt-wrap');
-    if (ps) ps.style.display = mode === 'prompt' ? '' : 'none';
-    if (fs) fs.style.display = mode === 'file'   ? 'flex' : 'none';
-    if (fp) fp.style.display = mode === 'file'   ? '' : 'none';
-    if (mode === 'file') _gwPpLoadDocs();
-    _gwPpValidate();
-  };
-  window._gwPpFileSelect = (input) => {
-    const fn  = document.getElementById('pp-file-name');
-    const src = document.getElementById('pp-doc-search');
-    const sel = document.getElementById('pp-doc-select');
-    const f   = input.files?.[0];
-    if (fn)  fn.textContent = f ? `📄 ${f.name}` : '';
-    if (src) src.value = '';   // clear doc search when file chosen
-    if (sel) sel.value = '';
-    _gwPpFileData = f ? { type: 'upload', file: f } : null;
-    _gwPpValidate();
-  };
   window._gwPpDocSearch  = _gwPpDocSearch;
   window._gwPpValidate   = _gwPpValidate;
   window._gwPpDocPick    = (path, label) => {
-    const sel = document.getElementById('pp-doc-select');
+    // Add doc to file list
+    if (!_gwPpFileList.find(f => f.path === path)) {
+      _gwPpFileList.push({ type: 'doc', name: label, path });
+      _gwPpRenderChips();
+    }
     const src = document.getElementById('pp-doc-search');
-    const fn  = document.getElementById('pp-file-name');
     const lst = document.getElementById('pp-doc-list');
-    const fi  = document.getElementById('pp-file-input');
-    if (sel) sel.value = path;
-    if (src) src.value = label;
-    if (fn)  fn.textContent = '';
+    if (src) src.value = '';
     if (lst) lst.style.display = 'none';
-    if (fi)  fi.value = '';   // clear file upload
-    _gwPpFileData = null;
     _gwPpValidate();
   };
+  window._gwPpFileAdd = (input) => {
+    for (const f of Array.from(input.files || [])) {
+      if (!_gwPpFileList.find(x => x.type === 'upload' && x.name === f.name)) {
+        _gwPpFileList.push({ type: 'upload', name: f.name, file: f });
+      }
+    }
+    input.value = '';  // allow re-selecting same file
+    _gwPpRenderChips();
+    _gwPpValidate();
+  };
+  window._gwPpRemoveFile = (idx) => {
+    _gwPpFileList.splice(idx, 1);
+    _gwPpRenderChips();
+    _gwPpValidate();
+  };
+  window._gwPpPipeSearch = _gwPpPipeSearch;
   window._gwToggleHist  = () => {
     const body = document.getElementById('gw-hist-body');
     const lbl  = document.getElementById('gw-hist-toggle-lbl');
@@ -1252,6 +1253,9 @@ function _showPipelineProps() {
   };
 
   _gwLoadHistory();
+  // Pre-load docs and pipeline names in background
+  _gwPpLoadDocs();
+  _gwPpLoadPipeNames();
 }
 
 async function _gwPpLoadDocs() {
@@ -1268,43 +1272,93 @@ async function _gwPpLoadDocs() {
   } catch (_) {
     _gwPpDocsCache = [];
   }
-  if (src) src.placeholder = 'Search documents…';
+  if (src) src.placeholder = 'Search project docs…';
   _gwPpDocSearch('');
 }
 
 function _gwPpDocSearch(q) {
+  if (!_gwPpDocsCache) { _gwPpLoadDocs(); return; }
   const lst = document.getElementById('pp-doc-list');
-  if (!lst || !_gwPpDocsCache) return;
+  if (!lst) return;
   const query = (q || '').toLowerCase();
-  const matches = query
-    ? _gwPpDocsCache.filter(d => d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
-    : _gwPpDocsCache;
-
-  if (!matches.length) {
-    lst.style.display = 'none'; return;
-  }
+  const already = new Set(_gwPpFileList.filter(f => f.type === 'doc').map(f => f.path));
+  const matches = (_gwPpDocsCache || []).filter(d =>
+    !already.has(d.path) &&
+    (!query || d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
+  );
+  if (!matches.length) { lst.style.display = 'none'; return; }
   lst.style.display = '';
   lst.innerHTML = matches.slice(0, 30).map(d => `
-    <div style="padding:0.3rem 0.55rem;cursor:pointer;font-size:0.75rem;white-space:nowrap;
+    <div style="padding:0.28rem 0.55rem;cursor:pointer;font-size:0.73rem;white-space:nowrap;
                 overflow:hidden;text-overflow:ellipsis"
          onmouseenter="this.style.background='var(--hover)'"
          onmouseleave="this.style.background=''"
          onmousedown="event.preventDefault();window._gwPpDocPick(${JSON.stringify(d.path)},${JSON.stringify(d.name)})">
       📄 ${_esc(d.name)}
-      ${d.path !== d.name ? `<span style="font-size:0.62rem;color:var(--muted)">${_esc(d.path)}</span>` : ''}
+      ${d.path !== d.name ? `<span style="font-size:0.6rem;color:var(--muted);margin-left:0.3rem">${_esc(d.path)}</span>` : ''}
+    </div>`).join('');
+}
+
+function _gwPpRenderChips() {
+  const el = document.getElementById('pp-file-chips');
+  if (!el) return;
+  if (!_gwPpFileList.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _gwPpFileList.map((f, i) => `
+    <span style="display:inline-flex;align-items:center;gap:0.2rem;padding:0.1rem 0.35rem;
+                 background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+                 font-size:0.66rem;max-width:200px">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(f.path||f.name)}">
+        ${f.type === 'doc' ? '📄' : '📎'} ${_esc(f.name)}
+      </span>
+      <button onclick="window._gwPpRemoveFile(${i})"
+        style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:0.75rem;
+               padding:0;line-height:1;flex-shrink:0">✕</button>
+    </span>`).join('');
+}
+
+async function _gwPpLoadPipeNames() {
+  if (_gwPpPipeNames) { _gwPpPipeSearch(document.getElementById('pp-pipe-name')?.value || ''); return; }
+  try {
+    // Try to list existing pipeline folders from documents/pipeline/
+    const data = await api.documents.list(_project);
+    const raw  = Array.isArray(data) ? data : (data?.documents || data?.files || []);
+    // Extract unique top-level folder names under pipeline/
+    const names = new Set();
+    raw.forEach(d => {
+      const p = d.path || d.name || '';
+      const m = p.match(/^pipeline[\/\\]([^\/\\]+)/i);
+      if (m) names.add(m[1]);
+    });
+    _gwPpPipeNames = [...names];
+  } catch (_) {
+    _gwPpPipeNames = [];
+  }
+  _gwPpPipeSearch(document.getElementById('pp-pipe-name')?.value || '');
+}
+
+function _gwPpPipeSearch(q) {
+  if (!_gwPpPipeNames) { _gwPpLoadPipeNames(); return; }
+  const lst = document.getElementById('pp-pipe-list');
+  if (!lst) return;
+  const query = (q || '').toLowerCase();
+  const matches = _gwPpPipeNames.filter(n => !query || n.toLowerCase().includes(query));
+  if (!matches.length) { lst.style.display = 'none'; return; }
+  lst.style.display = '';
+  lst.innerHTML = matches.map(n => `
+    <div style="padding:0.25rem 0.5rem;cursor:pointer;font-size:0.72rem"
+         onmouseenter="this.style.background='var(--hover)'"
+         onmouseleave="this.style.background=''"
+         onmousedown="event.preventDefault();document.getElementById('pp-pipe-name').value=${JSON.stringify(n)};document.getElementById('pp-pipe-list').style.display='none'">
+      📁 ${_esc(n)}
     </div>`).join('');
 }
 
 function _gwPpValidate() {
   const btn = document.getElementById('pp-run-btn');
   if (!btn) return;
-  const mode = document.querySelector('input[name="pp-input-mode"]:checked')?.value || 'prompt';
-  let ready = false;
-  if (mode === 'prompt') {
-    ready = (document.getElementById('pp-task')?.value || '').trim().length > 0;
-  } else {
-    ready = !!(document.getElementById('pp-doc-select')?.value || _gwPpFileData);
-  }
+  const hasPrompt = (document.getElementById('pp-task')?.value || '').trim().length > 0;
+  const hasFiles  = _gwPpFileList.length > 0;
+  const ready     = hasPrompt || hasFiles;
   btn.disabled = !ready;
   btn.style.opacity = ready ? '' : '0.4';
 }
@@ -1332,47 +1386,46 @@ async function _gwSavePipelineProps() {
 }
 
 async function _gwPpRun() {
-  const mode = document.querySelector('input[name="pp-input-mode"]:checked')?.value || 'prompt';
-  let task = '';
-  let inputFiles = [];
+  const promptText  = (document.getElementById('pp-task')?.value || '').trim();
+  const pipeName    = (document.getElementById('pp-pipe-name')?.value || '').trim() || _currentWf?.name || 'pipeline';
 
-  const extraInstructions = (document.getElementById('pp-file-task')?.value || '').trim();
+  // Build combined task from all files + prompt
+  const parts = [];
+  const inputFiles = [];
 
-  if (mode === 'file') {
-    const docPath = document.getElementById('pp-doc-select')?.value;
-    if (docPath) {
-      // Load doc content from project documents
+  for (const item of _gwPpFileList) {
+    if (item.type === 'doc') {
       try {
-        const data = await api.documents.read(docPath, _project);
+        const data = await api.documents.read(item.path, _project);
         const content = data?.content || data?.text || '';
-        task = [content || `Document: ${docPath}`, extraInstructions].filter(Boolean).join('\n\n');
-        inputFiles = [{ type: 'doc', path: docPath }];
+        if (content) parts.push(`--- File: ${item.name} ---\n${content}`);
+        else parts.push(`--- File: ${item.name} ---\n(empty)`);
       } catch (_) {
-        task = [`Process document: ${docPath}`, extraInstructions].filter(Boolean).join('\n\n');
-        inputFiles = [{ type: 'doc', path: docPath }];
+        parts.push(`--- File: ${item.name} ---\n(could not load)`);
       }
-    } else if (_gwPpFileData?.file) {
-      // Read uploaded file content client-side
+      inputFiles.push({ type: 'doc', name: item.name, path: item.path });
+    } else if (item.file) {
       try {
-        const content = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = e => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsText(_gwPpFileData.file);
+        const content = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = e => res(e.target.result);
+          r.onerror = rej;
+          r.readAsText(item.file);
         });
-        task = [content, extraInstructions].filter(Boolean).join('\n\n');
-        inputFiles = [{ type: 'upload', name: _gwPpFileData.file.name }];
+        parts.push(`--- File: ${item.name} ---\n${content}`);
       } catch (_) {
-        document.getElementById('pp-run-err').textContent = 'Failed to read file.';
-        return;
+        parts.push(`--- File: ${item.name} ---\n(read error)`);
       }
-    } else {
-      document.getElementById('pp-run-err').textContent = 'Select a document or upload a file.';
-      return;
+      inputFiles.push({ type: 'upload', name: item.name });
     }
-  } else {
-    task = (document.getElementById('pp-task')?.value || '').trim();
-    if (!task) { document.getElementById('pp-run-err').textContent = 'Enter a task first.'; return; }
+  }
+
+  if (promptText) parts.push(promptText);
+
+  const task = parts.join('\n\n');
+  if (!task.trim()) {
+    document.getElementById('pp-run-err').textContent = 'Add a prompt or select at least one file.';
+    return;
   }
 
   document.getElementById('pp-run-err').textContent = '';
@@ -1384,7 +1437,7 @@ async function _gwPpRun() {
 
   // Try as a YAML pipeline run (async)
   try {
-    const payload = { pipeline: _currentWf.name, task, project: _project };
+    const payload = { pipeline: _currentWf.name, task, project: _project, pipeline_name: pipeName };
     if (inputFiles.length) payload.input_files = inputFiles;
     const res = await api.agents.startPipelineRun(payload);
     _gwRunId = res.run_id;
@@ -1571,6 +1624,26 @@ function _closeDetail() {
   if (footer) footer.style.display = '';
 }
 
+/** Find best-matching role for a node (by ID, exact name, or fuzzy keyword match). */
+function _findMatchingRole(node) {
+  if (!_roles.length) return null;
+  if (node.role_id) {
+    const byId = _roles.find(r => r.id === node.role_id);
+    if (byId) return byId;
+  }
+  const exact = _roles.find(r => r.name === node.name);
+  if (exact) return exact;
+  const nodeLow = (node.name || '').toLowerCase();
+  // Keyword overlap: any significant word from the node name found in a role name
+  for (const r of _roles) {
+    const roleLow = r.name.toLowerCase();
+    if (nodeLow.includes(roleLow) || roleLow.includes(nodeLow)) return r;
+    const roleWords = roleLow.split(/\s+/).filter(w => w.length > 3);
+    if (roleWords.some(w => nodeLow.includes(w))) return r;
+  }
+  return null;
+}
+
 function _renderDetailPanel(node) {
   _gwPanelMode = 'node';
   const title  = document.getElementById('gw-detail-title');
@@ -1580,70 +1653,96 @@ function _renderDetailPanel(node) {
   if (title)  title.textContent    = node.name;
   if (footer) footer.style.display = '';
 
-  // Match node to a loaded role for system prompt display
-  const matchedRole = _roles.find(r => r.id === node.role_id || r.name === node.name);
+  // Match node to a loaded role — role values are defaults, node values are overrides
+  const matchedRole = _findMatchingRole(node);
   const roleName    = matchedRole?.name || node.name;
   const systemPrompt = node.role_prompt || matchedRole?.system_prompt || '(no system prompt configured for this role)';
 
   const isAdmin = !!(state.user?.is_admin || state.user?.role === 'admin');
 
+  // Effective values: node override → role default → hardcoded fallback
+  const effProvider = node.provider || matchedRole?.provider || 'claude';
+  const effModel    = node.model    || matchedRole?.model    || '';
+  const effTemp     = node.temperature != null ? node.temperature : (matchedRole?.temperature ?? null);
+  const effRetry    = node.max_retry   != null ? node.max_retry   : (matchedRole?.max_iterations ?? 3);
+
   const providerOptions = ['claude','openai','deepseek','gemini','grok'].map(p =>
-    `<option value="${p}" ${node.provider===p?'selected':''}>${p}</option>`
+    `<option value="${p}" ${effProvider===p?'selected':''}>${p}</option>`
   ).join('');
 
-  // Context flow: show prior node names + stored role props
-  const nodeIndex = _currentWf?.nodes?.findIndex(n => n.id === node.id) ?? -1;
+  // Context flow chain
+  const nodeIndex  = _currentWf?.nodes?.findIndex(n => n.id === node.id) ?? -1;
   const priorNodes = nodeIndex > 0 ? _currentWf.nodes.slice(0, nodeIndex) : [];
-  const priorChips = priorNodes.map(n =>
-    `<span style="background:var(--bg1);border:1px solid var(--border);border-radius:3px;
-              padding:0.05rem 0.3rem;font-size:0.65rem">${_esc(n.name)}</span>`
-  ).join(' → ');
-  const propTags = [
-    `<span style="background:rgba(100,108,255,0.12);border-radius:3px;padding:0.05rem 0.3rem;font-size:0.65rem">
-       ${_esc(node.provider || 'claude')}</span>`,
-    node.model ? `<span style="background:rgba(100,108,255,0.12);border-radius:3px;padding:0.05rem 0.3rem;font-size:0.65rem">
-       ${_esc(node.model)}</span>` : '',
-    node.temperature != null ? `<span style="background:rgba(100,108,255,0.12);border-radius:3px;padding:0.05rem 0.3rem;font-size:0.65rem">
-       temp ${node.temperature}</span>` : '',
-  ].filter(Boolean).join(' ');
 
   const acceptanceCriteria = node.acceptance_criteria || node.success_criteria || '';
 
+  // Pipeline output path hint
+  const pipeFolder = `documents/pipeline/${_currentWf?.name || 'pipeline'}/${(node.name||'node').toLowerCase().replace(/\s+/g,'_')}.md`;
+
   body.innerHTML = `
     <div class="gw-field">
-      <label>Name (Role Name)</label>
+      <label>Name (Role)</label>
       <input id="dn-name" value="${_esc(node.name)}" />
+      ${matchedRole ? `<div style="font-size:0.63rem;color:var(--muted);margin-top:0.15rem">
+        Based on role: <b>${_esc(matchedRole.name)}</b></div>` : ''}
     </div>
 
-    <div style="display:flex;gap:0.5rem">
-      <div class="gw-field" style="flex:1">
+    <div style="display:flex;gap:0.4rem">
+      <div class="gw-field" style="flex:1;min-width:0">
         <label>Provider</label>
         <select id="dn-provider">${providerOptions}</select>
       </div>
-      <div class="gw-field" style="width:58px">
+      <div class="gw-field" style="width:120px">
+        <label>Model</label>
+        <input id="dn-model" value="${_esc(effModel)}" placeholder="default" style="font-size:0.72rem" />
+      </div>
+      <div class="gw-field" style="width:52px">
         <label>Temp</label>
         <input type="number" id="dn-temp"
-          value="${node.temperature ?? ''}" min="0" max="1" step="0.05"
-          placeholder="—"
+          value="${effTemp ?? ''}" min="0" max="1" step="0.05" placeholder="—"
           style="width:100%;text-align:center" />
       </div>
     </div>
 
-    <div class="gw-field">
-      <label>Model <span style="font-weight:400;color:var(--muted)">(leave blank for role default)</span></label>
-      <input id="dn-model" value="${_esc(node.model||'')}" placeholder="e.g. claude-sonnet-4-6" />
+    <div style="display:flex;gap:0.4rem">
+      <div class="gw-field" style="width:70px">
+        <label>Max Retry</label>
+        <input type="number" id="dn-max-retry" value="${effRetry}" min="1" max="10" />
+      </div>
+      <div class="gw-field" style="flex:1">
+        <div class="gw-toggle-row" style="margin-top:1.3rem">
+          <label style="margin:0;font-size:0.72rem">Stateless</label>
+          <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
+        </div>
+      </div>
+      <div class="gw-field" style="flex:1">
+        <div class="gw-toggle-row" style="margin-top:1.3rem">
+          <label style="margin:0;font-size:0.72rem">Approval gate</label>
+          <input type="checkbox" id="dn-approval" ${node.require_approval?'checked':''} />
+        </div>
+      </div>
     </div>
 
     <!-- Context flow -->
     <div style="background:rgba(100,108,255,0.07);border:1px solid rgba(100,108,255,0.2);
-                border-radius:6px;padding:0.5rem 0.65rem;margin-bottom:0.75rem;">
-      <div style="font-size:0.65rem;font-weight:700;color:var(--fg);margin-bottom:0.3rem">Context flow</div>
-      <div style="font-size:0.68rem;color:var(--muted);line-height:1.6">
-        ${priorChips ? `${priorChips} → <b>${_esc(node.name)}</b><br>
-        Outputs from prior nodes are injected before this node's prompt.` :
-        `<b>${_esc(node.name)}</b> is the first node — receives the user's task as input.`}
+                border-radius:6px;padding:0.45rem 0.6rem;margin-bottom:0.6rem">
+      <div style="font-size:0.63rem;font-weight:700;color:var(--fg);margin-bottom:0.25rem;
+                  text-transform:uppercase;letter-spacing:0.04em">Context flow</div>
+      <div style="font-size:0.68rem;color:var(--muted);line-height:1.55">
+        ${priorNodes.length
+          ? priorNodes.map(n => `<span style="background:var(--bg1);border:1px solid var(--border);border-radius:3px;
+                padding:0.02rem 0.25rem;font-size:0.63rem">${_esc(n.name)}</span>`).join(' → ')
+            + ` → <b style="color:var(--fg)">${_esc(node.name)}</b>`
+          : `<b style="color:var(--fg)">${_esc(node.name)}</b> — first node, receives all pipeline inputs`}
       </div>
-      ${propTags ? `<div style="margin-top:0.35rem;display:flex;gap:0.2rem;flex-wrap:wrap">${propTags}</div>` : ''}
+      <div style="margin-top:0.3rem;font-size:0.63rem;color:var(--muted)">
+        Output saved to: <code style="font-size:0.62rem">${_esc(pipeFolder)}</code>
+      </div>
+      <div style="margin-top:0.2rem;display:flex;gap:0.2rem;flex-wrap:wrap">
+        ${[effProvider, effModel||'', effTemp!=null?`t=${effTemp}`:'', `retry=${effRetry}`].filter(Boolean).map(t =>
+          `<span style="background:rgba(100,108,255,0.12);border-radius:3px;padding:0.02rem 0.28rem;font-size:0.62rem">${_esc(t)}</span>`
+        ).join('')}
+      </div>
     </div>
 
     <!-- System Prompt (read-only) -->
@@ -1651,46 +1750,34 @@ function _renderDetailPanel(node) {
       <label style="display:flex;align-items:center;justify-content:space-between">
         <span>System Prompt</span>
         ${isAdmin
-          ? `<a href="#" style="font-size:0.65rem;color:var(--accent);text-decoration:none"
+          ? `<a href="#" style="font-size:0.63rem;color:var(--accent);text-decoration:none"
                onclick="event.preventDefault();window._nav('prompts')">Edit in Roles →</a>`
-          : `<span style="font-size:0.65rem;color:var(--muted)">role: ${_esc(roleName)}</span>`}
+          : `<span style="font-size:0.63rem;color:var(--muted)">from: ${_esc(roleName)}</span>`}
       </label>
-      <pre style="margin:0;font-size:0.67rem;line-height:1.45;background:var(--bg2);
-                  border:1px solid var(--border);border-radius:4px;padding:0.4rem 0.5rem;
-                  max-height:130px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
+      <pre style="margin:0;font-size:0.66rem;line-height:1.45;background:var(--bg2);
+                  border:1px solid var(--border);border-radius:4px;padding:0.35rem 0.5rem;
+                  max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;
                   color:var(--muted);font-family:var(--font-mono,monospace)">${_esc(systemPrompt)}</pre>
     </div>
 
     <!-- Acceptance Criteria -->
     <div class="gw-field">
-      <label>Acceptance Criteria</label>
-      <textarea id="dn-criteria" rows="3"
-        placeholder="Describe what 'done' looks like for this stage. The pipeline will use this to verify completion.
-e.g. All acceptance criteria from spec are addressed. No regressions. Tests pass."
-        style="font-size:0.76rem;font-family:inherit">${_esc(acceptanceCriteria)}</textarea>
+      <label>Acceptance Criteria <span style="font-weight:400;color:var(--muted);font-size:0.62rem">(what "done" looks like for this node)</span></label>
+      <textarea id="dn-criteria" rows="4"
+        placeholder="Describe the expected output for this stage.
+Output file: ${_esc(pipeFolder)}
+
+Example for PM node:
+- Summarise all input requirements into structured sections
+- Identify what is already implemented vs what needs to be done
+- List prioritised action items"
+        style="font-size:0.73rem;font-family:inherit">${_esc(acceptanceCriteria)}</textarea>
     </div>
 
-    <div class="gw-field">
-      <label>Max Retry</label>
-      <input type="number" id="dn-max-retry" value="${node.max_retry ?? 3}" min="1" max="10" style="width:70px" />
-    </div>
-
-    <div class="gw-field">
-      <div class="gw-toggle-row">
-        <label style="margin:0">Stateless <span style="font-weight:400;color:var(--muted)">(fresh context each run)</span></label>
-        <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
-      </div>
-    </div>
     <div class="gw-field">
       <div class="gw-toggle-row">
         <label style="margin:0">Continue on Fail</label>
         <input type="checkbox" id="dn-continue-fail" ${node.continue_on_fail?'checked':''} />
-      </div>
-    </div>
-    <div class="gw-field">
-      <div class="gw-toggle-row">
-        <label style="margin:0">Require Approval</label>
-        <input type="checkbox" id="dn-approval" ${node.require_approval?'checked':''} />
       </div>
     </div>
   `;
