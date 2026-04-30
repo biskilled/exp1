@@ -81,6 +81,11 @@ def runs_dir(project: str) -> Path:
     return pipelines_dir(project) / "runs"
 
 
+def documents_dir(project: str) -> Path:
+    """User-managed documents (use cases, references, pipeline outputs)."""
+    return proj_dir(project) / "documents"
+
+
 # ── Backward-compat — removed folders ────────────────────────────────────────
 
 def logs_dir(project: str) -> Path:
@@ -271,5 +276,6 @@ def ensure_project_dirs(project: str) -> None:
         history_dir(project),
         pipelines_dir(project),
         runs_dir(project),
+        documents_dir(project),
     ]:
         d.mkdir(parents=True, exist_ok=True)

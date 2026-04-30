@@ -451,9 +451,15 @@ class Agent:
             messages.append({"role": "assistant", "content": resp.get("raw", resp)})
             tool_results: list[dict] = []
             for tc in tool_calls:
-                tool_name  = getattr(tc, "name", None) or tc.get("name", "")
-                tool_input = getattr(tc, "input", None) or tc.get("input", {})
-                tool_id    = getattr(tc, "id", None) or tc.get("id", "")
+                if isinstance(tc, dict):
+                    tool_name  = tc.get("name", "")
+                    tool_input = tc.get("input", {})
+                    tool_id    = tc.get("id", "")
+                else:
+                    tool_name  = getattr(tc, "name",  "") or ""
+                    tool_input = getattr(tc, "input", None)
+                    if tool_input is None: tool_input = {}
+                    tool_id    = getattr(tc, "id",    "") or ""
                 result_text = invoke_tool(tool_name, tool_input)
                 tool_calls_made.append({"name": tool_name, "input": tool_input})
                 tool_results.append({
@@ -592,9 +598,15 @@ class Agent:
             tool_results: list[dict] = []
 
             for tc in tool_calls:
-                tool_name  = getattr(tc, "name", None) or tc.get("name", "")
-                tool_input = getattr(tc, "input", None) or tc.get("input", {})
-                tool_id    = getattr(tc, "id", None) or tc.get("id", "")
+                if isinstance(tc, dict):
+                    tool_name  = tc.get("name", "")
+                    tool_input = tc.get("input", {})
+                    tool_id    = tc.get("id", "")
+                else:
+                    tool_name  = getattr(tc, "name",  "") or ""
+                    tool_input = getattr(tc, "input", None)
+                    if tool_input is None: tool_input = {}
+                    tool_id    = getattr(tc, "id",    "") or ""
 
                 log.debug("Agent '%s' step %d — tool: %s, args: %s",
                           self.name, iteration, tool_name, json.dumps(tool_input)[:200])

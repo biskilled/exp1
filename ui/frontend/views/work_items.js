@@ -36,6 +36,7 @@ let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _set
 let _ucPipeNames  = null;   // cached pipeline names from api.agents.listPipelines()
 let _ucPollTimer  = null;   // polling interval for active run
 let _ucRunCtx     = null;   // { mode, ucId, itemId, panelId }
+const _UC_DROP_ID = 'uc-pipe-body-drop';  // body-level pipeline dropdown (avoids overflow:hidden clipping)
 
 // ── Type config ──────────────────────────────────────────────────────────────
 
@@ -1759,7 +1760,11 @@ function _waitingBadge(createdAt) {
 // ── UC / item pipeline run menu + panel ───────────────────────────────────────
 
 window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
-  // Load pipeline names once
+  // If dropdown already open, toggle it closed
+  const existing = document.getElementById(_UC_DROP_ID);
+  if (existing) { existing.remove(); return; }
+
+  // Load pipeline names once (cached)
   if (!_ucPipeNames) {
     try {
       const pipes = await api.agents.listPipelines();
@@ -1769,19 +1774,17 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
     }
   }
 
-  // Find or create drop element
-  const dropId = `uc-run-drop-${targetId}`;
-  const drop = document.getElementById(dropId);
-  if (!drop) return;
-
-  // Toggle visibility
-  if (drop.style.display !== 'none') {
-    drop.style.display = 'none';
-    return;
-  }
-
+  // Build a body-level fixed dropdown to avoid overflow:hidden clipping on .wi-uc-card
+  const rect = triggerEl.getBoundingClientRect();
+  const drop = document.createElement('div');
+  drop.id = _UC_DROP_ID;
+  drop.style.cssText = `
+    position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;
+    background:var(--bg);border:1px solid var(--border);border-radius:6px;
+    min-width:160px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,.25);
+  `;
   drop.innerHTML = _ucPipeNames.map(name =>
-    `<div onclick="window._ucStartRun('${_esc(name)}','${_esc(targetId)}','${_esc(mode)}','${_esc(ucId)}');document.getElementById('${_esc(dropId)}').style.display='none'"
+    `<div onclick="document.getElementById('${_UC_DROP_ID}')?.remove();window._ucStartRun('${_esc(name)}','${_esc(targetId)}','${_esc(mode)}','${_esc(ucId)}')"
           style="padding:0.4rem 0.8rem;font-size:0.78rem;cursor:pointer;border-bottom:1px solid var(--border);
                  color:var(--text)"
           onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
@@ -1789,13 +1792,14 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
     </div>`
   ).join('');
 
-  drop.style.display = 'block';
+  document.body.appendChild(drop);
 
   // Close on outside click
   setTimeout(() => {
     const handler = (e) => {
-      if (!drop.contains(e.target) && e.target !== triggerEl) {
-        drop.style.display = 'none';
+      const d = document.getElementById(_UC_DROP_ID);
+      if (d && !d.contains(e.target) && e.target !== triggerEl) {
+        d.remove();
         document.removeEventListener('click', handler);
       }
     };
@@ -1816,26 +1820,44 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
     if (mode === 'uc') {
       const ucData  = _ucItems.find(u => u.id === targetId);
       const name    = ucData?.name || targetId;
+      const wiId    = ucData?.wi_id  || '';
       const summary = ucData?.summary || '';
       let itemLines = '';
       try {
         const res = await api.wi.openItems(_project, targetId);
         const items = res.items || [];
-        itemLines = items.map(it => `- [${it.wi_type}] ${it.name}: ${it.summary || ''}`).join('\n');
+        itemLines = items.map(it =>
+          `- [${it.wi_type}]${it.wi_id ? ' ' + it.wi_id : ''} ${it.name}` +
+          (it.summary ? `: ${it.summary.slice(0, 200)}` : '')
+        ).join('\n');
       } catch (_) {}
-      task = `USE CASE: ${name}\n${summary ? `SUMMARY: ${summary}\n` : ''}ITEMS:\n${itemLines || '(none)'}`;
+      task = [
+        `USE CASE: ${name}${wiId ? ' [' + wiId + ']' : ''}`,
+        summary ? `SUMMARY:\n${summary}` : '',
+        `\nOPEN ITEMS:`,
+        itemLines || '(none)',
+        `\nINSTRUCTIONS: Analyse the use case and each open item. For each item produce a concrete implementation plan with acceptance criteria. Consider the full context above.`,
+      ].filter(Boolean).join('\n');
       linked_uc_id = targetId;
       source = 'use_case';
       contextLabel = name;
     } else {
       // mode === 'item'
-      const ucData  = _ucItems.find(u => u.id === ucId);
+      const ucData   = _ucItems.find(u => u.id === ucId);
       const allItems = (ucData?.children || []);
-      const item = allItems.find(it => it.id === targetId) ||
-                   _allItems.find(it => it.id === targetId);
+      const item     = allItems.find(it => it.id === targetId) ||
+                       _allItems.find(it => it.id === targetId);
       const itemName = item?.name || targetId;
-      task = `ITEM: ${itemName}\n${item?.summary ? `SUMMARY: ${item.summary}\n` : ''}` +
-             `TYPE: ${item?.wi_type || 'unknown'}\nPARENT UC: ${ucData?.name || ucId}`;
+      const itemWiId = item?.wi_id || '';
+      task = [
+        `ITEM: ${itemName}${itemWiId ? ' [' + itemWiId + ']' : ''}`,
+        `TYPE: ${item?.wi_type || 'unknown'}`,
+        `STATUS: ${item?.user_status || 'open'}`,
+        item?.summary ? `SUMMARY:\n${item.summary}` : '',
+        ucData ? `\nPARENT USE CASE: ${ucData.name}${ucData.wi_id ? ' [' + ucData.wi_id + ']' : ''}` : '',
+        ucData?.summary ? `UC SUMMARY:\n${ucData.summary.slice(0, 400)}` : '',
+        `\nINSTRUCTIONS: Analyse this work item and produce a concrete implementation plan with acceptance criteria and step-by-step developer guidance.`,
+      ].filter(Boolean).join('\n');
       linked_item_id = targetId;
       linked_uc_id   = ucId || null;
       source = 'item';
@@ -1878,7 +1900,7 @@ function _ucOpenPanel(runId, pipeName, contextLabel) {
   const panel = document.createElement('div');
   panel.id = _PANEL_ID;
   panel.style.cssText = `
-    position:fixed; right:0; top:0; height:100vh; width:360px; z-index:600;
+    position:fixed; right:0; top:0; height:100vh; width:360px; z-index:9999;
     background:var(--bg); border-left:2px solid var(--accent);
     display:flex; flex-direction:column; padding:1rem 1.1rem;
     box-shadow:-6px 0 24px rgba(0,0,0,.25); overflow:hidden;

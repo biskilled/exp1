@@ -554,6 +554,46 @@ async def _run_pipeline_bg(
     except Exception as e:
         log.error("Could not finalize pipeline run: %s", e)
 
+    # Post-completion: save final output to documents folder
+    try:
+        from core.project_paths import documents_dir as _docs_dir
+        from datetime import datetime as _dt2
+        import re as _re
+        docs = _docs_dir(project)
+        docs.mkdir(parents=True, exist_ok=True)
+        safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", pipeline_name)
+        ts_file = _dt2.utcnow().strftime("%Y%m%d_%H%M%S")
+        doc_path = docs / f"{safe_name}_pipeline_{ts_file}.md"
+        final_output = (stage_result.output if stage_result else "") or ""
+        # Collect all stage outputs for a comprehensive document
+        stage_sections: list[str] = []
+        try:
+            with db.conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT stage_key, role_name, status, output_text, structured_out,
+                                  duration_s, cost_usd
+                           FROM pr_pipeline_run_stages WHERE run_id=%s ORDER BY id""",
+                        (run_id,),
+                    )
+                    for row in cur.fetchall():
+                        s_key, s_role, s_status, s_out, s_struct, s_dur, s_cost = row
+                        section = [f"## Stage: {s_key} ({s_role}) — {s_status}"]
+                        if s_dur: section.append(f"_Duration: {s_dur:.1f}s | Cost: ${s_cost or 0:.4f}_")
+                        if s_out: section.append(f"\n{s_out}")
+                        if s_struct: section.append(f"\n**Structured output:**\n```json\n{_json.dumps(s_struct, indent=2)[:2000]}\n```")
+                        stage_sections.append("\n".join(section))
+        except Exception:
+            stage_sections = [final_output]
+        doc_content = "\n\n---\n\n".join([
+            f"# Pipeline Run: {pipeline_name}",
+            f"**Run ID:** {run_id}  \n**Verdict:** {final_verdict}  \n**Duration:** {dur_total:.1f}s  \n**Cost:** ${total_cost:.4f}",
+        ] + stage_sections)
+        doc_path.write_text(doc_content, encoding="utf-8")
+        log.info("Pipeline output saved to %s", doc_path)
+    except Exception as _de:
+        log.warning("Could not save pipeline output document: %s", _de)
+
     # Post-completion: update linked item/UC summary and score
     if linked_item_id or linked_uc_id:
         try:
