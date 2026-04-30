@@ -1688,10 +1688,15 @@ function _renderUcItem(item, depth = 0) {
                   title="Change parent">⇑</button>
           <button class="wi-btn wi-btn-ghost" data-action="copy-item"
                   data-id="${item.id}" title="Copy text to clipboard" style="font-size:0.75rem;padding:0.1rem 0.35rem">⎘</button>
-          <button title="Run pipeline on this item"
-                  onclick="event.stopPropagation();window._ucRunMenu('${item.id}','item',this,'${item._uc_id || ""}')"
-                  style="font-size:0.6rem;padding:0.1rem 0.28rem;border:1px solid var(--border);
-                         border-radius:3px;cursor:pointer;background:var(--surface2)">▶</button>
+          <div style="position:relative;display:inline-flex">
+            <button title="Run pipeline on this item"
+                    onclick="event.stopPropagation();window._ucRunMenu('${item.id}','item',this,'${item._uc_id || ''}')"
+                    style="font-size:0.6rem;padding:0.1rem 0.28rem;border:1px solid var(--border);
+                           border-radius:3px;cursor:pointer;background:var(--surface2)">▶</button>
+            <div id="uc-run-drop-${item.id}" style="display:none;position:absolute;bottom:100%;right:0;
+                 background:var(--bg);border:1px solid var(--border);border-radius:6px;
+                 min-width:160px;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,.2)"></div>
+          </div>
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           ${isPending ? `
             <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${item.id}" title="Approve">✓</button>
@@ -1805,12 +1810,12 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
   let linked_uc_id = null;
   let linked_item_id = null;
   let source = 'direct';
+  let contextLabel = '';
 
   try {
     if (mode === 'uc') {
-      // Fetch UC data
-      const ucData = _ucItems.find(u => u.id === targetId);
-      const name   = ucData?.name || targetId;
+      const ucData  = _ucItems.find(u => u.id === targetId);
+      const name    = ucData?.name || targetId;
       const summary = ucData?.summary || '';
       let itemLines = '';
       try {
@@ -1821,17 +1826,20 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
       task = `USE CASE: ${name}\n${summary ? `SUMMARY: ${summary}\n` : ''}ITEMS:\n${itemLines || '(none)'}`;
       linked_uc_id = targetId;
       source = 'use_case';
+      contextLabel = name;
     } else {
       // mode === 'item'
-      const ucData = _ucItems.find(u => u.id === ucId);
+      const ucData  = _ucItems.find(u => u.id === ucId);
       const allItems = (ucData?.children || []);
       const item = allItems.find(it => it.id === targetId) ||
                    _allItems.find(it => it.id === targetId);
-      task = `ITEM: ${item?.name || targetId}\n${item?.summary ? `SUMMARY: ${item.summary}\n` : ''}` +
+      const itemName = item?.name || targetId;
+      task = `ITEM: ${itemName}\n${item?.summary ? `SUMMARY: ${item.summary}\n` : ''}` +
              `TYPE: ${item?.wi_type || 'unknown'}\nPARENT UC: ${ucData?.name || ucId}`;
       linked_item_id = targetId;
-      linked_uc_id = ucId || null;
+      linked_uc_id   = ucId || null;
       source = 'item';
+      contextLabel = itemName;
     }
 
     // Start the run
@@ -1842,66 +1850,82 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
 
     _ucRunCtx = { mode, ucId: linked_uc_id, itemId: linked_item_id, runId: res.run_id };
 
-    // Open panel inside the target UC card
-    const panelUcId = mode === 'uc' ? targetId : (ucId || targetId);
-    _ucOpenPanel(panelUcId, res.run_id, pipeName);
+    // Open fixed right-side drawer
+    _ucOpenPanel(res.run_id, pipeName, contextLabel);
   } catch (e) {
     toast(`Failed to start pipeline run: ${e.message}`, 'error');
   }
 };
 
-function _ucOpenPanel(ucId, runId, pipeName) {
+// Fixed panel uses stable IDs — only one panel exists at a time
+const _PANEL_ID        = 'uc-run-panel';
+const _PANEL_DOT_ID    = 'uc-panel-dot';
+const _PANEL_STAGES_ID = 'uc-panel-stages';
+const _PANEL_LOG_ID    = 'uc-panel-log';
+const _PANEL_VERDICT_ID= 'uc-panel-verdict';
+const _PANEL_TITLE_ID  = 'uc-panel-title';
+
+function _ucOpenPanel(runId, pipeName, contextLabel) {
   // Remove any existing panel
-  document.querySelectorAll('.uc-run-panel').forEach(p => p.remove());
+  const existing = document.getElementById(_PANEL_ID);
+  if (existing) existing.remove();
+  if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
 
-  const cardEl = document.getElementById(`uc-card-${ucId.replace(/-/g, '')}`);
-  if (!cardEl) return;
-
-  cardEl.style.display = 'flex';
-  cardEl.style.flexDirection = 'row';
-  cardEl.style.alignItems = 'stretch';
+  const label = contextLabel
+    ? `${_esc(pipeName)} — ${_esc(contextLabel.slice(0, 30))}`
+    : _esc(pipeName);
 
   const panel = document.createElement('div');
-  panel.className = 'uc-run-panel';
-  panel.id = `uc-panel-${ucId}`;
-  panel.style.cssText = `min-width:320px;max-width:360px;border-left:2px solid var(--accent);
-    background:var(--surface);display:flex;flex-direction:column;padding:0.7rem 0.9rem;
-    flex-shrink:0;overflow:hidden`;
-  panel.innerHTML = `
-    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem">
-      <span id="uc-panel-dot-${ucId}" style="width:8px;height:8px;border-radius:50%;background:#f5a623;flex-shrink:0"></span>
-      <strong style="font-size:0.78rem">${_esc(pipeName)}</strong>
-      <button onclick="window._ucClosePanel('${_esc(ucId)}')"
-              style="margin-left:auto;font-size:0.7rem;padding:1px 6px;border:1px solid var(--border);
-                     border-radius:3px;cursor:pointer;background:transparent">✕</button>
-    </div>
-    <div id="uc-panel-stages-${ucId}" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.5rem;font-size:0.75rem"></div>
-    <div style="font-size:0.68rem;color:var(--muted);font-weight:600;margin-bottom:0.3rem;
-                border-top:1px solid var(--border);padding-top:0.3rem">Execution Log</div>
-    <div id="uc-panel-log-${ucId}" style="font-family:monospace;font-size:0.68rem;color:var(--muted);
-         flex:1;overflow-y:auto;max-height:160px;white-space:pre-wrap">Starting…</div>
-    <div id="uc-panel-verdict-${ucId}" style="display:none;margin-top:0.5rem;padding:0.3rem 0.5rem;
-         border-radius:4px;font-size:0.75rem;font-weight:600;text-align:center"></div>
+  panel.id = _PANEL_ID;
+  panel.style.cssText = `
+    position:fixed; right:0; top:0; height:100vh; width:360px; z-index:600;
+    background:var(--bg); border-left:2px solid var(--accent);
+    display:flex; flex-direction:column; padding:1rem 1.1rem;
+    box-shadow:-6px 0 24px rgba(0,0,0,.25); overflow:hidden;
   `;
-  cardEl.appendChild(panel);
+  panel.innerHTML = `
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.9rem;flex-shrink:0">
+      <span id="${_PANEL_DOT_ID}"
+            style="width:10px;height:10px;border-radius:50%;background:#f5a623;flex-shrink:0"></span>
+      <span id="${_PANEL_TITLE_ID}"
+            style="font-size:0.82rem;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;
+                   white-space:nowrap">${label}</span>
+      <button onclick="window._ucClosePanel()"
+              style="font-size:0.75rem;padding:2px 8px;border:1px solid var(--border);
+                     border-radius:4px;cursor:pointer;background:transparent;flex-shrink:0">✕</button>
+    </div>
 
-  // Poll
-  _ucPollRun(runId, ucId);
+    <!-- Stages -->
+    <div id="${_PANEL_STAGES_ID}"
+         style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.7rem;
+                flex-shrink:0;font-size:0.78rem"></div>
+
+    <!-- Log -->
+    <div style="font-size:0.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
+                text-transform:uppercase;border-top:1px solid var(--border);
+                padding-top:0.4rem;margin-bottom:0.3rem;flex-shrink:0">Execution Log</div>
+    <div id="${_PANEL_LOG_ID}"
+         style="font-family:monospace;font-size:0.7rem;color:var(--muted);
+                flex:1;overflow-y:auto;white-space:pre-wrap;line-height:1.5">Starting…</div>
+
+    <!-- Verdict / approval gate -->
+    <div id="${_PANEL_VERDICT_ID}"
+         style="display:none;margin-top:0.6rem;padding:0.4rem 0.6rem;border-radius:6px;
+                font-size:0.78rem;font-weight:600;text-align:center;flex-shrink:0"></div>
+  `;
+  document.body.appendChild(panel);
+
+  _ucPollRun(runId);
 }
 
-window._ucClosePanel = (ucId) => {
-  const panel = document.getElementById(`uc-panel-${ucId}`);
+window._ucClosePanel = () => {
+  const panel = document.getElementById(_PANEL_ID);
   if (panel) panel.remove();
   if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
-  const cardEl = document.getElementById(`uc-card-${ucId.replace(/-/g, '')}`);
-  if (cardEl) {
-    cardEl.style.display = '';
-    cardEl.style.flexDirection = '';
-    cardEl.style.alignItems = '';
-  }
 };
 
-function _ucPollRun(runId, ucId) {
+function _ucPollRun(runId) {
   if (_ucPollTimer) clearInterval(_ucPollTimer);
   const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', waiting_approval: '#9b7ef8' };
   const STAGE_ICONS   = { done: '●', running: '⟳', error: '✗', pending: '○' };
@@ -1909,25 +1933,28 @@ function _ucPollRun(runId, ucId) {
   const poll = async () => {
     try {
       const data = await api.agents.getPipelineRun(runId);
-      const dot      = document.getElementById(`uc-panel-dot-${ucId}`);
-      const stagesEl = document.getElementById(`uc-panel-stages-${ucId}`);
-      const logEl    = document.getElementById(`uc-panel-log-${ucId}`);
-      const verdEl   = document.getElementById(`uc-panel-verdict-${ucId}`);
+      const dot      = document.getElementById(_PANEL_DOT_ID);
+      const stagesEl = document.getElementById(_PANEL_STAGES_ID);
+      const logEl    = document.getElementById(_PANEL_LOG_ID);
+      const verdEl   = document.getElementById(_PANEL_VERDICT_ID);
 
-      if (!dot) return; // panel closed
+      if (!dot) return; // panel was closed
 
-      if (dot) dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
+      dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
 
       if (stagesEl && data.stages) {
         stagesEl.innerHTML = data.stages.map(s => {
           const icon  = STAGE_ICONS[s.status] || '○';
-          const color = s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : s.status === 'running' ? '#f5a623' : 'var(--muted)';
-          const dur   = s.duration_s ? ` ${s.duration_s.toFixed(1)}s` : '';
-          const cost  = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(3)}` : '';
-          return `<div style="display:flex;align-items:center;gap:0.3rem;color:${color}">
-            <span>${icon}</span>
+          const color = s.status === 'done'    ? '#3ecf8e'
+                      : s.status === 'error'   ? '#e85d75'
+                      : s.status === 'running' ? '#f5a623'
+                      : 'var(--muted)';
+          const dur  = s.duration_s != null ? ` ${s.duration_s.toFixed(1)}s` : '';
+          const cost = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(3)}` : '';
+          return `<div style="display:flex;align-items:center;gap:0.35rem;color:${color}">
+            <span style="font-size:0.85rem">${icon}</span>
             <span>${_esc(s.stage_key)}</span>
-            <span style="color:var(--muted);margin-left:auto">${_esc(dur)}${_esc(cost)}</span>
+            <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">${_esc(dur)}${_esc(cost)}</span>
           </div>`;
         }).join('');
       }
@@ -1935,29 +1962,25 @@ function _ucPollRun(runId, ucId) {
       if (logEl && data.stages) {
         const lines = [];
         for (const s of data.stages) {
-          if (s.log_lines?.length) {
-            lines.push(...s.log_lines.slice(-3).map(l => l.text || ''));
-          }
+          if (s.log_lines?.length) lines.push(...s.log_lines.slice(-3).map(l => l.text || ''));
         }
-        logEl.textContent = lines.slice(-8).join('\n') || 'Running…';
+        logEl.textContent = lines.slice(-10).join('\n') || 'Running…';
         logEl.scrollTop = logEl.scrollHeight;
       }
 
-      if (data.status === 'waiting_approval') {
-        if (verdEl) {
-          verdEl.style.display = 'block';
-          verdEl.style.background = '#9b7ef822';
-          verdEl.style.color = '#9b7ef8';
-          verdEl.innerHTML = `Waiting for approval
-            <div style="display:flex;gap:0.5rem;margin-top:0.4rem;justify-content:center">
-              <button onclick="api.agents.approvePipelineRun('${runId}',{approved:true}).catch(()=>{})"
-                      style="padding:0.2rem 0.6rem;border-radius:3px;background:#3ecf8e22;color:#3ecf8e;
-                             border:1px solid #3ecf8e;cursor:pointer;font-size:0.72rem">Approve</button>
-              <button onclick="api.agents.approvePipelineRun('${runId}',{approved:false}).catch(()=>{})"
-                      style="padding:0.2rem 0.6rem;border-radius:3px;background:#e85d7522;color:#e85d75;
-                             border:1px solid #e85d75;cursor:pointer;font-size:0.72rem">Reject</button>
-            </div>`;
-        }
+      if (data.status === 'waiting_approval' && verdEl) {
+        verdEl.style.display = 'block';
+        verdEl.style.background = '#9b7ef822';
+        verdEl.style.color = '#9b7ef8';
+        verdEl.innerHTML = `Waiting for approval
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:center">
+            <button onclick="api.agents.approvePipelineRun('${runId}',{approved:true}).catch(()=>{})"
+                    style="padding:0.25rem 0.8rem;border-radius:4px;background:#3ecf8e22;color:#3ecf8e;
+                           border:1px solid #3ecf8e;cursor:pointer;font-size:0.75rem">Approve</button>
+            <button onclick="api.agents.approvePipelineRun('${runId}',{approved:false}).catch(()=>{})"
+                    style="padding:0.25rem 0.8rem;border-radius:4px;background:#e85d7522;color:#e85d75;
+                           border:1px solid #e85d75;cursor:pointer;font-size:0.75rem">Reject</button>
+          </div>`;
       }
 
       if (data.status === 'done' || data.status === 'error') {
@@ -1965,23 +1988,23 @@ function _ucPollRun(runId, ucId) {
         _ucPollTimer = null;
         const verdict = data.final_verdict || data.status;
         const vColor  = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f59e0b';
-        if (dot) dot.style.background = vColor;
+        dot.style.background = vColor;
         if (verdEl) {
           verdEl.style.display = 'block';
           verdEl.style.background = `${vColor}22`;
           verdEl.style.color = vColor;
-          verdEl.textContent = verdict.toUpperCase() + (data.error ? `: ${data.error.slice(0, 80)}` : '');
+          verdEl.textContent = verdict.toUpperCase() + (data.error ? `: ${data.error.slice(0, 100)}` : '');
         }
-        // Reload UC items after 1s to show updated summaries
+        // Reload UC items after 1s to reflect summary updates
         setTimeout(() => _loadUseCases().catch(() => {}), 1000);
       }
     } catch (_e) {
-      // silent
+      // silent poll error — keep trying
     }
   };
 
   _ucPollTimer = setInterval(poll, 1500);
-  poll();
+  poll(); // immediate first poll
 }
 
 /** Neutral badge shown on approved use cases: "📂 12d open" */

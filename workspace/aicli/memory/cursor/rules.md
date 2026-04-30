@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 15:21 UTC -->
+<!-- Last updated: 2026-04-30 20:22 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -17,11 +17,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state for versioning
-- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system roles table cleaned to 3 canonical entries only
-- Role parameters: system_prompt + system_prompt_preset, provider/model/temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning
+- Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state for versioning and restore-to-base
+- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; GET /agent-roles/pipelines/{name} returns full config; POST /agents/pipeline-runs starts async execution
+- Pipeline execution: 4-agent async DAG triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate
+- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore commits: Multiple auto-generated commits after Claude CLI session 5cf393d1 (2026-04-30, spans 00:32–15:20), indicating sustained development cycle with persistent session hook execution
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings, Pipeline Runs health tiles
-- Pipeline execution UI: Pipelines tab with full builder graph visualization, per-stage node configuration (provider, model, temperature, max_iterations), and dynamic role/doc search
-- Execute bar unified input: Output folder combobox + searchable project docs dropdown + multi-file upload in single row; removable chips for files; improved styling with explicit background and z-index
+- Execute bar checkpoint control: checkboxes (max_retry, stateless, continue-on-fail, approval_gate) positioned below node diagram for clarity and usability
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), Work Items/Use Cases section (approved vs waiting-to-approve, total embeddings), Pipeline Runs health tiles for last 24h
+- Bug fixes: remove unused mem_ai_events columns, remove lifecycle tags from Planner UI, fix drag-and-drop in Planner, fix tagging UI display, fix commit-prompt reference rendering
+- PROJECT.md file loading optimization: address >60s timeouts during project initialization
 
-_Last updated: 2026-04-30 15:21 UTC_
+_Last updated: 2026-04-30 20:22 UTC_

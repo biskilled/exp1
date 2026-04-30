@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Execute bar UI refinement: output folder, project docs dropdown, multi-file upload unified in single row; dropdown styling with explicit background/z-index; layout alignment with checkpoint control checkboxes (max_retry, stateless, continue-on-fail, approval_gate) positioned below node diagram
-- CLI sessions visibility in Chat: backend SQL fix to read src column instead of tags->>'source'; CLI chat history now properly grouped by session in History view with prompts/responses
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), Work Items / Use Cases (approved vs waiting-to-approve, total embeddings), Pipeline Runs health tiles
-- Role execution from Role Library: same exec bar as pipeline execution (output folder, docs dropdown, file upload, prompt input); history panel below showing execution logs
-- Bug fixes: remove unused mem_ai_events columns, remove lifecycle tags from Planner, fix drag-and-drop in Planner, fix tagging UI [object object] display, fix commit-prompt reference display, fix PROJECT.md file loading timeout (>60s), fix backend startup race condition
-- Pipeline DAG builder: full visualization with per-stage node configuration (provider, model, temperature, max_iterations overrides), dynamic role/doc search in exec bar, checkpoint controls displayed and functional
+- Execute bar unified UI: output folder combobox, searchable project docs dropdown (styled with explicit background/z-index), multi-file upload (removable chips) all in single row; checkpoint control checkboxes (max_retry, stateless, continue-on-fail, approval_gate) positioned below node diagram for clarity
+- CLI chat history visibility: fixed backend SQL to read src column instead of tags->>'source'; CLI chat sessions now properly grouped by session in History view with prompts/responses displayed
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), Work Items/Use Cases section (approved vs waiting-to-approve, total embeddings), Pipeline Runs health tiles for last 24h
+- Role execution from Role Library: Pipelines tab (◈) supports direct role execution with same exec bar as pipelines (output folder, docs dropdown, file upload, prompt input); history panel below shows execution logs
+- Bug fixes in progress: remove unused mem_ai_events columns, remove lifecycle tags from Planner UI, fix drag-and-drop in Planner, fix tagging UI [object object] display, fix commit-prompt reference display, fix PROJECT.md file loading timeout (>60s), fix backend startup race condition
+- Pipeline execution entry points: pipeline/role executable from Pipelines tab, /role and /pipeline slash commands in Chat (input = all prompts in session), and from Use Cases section (only activated pipelines available for approved use cases)
 
 ## Key Decisions
 
@@ -315,14 +315,14 @@ sidebar tabs:
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state for versioning and restore-to-base
-- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table cleaned to 3 canonical entries only
+- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Role parameters: system_prompt + system_prompt_preset, provider/model/temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate
-- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline can only activate if all constituent roles are activated
-- Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select dropdown in role editor
-- Role library direct execution: Roles can be executed directly (not just within pipelines) via Role Library view; same exec bar interface as pipeline execution; supports both file upload and document reference; history panel shows execution logs
-- Execute bar unified input: output folder combobox (default = pipeline/role name) + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea; supports multiple selections; integrated into both Pipelines tab and Roles library direct execution
+- Pipeline execution: 4-agent async DAG triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate
+- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
+- Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
+- Role library direct execution: Roles can be executed directly (not just within pipelines) via Pipelines tab; same exec bar interface as pipeline execution with output folder dropdown, project docs search, multi-file upload; history panel shows execution logs
+- Execute bar unified input: output folder combobox (default = pipeline/role name) + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea; supports multiple document and file selections; integrated into both pipeline and role execution
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
