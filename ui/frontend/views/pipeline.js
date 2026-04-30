@@ -223,7 +223,8 @@ async function _loadPipelines() {
 async function _loadRoles() {
   try {
     const data = await api.agentRoles.list(_project);
-    _roles = (data || []).filter(r => r.activated && r.name !== 'internal_project_fact');
+    const arr  = Array.isArray(data) ? data : (data?.roles || []);
+    _roles = arr.filter(r => r.activated && r.name !== 'internal_project_fact');
     const el = document.getElementById('pl-left-roles');
     if (!el) return;
     if (!_roles.length) {

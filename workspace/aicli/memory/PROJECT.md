@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline execution wiring: POST /agents/pipeline-runs starts async DAG execution; pipeline stages reference roles with per-stage parameter overrides (provider/model/temperature/top_p); asyncio.gather orchestrates PM → Architect → Developer → Reviewer sequence; max_iterations mandatory per stage
-- Settings/Workflow tab restructure: renamed to 'Roles & Pipelines'; checkbox-based availability toggle for roles and pipelines; pipeline enable-only-if-all-required-roles-available validation; role list shows BASED (green)/UPDATED (orange)/EXTERNAL (amber) status badges
-- Role UI refinements: base_snapshot JSONB for pristine state storage; version history browsing; 'Reset to base' button restores from saved snapshot; 'Set as base' button snapshots current state; model selector auto-updates when provider changes
-- System prompts finalization: 3 canonical presets in system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all old system role entries deleted; roles reference presets via system_prompt_preset field
-- YAML config folder consolidation: memory-related YAML under backend/memory/yaml_config/ (command_memory.yaml, feature_detect.yaml); pipeline-related YAML under backend/agents/yaml_config/ (agent_react.yaml, event_tagging.yaml); role YAMLs prefixed role_* under workspace/_templates/pipelines/roles/; pipeline YAMLs prefixed pl_* under workspace/_templates/pipelines/
-- Project folder cleanup: removed legacy documents/, features/, cli/ folders; workspace/aicli/pipelines/ aligned with _templates structure; MCP Catalog moved to main left nav under new Workflows group alongside Roles and Pipelines
+- Pipeline execution framework: GET /agent-roles/pipelines/{name} returns full pipeline config with stage role details; POST /agents/pipeline-runs starts async DAG execution; UI execution panel displays stage outputs with async coordination
+- Role base snapshot and versioning: POST /agent-roles/{id}/set-base snapshots current role config; POST /agent-roles/{id}/restore-base restores to snapshot; mng_agent_role_versions table tracks historical edits; Reset to Base button in Settings/Roles editor
+- Provider model temperature injection: all 5 provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) accept temperature parameter; role YAML files store temperature config; pipeline stages override per-node
+- Workflow Settings UI consolidation: Settings/Workflow renamed to Roles & Pipelines; dual-pane view shows available roles and pipelines with activation checkboxes; edit button patches role/pipeline in mng_agent_roles; only activated items appear in role/pipeline tabs
+- MCP Catalog integration: dedicated MCP Catalog view in left nav; card-based UI shows all 10 MCPs with activate/deactivate modals; edit/add modals with name, provider, type fields; role-usage chips show which roles reference each MCP
+- Work item UI fixes: multiple bug fixes for nested item rendering, category display, tag visibility, and commit/prompt counting; database schema updates for mem_work_items and event tracking; phase metadata and session filtering in History tab
 
 ## Key Decisions
 
