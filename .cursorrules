@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 10:22 UTC -->
+<!-- Last updated: 2026-04-30 12:51 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -17,11 +17,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state; POST /agent-roles/{id}/refresh reloads YAML and updates DB
-- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; old system roles table cleaned to 3 canonical entries only
-- Role parameters: system_prompt + system_prompt_preset (references shared preset), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning via mng_agent_role_versions
+- Work item classification pipeline: POST /wi/{project}/classify deletes AI draft rows and runs Haiku classification on raw backlog items (mem_mrr_items) to create new categorized work items
+- Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state
+- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset
+- Role parameters: system_prompt + system_prompt_preset, provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for versioning via mng_agent_role_versions
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); all provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) accept temperature parameter; pipeline stages can override temperature/top_p per node
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Continuous chore commits after Claude CLI sessions (session 5cf393d1 and earlier 45ca1683) indicate active development/refinement cycles with auto-commit hooks firing
-- Pipeline execution UI: Pipelines tab (◆ icon) with full builder (graph_workflow.js) showing node configuration; left panel lists activated pipelines/roles; right detail panel displays pipeline flow and per-stage properties
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), LLM Pipeline Costs table, and Pipeline Runs health tiles showing last 24h execution status
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with activation checkboxes; versioning status badges (BASED green, UPDATED orange, EXTERNAL amber); reset-to-base via mng_agent_role_versions
+- Continuous chore commits after Claude CLI session 5cf393d1 (16+ commits from 2026-04-29 22:46 through 2026-04-30 12:51) indicating active development cycle and auto-commit hook execution
+- Pipeline execution UI with node configuration panel in right detail pane showing provider/model/temperature/max_iterations per stage
+- Dashboard restoration with Mirror Data cards (commits, prompts, items, messages), approved vs waiting-to-approve work items, and Pipeline Runs health tiles
+- Role activation and versioning UI wiring in Settings/Roles & Pipelines with status badges (BASED/UPDATED/EXTERNAL) and reset-to-base functionality
 
-_Last updated: 2026-04-30 10:22 UTC_
+_Last updated: 2026-04-30 12:51 UTC_

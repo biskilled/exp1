@@ -101,6 +101,7 @@ export function renderGraphWorkflow(container) {
       .gw-role-card { display:flex; align-items:center; gap:0.4rem; padding:0.3rem 0.75rem;
         cursor:pointer; font-size:0.78rem; border-radius:0; transition:background 0.1s; }
       .gw-role-card:hover { background:var(--hover); }
+      .gw-role-card.active { background:rgba(100,108,255,0.12); font-weight:500; border-left:3px solid var(--accent); }
       .gw-role-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
       .gw-role-badge { font-size:0.6rem; background:var(--border); border-radius:3px;
         padding:0.05rem 0.25rem; color:var(--muted); }
@@ -342,8 +343,7 @@ export function renderGraphWorkflow(container) {
 
       <div class="gw-main">
         <div id="gw-props-bar" class="gw-props-bar" style="display:none"></div>
-        <div class="gw-canvas-area">
-          <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
+        <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
             <div class="gw-empty" id="gw-empty-state">
               <div style="font-size:2rem">◈</div>
               <div style="font-weight:600">Select a pipeline or create a new one</div>
@@ -355,9 +355,11 @@ export function renderGraphWorkflow(container) {
               </div>
             </div>
             <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
-          </div>
-          <!-- Run progress panel (directly below nodes, fills remaining canvas space) -->
-          <div class="gw-run-panel" id="gw-run-panel">
+        </div>
+        <!-- Execution bar — right below pipeline nodes -->
+        <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
+        <!-- Run progress panel — fills remaining space when active -->
+        <div class="gw-run-panel" id="gw-run-panel">
             <div class="gw-rp-hdr">
               <div style="display:flex;align-items:center;gap:0.75rem;flex:1;min-width:0">
                 <div class="gw-rp-wf-name" id="gw-rp-wf-name">Pipeline</div>
@@ -392,10 +394,7 @@ export function renderGraphWorkflow(container) {
             <div id="gw-log" style="display:none">
               <div class="gw-log-body" id="gw-log-body"></div>
             </div>
-          </div>
         </div>
-        <!-- Execution bar — below canvas, always visible when pipeline selected -->
-        <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
         <div id="gw-hist-bar" class="gw-hist-bar" style="display:none"></div>
       </div>
 
@@ -598,14 +597,15 @@ function _renderRoleLibrary() {
     const badge = r.role_type === 'system_designer' ? 'SYS'
                 : r.role_type === 'reviewer' ? 'REV' : 'AGT';
     return `
-      <div class="gw-role-card" onclick="window._gwAddFromRole(${r.id})" title="${_esc(r.description||r.name)}">
+      <div class="gw-role-card" data-role-id="${r.id}" onclick="window._gwSelectRole(${r.id})" title="${_esc(r.description||r.name)}">
         <div class="gw-role-dot" style="background:${color}"></div>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(r.name)}</span>
         <span class="gw-role-badge">${badge}</span>
       </div>
     `;
   }).join('');
-  window._gwAddFromRole = _addFromRole;
+  window._gwSelectRole  = _gwSelectRole;
+  window._gwAddFromRole = _addFromRole;  // still needed for the + canvas menu
 }
 
 // ── Recent runs sidebar ───────────────────────────────────────────────────────
@@ -1003,9 +1003,10 @@ function _selectNode(nodeId) {
 
 // ── Pipeline Properties / Execute / History panel ─────────────────────────────
 
-let _gwPollTimer   = null;   // async pipeline run poll
-let _gwRunId       = null;   // current async run id
-let _gwHistLimit   = 10;
+let _gwPollTimer      = null;   // async pipeline run poll
+let _gwRunId          = null;   // current async run id
+let _gwHistLimit      = 10;
+let _gwSelectedRole   = null;   // currently selected role for direct execution
 let _gwPanelMode      = null;  // 'node' | 'pipeline'
 let _gwPpFileList     = [];    // [{type:'doc'|'upload', name:str, path?:str, file?:File}]
 let _gwPpDocsCache    = null;  // cached [{name, path}] from api.documents.list
@@ -1021,6 +1022,8 @@ function _showPipelineProps() {
   _gwPpDocsCache = null;
   _gwPpPipeNames = null;
   document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
+  _gwSelectedRole = null;
+  document.querySelectorAll('.gw-role-card').forEach(c => c.classList.remove('active'));
 
   // Close right detail panel — pipeline props are now inline bars
   const detail = document.getElementById('gw-detail');
@@ -1542,9 +1545,11 @@ function _gwPpUpdateProgress(data) {
       const outPath  = `documents/pipeline/${pipeName}/${nodePart}.md`;
 
       let detail = '';
+      // Backend returns "output_preview" for pipeline-runs, "output_text" for direct runs
+      const outText = s.output_preview || s.output_text || '';
       if (s.status === 'done') {
         const meta = [dur, cost, tokStr].filter(Boolean).join(' · ');
-        const summary = (s.output_text || '').replace(/\n+/g, ' ').slice(0, 160);
+        const summary = outText.replace(/\n+/g, ' ').slice(0, 160);
         detail = `
           <div style="font-size:0.62rem;color:var(--muted);margin-top:0.15rem;line-height:1.5">
             ${meta ? `<span>${_esc(meta)}</span> · ` : ''}
@@ -1553,10 +1558,10 @@ function _gwPpUpdateProgress(data) {
           ${summary ? `<div style="font-size:0.63rem;color:var(--fg);margin-top:0.12rem;
                             line-height:1.4;max-height:36px;overflow:hidden;
                             display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">
-            ${_esc(summary)}${s.output_text && s.output_text.length > 160 ? '…' : ''}
+            ${_esc(summary)}${outText.length > 160 ? '…' : ''}
           </div>` : ''}`;
       } else if (s.status === 'error') {
-        const errMsg = (s.output_text || 'Error').slice(0, 140);
+        const errMsg = (outText || 'Error').slice(0, 140);
         detail = `<div style="font-size:0.62rem;color:#e85d75;margin-top:0.1rem">${_esc(errMsg)}</div>`;
       } else if (s.status === 'running' && dur) {
         detail = `<div style="font-size:0.62rem;color:var(--muted);margin-top:0.1rem">${_esc(dur)}</div>`;
@@ -1714,6 +1719,258 @@ function _closeDetail() {
   if (detail) detail.classList.remove('open');
   const footer = document.querySelector('.gw-detail-footer');
   if (footer) footer.style.display = '';
+}
+
+// ── Role direct execution ─────────────────────────────────────────────────────
+
+function _gwSelectRole(roleId) {
+  const role = _roles.find(r => r.id === roleId);
+  if (!role) return;
+  _gwSelectedRole = role;
+
+  // Highlight selected role card
+  document.querySelectorAll('.gw-role-card').forEach(el => {
+    el.classList.toggle('active', String(el.dataset.roleId) === String(roleId));
+  });
+  // Deselect workflow + node selections
+  document.querySelectorAll('.gw-wf-item').forEach(el => el.classList.remove('active'));
+  _selectedNodeId = null;
+  document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
+  const detail = document.getElementById('gw-detail');
+  if (detail) detail.classList.remove('open');
+
+  _showRoleExec(role);
+}
+
+function _showRoleExec(role) {
+  _gwPpFileList  = [];
+  _gwPpDocsCache = null;
+  _gwPpPipeNames = null;
+
+  const propsBar = document.getElementById('gw-props-bar');
+  const execBar  = document.getElementById('gw-exec-bar');
+  const histBar  = document.getElementById('gw-hist-bar');
+  if (propsBar) propsBar.style.display = 'none';
+  if (execBar)  execBar.style.display  = '';
+  if (histBar)  histBar.style.display  = 'none';  // roles have no pipeline history
+
+  const provLabel  = role.provider || 'claude';
+  const modelLabel = role.model ? `${provLabel} / ${role.model}` : provLabel;
+
+  execBar.innerHTML = `
+    <div style="display:flex;align-items:center;padding:0.4rem 0.75rem;
+                background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;gap:0.5rem">
+      <span style="font-size:0.72rem;font-weight:600;flex:1">▶ ${_esc(role.name)}</span>
+      <span style="font-size:0.65rem;color:var(--muted)">${_esc(modelLabel)}</span>
+    </div>
+    <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
+                                   gap:0.4rem;overflow-y:auto;max-height:55vh">
+      <!-- Files & docs row -->
+      <div style="display:flex;gap:0.35rem;align-items:flex-start">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:0.2rem">
+          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
+                      text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
+          <div style="display:flex;gap:0.3rem;align-items:center">
+            <div style="flex:1;min-width:0;position:relative">
+              <input type="text" id="pp-doc-search" placeholder="Search project docs…" autocomplete="off"
+                style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
+                       background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
+                oninput="window._gwPpDocSearch(this.value)"
+                onfocus="window._gwPpDocSearch(this.value)"
+                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },150)">
+              <div id="pp-doc-list"
+                style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
+                       background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
+                       max-height:130px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
+            </div>
+            <button class="btn btn-ghost btn-sm"
+              style="font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap"
+              onclick="document.getElementById('pp-role-file-input').click()">+ Files</button>
+            <input type="file" id="pp-role-file-input" multiple style="display:none"
+              onchange="window._gwPpFileAdd(this)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected file/doc chips -->
+      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem;min-height:0"></div>
+
+      <!-- Task textarea -->
+      <textarea id="pp-task" rows="5"
+        placeholder="Task for ${_esc(role.name)}…"
+        style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
+               background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+               padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"
+        oninput="window._gwPpValidate()"></textarea>
+
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+        <button id="pp-run-btn" class="btn btn-primary btn-sm"
+          style="font-size:0.76rem;opacity:0.4" disabled onclick="window._gwRoleRun()">▶ Run ${_esc(role.name)}</button>
+        <button id="pp-cancel-btn" class="btn btn-ghost btn-sm"
+          style="font-size:0.76rem;display:none">■ Running…</button>
+        <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c"></div>
+      </div>
+
+      <!-- Progress section (same structure as pipeline) -->
+      <div id="pp-progress" style="display:none;border-top:1px solid var(--border);padding-top:0.45rem;margin-top:0.1rem">
+        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Execution Progress</div>
+        <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.3rem"></div>
+        <details style="margin-top:0.1rem">
+          <summary style="font-size:0.62rem;color:var(--muted);cursor:pointer;user-select:none;
+                          list-style:none;padding:0.1rem 0">▸ Detailed log</summary>
+          <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;
+               line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+               padding:0.3rem 0.4rem;max-height:120px;overflow-y:auto;margin-top:0.15rem"></div>
+        </details>
+      </div>
+    </div>
+  `;
+
+  // Register shared globals
+  window._gwPpDocSearch  = _gwPpDocSearch;
+  window._gwPpValidate   = _gwPpValidate;
+  window._gwPpDocPick    = (path, label) => {
+    if (!_gwPpFileList.find(f => f.path === path)) {
+      _gwPpFileList.push({ type: 'doc', name: label, path });
+      _gwPpRenderChips();
+    }
+    const src = document.getElementById('pp-doc-search');
+    const lst = document.getElementById('pp-doc-list');
+    if (src) src.value = '';
+    if (lst) lst.style.display = 'none';
+    _gwPpValidate();
+  };
+  window._gwPpFileAdd = (input) => {
+    for (const f of Array.from(input.files || [])) {
+      if (!_gwPpFileList.find(x => x.type === 'upload' && x.name === f.name)) {
+        _gwPpFileList.push({ type: 'upload', name: f.name, file: f });
+      }
+    }
+    input.value = '';
+    _gwPpRenderChips();
+    _gwPpValidate();
+  };
+  window._gwPpRemoveFile = (idx) => {
+    _gwPpFileList.splice(idx, 1);
+    _gwPpRenderChips();
+    _gwPpValidate();
+  };
+  window._gwRoleRun  = _gwRoleRun;
+
+  _gwPpLoadDocs();
+}
+
+async function _gwRoleRun() {
+  if (!_gwSelectedRole) return;
+  const promptText = (document.getElementById('pp-task')?.value || '').trim();
+
+  const parts = [];
+  for (const item of _gwPpFileList) {
+    if (item.type === 'doc') {
+      try {
+        const data = await api.documents.read(item.path, _project);
+        const content = data?.content || data?.text || '';
+        parts.push(`--- File: ${item.name} ---\n${content || '(empty)'}`);
+      } catch (_) { parts.push(`--- File: ${item.name} ---\n(could not load)`); }
+    } else if (item.file) {
+      try {
+        const content = await new Promise((res, rej) => {
+          const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej;
+          r.readAsText(item.file);
+        });
+        parts.push(`--- File: ${item.name} ---\n${content}`);
+      } catch (_) { parts.push(`--- File: ${item.name} ---\n(read error)`); }
+    }
+  }
+  if (promptText) parts.push(promptText);
+  const task = parts.join('\n\n');
+  if (!task.trim()) {
+    document.getElementById('pp-run-err').textContent = 'Add a prompt or at least one file.';
+    return;
+  }
+
+  document.getElementById('pp-run-err').textContent  = '';
+  document.getElementById('pp-run-btn').style.display    = 'none';
+  document.getElementById('pp-cancel-btn').style.display = '';
+  document.getElementById('pp-progress').style.display   = '';
+  _gwPpClearLog();
+
+  const cardsEl = document.getElementById('pp-stage-cards');
+  const roleName = _gwSelectedRole.name;
+  if (cardsEl) {
+    cardsEl.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
+                  border:1px solid #f5a62366;border-radius:5px;background:#f5a6230e">
+        <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:0.05rem;
+                    background:#f5a623;display:flex;align-items:center;justify-content:center;
+                    font-size:0.6rem;font-weight:700;color:#fff">⟳</div>
+        <div style="flex:1;font-size:0.72rem;font-weight:600;color:var(--fg)">
+          ${_esc(roleName)} <span style="font-weight:400;font-size:0.67rem;color:var(--muted)">(running…)</span>
+        </div>
+      </div>`;
+  }
+
+  const t0 = Date.now();
+  try {
+    const res = await api.agents.runAgent({ role: roleName, task, project: _project });
+    const elapsed = _gwFmtDur((Date.now() - t0) / 1000);
+    const tok     = (res.input_tokens || 0) + (res.output_tokens || 0);
+    const cost    = res.cost_usd > 0 ? `$${Number(res.cost_usd).toFixed(4)}` : '';
+    const tokStr  = tok > 0 ? `${tok >= 1000 ? (tok/1000).toFixed(1)+'k' : tok} tok` : '';
+    const meta    = [elapsed, cost, tokStr].filter(Boolean).join(' · ');
+    const steps   = res.steps ? `${res.steps} steps` : '';
+    const output  = (typeof res.output === 'string' ? res.output
+                    : JSON.stringify(res.structured_output || res.output || ''))
+                    .replace(/\n+/g, ' ').slice(0, 200);
+    const isOk = !['error','failed','loop_detected','max_steps_reached'].includes(res.status);
+    const clr  = isOk ? '#3ecf8e' : '#e85d75';
+    const icon = isOk ? '✓' : '✗';
+
+    if (cardsEl) {
+      cardsEl.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
+                    border:1px solid ${clr}66;border-radius:5px;background:var(--bg1)">
+          <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:0.05rem;
+                      background:${clr};display:flex;align-items:center;justify-content:center;
+                      font-size:0.6rem;font-weight:700;color:#fff">${icon}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.72rem;font-weight:600;color:var(--fg)">${_esc(roleName)}</div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-top:0.12rem">
+              ${_esc([meta, steps].filter(Boolean).join(' · '))}
+            </div>
+            ${output ? `<div style="font-size:0.63rem;color:var(--fg);margin-top:0.1rem;line-height:1.4;
+                              max-height:40px;overflow:hidden;display:-webkit-box;
+                              -webkit-line-clamp:2;-webkit-box-orient:vertical">
+              ${_esc(output)}${output.length >= 200 ? '…' : ''}
+            </div>` : ''}
+          </div>
+        </div>`;
+    }
+    for (const s of (res.react_trace || [])) {
+      if (s.thought) _gwPpLog(`Thought: ${s.thought}`, 'info');
+      if (s.action)  _gwPpLog(`Action: ${s.action}`, 'info');
+    }
+    _gwPpLog(`${icon} ${res.status} — ${meta}`, isOk ? 'info' : 'error');
+  } catch (e) {
+    if (cardsEl) {
+      cardsEl.innerHTML = `
+        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
+                    border:1px solid #e85d7566;border-radius:5px;background:var(--bg1)">
+          <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;background:#e85d75;
+                      display:flex;align-items:center;justify-content:center;
+                      font-size:0.6rem;font-weight:700;color:#fff">✗</div>
+          <div style="flex:1">
+            <div style="font-size:0.72rem;font-weight:600;color:var(--fg)">${_esc(roleName)}</div>
+            <div style="font-size:0.62rem;color:#e85d75;margin-top:0.1rem">${_esc(e.message)}</div>
+          </div>
+        </div>`;
+    }
+    _gwPpLog(`Error: ${e.message}`, 'error');
+  }
+
+  document.getElementById('pp-run-btn').style.display    = '';
+  document.getElementById('pp-cancel-btn').style.display = 'none';
 }
 
 /** Find best-matching role for a node (by ID, exact name, or fuzzy keyword match). */
@@ -2104,6 +2361,8 @@ function _openRunPanel(wfName, nodes) {
   // Show run panel (bottom of canvas — detail panel can remain open)
   const panel = document.getElementById('gw-run-panel');
   if (panel) panel.classList.add('open');
+  const eb = document.getElementById('gw-exec-bar');
+  if (eb) eb.style.display = 'none';
 
   // Set workflow name
   const nameEl = document.getElementById('gw-rp-wf-name');
@@ -2130,6 +2389,8 @@ function _openRunPanel(wfName, nodes) {
 function _closeRunPanel() {
   const panel = document.getElementById('gw-run-panel');
   if (panel) panel.classList.remove('open');
+  const eb = document.getElementById('gw-exec-bar');
+  if (eb && (_currentWf || _gwSelectedRole)) eb.style.display = '';
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
 }
 
