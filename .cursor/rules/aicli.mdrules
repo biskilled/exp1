@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 21:49 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 21:59 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -49,8 +49,8 @@ _Last updated: 2026-04-30_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-30] I would like to add into setting/pipeline 2 mode check box - use case and item. only marked pipeline in use case will be
 - [2026-04-30] Why when ever I check a box - all ui is reloading (page reload ) can it be be more like reack - update on click ? curren
 - [2026-04-30] I continue to check the pipeline -  I did get an error - ERROR: Stage 'architect' failed: Error code: 400 - {'type': 'er
 - [2026-04-30] Befire I contoinue with testing, I would like to know what you think about the app?  I do need to finish user roles and 
 - [2026-04-30] Can i refactor the UI to use react with electron ? what is the most usefaull framework with elecetorn ?
+- [2026-04-30] Let me go back to the testing - I do see that workflow finih. Please add with the score (APPROVE) some number 0-5 so use

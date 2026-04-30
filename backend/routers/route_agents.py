@@ -432,6 +432,9 @@ async def _run_pipeline_bg(
                 if stage_def.max_iterations_override is not None:
                     agent.max_iterations = stage_def.max_iterations_override
 
+                # Snapshot what we're passing into this stage (for display)
+                input_snap = _json.dumps(handoff) if handoff else None
+
                 coro = agent.run_pipeline(task=task, handoff=handoff, project=project)
                 if stage_def.timeout_seconds:
                     import asyncio
@@ -475,12 +478,27 @@ async def _run_pipeline_bg(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     so = _json.dumps(stage_result.structured_output) if (stage_result and stage_result.structured_output) else None
+                    # Serialize ReAct steps for display in UI
+                    steps_data = None
+                    if stage_result and stage_result.steps:
+                        steps_data = _json.dumps([
+                            {
+                                "step": s.step_num,
+                                "thought": s.thought[:500] if s.thought else "",
+                                "tool": s.action_name,
+                                "args": {k: str(v)[:200] for k, v in (s.action_args or {}).items()},
+                                "observation": s.observation[:800] if s.observation else "",
+                            }
+                            for s in stage_result.steps
+                        ])
                     cur.execute(
                         """UPDATE pr_pipeline_run_stages
                            SET status=%s, output_text=%s, structured_out=%s::jsonb,
                                input_tokens=%s, output_tokens=%s, cost_usd=%s,
                                duration_s=%s, finished_at=NOW(),
-                               temperature_used=%s
+                               temperature_used=%s,
+                               input_snapshot=%s::jsonb,
+                               steps_json=%s::jsonb
                            WHERE id=%s""",
                         (
                             "error" if stage_error else "done",
@@ -491,6 +509,8 @@ async def _run_pipeline_bg(
                             float(stage_result.cost_usd) if stage_result else 0,
                             round(dur_s, 2),
                             stage_def.temperature_override,
+                            input_snap,
+                            steps_data,
                             stage_id,
                         ),
                     )
@@ -737,7 +757,8 @@ async def get_pipeline_run(run_id: str) -> dict:
                 cur.execute(
                     """SELECT id, stage_key, role_name, status, attempt,
                               output_text, log_lines, input_tokens, output_tokens,
-                              cost_usd, duration_s, temperature_used, started_at, finished_at
+                              cost_usd, duration_s, temperature_used, started_at, finished_at,
+                              structured_out, steps_json, input_snapshot
                        FROM pr_pipeline_run_stages
                        WHERE run_id=%s ORDER BY id""",
                     (run_id,),
@@ -760,6 +781,9 @@ async def get_pipeline_run(run_id: str) -> dict:
                 "temperature_used":sr[11],
                 "started_at":      sr[12].isoformat() if sr[12] else None,
                 "finished_at":     sr[13].isoformat() if sr[13] else None,
+                "structured_out":  sr[14],   # parsed JSON handoff (if model emitted one)
+                "steps_json":      sr[15],   # ReAct trace steps
+                "input_snapshot":  sr[16],   # handoff passed INTO this stage
             }
             for sr in stage_rows
         ]

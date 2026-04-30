@@ -1873,12 +1873,45 @@ function _pollChatRun(runId, cardId) {
       const stagesEl = document.getElementById(`${cardId}-stages`);
       if (stagesEl && data.stages) {
         const STAGE_ICONS = { done: '●', running: '⟳', error: '✗', pending: '○' };
-        stagesEl.innerHTML = data.stages.map(s =>
-          `<span title="${_esc(s.role_name)} (${s.status})" style="font-size:0.75rem;
-            color:${s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : s.status === 'running' ? '#f5a623' : 'var(--muted)'}">
-            ${STAGE_ICONS[s.status] || '○'} ${_esc(s.stage_key)}
-          </span>`
-        ).join(' ');
+        stagesEl.innerHTML = data.stages.map(s => {
+          const icon  = STAGE_ICONS[s.status] || '○';
+          const color = s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75'
+                      : s.status === 'running' ? '#f5a623' : 'var(--muted)';
+          const dur  = s.duration_s != null ? ` ${s.duration_s.toFixed(1)}s` : '';
+          const cost = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(3)}` : '';
+          const isDone = s.status === 'done' || s.status === 'error';
+          const detId = `${cardId}-sdet-${s.id}`;
+
+          // Steps summary for done stages
+          let detHtml = '';
+          if (isDone) {
+            const steps = s.steps_json;
+            const so    = s.structured_out;
+            let innerLines = [];
+            if (steps?.length) {
+              innerLines.push(`${steps.length} steps: ${steps.slice(0,4).map(st => st.tool).join(' → ')}${steps.length > 4 ? ' …' : ''}`);
+            }
+            if (so?.summary) innerLines.push(so.summary.slice(0, 150));
+            else if (so?.verdict) innerLines.push(`Verdict: ${so.verdict}${so.summary ? ' — '+so.summary.slice(0,80) : ''}`);
+            if (innerLines.length) {
+              detHtml = `<div id="${detId}" style="display:none;font-size:0.67rem;color:var(--muted);
+                            margin-top:0.2rem;padding-left:1.2rem;line-height:1.5">
+                ${innerLines.map(l => `<div>${_esc(l)}</div>`).join('')}
+              </div>`;
+            }
+          }
+
+          return `<div style="margin-bottom:0.15rem">
+            <div style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;color:${color};
+                        ${isDone ? 'cursor:pointer' : ''}"
+                 ${isDone && detHtml ? `onclick="const d=document.getElementById('${detId}');if(d)d.style.display=d.style.display==='none'?'block':'none'"` : ''}>
+              <span>${icon}</span>
+              <span>${_esc(s.stage_key)}</span>
+              <span style="font-size:0.67rem;color:var(--muted)">${_esc(dur)}${_esc(cost)}</span>
+            </div>
+            ${detHtml}
+          </div>`;
+        }).join('');
       }
 
       // Update log
@@ -1897,10 +1930,18 @@ function _pollChatRun(runId, cardId) {
         clearInterval(pollTimer);
         const verdict = data.final_verdict || data.status;
         const verdictColor = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f5a623';
+        // Show final result as the reviewer's structured output if available
+        const revStage = [...(data.stages || [])].reverse().find(s => s.structured_out);
+        const finalOut = revStage?.structured_out;
         if (logEl) {
-          logEl.style.maxHeight = '60px';
-          logEl.innerHTML = `<span style="color:${verdictColor};font-weight:600">${_esc(verdict)}</span>` +
-            (data.error ? ` — ${_esc(data.error.slice(0, 100))}` : '');
+          logEl.style.maxHeight = '80px';
+          const summaryLine = finalOut?.summary
+            ? `<div style="color:var(--text);margin-top:0.2rem;font-size:0.7rem">${_esc(finalOut.summary.slice(0,200))}</div>`
+            : '';
+          logEl.innerHTML = `<span style="color:${verdictColor};font-weight:600">${_esc(verdict.toUpperCase())}</span>` +
+            (data.duration_s ? `<span style="color:var(--muted);font-size:0.67rem;margin-left:0.4rem">${data.duration_s.toFixed(0)}s · $${(data.total_cost_usd||0).toFixed(3)}</span>` : '') +
+            summaryLine +
+            (data.error ? `<div style="color:#e85d75">${_esc(data.error.slice(0, 100))}</div>` : '');
         }
       }
     } catch (e) {

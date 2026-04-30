@@ -3377,6 +3377,18 @@ def m087_pipeline_mode_flags(conn) -> None:
     log.info("m087: added mode_use_case, mode_item to mng_agent_pipelines")
 
 
+def m088_stage_steps_and_input(conn) -> None:
+    """Add ReAct step trace + input snapshot to pr_pipeline_run_stages."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE pr_pipeline_run_stages
+              ADD COLUMN IF NOT EXISTS input_snapshot JSONB DEFAULT NULL,
+              ADD COLUMN IF NOT EXISTS steps_json     JSONB DEFAULT NULL
+        """)
+    conn.commit()
+    log.info("m088: added input_snapshot, steps_json to pr_pipeline_run_stages")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3452,4 +3464,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m085_pipeline_runs_tables", m085_pipeline_runs_tables),
     ("m086_pipeline_run_source", m086_pipeline_run_source),
     ("m087_pipeline_mode_flags", m087_pipeline_mode_flags),
+    ("m088_stage_steps_and_input", m088_stage_steps_and_input),
 ]

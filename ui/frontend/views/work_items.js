@@ -1913,14 +1913,14 @@ function _ucOpenPanel(runId, pipeName, contextLabel) {
   const panel = document.createElement('div');
   panel.id = _PANEL_ID;
   panel.style.cssText = `
-    position:fixed; right:0; top:0; height:100vh; width:360px; z-index:9999;
+    position:fixed; right:0; top:0; height:100vh; width:420px; z-index:9999;
     background:var(--bg); border-left:2px solid var(--accent);
     display:flex; flex-direction:column; padding:1rem 1.1rem;
     box-shadow:-6px 0 24px rgba(0,0,0,.25); overflow:hidden;
   `;
   panel.innerHTML = `
     <!-- Header -->
-    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.9rem;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;flex-shrink:0">
       <span id="${_PANEL_DOT_ID}"
             style="width:10px;height:10px;border-radius:50%;background:#f5a623;flex-shrink:0"></span>
       <span id="${_PANEL_TITLE_ID}"
@@ -1931,23 +1931,24 @@ function _ucOpenPanel(runId, pipeName, contextLabel) {
                      border-radius:4px;cursor:pointer;background:transparent;flex-shrink:0">✕</button>
     </div>
 
-    <!-- Stages -->
+    <!-- Stages (scrollable) -->
     <div id="${_PANEL_STAGES_ID}"
-         style="display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.7rem;
-                flex-shrink:0;font-size:0.78rem"></div>
+         style="flex:1;overflow-y:auto;font-size:0.78rem;padding-right:0.25rem"></div>
 
-    <!-- Log -->
-    <div style="font-size:0.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
-                text-transform:uppercase;border-top:1px solid var(--border);
-                padding-top:0.4rem;margin-bottom:0.3rem;flex-shrink:0">Execution Log</div>
-    <div id="${_PANEL_LOG_ID}"
-         style="font-family:monospace;font-size:0.7rem;color:var(--muted);
-                flex:1;overflow-y:auto;white-space:pre-wrap;line-height:1.5">Starting…</div>
+    <!-- Log (compact, collapsed) -->
+    <details style="flex-shrink:0;margin-top:0.5rem">
+      <summary style="font-size:0.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
+                      text-transform:uppercase;cursor:pointer;padding:0.3rem 0;
+                      border-top:1px solid var(--border)">Execution Log</summary>
+      <div id="${_PANEL_LOG_ID}"
+           style="font-family:monospace;font-size:0.7rem;color:var(--muted);
+                  max-height:100px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;
+                  margin-top:0.25rem">Starting…</div>
+    </details>
 
     <!-- Verdict / approval gate -->
     <div id="${_PANEL_VERDICT_ID}"
-         style="display:none;margin-top:0.6rem;padding:0.4rem 0.6rem;border-radius:6px;
-                font-size:0.78rem;font-weight:600;text-align:center;flex-shrink:0"></div>
+         style="display:none;margin-top:0.5rem;flex-shrink:0"></div>
   `;
   document.body.appendChild(panel);
 
@@ -1984,12 +1985,107 @@ function _ucPollRun(runId) {
                       : s.status === 'error'   ? '#e85d75'
                       : s.status === 'running' ? '#f5a623'
                       : 'var(--muted)';
-          const dur  = s.duration_s != null ? ` ${s.duration_s.toFixed(1)}s` : '';
-          const cost = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(3)}` : '';
-          return `<div style="display:flex;align-items:center;gap:0.35rem;color:${color}">
-            <span style="font-size:0.85rem">${icon}</span>
-            <span>${_esc(s.stage_key)}</span>
-            <span style="font-size:0.72rem;color:var(--muted);margin-left:auto">${_esc(dur)}${_esc(cost)}</span>
+          const dur   = s.duration_s != null ? `${s.duration_s.toFixed(1)}s` : '';
+          const cost  = s.cost_usd > 0 ? `$${Number(s.cost_usd).toFixed(3)}` : '';
+          const toks  = s.input_tokens ? `${Math.round((s.input_tokens + s.output_tokens) / 1000)}k tok` : '';
+          const detId = `stage-det-${s.id}`;
+          const hasDetails = s.status === 'done' || s.status === 'error';
+
+          // Build detail section
+          let detailHtml = '';
+          if (hasDetails) {
+            // Input summary
+            let inputHtml = '';
+            const snap = s.input_snapshot;
+            if (snap) {
+              const inputLines = [];
+              if (snap.role) inputLines.push(`From: ${snap.role}`);
+              if (snap.summary) inputLines.push(snap.summary.slice(0, 120));
+              if (snap.work_items?.length) inputLines.push(`${snap.work_items.length} work items`);
+              if (snap.verdict) inputLines.push(`Verdict: ${snap.verdict}`);
+              if (snap.issues?.length) inputLines.push(`Issues: ${snap.issues.slice(0,2).join('; ').slice(0,100)}`);
+              if (snap.raw_output) inputLines.push(snap.raw_output.slice(0, 150));
+              if (inputLines.length) {
+                inputHtml = `<div style="margin-bottom:0.35rem;color:var(--muted)">
+                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase">Input</span>
+                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4">${inputLines.map(l => _esc(l)).join('<br>')}</div>
+                </div>`;
+              }
+            }
+
+            // Steps / tool calls
+            let stepsHtml = '';
+            const steps = s.steps_json;
+            if (steps?.length) {
+              const stepLines = steps.map(st => {
+                const tool = st.tool || '?';
+                // Pick most meaningful arg
+                const args = st.args || {};
+                const mainArg = args.file_path || args.path || args.pattern || args.command || args.query || '';
+                const argStr = mainArg ? `(${String(mainArg).slice(0, 50)})` : '';
+                // Short observation
+                const obs = (st.observation || '').slice(0, 80).replace(/\n/g, ' ');
+                return `<div style="display:flex;gap:0.3rem;align-items:baseline;padding:0.1rem 0">
+                  <span style="color:var(--accent);font-weight:600;min-width:4px">${st.step}.</span>
+                  <span style="color:#a78bfa;white-space:nowrap">${_esc(tool)}</span>
+                  <span style="color:var(--muted);font-size:0.67rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(argStr)}</span>
+                  ${obs ? `<span style="color:var(--muted);font-size:0.67rem;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px" title="${_esc(obs)}">→ ${_esc(obs.slice(0,40))}</span>` : ''}
+                </div>`;
+              });
+              stepsHtml = `<div style="margin-bottom:0.35rem">
+                <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">${steps.length} Steps</span>
+                <div style="margin-top:0.25rem;font-size:0.7rem;font-family:monospace;border-left:2px solid var(--border);padding-left:0.4rem">${stepLines.join('')}</div>
+              </div>`;
+            }
+
+            // Output summary
+            let outputHtml = '';
+            const so = s.structured_out;
+            if (so) {
+              const outLines = [];
+              if (so.summary) outLines.push(so.summary.slice(0, 200));
+              if (so.verdict) outLines.push(`Verdict: ${so.verdict}`);
+              if (so.issues?.length) outLines.push(`Issues: ${so.issues.slice(0,3).join('; ').slice(0,150)}`);
+              if (so.suggested_fixes?.length) outLines.push(`Fixes: ${so.suggested_fixes.slice(0,2).join('; ').slice(0,120)}`);
+              if (so.files_changed?.length) outLines.push(`Files: ${so.files_changed.slice(0,5).join(', ')}`);
+              if (so.commit_hash) outLines.push(`Commit: ${so.commit_hash.slice(0,8)}`);
+              if (so.work_items?.length) outLines.push(`Work items assessed: ${so.work_items.length}`);
+              if (outLines.length) {
+                outputHtml = `<div style="margin-bottom:0.35rem">
+                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Output</span>
+                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4">${outLines.map(l => _esc(l)).join('<br>')}</div>
+                </div>`;
+              }
+            } else if (s.output_preview) {
+              // Strip leading "Thought:" lines to show cleaner text
+              const cleaned = s.output_preview.replace(/^(Thought:.*?\n)+/m, '').trim().slice(0, 300);
+              if (cleaned) {
+                outputHtml = `<div style="margin-bottom:0.35rem">
+                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Output</span>
+                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4;font-style:italic">${_esc(cleaned)}</div>
+                </div>`;
+              }
+            }
+
+            detailHtml = `<div id="${detId}"
+                style="display:none;margin-top:0.35rem;padding:0.45rem 0.55rem;
+                       background:var(--surface2);border-radius:4px;border-left:3px solid ${color};
+                       font-size:0.72rem;overflow:hidden">
+              ${inputHtml}${stepsHtml}${outputHtml}
+            </div>`;
+          }
+
+          return `<div style="border-bottom:1px solid var(--border);padding:0.3rem 0">
+            <div style="display:flex;align-items:center;gap:0.35rem;color:${color};
+                        ${hasDetails ? 'cursor:pointer' : ''}"
+                 ${hasDetails ? `onclick="const d=document.getElementById('${detId}');if(d)d.style.display=d.style.display==='none'?'block':'none'"` : ''}>
+              <span style="font-size:0.85rem;flex-shrink:0">${icon}</span>
+              <span style="font-weight:600">${_esc(s.stage_key)}</span>
+              <span style="font-size:0.7rem;color:var(--muted)">${_esc(s.role_name || '')}</span>
+              <span style="font-size:0.68rem;color:var(--muted);margin-left:auto;white-space:nowrap">${_esc(dur)} ${_esc(toks)} ${_esc(cost)}</span>
+              ${hasDetails ? `<span style="font-size:0.65rem;color:var(--muted)" title="Click to expand">▸</span>` : ''}
+            </div>
+            ${detailHtml}
           </div>`;
         }).join('');
       }
