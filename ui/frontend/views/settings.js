@@ -1542,7 +1542,9 @@ async function renderAgentRoles(content) {
                 <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
                   <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:600">Name</th>
                   <th style="text-align:left;padding:0.35rem 0.5rem;font-weight:600">Required Roles</th>
-                  <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:600;width:80px">Activated</th>
+                  <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:600;width:70px">Activated</th>
+                  <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:600;width:70px" title="Show in Use Case Run menu">Use Case</th>
+                  <th style="text-align:center;padding:0.35rem 0.5rem;font-weight:600;width:55px" title="Show in Item Run menu">Item</th>
                 </tr>
               </thead>
               <tbody>
@@ -1669,6 +1671,13 @@ async function renderAgentRoles(content) {
     try {
       await api.agentRoles.patchPipeline(name, { activated: val });
       toast(val ? `Pipeline "${name}" activated` : `Pipeline "${name}" deactivated`, 'success');
+      renderAgentRoles(content);
+    } catch (e) { toast(e.message, 'error'); renderAgentRoles(content); }
+  };
+  window._togglePipelineMode = async (name, field, val) => {
+    try {
+      await api.agentRoles.patchPipeline(name, { [field]: val });
+      toast(`Pipeline "${name}" ${field.replace('_', ' ')} ${val ? 'enabled' : 'disabled'}`, 'success');
       renderAgentRoles(content);
     } catch (e) { toast(e.message, 'error'); renderAgentRoles(content); }
   };
@@ -1801,9 +1810,11 @@ function _renderRoleRow(r, isAdmin) {
 }
 
 function _renderPipelineRow(pl, isAdmin) {
-  const activated = pl.activated !== false;
-  const eligible  = pl.eligible !== false;
-  const missing   = pl.missing_roles || [];
+  const activated   = pl.activated !== false;
+  const eligible    = pl.eligible !== false;
+  const missing     = pl.missing_roles || [];
+  const modeUC      = pl.mode_use_case !== false;
+  const modeItem    = pl.mode_item     !== false;
 
   const rolesHtml = (pl.required_roles || []).length === 0
     ? '<span style="color:var(--muted);font-style:italic">none</span>'
@@ -1813,10 +1824,8 @@ function _renderPipelineRow(pl, isAdmin) {
 
   let checkboxHtml;
   if (!isAdmin) {
-    // Non-admin: show read-only state
     checkboxHtml = `<input type="checkbox" ${activated ? 'checked' : ''} disabled />`;
   } else if (!eligible && !activated) {
-    // Ineligible + deactivated: disabled with tooltip
     const tip = missing.length ? `Activate roles first: ${missing.join(', ')}` : 'Required roles not activated';
     checkboxHtml = `<input type="checkbox" disabled title="${_esc(tip)}" />
       <span style="font-size:0.58rem;color:var(--amber,#f59e0b)" title="${_esc(tip)}">⚠</span>`;
@@ -1825,6 +1834,11 @@ function _renderPipelineRow(pl, isAdmin) {
       onchange="window._togglePipelineActivated('${_esc(pl.name)}', this.checked)" />`;
   }
 
+  const _modeBox = (field, val) => isAdmin
+    ? `<input type="checkbox" ${val ? 'checked' : ''}
+         onchange="window._togglePipelineMode('${_esc(pl.name)}', '${field}', this.checked)" />`
+    : `<input type="checkbox" ${val ? 'checked' : ''} disabled />`;
+
   return `
     <tr style="border-bottom:1px solid var(--border);opacity:${activated ? '1' : '0.6'}">
       <td style="padding:0.4rem 0.5rem;font-weight:600;color:var(--text)">${_esc(pl.name)}</td>
@@ -1832,6 +1846,16 @@ function _renderPipelineRow(pl, isAdmin) {
       <td style="padding:0.4rem 0.5rem;text-align:center">
         <label style="display:inline-flex;align-items:center;gap:0.25rem;cursor:${isAdmin ? 'pointer' : 'default'}">
           ${checkboxHtml}
+        </label>
+      </td>
+      <td style="padding:0.4rem 0.5rem;text-align:center">
+        <label style="display:inline-flex;align-items:center;justify-content:center;cursor:${isAdmin ? 'pointer' : 'default'}">
+          ${_modeBox('mode_use_case', modeUC)}
+        </label>
+      </td>
+      <td style="padding:0.4rem 0.5rem;text-align:center">
+        <label style="display:inline-flex;align-items:center;justify-content:center;cursor:${isAdmin ? 'pointer' : 'default'}">
+          ${_modeBox('mode_item', modeItem)}
         </label>
       </td>
     </tr>

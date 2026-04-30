@@ -405,7 +405,7 @@ api.systemRoles = {
 
 api.agents = {
   listRoles:         ()                  => _get('/agents/roles'),
-  listPipelines:     ()                  => _get('/agents/pipelines'),
+  listPipelines:     (mode)              => _get('/agents/pipelines' + (mode ? '?mode=' + enc(mode) : '')),
   runAgent:          (body)              => _post('/agents/run', body),
   runPipeline:       (body)              => _post('/agents/run-pipeline', body),
   getRun:            (runId)             => _get(`/agents/runs/${enc(runId)}`),

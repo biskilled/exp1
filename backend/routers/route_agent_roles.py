@@ -733,16 +733,23 @@ async def get_pipelines_config(project: str = Query("aicli")):
             ]
         }
 
-    # Fetch pipeline activation states
-    pipeline_activated: dict[str, bool] = {}
+    # Fetch pipeline activation + mode states
+    pipeline_activated:  dict[str, bool] = {}
+    pipeline_mode_uc:    dict[str, bool] = {}
+    pipeline_mode_item:  dict[str, bool] = {}
     try:
         with db.conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name, activated FROM mng_agent_pipelines WHERE client_id=1"
+                    """SELECT name, activated,
+                              COALESCE(mode_use_case, TRUE),
+                              COALESCE(mode_item, TRUE)
+                       FROM mng_agent_pipelines WHERE client_id=1"""
                 )
                 for row in cur.fetchall():
                     pipeline_activated[row[0]] = bool(row[1])
+                    pipeline_mode_uc[row[0]]   = bool(row[2])
+                    pipeline_mode_item[row[0]]  = bool(row[3])
     except Exception as e:
         log.warning(f"pipelines-config: DB pipeline query failed: {e}")
 
@@ -776,6 +783,8 @@ async def get_pipelines_config(project: str = Query("aicli")):
             "activated":      activated,
             "eligible":       eligible,
             "missing_roles":  missing,
+            "mode_use_case":  pipeline_mode_uc.get(p["name"], True),
+            "mode_item":      pipeline_mode_item.get(p["name"], True),
         })
 
     return {"pipelines": result}
@@ -958,6 +967,10 @@ async def patch_pipeline(
             if "require_approval_after" in body:
                 val = body["require_approval_after"]
                 update_fields["require_approval_after"] = str(val) if val else None
+            if "mode_use_case" in body:
+                update_fields["mode_use_case"] = bool(body["mode_use_case"])
+            if "mode_item" in body:
+                update_fields["mode_item"] = bool(body["mode_item"])
 
             if not update_fields:
                 return {"ok": True, "name": pipeline_name, "message": "Nothing to update"}

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 20:38 UTC -->
+<!-- Last updated: 2026-04-30 20:58 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit.sh hook integration: automated chore commits after each Claude CLI session (15 commits in last session window 2026-04-30)
-- Execute bar checkpoint control: checkboxes (max_retry, stateless, continue-on-fail, approval_gate) positioned below node diagram for clarity
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), Work Items/Use Cases section (approved vs waiting-to-approve)
-- Bug fixes: remove unused mem_ai_events columns, fix drag-and-drop in Planner, lifecycle tags removal from Planner UI
+- Chat history visibility and session grouping: Backend SQL reads src column for message sourcing; CLI chat sessions grouped by session in History view with prompts/responses properly displayed
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), Work Items/Use Cases sections (approved vs waiting-to-approve), Pipeline Runs health tiles for last 24h
+- Execute bar UI refinement: dropdown styling (background, z-index, width), file picker alignment, docs picker as proper select widget, height/shape alignment across controls
+- Pipeline run results display: execution panel visibility below pipeline diagram, history logs showing per-role execution output, run results persistence and retrieval
 
-_Last updated: 2026-04-30 20:38 UTC_
+_Last updated: 2026-04-30 20:58 UTC_

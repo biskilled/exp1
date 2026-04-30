@@ -33,7 +33,8 @@ let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
 let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _setUndoAction
 
 // ── UC pipeline run state ─────────────────────────────────────────────────────
-let _ucPipeNames  = null;   // cached pipeline names from api.agents.listPipelines()
+let _ucPipeNamesUC   = null;  // cached pipeline names for use_case mode
+let _ucPipeNamesItem = null;  // cached pipeline names for item mode
 let _ucPollTimer  = null;   // polling interval for active run
 let _ucRunCtx     = null;   // { mode, ucId, itemId, panelId }
 const _UC_DROP_ID = 'uc-pipe-body-drop';  // body-level pipeline dropdown (avoids overflow:hidden clipping)
@@ -1764,15 +1765,22 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
   const existing = document.getElementById(_UC_DROP_ID);
   if (existing) { existing.remove(); return; }
 
-  // Load pipeline names once (cached)
-  if (!_ucPipeNames) {
+  // Load pipeline names once per mode (cached separately for use_case vs item)
+  const apiMode = mode === 'uc' ? 'use_case' : 'item';
+  if (apiMode === 'use_case' && !_ucPipeNamesUC) {
     try {
-      const pipes = await api.agents.listPipelines();
-      _ucPipeNames = pipes.map(p => p.name);
-    } catch (e) {
-      _ucPipeNames = ['standard'];
-    }
+      const pipes = await api.agents.listPipelines('use_case');
+      _ucPipeNamesUC = pipes.map(p => p.name);
+      if (!_ucPipeNamesUC.length) _ucPipeNamesUC = ['standard'];
+    } catch (e) { _ucPipeNamesUC = ['standard']; }
+  } else if (apiMode === 'item' && !_ucPipeNamesItem) {
+    try {
+      const pipes = await api.agents.listPipelines('item');
+      _ucPipeNamesItem = pipes.map(p => p.name);
+      if (!_ucPipeNamesItem.length) _ucPipeNamesItem = ['standard'];
+    } catch (e) { _ucPipeNamesItem = ['standard']; }
   }
+  const pipeNames = apiMode === 'use_case' ? _ucPipeNamesUC : _ucPipeNamesItem;
 
   // Build a body-level fixed dropdown to avoid overflow:hidden clipping on .wi-uc-card
   const rect = triggerEl.getBoundingClientRect();
@@ -1783,7 +1791,7 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
     background:var(--bg);border:1px solid var(--border);border-radius:6px;
     min-width:160px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,.25);
   `;
-  drop.innerHTML = _ucPipeNames.map(name =>
+  drop.innerHTML = pipeNames.map(name =>
     `<div onclick="document.getElementById('${_UC_DROP_ID}')?.remove();window._ucStartRun('${_esc(name)}','${_esc(targetId)}','${_esc(mode)}','${_esc(ucId)}')"
           style="padding:0.4rem 0.8rem;font-size:0.78rem;cursor:pointer;border-bottom:1px solid var(--border);
                  color:var(--text)"

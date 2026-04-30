@@ -3365,6 +3365,18 @@ def m086_pipeline_run_source(conn) -> None:
     log.info("m086: added source, linked_uc_id, linked_item_id to pr_pipeline_runs")
 
 
+def m087_pipeline_mode_flags(conn) -> None:
+    """Add use-case and item mode flags to mng_agent_pipelines."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE mng_agent_pipelines
+              ADD COLUMN IF NOT EXISTS mode_use_case BOOLEAN NOT NULL DEFAULT TRUE,
+              ADD COLUMN IF NOT EXISTS mode_item     BOOLEAN NOT NULL DEFAULT TRUE
+        """)
+    conn.commit()
+    log.info("m087: added mode_use_case, mode_item to mng_agent_pipelines")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3439,4 +3451,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m084_roles_activated_and_pipelines_table", m084_roles_activated_and_pipelines_table),
     ("m085_pipeline_runs_tables", m085_pipeline_runs_tables),
     ("m086_pipeline_run_source", m086_pipeline_run_source),
+    ("m087_pipeline_mode_flags", m087_pipeline_mode_flags),
 ]
