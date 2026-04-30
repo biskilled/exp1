@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-29 23:57 UTC -->
+<!-- Last updated: 2026-04-30 00:10 UTC -->
 # aicli
-_2026-04-29 23:57 UTC | Memory synced: 2026-04-29_
+_2026-04-30 00:10 UTC | Memory synced: 2026-04-29_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -65,7 +65,12 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ## In Progress
 
-- `TA4001` Audit and clean planner_tags table schema
+- Automated commit hook execution: chore commits after Claude CLI sessions indicate auto_commit_push.sh integration working across multiple session IDs (1f8ecc78, 45ca1683, 5cf393d1)
+- Session persistence & project state sync: repeated chore commits suggest project_state.json updates and memory layer transactions completing after each session
+- Work item pipeline automation: commit patterns tracking feature/bug closure via regex matching (fixes/closes work item IDs)
+- Role YAML template synchronization: system prompts and provider parameters validated against base_snapshot on session restart
+- Memory artifact extraction: /memory POST endpoint processing project context via Haiku synthesis and updating mem_ai_project_facts table
+- Pipeline DAG executor testing: asyncio.gather stage coordination with temperature/top_p parameter overrides across 4-agent workflow
 
 ## Coding Conventions
 
@@ -78,47 +83,10 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **LLM prompts**: all prompts in `backend/prompts/*.yaml`; load via `prompt_loader.prompts.content(key)`; never inline strings
 - **Work items**: `user_status` is TEXT (`open|pending|
 
-## Active Features
+## Recently Changed
 
-- `BU3008` `Work Item UI Category Display Bug` [pending] — Planner UI not displaying bug/category labels properly—only shows 'work_item' category. When AI tag (due 2026-05-02)
-- `US1002` `Work Item Management & Metadata System` [open] — Build comprehensive work item lifecycle management with AI-generated metadata, tag integration, and (due 2026-05-02)
-- `US1001` `MCP Configuration` [open] — Set up Model Context Protocol (MCP) configurations for multiple LLM providers and IDEs (Claude Code,
-- `TA4009` `Verify Hook-Log DB Storage After Migration` [pending] — Verify that hook-log endpoint correctly stores all prompts to database after migration m050. Ensure (due 2026-05-02)
-- `TA4001` `Audit and clean planner_tags table schema` [in-progress] — Review planner_tags table for redundant/unused columns: drop seq_num (always null), merge source int
-
-## Code Hotspots
-
-- `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
-- `backend/memory/memory_work_items.py` — score 30.0 (28 commits, 1378 lines)
-- `backend/memory/memory_files.py` — score 20.0 (18 commits, 1176 lines)
-- `backend/routers/route_projects.py` — score 19.0 (17 commits, 1693 lines)
-- `backend/core/db_migrations.py` — score 17.0 (15 commits, 3428 lines)
-- `backend/routers/route_agent_roles.py` — score 12.0 (10 commits, 1677 lines)
-- `ui/frontend/views/prompts.js` — score 12.0 (10 commits, 1642 lines)
-- `backend/agents/mcp/server.py` — score 11.0 (9 commits, 854 lines)
-- `ui/frontend/views/work_items.js` — score 11.0 (9 commits, 2595 lines)
-- `backend/routers/route_git.py` — score 9.0 (7 commits, 1691 lines)
-
-## Recently Changed (last commits)
-
-- `m051_schema_refactor_user_id_updated_at` — modified in b3d2fda3 — This migration function refactors the database schema to convert user IDs from U
-- `_resolve_user_id` — modified in b3d2fda3 — The function now handles multiple input types (int, str, or None) and defaults t
-- `MemoryFiles` — modified in b3d2fda3 — The MemoryFiles class was updated to include additional fields (event_type, crea
-- `MemoryFiles.get_top_events` — modified in b3d2fda3 — The `get_top_events` method now converts database query results into a structure
-- `_loadSessions` — modified in b48376c2 — The `_loadSessions` function was updated to restore the last known session ID fr
-- `chat_history` — modified in b48376c2 — The `chat_history` function was modified to fetch a larger set of database rows 
-- `_normalize_jsonl_entry` — modified in b4a10441 — This new function normalizes history.jsonl entries to match the database respons
-- `m050_prompts_source_id_index` — modified in d45c125b — Added a database migration to create a unique partial index on `mem_mrr_prompts(
-- `_Database` — modified in 18dc4454 — The `_Database` class now validates database connections before use by testing t
-- `_Database.conn` — modified in 18dc4454 — The `conn` method now validates database connections before returning them and a
-- `MemoryEmbedding.process_item` — modified in 25e5c306 — The method now includes error handling to catch and log exceptions during item p
-- `MemoryEmbedding` — modified in 25e5c306 — I don't see a diff provided in your message. Could you please share the actual d
-- `m047_events_is_system` — modified in ec75b516 — Added a database migration to add an `is_system` BOOLEAN column to the `mem_ai_e
-- `_is_system_commit` — modified in ec75b516 — The function `_is_system_commit` was added to detect auto-generated system file 
-- `sync_commits` — modified in ec75b516
-- `_embed_commits_background` — modified in ec75b516 — The `_embed_commits_background` function was enhanced to asynchronously batch-pr
-- `MemoryEmbedding.process_commit_batch` — modified in ec75b516 — The method now detects and flags commits that only modify system files (PROJECT.
+(no commit history indexed yet)
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-29 23:57 UTC_
+_Last updated: 2026-04-30 00:10 UTC_

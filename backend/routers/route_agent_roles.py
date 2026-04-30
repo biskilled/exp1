@@ -853,7 +853,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT activated, max_rejection_retries, continue_on_failure,
-                                  save_memory, require_approval_after
+                                  save_memory, require_approval_after, default_temperature
                            FROM mng_agent_pipelines
                            WHERE client_id=1 AND name=%s""",
                         (pipeline_name,),
@@ -866,6 +866,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
                     "continue_on_failure":    bool(row[2]),
                     "save_memory":            bool(row[3]),
                     "require_approval_after": row[4],
+                    "default_temperature":    row[5],
                 }
         except Exception as e:
             log.warning(f"get_pipeline_config: DB query failed: {e}")
@@ -883,6 +884,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
         "continue_on_failure":    db_row.get("continue_on_failure", False),
         "save_memory":            db_row.get("save_memory", bool(completion.get("save_memory", True))),
         "require_approval_after": db_row.get("require_approval_after"),
+        "default_temperature":    db_row.get("default_temperature"),
     }
 
 

@@ -1,16 +1,32 @@
-<!-- Last updated: 2026-04-29 23:57 UTC -->
-## Project: aicli
+# aicli — AI Coding Rules
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 00:10 UTC
 
-## Stack
+# aicli — Shared AI Memory Platform
 
-language_cli: Python 3.12
-cli_framework: prompt_toolkit + rich
-backend_framework: FastAPI + uvicorn
-backend_auth: JWT (python-jose + bcrypt) + DEV_MODE toggle
-database: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
-database_client: psycopg2
-frontend_framework: Vanilla JS + Electron + Vite
-ui_components: xterm.js + Monaco editor + Cytoscape.js
+_Last updated: 2026-04-29_
+
+> **How this file works**
+> - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
+> - Sections marked `<!-- auto-updated by /memory -->` are refreshed automatically when you run `/memory`.
+>   You can still edit them; `/memory` will merge its output in without discarding your additions.
+> - `## Deprecated` — list superseded decisions here; they will be hidden from CLAUDE.md key_deci
+
+## Tech Stack
+
+- **language_cli**: Python 3.12
+- **cli_framework**: prompt_toolkit + rich
+- **backend_framework**: FastAPI + uvicorn
+- **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE toggle
+- **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
+- **database_client**: psycopg2
+- **frontend_framework**: Vanilla JS + Electron + Vite
+- **ui_components**: xterm.js + Monaco editor + Cytoscape.js
+- **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
+- **workflow_engine**: Async DAG executor (asyncio.gather) + YAML pipeline + per-node temperature/top_p overrides
+- **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
+- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
 
 ## Key Decisions
 
@@ -22,20 +38,10 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, tools (by category: git/files/memory), mcp (multi-select), max_iterations, temperature, top_p configured per role; base_snapshot stores pristine role state for restore
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, tools, mcp, max_iterations, temperature, top_p); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p at execution time
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
-
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
-## In Progress
-
-- Automated commit hook execution: chore commits after Claude CLI sessions indicate auto_commit_push.sh integration working across multiple session IDs (1f8ecc78, 45ca1683, 5cf393d1)
-- Session persistence & project state sync: repeated chore commits suggest project_state.json updates and memory layer transactions completing after each session
-- Work item pipeline automation: commit patterns tracking feature/bug closure via regex matching (fixes/closes work item IDs)
-- Role YAML template synchronization: system prompts and provider parameters validated against base_snapshot on session restart
-
-_Last updated: 2026-04-29 23:57 UTC_
+- Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
+- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
+- Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
+- Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
+- MCP server: 10 MCPs (github, postgres, slack, linear, jira, stripe, contentful, supabase, s3, openapi) with multi-select in role editor; unified REST dispatch; stdio transport, local machine, no auth required
+- 4-agent async DAG pipeline: PM (acceptance criteria) → Architect (implementation) → Developer (code) → Reviewer (QA); triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory; per-node temperature/top_p configurable in pipeline YAML
+- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-29 23:57 UTC -->
+<!-- Last updated: 2026-04-30 00:10 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -23,14 +23,6 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, tools, mcp, max_iterations, temperature, top_p); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p at execution time
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
 ## In Progress
 
 - Automated commit hook execution: chore commits after Claude CLI sessions indicate auto_commit_push.sh integration working across multiple session IDs (1f8ecc78, 45ca1683, 5cf393d1)
@@ -38,4 +30,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Work item pipeline automation: commit patterns tracking feature/bug closure via regex matching (fixes/closes work item IDs)
 - Role YAML template synchronization: system prompts and provider parameters validated against base_snapshot on session restart
 
-_Last updated: 2026-04-29 23:57 UTC_
+_Last updated: 2026-04-30 00:10 UTC_

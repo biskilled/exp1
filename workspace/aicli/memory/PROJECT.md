@@ -1,6 +1,6 @@
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-04-29_
+_Last updated: 2026-04-30_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
