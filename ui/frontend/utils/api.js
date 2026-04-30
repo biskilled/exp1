@@ -504,7 +504,8 @@ api.wi = {
     save:    (p, id, txt) => _post(`/wi/${enc(p)}/${enc(id)}/md`, { content: txt }),
     refresh: (p, id)      => _post(`/wi/${enc(p)}/${enc(id)}/md/refresh`, {}),
   },
-  facts: (p) => _get(`/tags/${enc(p)}/facts`),
+  facts:     (p)         => _get(`/tags/${enc(p)}/facts`),
+  openItems: (p, ucId)   => _get(`/wi/${enc(p)}?parent_id=${enc(ucId)}&user_status=open&limit=50`),
 };
 
 // ── Pipeline API ──────────────────────────────────────────────────────────────

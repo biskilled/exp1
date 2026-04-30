@@ -232,10 +232,13 @@ _approval_results: dict[str, dict]           = {}
 
 
 class AsyncPipelineRunRequest(BaseModel):
-    pipeline:    str  = "standard"
-    task:        str
-    project:     str  = "aicli"
-    input_files: list = []
+    pipeline:        str           = "standard"
+    task:            str
+    project:         str           = "aicli"
+    input_files:     list          = []
+    source:          str           = "direct"   # direct|use_case|item|chat
+    linked_uc_id:    str | None    = None
+    linked_item_id:  str | None    = None
 
 
 def _append_stage_log(conn, stage_id: int, text: str, level: str = "info") -> None:
@@ -255,6 +258,8 @@ async def _run_pipeline_bg(
     task: str,
     project: str,
     input_files: list,
+    linked_uc_id: str | None = None,
+    linked_item_id: str | None = None,
 ) -> None:
     """Background coroutine: execute a pipeline and persist stage results to DB."""
     from agents.orchestrator import AgentWorkflow, PipelineDef
@@ -549,10 +554,77 @@ async def _run_pipeline_bg(
     except Exception as e:
         log.error("Could not finalize pipeline run: %s", e)
 
+    # Post-completion: update linked item/UC summary and score
+    if linked_item_id or linked_uc_id:
+        try:
+            _update_item_after_run(
+                project_id, pipeline_name, final_verdict, dur_total,
+                (stage_result.output if stage_result else "") or "",
+                linked_item_id, linked_uc_id,
+            )
+        except Exception as _ue:
+            log.warning("Could not update linked item after run: %s", _ue)
+
     log.info(
         "Async pipeline run done: run_id=%s verdict=%s cost=$%.4f dur=%.1fs",
         run_id, final_verdict, total_cost, dur_total,
     )
+
+
+def _update_item_after_run(
+    project_id: int,
+    pipeline_name: str,
+    verdict: str,
+    duration_s: float,
+    stage_output: str,
+    linked_item_id: str | None,
+    linked_uc_id: str | None,
+) -> None:
+    """Append execution summary to linked work item/UC and update score."""
+    from core.database import db
+    from datetime import datetime as _dt
+
+    if not db.is_available():
+        return
+
+    now = _dt.utcnow()
+    ts_str = now.strftime("%d/%m/%y %H:%M")
+    dur_min = round(duration_s / 60, 1) if duration_s else 0
+    # 1-2 line summary from final stage output
+    preview = (stage_output or "")[:200].replace("\n", " ").strip()
+    summary_line = f"\n{ts_str}: EXEC PIPELINE {pipeline_name} ({dur_min} min): {preview}"
+
+    score_map = {"approved": 5, "needs_changes": 3, "rejected": 1, "error": 0}
+    score = score_map.get(verdict, None)
+
+    def _do_update(item_id: str) -> None:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT summary FROM mem_work_items WHERE id=%s AND project_id=%s",
+                    (item_id, project_id),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return
+                old_summary = row[0] or ""
+                new_summary = old_summary + summary_line
+                update_parts = ["summary = %s"]
+                update_vals: list = [new_summary]
+                if score is not None:
+                    update_parts.append("score_status = %s")
+                    update_vals.append(score)
+                update_vals.append(item_id)
+                cur.execute(
+                    f"UPDATE mem_work_items SET {', '.join(update_parts)} WHERE id=%s",
+                    update_vals,
+                )
+            conn.commit()
+
+    if linked_item_id:
+        _do_update(linked_item_id)
+    if linked_uc_id and linked_uc_id != linked_item_id:
+        _do_update(linked_uc_id)
 
 
 @router.post("/pipeline-runs")
@@ -572,9 +644,12 @@ async def start_pipeline_run(req: AsyncPipelineRunRequest) -> dict:
             with conn.cursor() as cur:
                 cur.execute(
                     """INSERT INTO pr_pipeline_runs
-                           (id, project_id, pipeline_name, task, input_files, status)
-                       VALUES (%s, %s, %s, %s, %s::jsonb, 'running')""",
-                    (run_id, project_id, req.pipeline, req.task, _json.dumps(req.input_files)),
+                           (id, project_id, pipeline_name, task, input_files, status,
+                            source, linked_uc_id, linked_item_id)
+                       VALUES (%s, %s, %s, %s, %s::jsonb, 'running', %s, %s, %s)""",
+                    (run_id, project_id, req.pipeline, req.task,
+                     _json.dumps(req.input_files),
+                     req.source, req.linked_uc_id, req.linked_item_id),
                 )
             conn.commit()
     except Exception as e:
@@ -583,7 +658,10 @@ async def start_pipeline_run(req: AsyncPipelineRunRequest) -> dict:
 
     # Fire off background task
     _asyncio.create_task(
-        _run_pipeline_bg(run_id, req.pipeline, req.task, req.project, req.input_files)
+        _run_pipeline_bg(
+            run_id, req.pipeline, req.task, req.project, req.input_files,
+            linked_uc_id=req.linked_uc_id, linked_item_id=req.linked_item_id,
+        )
     )
 
     return {"run_id": run_id, "status": "running"}

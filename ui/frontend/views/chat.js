@@ -705,8 +705,10 @@ window._dismissAllSuggestions = () => {
 // ── Commands autocomplete ─────────────────────────────────────────────────────
 
 const COMMANDS = [
-  { cmd: '/help',        args: '',                 desc: 'Show all available commands'                      },
-  { cmd: '/memory',      args: '',                 desc: 'Refresh CLAUDE.md + CONTEXT.md → copy to code dir' },
+  { cmd: '/help',         args: '',       desc: 'Show all available commands'                      },
+  { cmd: '/memory',       args: '',       desc: 'Refresh CLAUDE.md + CONTEXT.md → copy to code dir' },
+  { cmd: '/run-pipeline', args: '[name]', desc: 'Run a pipeline with this session as input'         },
+  { cmd: '/run-role',     args: '[name]', desc: 'Run a single role agent with this session as input' },
   { cmd: '/role',        args: '[name]',           desc: 'Set system prompt role'                   },
   { cmd: '/workflow',    args: '[name]',           desc: 'List or run a workflow'                   },
   { cmd: '/switch',      args: '<provider>',       desc: 'Switch LLM (claude/openai/deepseek/gemini/grok)' },
@@ -1285,7 +1287,9 @@ window._chatSend = async () => {
       `| \`/history\` | Show last 20 commits |\n` +
       `| \`/reload\` | Reload system prompt |\n` +
       `| \`/clear\` | Clear conversation history |\n` +
-      `| \`/pipeline [status]\` | Show pipeline health dashboard |`
+      `| \`/pipeline [status]\` | Show pipeline health dashboard |\n` +
+      `| \`/run-pipeline [name]\` | Run a pipeline with this session as input |\n` +
+      `| \`/run-role <name>\` | Run a single role agent with this session as input |`
     );
     return;
   }
@@ -1416,6 +1420,44 @@ window._chatSend = async () => {
       window._nav('pipeline');
     } catch (e) {
       _appendSystemMsg(`**Pipeline status error:** ${e.message}`);
+    }
+    return;
+  }
+
+  // Handle /run-pipeline [name] — run a pipeline using session history as input
+  if (message === '/run-pipeline' || message.startsWith('/run-pipeline ')) {
+    const pipeName = message.slice(14).trim() || 'standard';
+    input.value = '';
+    input.style.height = 'auto';
+    const _proj = state.currentProject?.name;
+    if (!_proj) { toast('No project open', 'error'); return; }
+    const task = _buildSessionTask();
+    const cardId = `chat-run-${Math.random().toString(36).slice(2, 9)}`;
+    _insertChatRunCard(cardId, pipeName);
+    try {
+      const res = await api.agents.startPipelineRun({ pipeline: pipeName, task, project: _proj, source: 'chat' });
+      _pollChatRun(res.run_id, cardId);
+    } catch (e) {
+      const card = document.getElementById(cardId);
+      if (card) card.innerHTML = `<div style="color:#e85d75;font-size:0.78rem">Error starting pipeline: ${_esc(e.message)}</div>`;
+    }
+    return;
+  }
+
+  // Handle /run-role [name] — run a single role agent using session history as input
+  if (message.startsWith('/run-role ')) {
+    const roleName = message.slice(10).trim();
+    input.value = '';
+    input.style.height = 'auto';
+    const _proj = state.currentProject?.name;
+    if (!_proj) { toast('No project open', 'error'); return; }
+    const task = _buildSessionTask();
+    _appendSystemMsg(`Running role: **${roleName}**…`);
+    try {
+      const res = await api.agents.runAgent({ role: roleName, task, project: _proj });
+      _appendAssistantMsg(res.output || res.structured_output?.summary || '(no output)');
+    } catch (e) {
+      _appendSystemMsg(`**Role run failed:** ${e.message}`);
     }
     return;
   }
@@ -1759,6 +1801,120 @@ function _appendStreamBubble(provider) {
     bubble,
     scrollInto: () => { container.scrollTop = container.scrollHeight; },
   };
+}
+
+// ── Pipeline run helpers for /run-pipeline ────────────────────────────────────
+
+function _buildSessionTask() {
+  const msgs = document.getElementById('chat-messages');
+  const lines = [];
+  if (msgs) {
+    msgs.querySelectorAll('[style*="pre-wrap"]').forEach(el => {
+      const text = el.textContent?.trim();
+      if (text) lines.push(`USER: ${text}`);
+    });
+  } else if (_sessionCache.length) {
+    for (const e of _sessionCache) {
+      if (e.user_input) lines.push(`USER: ${e.user_input}`);
+    }
+  }
+  return `SESSION HISTORY:\n${lines.join('\n') || '(empty session)'}`;
+}
+
+function _insertChatRunCard(cardId, pipeName) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;animation:msgIn 0.2s ease-out;margin-bottom:0.5rem';
+  el.innerHTML = `
+    <div style="font-size:0.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">pipeline run</div>
+    <div id="${cardId}" style="max-width:82%;background:var(--surface);border:1px solid var(--border);
+         border-radius:10px;padding:0.8rem 1rem;font-size:0.78rem;line-height:1.7;min-width:260px">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+        <span id="${cardId}-status" style="width:8px;height:8px;border-radius:50%;background:#f5a623;flex-shrink:0;display:inline-block"></span>
+        <strong>${_esc(pipeName)}</strong>
+        <span id="${cardId}-timer" style="color:var(--muted);font-size:0.72rem;margin-left:auto">0s</span>
+      </div>
+      <div id="${cardId}-stages" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.5rem"></div>
+      <div id="${cardId}-log" style="font-family:monospace;font-size:0.7rem;color:var(--muted);
+           max-height:80px;overflow:hidden;border-top:1px solid var(--border);padding-top:0.3rem;margin-top:0.3rem">
+        Starting…
+      </div>
+    </div>`;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+
+  // Start timer
+  const startTime = Date.now();
+  const timerEl = document.getElementById(`${cardId}-timer`);
+  const timerInterval = setInterval(() => {
+    if (!timerEl || !document.contains(timerEl)) { clearInterval(timerInterval); return; }
+    timerEl.textContent = `${Math.round((Date.now() - startTime) / 1000)}s`;
+  }, 1000);
+  el._timerInterval = timerInterval;
+}
+
+function _pollChatRun(runId, cardId) {
+  if (!runId) return;
+  let pollTimer = null;
+  const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', waiting_approval: '#9b7ef8' };
+
+  const poll = async () => {
+    try {
+      const data = await api.agents.getPipelineRun(runId);
+      const card = document.getElementById(cardId);
+      if (!card) return;
+
+      // Update status dot
+      const dot = document.getElementById(`${cardId}-status`);
+      if (dot) dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
+
+      // Update stages
+      const stagesEl = document.getElementById(`${cardId}-stages`);
+      if (stagesEl && data.stages) {
+        const STAGE_ICONS = { done: '●', running: '⟳', error: '✗', pending: '○' };
+        stagesEl.innerHTML = data.stages.map(s =>
+          `<span title="${_esc(s.role_name)} (${s.status})" style="font-size:0.75rem;
+            color:${s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : s.status === 'running' ? '#f5a623' : 'var(--muted)'}">
+            ${STAGE_ICONS[s.status] || '○'} ${_esc(s.stage_key)}
+          </span>`
+        ).join(' ');
+      }
+
+      // Update log
+      const logEl = document.getElementById(`${cardId}-log`);
+      if (logEl && data.stages) {
+        const logLines = [];
+        for (const s of data.stages) {
+          if (s.log_lines && s.log_lines.length) {
+            logLines.push(...s.log_lines.slice(-2).map(l => l.text || ''));
+          }
+        }
+        logEl.textContent = logLines.slice(-5).join('\n') || 'Running…';
+      }
+
+      if (data.status === 'done' || data.status === 'error') {
+        clearInterval(pollTimer);
+        const verdict = data.final_verdict || data.status;
+        const verdictColor = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f5a623';
+        if (logEl) {
+          logEl.style.maxHeight = '60px';
+          logEl.innerHTML = `<span style="color:${verdictColor};font-weight:600">${_esc(verdict)}</span>` +
+            (data.error ? ` — ${_esc(data.error.slice(0, 100))}` : '');
+        }
+      }
+    } catch (e) {
+      clearInterval(pollTimer);
+      const card = document.getElementById(cardId);
+      if (card) {
+        const logEl = document.getElementById(`${cardId}-log`);
+        if (logEl) logEl.textContent = `Poll error: ${e.message}`;
+      }
+    }
+  };
+
+  pollTimer = setInterval(poll, 1500);
+  poll(); // immediate first poll
 }
 
 // ── Welcome screen ────────────────────────────────────────────────────────────

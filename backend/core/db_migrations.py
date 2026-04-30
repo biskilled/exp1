@@ -3352,6 +3352,19 @@ def m085_pipeline_runs_tables(conn) -> None:
     log.info("m085: added properties to mng_agent_pipelines; created pr_pipeline_runs + pr_pipeline_run_stages")
 
 
+def m086_pipeline_run_source(conn) -> None:
+    """Add source tracking + UC/item links to pr_pipeline_runs."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE pr_pipeline_runs
+              ADD COLUMN IF NOT EXISTS source         TEXT NOT NULL DEFAULT 'direct',
+              ADD COLUMN IF NOT EXISTS linked_uc_id   UUID DEFAULT NULL,
+              ADD COLUMN IF NOT EXISTS linked_item_id UUID DEFAULT NULL
+        """)
+    conn.commit()
+    log.info("m086: added source, linked_uc_id, linked_item_id to pr_pipeline_runs")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3425,4 +3438,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m083_role_temperature", m083_role_temperature),
     ("m084_roles_activated_and_pipelines_table", m084_roles_activated_and_pipelines_table),
     ("m085_pipeline_runs_tables", m085_pipeline_runs_tables),
+    ("m086_pipeline_run_source", m086_pipeline_run_source),
 ]

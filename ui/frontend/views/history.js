@@ -1179,6 +1179,11 @@ export class HistoryView {
 
       const escH = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+      const SRC_COLORS = {
+        direct: '#6b7490', use_case: '#9b59b6', item: '#3b82f6',
+        chat: '#22c55e', graph: '#f59e0b', pipeline: '#6b7490',
+      };
+
       container.innerHTML = runs.map(r => {
         const statusColor = STATUS_COLORS[r.status] || 'var(--muted)';
         const ts = (r.started_at || '').slice(0, 16).replace('T', ' ');
@@ -1189,6 +1194,26 @@ export class HistoryView {
         const clickHandler = r.id && /^[0-9a-f-]{36}$/.test(r.id)
           ? `onclick="window._historyView._openRunInPipelines('${escH(r.id)}')"`
           : `onclick="window._historyView._showRunDetail('${escH(r.file)}')"`;
+
+        // Source badge
+        const srcLabel = r.source || 'direct';
+        const srcColor = SRC_COLORS[srcLabel] || '#6b7490';
+        let srcHtml = '';
+        if (r.linked_uc_id) {
+          srcHtml = `<span onclick="event.stopPropagation();window._histNavUC('${escH(r.linked_uc_id)}')"
+            style="cursor:pointer;font-size:0.65rem;padding:1px 5px;border-radius:3px;
+                   background:${srcColor}22;color:${srcColor};border:1px solid ${srcColor}44;white-space:nowrap"
+            title="Go to use case">${escH(srcLabel)}</span>`;
+        } else if (r.linked_item_id) {
+          srcHtml = `<span onclick="event.stopPropagation();window._histNavItem('${escH(r.linked_item_id)}')"
+            style="cursor:pointer;font-size:0.65rem;padding:1px 5px;border-radius:3px;
+                   background:${srcColor}22;color:${srcColor};border:1px solid ${srcColor}44;white-space:nowrap"
+            title="Go to item">${escH(srcLabel)}</span>`;
+        } else if (srcLabel !== 'direct') {
+          srcHtml = `<span style="font-size:0.65rem;padding:1px 5px;border-radius:3px;
+                   background:${srcColor}22;color:${srcColor};border:1px solid ${srcColor}44;white-space:nowrap">${escH(srcLabel)}</span>`;
+        }
+
         return `
           <div class="run-entry" style="border:1px solid var(--border);border-radius:6px;
                padding:10px 14px;margin-bottom:8px;cursor:pointer;
@@ -1198,6 +1223,7 @@ export class HistoryView {
               <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;display:inline-block"></span>
               <strong style="font-size:0.82rem">${escH(r.workflow || r.file)}</strong>
               <span style="color:${statusColor};font-size:0.72rem">${escH(r.status || '')}</span>
+              ${srcHtml}
               <span style="color:var(--muted);font-size:0.72rem;margin-left:auto">${escH(ts)}</span>
               ${r.steps ? `<span style="color:var(--muted);font-size:0.72rem">${r.steps} steps</span>` : ''}
               ${dur ? `<span style="color:var(--muted);font-size:0.72rem">${escH(dur)}</span>` : ''}
@@ -1292,3 +1318,17 @@ export class HistoryView {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 }
+
+// ── History → Planner navigation helpers ─────────────────────────────────────
+
+window._histNavUC = (ucId) => {
+  window._pendingUcOpen = ucId;
+  if (window._nav) window._nav('planner');
+  else if (window.navigateTo) window.navigateTo('planner');
+};
+
+window._histNavItem = (itemId) => {
+  window._pendingItemOpen = itemId;
+  if (window._nav) window._nav('planner');
+  else if (window.navigateTo) window.navigateTo('planner');
+};

@@ -32,6 +32,11 @@ let _ucItems        = [];         // loaded by _loadUseCases()
 let _ucHideDone     = new Set();  // UC IDs where completed children are hidden
 let _lastUndo       = null;       // { label, undoFn, reloadFn } — set by _setUndoAction
 
+// ── UC pipeline run state ─────────────────────────────────────────────────────
+let _ucPipeNames  = null;   // cached pipeline names from api.agents.listPipelines()
+let _ucPollTimer  = null;   // polling interval for active run
+let _ucRunCtx     = null;   // { mode, ucId, itemId, panelId }
+
 // ── Type config ──────────────────────────────────────────────────────────────
 
 const _TYPE = {
@@ -1546,6 +1551,14 @@ function _renderUseCases() {
           }
           <button class="wi-btn wi-btn-ghost" data-action="edit-md"
                   data-id="${uc.id}" data-name="${_esc(uc.name)}" title="Open Markdown in Documents">✎ MD</button>
+          <div style="position:relative;display:inline-flex" id="uc-run-wrap-${uc.id}">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.65rem;padding:0.2rem 0.4rem;
+                    border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--surface2)"
+                    onclick="event.stopPropagation();window._ucRunMenu('${uc.id}','uc',this)">▶ Run ▾</button>
+            <div id="uc-run-drop-${uc.id}" style="display:none;position:absolute;top:100%;right:0;
+                 background:var(--bg);border:1px solid var(--border);border-radius:6px;
+                 min-width:180px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.15)"></div>
+          </div>
           <button class="wi-btn wi-btn-approve" style="font-size:0.7rem;opacity:0.85"
                   data-action="complete-uc" data-id="${uc.id}"
                   title="Mark use case as completed (all items must be done)">✓ Complete</button>
@@ -1675,6 +1688,10 @@ function _renderUcItem(item, depth = 0) {
                   title="Change parent">⇑</button>
           <button class="wi-btn wi-btn-ghost" data-action="copy-item"
                   data-id="${item.id}" title="Copy text to clipboard" style="font-size:0.75rem;padding:0.1rem 0.35rem">⎘</button>
+          <button title="Run pipeline on this item"
+                  onclick="event.stopPropagation();window._ucRunMenu('${item.id}','item',this,'${item._uc_id || ""}')"
+                  style="font-size:0.6rem;padding:0.1rem 0.28rem;border:1px solid var(--border);
+                         border-radius:3px;cursor:pointer;background:var(--surface2)">▶</button>
           <span class="wi-arrow" style="font-size:0.65rem;color:var(--muted)">▼</span>
           ${isPending ? `
             <button class="wi-btn wi-btn-approve" data-action="approve" data-id="${item.id}" title="Approve">✓</button>
@@ -1732,6 +1749,239 @@ function _waitingBadge(createdAt) {
   return `<span title="Waiting for approval · created ${createdAt ? createdAt.slice(0,10) : '?'}"
     style="font-size:0.65rem;color:${color};white-space:nowrap;padding:1px 5px;
     background:${color}18;border-radius:3px;border:1px solid ${color}44;line-height:1.6">⏳ ${d}d waiting</span>`;
+}
+
+// ── UC / item pipeline run menu + panel ───────────────────────────────────────
+
+window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
+  // Load pipeline names once
+  if (!_ucPipeNames) {
+    try {
+      const pipes = await api.agents.listPipelines();
+      _ucPipeNames = pipes.map(p => p.name);
+    } catch (e) {
+      _ucPipeNames = ['standard'];
+    }
+  }
+
+  // Find or create drop element
+  const dropId = `uc-run-drop-${targetId}`;
+  const drop = document.getElementById(dropId);
+  if (!drop) return;
+
+  // Toggle visibility
+  if (drop.style.display !== 'none') {
+    drop.style.display = 'none';
+    return;
+  }
+
+  drop.innerHTML = _ucPipeNames.map(name =>
+    `<div onclick="window._ucStartRun('${_esc(name)}','${_esc(targetId)}','${_esc(mode)}','${_esc(ucId)}');document.getElementById('${_esc(dropId)}').style.display='none'"
+          style="padding:0.4rem 0.8rem;font-size:0.78rem;cursor:pointer;border-bottom:1px solid var(--border);
+                 color:var(--text)"
+          onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+      ${_esc(name)}
+    </div>`
+  ).join('');
+
+  drop.style.display = 'block';
+
+  // Close on outside click
+  setTimeout(() => {
+    const handler = (e) => {
+      if (!drop.contains(e.target) && e.target !== triggerEl) {
+        drop.style.display = 'none';
+        document.removeEventListener('click', handler);
+      }
+    };
+    document.addEventListener('click', handler);
+  }, 0);
+};
+
+window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
+  if (!_project) { return; }
+
+  let task = '';
+  let linked_uc_id = null;
+  let linked_item_id = null;
+  let source = 'direct';
+
+  try {
+    if (mode === 'uc') {
+      // Fetch UC data
+      const ucData = _ucItems.find(u => u.id === targetId);
+      const name   = ucData?.name || targetId;
+      const summary = ucData?.summary || '';
+      let itemLines = '';
+      try {
+        const res = await api.wi.openItems(_project, targetId);
+        const items = res.items || [];
+        itemLines = items.map(it => `- [${it.wi_type}] ${it.name}: ${it.summary || ''}`).join('\n');
+      } catch (_) {}
+      task = `USE CASE: ${name}\n${summary ? `SUMMARY: ${summary}\n` : ''}ITEMS:\n${itemLines || '(none)'}`;
+      linked_uc_id = targetId;
+      source = 'use_case';
+    } else {
+      // mode === 'item'
+      const ucData = _ucItems.find(u => u.id === ucId);
+      const allItems = (ucData?.children || []);
+      const item = allItems.find(it => it.id === targetId) ||
+                   _allItems.find(it => it.id === targetId);
+      task = `ITEM: ${item?.name || targetId}\n${item?.summary ? `SUMMARY: ${item.summary}\n` : ''}` +
+             `TYPE: ${item?.wi_type || 'unknown'}\nPARENT UC: ${ucData?.name || ucId}`;
+      linked_item_id = targetId;
+      linked_uc_id = ucId || null;
+      source = 'item';
+    }
+
+    // Start the run
+    const res = await api.agents.startPipelineRun({
+      pipeline: pipeName, task, project: _project,
+      source, linked_uc_id, linked_item_id,
+    });
+
+    _ucRunCtx = { mode, ucId: linked_uc_id, itemId: linked_item_id, runId: res.run_id };
+
+    // Open panel inside the target UC card
+    const panelUcId = mode === 'uc' ? targetId : (ucId || targetId);
+    _ucOpenPanel(panelUcId, res.run_id, pipeName);
+  } catch (e) {
+    toast(`Failed to start pipeline run: ${e.message}`, 'error');
+  }
+};
+
+function _ucOpenPanel(ucId, runId, pipeName) {
+  // Remove any existing panel
+  document.querySelectorAll('.uc-run-panel').forEach(p => p.remove());
+
+  const cardEl = document.getElementById(`uc-card-${ucId.replace(/-/g, '')}`);
+  if (!cardEl) return;
+
+  cardEl.style.display = 'flex';
+  cardEl.style.flexDirection = 'row';
+  cardEl.style.alignItems = 'stretch';
+
+  const panel = document.createElement('div');
+  panel.className = 'uc-run-panel';
+  panel.id = `uc-panel-${ucId}`;
+  panel.style.cssText = `min-width:320px;max-width:360px;border-left:2px solid var(--accent);
+    background:var(--surface);display:flex;flex-direction:column;padding:0.7rem 0.9rem;
+    flex-shrink:0;overflow:hidden`;
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem">
+      <span id="uc-panel-dot-${ucId}" style="width:8px;height:8px;border-radius:50%;background:#f5a623;flex-shrink:0"></span>
+      <strong style="font-size:0.78rem">${_esc(pipeName)}</strong>
+      <button onclick="window._ucClosePanel('${_esc(ucId)}')"
+              style="margin-left:auto;font-size:0.7rem;padding:1px 6px;border:1px solid var(--border);
+                     border-radius:3px;cursor:pointer;background:transparent">✕</button>
+    </div>
+    <div id="uc-panel-stages-${ucId}" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.5rem;font-size:0.75rem"></div>
+    <div style="font-size:0.68rem;color:var(--muted);font-weight:600;margin-bottom:0.3rem;
+                border-top:1px solid var(--border);padding-top:0.3rem">Execution Log</div>
+    <div id="uc-panel-log-${ucId}" style="font-family:monospace;font-size:0.68rem;color:var(--muted);
+         flex:1;overflow-y:auto;max-height:160px;white-space:pre-wrap">Starting…</div>
+    <div id="uc-panel-verdict-${ucId}" style="display:none;margin-top:0.5rem;padding:0.3rem 0.5rem;
+         border-radius:4px;font-size:0.75rem;font-weight:600;text-align:center"></div>
+  `;
+  cardEl.appendChild(panel);
+
+  // Poll
+  _ucPollRun(runId, ucId);
+}
+
+window._ucClosePanel = (ucId) => {
+  const panel = document.getElementById(`uc-panel-${ucId}`);
+  if (panel) panel.remove();
+  if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
+  const cardEl = document.getElementById(`uc-card-${ucId.replace(/-/g, '')}`);
+  if (cardEl) {
+    cardEl.style.display = '';
+    cardEl.style.flexDirection = '';
+    cardEl.style.alignItems = '';
+  }
+};
+
+function _ucPollRun(runId, ucId) {
+  if (_ucPollTimer) clearInterval(_ucPollTimer);
+  const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', waiting_approval: '#9b7ef8' };
+  const STAGE_ICONS   = { done: '●', running: '⟳', error: '✗', pending: '○' };
+
+  const poll = async () => {
+    try {
+      const data = await api.agents.getPipelineRun(runId);
+      const dot      = document.getElementById(`uc-panel-dot-${ucId}`);
+      const stagesEl = document.getElementById(`uc-panel-stages-${ucId}`);
+      const logEl    = document.getElementById(`uc-panel-log-${ucId}`);
+      const verdEl   = document.getElementById(`uc-panel-verdict-${ucId}`);
+
+      if (!dot) return; // panel closed
+
+      if (dot) dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
+
+      if (stagesEl && data.stages) {
+        stagesEl.innerHTML = data.stages.map(s => {
+          const icon  = STAGE_ICONS[s.status] || '○';
+          const color = s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : s.status === 'running' ? '#f5a623' : 'var(--muted)';
+          const dur   = s.duration_s ? ` ${s.duration_s.toFixed(1)}s` : '';
+          const cost  = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(3)}` : '';
+          return `<div style="display:flex;align-items:center;gap:0.3rem;color:${color}">
+            <span>${icon}</span>
+            <span>${_esc(s.stage_key)}</span>
+            <span style="color:var(--muted);margin-left:auto">${_esc(dur)}${_esc(cost)}</span>
+          </div>`;
+        }).join('');
+      }
+
+      if (logEl && data.stages) {
+        const lines = [];
+        for (const s of data.stages) {
+          if (s.log_lines?.length) {
+            lines.push(...s.log_lines.slice(-3).map(l => l.text || ''));
+          }
+        }
+        logEl.textContent = lines.slice(-8).join('\n') || 'Running…';
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      if (data.status === 'waiting_approval') {
+        if (verdEl) {
+          verdEl.style.display = 'block';
+          verdEl.style.background = '#9b7ef822';
+          verdEl.style.color = '#9b7ef8';
+          verdEl.innerHTML = `Waiting for approval
+            <div style="display:flex;gap:0.5rem;margin-top:0.4rem;justify-content:center">
+              <button onclick="api.agents.approvePipelineRun('${runId}',{approved:true}).catch(()=>{})"
+                      style="padding:0.2rem 0.6rem;border-radius:3px;background:#3ecf8e22;color:#3ecf8e;
+                             border:1px solid #3ecf8e;cursor:pointer;font-size:0.72rem">Approve</button>
+              <button onclick="api.agents.approvePipelineRun('${runId}',{approved:false}).catch(()=>{})"
+                      style="padding:0.2rem 0.6rem;border-radius:3px;background:#e85d7522;color:#e85d75;
+                             border:1px solid #e85d75;cursor:pointer;font-size:0.72rem">Reject</button>
+            </div>`;
+        }
+      }
+
+      if (data.status === 'done' || data.status === 'error') {
+        clearInterval(_ucPollTimer);
+        _ucPollTimer = null;
+        const verdict = data.final_verdict || data.status;
+        const vColor  = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f59e0b';
+        if (dot) dot.style.background = vColor;
+        if (verdEl) {
+          verdEl.style.display = 'block';
+          verdEl.style.background = `${vColor}22`;
+          verdEl.style.color = vColor;
+          verdEl.textContent = verdict.toUpperCase() + (data.error ? `: ${data.error.slice(0, 80)}` : '');
+        }
+        // Reload UC items after 1s to show updated summaries
+        setTimeout(() => _loadUseCases().catch(() => {}), 1000);
+      }
+    } catch (_e) {
+      // silent
+    }
+  };
+
+  _ucPollTimer = setInterval(poll, 1500);
+  poll();
 }
 
 /** Neutral badge shown on approved use cases: "📂 12d open" */

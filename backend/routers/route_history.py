@@ -740,7 +740,8 @@ async def workflow_runs(
                             """SELECT id, pipeline_name, task, status, final_verdict,
                                       total_cost_usd, error, started_at, finished_at,
                                       duration_s,
-                                      COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0) AS steps
+                                      COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0) AS steps,
+                                      source, linked_uc_id, linked_item_id
                                FROM pr_pipeline_runs
                                WHERE project_id=%s
                                ORDER BY started_at DESC LIMIT %s""",
@@ -766,7 +767,9 @@ async def workflow_runs(
                         "steps":         int(r[10] or 0),
                         "error":         r[6],
                         "current_node":  r[4],  # final_verdict
-                        "source":        "pipeline",
+                        "source":        r[11] or "direct",
+                        "linked_uc_id":  str(r[12]) if r[12] else None,
+                        "linked_item_id": str(r[13]) if r[13] else None,
                     })
             except Exception as _ple:
                 import logging as _log
