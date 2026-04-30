@@ -305,6 +305,34 @@ export function renderGraphWorkflow(container) {
       .gw-hist-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:35%;
                       border-top:1px solid var(--border); }
       .gw-canvas-area { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+
+      /* Shared combobox dropdown — used for doc search and pipeline name autocomplete */
+      .gw-combobox-drop {
+        position:absolute; top:calc(100% + 3px); left:0;
+        min-width:200px; max-width:340px; width:max-content;
+        z-index:9100;
+        background:#1a1c2a; /* solid dark — avoids transparency bleed */
+        border:1px solid rgba(255,255,255,0.18);
+        border-radius:6px;
+        max-height:190px; overflow-y:auto;
+        box-shadow:0 10px 28px rgba(0,0,0,0.65);
+        display:none;
+      }
+      .gw-combobox-item {
+        padding:0.3rem 0.65rem;
+        cursor:pointer;
+        font-size:0.73rem;
+        white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        border-bottom:1px solid rgba(255,255,255,0.05);
+        color:#d0d0e0;
+      }
+      .gw-combobox-item:last-child { border-bottom:none; }
+      .gw-combobox-item:hover { background:rgba(100,108,255,0.18); color:#fff; }
+      .gw-combobox-hint {
+        padding:0.28rem 0.65rem;
+        font-size:0.62rem; color:rgba(255,255,255,0.35);
+        font-style:italic;
+      }
     </style>
 
     <div class="gw-toolbar2">
@@ -1110,10 +1138,7 @@ function _showPipelineProps() {
             oninput="window._gwPpPipeSearch(this.value);window._gwPpUpdateCtxPath(this.value)"
             onfocus="window._gwPpPipeSearch(this.value)"
             onblur="setTimeout(()=>{ const l=document.getElementById('pp-pipe-list'); if(l) l.style.display='none'; },150)">
-          <div id="pp-pipe-list"
-            style="display:none;position:absolute;top:100%;left:0;right:0;z-index:210;
-                   background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
-                   max-height:120px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.2)"></div>
+          <div id="pp-pipe-list" class="gw-combobox-drop"></div>
         </div>
 
         <!-- Doc search + file upload (right, grows) -->
@@ -1121,19 +1146,15 @@ function _showPipelineProps() {
           <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
                       text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
           <div style="display:flex;gap:0.3rem;align-items:center">
-            <!-- Searchable doc combobox -->
-            <div style="flex:1;min-width:0;position:relative">
+            <!-- Searchable doc combobox — dropdown is width-capped, solid bg -->
+            <div style="width:180px;flex-shrink:0;position:relative">
               <input type="text" id="pp-doc-search"
-                placeholder="Search project docs…" autocomplete="off"
+                placeholder="🔍 Search docs…" autocomplete="off"
                 style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
                        background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
                 oninput="window._gwPpDocSearch(this.value)"
-                onfocus="window._gwPpDocSearch(this.value)"
-                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },150)">
-              <div id="pp-doc-list"
-                style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                       background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
-                       max-height:130px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
+                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },160)">
+              <div id="pp-doc-list" class="gw-combobox-drop"></div>
             </div>
             <!-- File upload button (multiple) -->
             <button class="btn btn-ghost btn-sm"
@@ -1289,28 +1310,34 @@ function _gwPpDocSearch(q) {
   if (!_gwPpDocsCache) { _gwPpLoadDocs(); return; }
   const lst = document.getElementById('pp-doc-list');
   if (!lst) return;
-  const query = (q || '').toLowerCase();
+  const query = (q || '').trim().toLowerCase();
+  // Don't show on empty query — user must type to search
+  if (!query) { lst.style.display = 'none'; return; }
   const already = new Set(_gwPpFileList.filter(f => f.type === 'doc').map(f => f.path));
   const matches = (_gwPpDocsCache || []).filter(d =>
     !already.has(d.path) &&
-    (!query || d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
+    (d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
   );
-  if (!matches.length) { lst.style.display = 'none'; return; }
-  lst.style.display = '';
-  lst.innerHTML = matches.slice(0, 30).map(d => `
-    <div style="padding:0.28rem 0.55rem;cursor:pointer;font-size:0.73rem;white-space:nowrap;
-                overflow:hidden;text-overflow:ellipsis">
-      📄 ${_esc(d.name)}
-      ${d.path !== d.name ? `<span style="font-size:0.6rem;color:var(--muted);margin-left:0.3rem">${_esc(d.path)}</span>` : ''}
-    </div>`).join('');
+  if (!matches.length) {
+    lst.style.display = 'block';
+    lst.innerHTML = `<div class="gw-combobox-hint">No documents match "${_esc(query)}"</div>`;
+    return;
+  }
+  const visible = matches.slice(0, 10);
+  const extra   = matches.length - visible.length;
+  lst.style.display = 'block';
+  lst.innerHTML = visible.map(d => `
+    <div class="gw-combobox-item" title="${_esc(d.path)}">
+      📄 <strong>${_esc(d.name)}</strong>
+      ${d.path !== d.name ? `<span style="font-size:0.6rem;opacity:0.5;margin-left:0.4rem">${_esc(d.path)}</span>` : ''}
+    </div>`).join('')
+    + (extra > 0 ? `<div class="gw-combobox-hint">+ ${extra} more — keep typing to narrow</div>` : '');
 
-  // Attach listeners programmatically — avoids inline-handler issues in Electron
-  Array.from(lst.children).forEach((item, i) => {
-    const d = matches[i];
-    item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover)'; });
-    item.addEventListener('mouseleave', () => { item.style.background = ''; });
-    item.addEventListener('mousedown',  (e) => {
-      e.preventDefault();  // keep input focused; prevent blur from hiding list
+  // Programmatic listeners — avoids inline-handler issues in Electron
+  Array.from(lst.querySelectorAll('.gw-combobox-item')).forEach((item, i) => {
+    const d = visible[i];
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
       if (window._gwPpDocPick) window._gwPpDocPick(d.path, d.name);
     });
   });
@@ -1360,17 +1387,13 @@ function _gwPpPipeSearch(q) {
   const query = (q || '').toLowerCase();
   const matches = _gwPpPipeNames.filter(n => !query || n.toLowerCase().includes(query));
   if (!matches.length) { lst.style.display = 'none'; return; }
-  lst.style.display = '';
-  lst.innerHTML = matches.map(n => `
-    <div style="padding:0.25rem 0.5rem;cursor:pointer;font-size:0.72rem">
-      📁 ${_esc(n)}
-    </div>`).join('');
+  lst.style.display = 'block';
+  lst.innerHTML = matches.slice(0, 8).map(n => `
+    <div class="gw-combobox-item">📁 ${_esc(n)}</div>`).join('');
 
-  Array.from(lst.children).forEach((item, i) => {
+  Array.from(lst.querySelectorAll('.gw-combobox-item')).forEach((item, i) => {
     const n = matches[i];
-    item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover)'; });
-    item.addEventListener('mouseleave', () => { item.style.background = ''; });
-    item.addEventListener('mousedown',  (e) => {
+    item.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const inp = document.getElementById('pp-pipe-name');
       if (inp) { inp.value = n; window._gwPpUpdateCtxPath?.(n); }
@@ -1739,6 +1762,14 @@ function _gwSelectRole(roleId) {
   const detail = document.getElementById('gw-detail');
   if (detail) detail.classList.remove('open');
 
+  // Hide pipeline-specific toolbar controls (wf name input, run/export buttons, props button)
+  const wfNameWrap = document.getElementById('gw-wf-name-wrap');
+  const runControls = document.getElementById('gw-run-controls');
+  const propsBtn    = document.getElementById('gw-props-btn');
+  if (wfNameWrap)  wfNameWrap.style.display  = 'none';
+  if (runControls) runControls.style.display = 'none';
+  if (propsBtn)    { propsBtn.style.display  = 'none'; propsBtn.innerHTML = ''; }
+
   _showRoleExec(role);
 }
 
@@ -1765,23 +1796,32 @@ function _showRoleExec(role) {
     </div>
     <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
                                    gap:0.4rem;overflow-y:auto;max-height:55vh">
-      <!-- Files & docs row -->
+
+      <!-- Row: Output folder | Doc search | + Files -->
       <div style="display:flex;gap:0.35rem;align-items:flex-start">
+
+        <!-- Output folder (fixed width) -->
+        <div style="width:130px;flex-shrink:0;position:relative">
+          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
+                      text-transform:uppercase;letter-spacing:0.04em">Output folder</div>
+          <input type="text" id="pp-role-output"
+            placeholder="output name…" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
+                   background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)">
+        </div>
+
+        <!-- Doc search + file upload -->
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:0.2rem">
           <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
                       text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
           <div style="display:flex;gap:0.3rem;align-items:center">
-            <div style="flex:1;min-width:0;position:relative">
-              <input type="text" id="pp-doc-search" placeholder="Search project docs…" autocomplete="off"
+            <div style="width:180px;flex-shrink:0;position:relative">
+              <input type="text" id="pp-doc-search" placeholder="🔍 Search docs…" autocomplete="off"
                 style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
                        background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
                 oninput="window._gwPpDocSearch(this.value)"
-                onfocus="window._gwPpDocSearch(this.value)"
-                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },150)">
-              <div id="pp-doc-list"
-                style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-                       background:var(--bg1);border:1px solid var(--border);border-radius:0 0 4px 4px;
-                       max-height:130px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
+                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },160)">
+              <div id="pp-doc-list" class="gw-combobox-drop"></div>
             </div>
             <button class="btn btn-ghost btn-sm"
               style="font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap"
@@ -1863,7 +1903,9 @@ function _showRoleExec(role) {
 
 async function _gwRoleRun() {
   if (!_gwSelectedRole) return;
-  const promptText = (document.getElementById('pp-task')?.value || '').trim();
+  const promptText  = (document.getElementById('pp-task')?.value || '').trim();
+  const outputFolder = (document.getElementById('pp-role-output')?.value || '').trim()
+                    || _gwSelectedRole.name.toLowerCase().replace(/\s+/g, '_');
 
   const parts = [];
   for (const item of _gwPpFileList) {
@@ -1890,23 +1932,30 @@ async function _gwRoleRun() {
     return;
   }
 
-  document.getElementById('pp-run-err').textContent  = '';
+  document.getElementById('pp-run-err').textContent     = '';
   document.getElementById('pp-run-btn').style.display    = 'none';
   document.getElementById('pp-cancel-btn').style.display = '';
   document.getElementById('pp-progress').style.display   = '';
   _gwPpClearLog();
 
-  const cardsEl = document.getElementById('pp-stage-cards');
+  const cardsEl  = document.getElementById('pp-stage-cards');
   const roleName = _gwSelectedRole.name;
+  const outPath  = `documents/roles/${outputFolder}/output.md`;
+
   if (cardsEl) {
     cardsEl.innerHTML = `
-      <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
+      <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.35rem 0.5rem;
                   border:1px solid #f5a62366;border-radius:5px;background:#f5a6230e">
         <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:0.05rem;
                     background:#f5a623;display:flex;align-items:center;justify-content:center;
-                    font-size:0.6rem;font-weight:700;color:#fff">⟳</div>
-        <div style="flex:1;font-size:0.72rem;font-weight:600;color:var(--fg)">
-          ${_esc(roleName)} <span style="font-weight:400;font-size:0.67rem;color:var(--muted)">(running…)</span>
+                    font-size:0.6rem;font-weight:700;color:#fff;animation:pulse 1s infinite">⟳</div>
+        <div style="flex:1">
+          <div style="font-size:0.72rem;font-weight:600;color:var(--fg)">
+            ${_esc(roleName)} <span style="font-weight:400;font-size:0.67rem;color:var(--muted)">(running…)</span>
+          </div>
+          <div style="font-size:0.6rem;color:var(--muted);margin-top:0.1rem">
+            output → <code style="font-size:0.59rem;color:var(--accent)">${_esc(outPath)}</code>
+          </div>
         </div>
       </div>`;
   }
@@ -1922,27 +1971,28 @@ async function _gwRoleRun() {
     const steps   = res.steps ? `${res.steps} steps` : '';
     const output  = (typeof res.output === 'string' ? res.output
                     : JSON.stringify(res.structured_output || res.output || ''))
-                    .replace(/\n+/g, ' ').slice(0, 200);
+                    .replace(/\n+/g, ' ').slice(0, 220);
     const isOk = !['error','failed','loop_detected','max_steps_reached'].includes(res.status);
     const clr  = isOk ? '#3ecf8e' : '#e85d75';
     const icon = isOk ? '✓' : '✗';
 
     if (cardsEl) {
       cardsEl.innerHTML = `
-        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
-                    border:1px solid ${clr}66;border-radius:5px;background:var(--bg1)">
+        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.35rem 0.5rem;
+                    border:1px solid ${clr}55;border-radius:5px;background:var(--bg1)">
           <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:0.05rem;
                       background:${clr};display:flex;align-items:center;justify-content:center;
                       font-size:0.6rem;font-weight:700;color:#fff">${icon}</div>
           <div style="flex:1;min-width:0">
             <div style="font-size:0.72rem;font-weight:600;color:var(--fg)">${_esc(roleName)}</div>
-            <div style="font-size:0.62rem;color:var(--muted);margin-top:0.12rem">
+            <div style="font-size:0.62rem;color:var(--muted);margin-top:0.1rem">
               ${_esc([meta, steps].filter(Boolean).join(' · '))}
+              · output → <code style="font-size:0.59rem;color:var(--accent)">${_esc(outPath)}</code>
             </div>
-            ${output ? `<div style="font-size:0.63rem;color:var(--fg);margin-top:0.1rem;line-height:1.4;
-                              max-height:40px;overflow:hidden;display:-webkit-box;
+            ${output ? `<div style="font-size:0.63rem;color:var(--fg);margin-top:0.15rem;line-height:1.4;
+                              max-height:44px;overflow:hidden;display:-webkit-box;
                               -webkit-line-clamp:2;-webkit-box-orient:vertical">
-              ${_esc(output)}${output.length >= 200 ? '…' : ''}
+              ${_esc(output)}${output.length >= 220 ? '…' : ''}
             </div>` : ''}
           </div>
         </div>`;
@@ -1955,8 +2005,8 @@ async function _gwRoleRun() {
   } catch (e) {
     if (cardsEl) {
       cardsEl.innerHTML = `
-        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
-                    border:1px solid #e85d7566;border-radius:5px;background:var(--bg1)">
+        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.35rem 0.5rem;
+                    border:1px solid #e85d7555;border-radius:5px;background:var(--bg1)">
           <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;background:#e85d75;
                       display:flex;align-items:center;justify-content:center;
                       font-size:0.6rem;font-weight:700;color:#fff">✗</div>
