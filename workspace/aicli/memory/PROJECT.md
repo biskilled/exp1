@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline design initiation: per-stage parameter overrides (temperature/top_p, max_retry), DAG node creation UI wired to existing roles, pipeline execution wiring via asyncio.gather; max_iterations mandatory parameter added to all stage configs
-- Settings/Workflow consolidation: renamed to 'Roles & Pipelines' with checkbox-based availability toggle; pipeline enable-only-if-all-required-roles-available validation implemented; provider-model coupling enforced on role selection
-- Role UI finalization: base_snapshot JSONB storage complete, version history browsing wired, BASED (green)/UPDATED (orange)/EXTERNAL (amber) status badges displayed per role, small inline reset button removed (redundant with 'Reset to base' toolbar button)
-- Temperature/top_p role parameters: added to all 10 role YAML files and provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok); pipeline stage-level overrides designed with per-node configuration in YAML
-- YAML config folder structure: memory-related YAML under backend/memory/yaml_config/, pipeline-related YAML under backend/agents/yaml_config/, role YAMLs under workspace/_templates/pipelines/roles/ with role_ prefix, pipeline YAMLs under workspace/_templates/pipelines/ with pl_ prefix
-- Project folder cleanup complete: removed legacy documents/, features/, cli/ folders; workspace/aicli/pipelines/ aligned with _templates structure; YAML consolidated into yaml_config subfolders; MCP Catalog moved to main left nav under new Workflows group
+- Pipeline execution wiring: POST /agents/pipeline-runs starts async DAG execution; pipeline stages reference roles with per-stage parameter overrides (provider/model/temperature/top_p); asyncio.gather orchestrates PM → Architect → Developer → Reviewer sequence; max_iterations mandatory per stage
+- Settings/Workflow tab restructure: renamed to 'Roles & Pipelines'; checkbox-based availability toggle for roles and pipelines; pipeline enable-only-if-all-required-roles-available validation; role list shows BASED (green)/UPDATED (orange)/EXTERNAL (amber) status badges
+- Role UI refinements: base_snapshot JSONB for pristine state storage; version history browsing; 'Reset to base' button restores from saved snapshot; 'Set as base' button snapshots current state; model selector auto-updates when provider changes
+- System prompts finalization: 3 canonical presets in system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all old system role entries deleted; roles reference presets via system_prompt_preset field
+- YAML config folder consolidation: memory-related YAML under backend/memory/yaml_config/ (command_memory.yaml, feature_detect.yaml); pipeline-related YAML under backend/agents/yaml_config/ (agent_react.yaml, event_tagging.yaml); role YAMLs prefixed role_* under workspace/_templates/pipelines/roles/; pipeline YAMLs prefixed pl_* under workspace/_templates/pipelines/
+- Project folder cleanup: removed legacy documents/, features/, cli/ folders; workspace/aicli/pipelines/ aligned with _templates structure; MCP Catalog moved to main left nav under new Workflows group alongside Roles and Pipelines
 
 ## Key Decisions
 

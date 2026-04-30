@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 23:46 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-29 23:57 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -48,8 +48,8 @@ _Last updated: 2026-04-29_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] yes please. can you update that in the role and add those paramter into pipeline as well. I will work on pipeline design
 - [2026-04-29] I do like in the setting the Agent Role - what I would like is to change the name to role & Pipeleine . show all roles a
 - [2026-04-29] Just to confirm - the edit button in the setting/workflow - is it for editing the yaml file ? is it save as a new versio
 - [2026-04-29] I would like to start to work on pipelines section.   pipeline and roles can be executed from thus tab (only approved pi
 - [2026-04-29] Can you check what is required in order to set up proper pipeline.  I do thin max retry are mandatory. do I need to set 
+- [2026-04-29] I dont understand what was implemeted.  On the Pipeline section - what React run ? what is it running ? I also dont unde
