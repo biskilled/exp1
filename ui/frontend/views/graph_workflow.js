@@ -303,6 +303,7 @@ export function renderGraphWorkflow(container) {
       <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Pipeline</button>
       <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)" title="Create from template">From Template ▾</button>
       <button class="btn btn-ghost btn-sm" id="gw-react-btn" onclick="window._gwOpenReActRunner()" title="Run a YAML-defined ReAct pipeline (PM → Architect → Developer → Reviewer)">▶ ReAct Run</button>
+      <button class="btn btn-ghost btn-sm" id="gw-props-btn" onclick="window._gwShowProps()" style="display:none" title="Pipeline global properties, execute and history">⚙ Properties</button>
       <div id="gw-wf-name-wrap" style="display:none">
         <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
       </div>
@@ -415,6 +416,7 @@ export function renderGraphWorkflow(container) {
   window._gwCloseRunPanel = _closeRunPanel;
   window._gwOpenRun      = (runId) => _openRunById(runId);
   window._gwOpenReActRunner = () => openReActRunner();
+  window._gwShowProps       = () => _showPipelineProps();
 
   _loadList().then(() => {
     // If navigation came from a pipeline trigger (entities.js), auto-open that run
@@ -660,11 +662,15 @@ function _showWorkflow(wf) {
   const nameEl = document.getElementById('gw-wf-name');
   const nameWrap = document.getElementById('gw-wf-name-wrap');
   const runControls = document.getElementById('gw-run-controls');
+  const propsBtn = document.getElementById('gw-props-btn');
   const displayName = wf.name === '_work_item_pipeline' ? 'Work Item Pipeline' : wf.name;
   if (nameEl) nameEl.value = displayName;
   if (nameWrap) nameWrap.style.display = '';
   if (runControls) runControls.style.display = 'flex';
+  if (propsBtn) propsBtn.style.display = '';
   _renderPipeline(wf);
+  // Auto-open properties panel when a workflow is first selected
+  _showPipelineProps();
 }
 
 async function _newWorkflow() {
@@ -972,18 +978,395 @@ function _selectNode(nodeId) {
   if (detail) detail.classList.add('open');
 }
 
+// ── Pipeline Properties / Execute / History panel ─────────────────────────────
+
+let _gwPollTimer   = null;   // async pipeline run poll
+let _gwRunId       = null;   // current async run id
+let _gwHistLimit   = 10;
+let _gwPanelMode   = null;   // 'node' | 'pipeline'
+
+function _showPipelineProps() {
+  if (!_currentWf) return;
+  _gwPanelMode = 'pipeline';
+  _selectedNodeId = null;
+  document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
+
+  const detail = document.getElementById('gw-detail');
+  const footer = document.querySelector('.gw-detail-footer');
+  const title  = document.getElementById('gw-detail-title');
+  const body   = document.getElementById('gw-detail-body');
+  if (!detail || !body) return;
+
+  if (title) title.textContent = 'Pipeline Properties';
+  if (footer) footer.style.display = 'none';   // auto-save, no button needed
+  detail.classList.add('open');
+
+  // Detect if this workflow name matches a YAML pipeline
+  const wfName = _currentWf.name;
+
+  body.innerHTML = `
+    <!-- ① Global Properties -->
+    <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
+                letter-spacing:0.07em;color:var(--muted);margin-bottom:0.5rem">
+      Global Properties
+    </div>
+
+    <div class="gw-field">
+      <label>Max rejection retries</label>
+      <input id="pp-retries" type="number" min="1" max="10"
+        value="${_currentWf.max_rejection_retries ?? _currentWf.max_iterations ?? 3}"
+        style="width:60px;text-align:center">
+      <div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">reviewer loop limit</div>
+    </div>
+
+    <div class="gw-field">
+      <label>Default temperature</label>
+      <input id="pp-temp" type="number" min="0" max="1" step="0.05"
+        value="${_currentWf.default_temperature ?? ''}"
+        placeholder="role default"
+        style="width:80px">
+      <div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">0–1, blank = use each role's default</div>
+    </div>
+
+    <div class="gw-field">
+      <div class="gw-toggle-row">
+        <label style="margin:0">Continue on failure</label>
+        <input type="checkbox" id="pp-continue" ${_currentWf.continue_on_failure ? 'checked' : ''}>
+      </div>
+    </div>
+
+    <div class="gw-field">
+      <div class="gw-toggle-row">
+        <label style="margin:0">Save to memory</label>
+        <input type="checkbox" id="pp-savemem" ${_currentWf.save_memory !== false ? 'checked' : ''}>
+      </div>
+    </div>
+
+    <div id="pp-save-status" style="font-size:0.68rem;color:var(--muted);min-height:1rem;margin-bottom:0.5rem"></div>
+
+    <div style="border-top:1px solid var(--border);margin:0 -0.75rem 0.75rem;padding-top:0.75rem;
+                padding-left:0.75rem;padding-right:0.75rem">
+
+      <!-- ② Execute -->
+      <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:0.07em;color:var(--muted);margin-bottom:0.5rem">
+        Execute
+      </div>
+
+      <div class="gw-field">
+        <label>Task / Prompt</label>
+        <textarea id="pp-task" rows="4"
+          placeholder="Describe what you want the pipeline to do…"
+          style="font-size:0.78rem;resize:vertical"></textarea>
+      </div>
+
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;flex-wrap:wrap">
+        <button id="pp-run-btn" class="btn btn-primary btn-sm"
+          style="font-size:0.76rem" onclick="window._gwPpRun()">▶ Run Pipeline</button>
+        <button id="pp-cancel-btn" class="btn btn-ghost btn-sm"
+          style="font-size:0.76rem;display:none" onclick="window._gwPpCancel()">■ Cancel</button>
+      </div>
+      <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c;margin-bottom:0.35rem"></div>
+
+      <!-- Stage progress (shown when async run started) -->
+      <div id="pp-progress" style="display:none">
+        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Progress</div>
+        <div id="pp-dots" style="margin-bottom:0.4rem;font-size:0.72rem"></div>
+        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.2rem">Log</div>
+        <div id="pp-log" style="font-family:monospace;font-size:0.65rem;line-height:1.4;
+             background:var(--bg1,var(--surface));border:1px solid var(--border);border-radius:4px;
+             padding:0.35rem;height:130px;overflow-y:auto"></div>
+      </div>
+
+      <!-- Approval gate -->
+      <div id="pp-approval" style="display:none;margin-top:0.5rem;
+        border:2px solid #9b59b6;border-radius:6px;padding:0.55rem;
+        background:rgba(155,89,182,0.06)">
+        <div style="font-weight:700;color:#9b59b6;font-size:0.76rem;margin-bottom:0.25rem">⏸ Approval Required</div>
+        <div id="pp-apv-msg" style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem"></div>
+        <textarea id="pp-apv-fb" rows="2" placeholder="Feedback (optional)…"
+          style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border);
+                 border-radius:4px;padding:0.25rem;font-size:0.72rem;resize:vertical;margin-bottom:0.3rem;font-family:inherit"></textarea>
+        <div style="display:flex;gap:0.3rem">
+          <button class="btn btn-primary btn-sm" style="font-size:0.7rem;flex:1"
+            onclick="window._gwPpApprove(true)">✓ Approve</button>
+          <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;flex:1;color:#e74c3c;border-color:#e74c3c"
+            onclick="window._gwPpApprove(false)">✗ Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:0 -0.75rem;padding:0.75rem 0.75rem 0">
+
+      <!-- ③ History -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
+        <span style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
+                     letter-spacing:0.07em;color:var(--muted)">History</span>
+        <span style="display:flex;gap:0.2rem">
+          ${[10,20,50].map(n =>
+            `<button class="btn btn-ghost" style="font-size:0.6rem;padding:0.02rem 0.22rem;min-height:0"
+               onclick="window._gwPpHistLimit(${n})">${n}</button>`
+          ).join('')}
+        </span>
+      </div>
+      <div id="pp-hist"></div>
+    </div>
+  `;
+
+  // Auto-save when properties change
+  const statusEl = document.getElementById('pp-save-status');
+  let saveTimer  = null;
+  const schedSave = () => {
+    statusEl.textContent = 'Unsaved…'; statusEl.style.color = 'var(--muted)';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(_gwSavePipelineProps, 800);
+  };
+  ['pp-retries','pp-temp','pp-continue','pp-savemem'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', schedSave);
+  });
+
+  window._gwPpRun       = _gwPpRun;
+  window._gwPpCancel    = _gwPpCancel;
+  window._gwPpApprove   = _gwPpApprove;
+  window._gwPpHistLimit = n => { _gwHistLimit = n; _gwLoadHistory(); };
+
+  _gwLoadHistory();
+}
+
+async function _gwSavePipelineProps() {
+  const statusEl = document.getElementById('pp-save-status');
+  if (!_currentWf || !statusEl) return;
+  const tempRaw = document.getElementById('pp-temp')?.value;
+  const body = {
+    max_rejection_retries: parseInt(document.getElementById('pp-retries')?.value || '3', 10),
+    continue_on_failure:   document.getElementById('pp-continue')?.checked ?? false,
+    save_memory:           document.getElementById('pp-savemem')?.checked ?? true,
+    default_temperature:   tempRaw !== '' && tempRaw != null ? parseFloat(tempRaw) : null,
+  };
+  try {
+    // Try YAML pipeline PATCH first, fall back silently for custom workflows
+    await api.agentRoles.patchPipeline(_currentWf.name, body, _project);
+    statusEl.textContent = 'Saved ✓'; statusEl.style.color = 'var(--green,#3ecf8e)';
+    setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2500);
+  } catch (_) {
+    // Custom workflow — properties not stored server-side yet
+    statusEl.textContent = '(properties not saved for custom workflows)';
+    statusEl.style.color = 'var(--muted)';
+  }
+}
+
+async function _gwPpRun() {
+  const task = (document.getElementById('pp-task')?.value || '').trim();
+  if (!task) { document.getElementById('pp-run-err').textContent = 'Enter a task first.'; return; }
+  document.getElementById('pp-run-err').textContent = '';
+  document.getElementById('pp-run-btn').style.display    = 'none';
+  document.getElementById('pp-cancel-btn').style.display = '';
+  document.getElementById('pp-progress').style.display   = '';
+  document.getElementById('pp-approval').style.display   = 'none';
+  _gwPpClearLog();
+
+  // Try as a YAML pipeline run (async)
+  try {
+    const res = await api.agents.startPipelineRun({ pipeline: _currentWf.name, task, project: _project });
+    _gwRunId = res.run_id;
+    _gwPpLog(`Run started: ${_gwRunId}`);
+    _gwStartPoll();
+  } catch (_) {
+    // Fall back to the existing graph workflow run (opens the bottom run panel)
+    _gwRunId = null;
+    document.getElementById('pp-run-btn').style.display    = '';
+    document.getElementById('pp-cancel-btn').style.display = 'none';
+    document.getElementById('pp-progress').style.display   = 'none';
+    window._gwStartRun?.();
+  }
+}
+
+function _gwPpCancel() {
+  if (_gwPollTimer) { clearInterval(_gwPollTimer); _gwPollTimer = null; }
+  _gwRunId = null;
+  _gwPpLog('Cancelled.', 'warn');
+  document.getElementById('pp-run-btn').style.display    = '';
+  document.getElementById('pp-cancel-btn').style.display = 'none';
+}
+
+function _gwStartPoll() {
+  if (_gwPollTimer) clearInterval(_gwPollTimer);
+  _gwPollTimer = setInterval(async () => {
+    if (!_gwRunId) { clearInterval(_gwPollTimer); return; }
+    try {
+      const data = await api.agents.getPipelineRun(_gwRunId);
+      _gwPpUpdateProgress(data);
+      if (!['running','waiting_approval'].includes(data.status)) {
+        clearInterval(_gwPollTimer); _gwPollTimer = null;
+        _gwPpOnDone(data);
+      }
+    } catch (e) { _gwPpLog(`Poll error: ${e.message}`, 'error'); }
+  }, 1500);
+}
+
+function _gwPpUpdateProgress(data) {
+  // Stage dots
+  const dotsEl = document.getElementById('pp-dots');
+  if (dotsEl) {
+    const STATUS_CLR = { done:'#3ecf8e', running:'#f5a623', error:'#e85d75',
+                         waiting_approval:'#9b7ef8', pending:'var(--muted)' };
+    dotsEl.innerHTML = (data.stages || []).map(s => {
+      const dur = s.duration_s != null ? ` ${Number(s.duration_s).toFixed(0)}s` : '';
+      const cost = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(4)}` : '';
+      return `<div style="display:flex;align-items:center;gap:0.3rem;padding:0.1rem 0">
+        <div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${STATUS_CLR[s.status]||'var(--muted)'}"></div>
+        <span style="font-family:monospace;font-size:0.65rem;min-width:80px">${s.stage_key||''}</span>
+        <span style="font-size:0.62rem;color:var(--muted)">${s.role_name||''}</span>
+        <span style="font-size:0.62rem;color:var(--muted)">${dur}${cost}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Log lines (dedup)
+  const logEl = document.getElementById('pp-log');
+  if (logEl) {
+    if (!logEl._seen) logEl._seen = new Set();
+    for (const stage of (data.stages || [])) {
+      for (const entry of (stage.log_lines || [])) {
+        const key = `${stage.stage_key}:${entry.ts}`;
+        if (!logEl._seen.has(key)) {
+          logEl._seen.add(key);
+          _gwPpLog(`[${stage.stage_key}] ${entry.text}`, entry.level);
+        }
+      }
+    }
+  }
+
+  // Approval gate
+  const apEl = document.getElementById('pp-approval');
+  if (data.status === 'waiting_approval' && apEl) {
+    apEl.style.display = '';
+    const last = (data.stages || []).filter(s => s.status === 'done').at(-1);
+    if (last) document.getElementById('pp-apv-msg').textContent =
+      `Stage "${last.stage_key}" done. Approve to continue.`;
+  } else if (apEl) {
+    apEl.style.display = 'none';
+  }
+}
+
+function _gwPpOnDone(data) {
+  const verdict = data.final_verdict || data.status;
+  _gwPpLog(`Done — ${verdict} | $${(data.total_cost_usd||0).toFixed(4)} | ${(data.total_input_tokens||0)+(data.total_output_tokens||0)} tok`);
+  document.getElementById('pp-run-btn').style.display    = '';
+  document.getElementById('pp-cancel-btn').style.display = 'none';
+  _gwRunId = null;
+  _gwLoadHistory();
+}
+
+async function _gwPpApprove(approved) {
+  if (!_gwRunId) return;
+  const fb = document.getElementById('pp-apv-fb')?.value || '';
+  try {
+    await api.agents.approvePipelineRun(_gwRunId, { approved, feedback: fb });
+    document.getElementById('pp-approval').style.display = 'none';
+  } catch (e) { _gwPpLog(`Approval error: ${e.message}`, 'error'); }
+}
+
+function _gwPpLog(text, level = 'info') {
+  const el = document.getElementById('pp-log');
+  if (!el) return;
+  const ts  = new Date().toLocaleTimeString();
+  const col = level === 'error' ? '#e85d75' : level === 'warn' ? '#f5a623' : 'inherit';
+  el.insertAdjacentHTML('beforeend',
+    `<div style="color:${col}">${ts}  ${String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`);
+  el.scrollTop = el.scrollHeight;
+}
+
+function _gwPpClearLog() {
+  const el = document.getElementById('pp-log');
+  if (el) { el.innerHTML = ''; el._seen = new Set(); }
+}
+
+async function _gwLoadHistory() {
+  const el = document.getElementById('pp-hist');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:0.7rem">Loading…</div>';
+  try {
+    const data = await api.agents.listPipelineRuns(_project, _currentWf?.name, _gwHistLimit);
+    const runs = data.runs || [];
+    if (!runs.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:0.7rem">No runs yet.</div>';
+      return;
+    }
+    const STATUS_CLR = { approved:'var(--green,#3ecf8e)', rejected:'#e85d75', done:'var(--muted)', error:'#e85d75' };
+    el.innerHTML = runs.map(r => {
+      const at  = r.started_at ? new Date(r.started_at).toLocaleString() : '—';
+      const dur = r.duration_s != null ? _gwFmtDur(r.duration_s) : '—';
+      const tok = (r.total_input_tokens||0) + (r.total_output_tokens||0);
+      const cost = r.total_cost_usd != null ? `$${Number(r.total_cost_usd).toFixed(4)}` : '—';
+      const v   = r.final_verdict || r.status || '—';
+      const sc  = r.score ?? null;
+      const stars = [1,2,3,4,5].map(n =>
+        `<span data-run="${r.run_id}" data-s="${n}"
+          style="cursor:pointer;color:${sc != null && n <= sc ? '#f5a623' : 'var(--muted)'};font-size:0.8rem">★</span>`
+      ).join('');
+      return `
+        <div style="padding:0.3rem 0;border-bottom:1px solid var(--border);font-size:0.68rem">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.2rem">
+            <span style="color:var(--muted)">${at}</span>
+            <span style="color:${STATUS_CLR[v]||'var(--muted)'};font-weight:600">${v}</span>
+          </div>
+          <div style="display:flex;gap:0.5rem;color:var(--muted);flex-wrap:wrap;margin-top:0.15rem">
+            <span>${dur}</span>
+            <span>${tok >= 1000 ? (tok/1000).toFixed(1)+'k' : tok} tok</span>
+            <span style="color:var(--accent)">${cost}</span>
+          </div>
+          <div style="display:flex;gap:0.05rem;margin-top:0.15rem">${stars}</div>
+          ${r.task ? `<div style="color:var(--muted);margin-top:0.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.task}">${r.task.slice(0,50)}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    // Star click handlers
+    el.querySelectorAll('[data-s]').forEach(star => {
+      star.addEventListener('click', async () => {
+        try {
+          await api.agents.scoreRun(star.dataset.run, parseInt(star.dataset.s, 10));
+          _gwLoadHistory();
+        } catch (_) {}
+      });
+    });
+  } catch (e) {
+    el.innerHTML = `<div style="color:#e85d75;font-size:0.7rem">${e.message}</div>`;
+  }
+}
+
+function _gwFmtDur(s) {
+  const sec = Math.round(s || 0);
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec/60)}m ${sec%60}s`;
+}
+
+// ── Close detail (back to pipeline props if possible) ─────────────────────────
+
 function _closeDetail() {
   _selectedNodeId = null;
   document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
+  // If we closed a node panel, revert to pipeline properties
+  if (_gwPanelMode === 'node' && _currentWf) {
+    _showPipelineProps();
+    return;
+  }
+  _gwPanelMode = null;
   const detail = document.getElementById('gw-detail');
   if (detail) detail.classList.remove('open');
+  const footer = document.querySelector('.gw-detail-footer');
+  if (footer) footer.style.display = '';
 }
 
 function _renderDetailPanel(node) {
-  const title = document.getElementById('gw-detail-title');
-  const body = document.getElementById('gw-detail-body');
+  _gwPanelMode = 'node';
+  const title  = document.getElementById('gw-detail-title');
+  const body   = document.getElementById('gw-detail-body');
+  const footer = document.querySelector('.gw-detail-footer');
   if (!body) return;
-  if (title) title.textContent = node.name;
+  if (title)  title.textContent    = node.name;
+  if (footer) footer.style.display = '';   // restore Save button
 
   const providerOptions = ['claude','openai','deepseek','gemini','grok'].map(p =>
     `<option value="${p}" ${node.provider===p?'selected':''}>${p}</option>`
