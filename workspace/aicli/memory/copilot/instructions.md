@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 08:56 UTC -->
+<!-- Last updated: 2026-04-30 09:17 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore: repeated commits after Claude CLI sessions (session IDs 1f8ecc78, 45ca1683, 5cf393d1) across 2026-04-29 to 2026-04-30; indicates auto-commit hook integration during active development
-- Pipeline execution engine: async DAG executor with per-node configuration (temperature/top_p/provider/model overrides) for 4-agent workflow (PM → Architect → Developer → Reviewer)
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), LLM Pipeline Costs table, and Pipeline Runs health tiles showing 24h execution status
-- Role activation in Settings: dual-pane view with activation checkboxes, role versioning (BASED/UPDATED/EXTERNAL badges), and base_snapshot restoration via mng_agent_role_versions
+- Auto-commit after Claude CLI sessions: chore commits following session 5cf393d1 (latest: 2026-04-30 09:17); stop hook integration triggering auto_commit_push.sh
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), LLM Pipeline Costs table, Pipeline Runs health tiles showing last 24h execution status
+- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with activation checkboxes; status badges (BASED green, UPDATED orange, EXTERNAL amber) wired to mng_agent_role_versions
+- Pipeline execution UI: Pipelines tab (◈ icon) with full builder (graph_workflow.js); node configuration panel showing provider, model, temperature, max_iterations; POST /agents/pipeline-runs triggers async DAG execution
 
-_Last updated: 2026-04-30 08:56 UTC_
+_Last updated: 2026-04-30 09:17 UTC_

@@ -1102,7 +1102,7 @@ function _showPipelineProps() {
             placeholder="pipeline name…" autocomplete="off"
             style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
                    background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
-            oninput="window._gwPpPipeSearch(this.value)"
+            oninput="window._gwPpPipeSearch(this.value);window._gwPpUpdateCtxPath(this.value)"
             onfocus="window._gwPpPipeSearch(this.value)"
             onblur="setTimeout(()=>{ const l=document.getElementById('pp-pipe-list'); if(l) l.style.display='none'; },150)">
           <div id="pp-pipe-list"
@@ -1131,12 +1131,11 @@ function _showPipelineProps() {
                        max-height:130px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.18)"></div>
             </div>
             <!-- File upload button (multiple) -->
-            <label class="btn btn-ghost btn-sm"
-              style="cursor:pointer;font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap">
-              + Files
-              <input type="file" id="pp-file-input" multiple style="display:none"
-                onchange="window._gwPpFileAdd(this)">
-            </label>
+            <button class="btn btn-ghost btn-sm"
+              style="font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap"
+              onclick="document.getElementById('pp-file-input').click()">+ Files</button>
+            <input type="file" id="pp-file-input" multiple style="display:none"
+              onchange="window._gwPpFileAdd(this)">
           </div>
         </div>
       </div>
@@ -1145,7 +1144,7 @@ function _showPipelineProps() {
       <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem;min-height:0"></div>
 
       <!-- Prompt textarea (always visible) -->
-      <textarea id="pp-task" rows="3"
+      <textarea id="pp-task" rows="5"
         placeholder="Describe what you want the pipeline to do… (optional if files are provided)"
         style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
                background:var(--bg1);border:1px solid var(--border);border-radius:4px;
@@ -1161,15 +1160,19 @@ function _showPipelineProps() {
       </div>
 
       <!-- Stage progress (shown when run started) -->
-      <div id="pp-progress" style="display:none">
+      <div id="pp-progress" style="display:none;border-top:1px solid var(--border);padding-top:0.45rem;margin-top:0.1rem">
         <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.25rem">Progress</div>
-        <div id="pp-dots" style="margin-bottom:0.35rem;font-size:0.72rem"></div>
-        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.15rem">Log</div>
-        <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.65rem;
-             line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
-             padding:0.3rem 0.4rem;height:110px;overflow-y:auto"></div>
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Execution Progress</div>
+        <!-- Rich per-stage status cards -->
+        <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.3rem"></div>
+        <!-- Collapsible detailed log -->
+        <details style="margin-top:0.1rem">
+          <summary style="font-size:0.62rem;color:var(--muted);cursor:pointer;user-select:none;
+                          list-style:none;padding:0.1rem 0">▸ Detailed log</summary>
+          <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;
+               line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+               padding:0.3rem 0.4rem;max-height:120px;overflow-y:auto;margin-top:0.15rem"></div>
+        </details>
       </div>
 
       <!-- Approval gate -->
@@ -1241,7 +1244,8 @@ function _showPipelineProps() {
     _gwPpRenderChips();
     _gwPpValidate();
   };
-  window._gwPpPipeSearch = _gwPpPipeSearch;
+  window._gwPpPipeSearch    = _gwPpPipeSearch;
+  window._gwPpUpdateCtxPath = _gwPpUpdateCtxPath;
   window._gwToggleHist  = () => {
     const body = document.getElementById('gw-hist-body');
     const lbl  = document.getElementById('gw-hist-toggle-lbl');
@@ -1351,6 +1355,17 @@ function _gwPpPipeSearch(q) {
          onmousedown="event.preventDefault();document.getElementById('pp-pipe-name').value=${JSON.stringify(n)};document.getElementById('pp-pipe-list').style.display='none'">
       📁 ${_esc(n)}
     </div>`).join('');
+}
+
+/** Update the output path shown in the node detail panel when the pipe name changes. */
+function _gwPpUpdateCtxPath(pipeName) {
+  const pathEl = document.getElementById('dn-ctx-path');
+  if (!pathEl || !_selectedNodeId) return;
+  const node = _currentWf?.nodes?.find(n => n.id === _selectedNodeId);
+  if (!node) return;
+  const folder   = (pipeName || '').trim() || _currentWf?.name || 'pipeline';
+  const nodePart = (node.name || 'node').toLowerCase().replace(/\s+/g, '_');
+  pathEl.textContent = `documents/pipeline/${folder}/${nodePart}.md`;
 }
 
 function _gwPpValidate() {
@@ -1477,24 +1492,80 @@ function _gwStartPoll() {
 }
 
 function _gwPpUpdateProgress(data) {
-  // Stage dots
-  const dotsEl = document.getElementById('pp-dots');
-  if (dotsEl) {
-    const STATUS_CLR = { done:'#3ecf8e', running:'#f5a623', error:'#e85d75',
-                         waiting_approval:'#9b7ef8', pending:'var(--muted)' };
-    dotsEl.innerHTML = (data.stages || []).map(s => {
-      const dur = s.duration_s != null ? ` ${Number(s.duration_s).toFixed(0)}s` : '';
-      const cost = s.cost_usd > 0 ? ` $${Number(s.cost_usd).toFixed(4)}` : '';
-      return `<div style="display:flex;align-items:center;gap:0.3rem;padding:0.1rem 0">
-        <div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${STATUS_CLR[s.status]||'var(--muted)'}"></div>
-        <span style="font-family:monospace;font-size:0.65rem;min-width:80px">${s.stage_key||''}</span>
-        <span style="font-size:0.62rem;color:var(--muted)">${s.role_name||''}</span>
-        <span style="font-size:0.62rem;color:var(--muted)">${dur}${cost}</span>
-      </div>`;
+  const STATUS_CLR = {
+    done: '#3ecf8e', running: '#f5a623', error: '#e85d75',
+    waiting_approval: '#9b7ef8', pending: 'var(--border)',
+  };
+
+  // Rich per-stage cards
+  const cardsEl = document.getElementById('pp-stage-cards');
+  if (cardsEl) {
+    const pipeName = (document.getElementById('pp-pipe-name')?.value || '').trim()
+                  || _currentWf?.name || 'pipeline';
+    const stages = data.stages || [];
+    cardsEl.innerHTML = stages.map((s, idx) => {
+      const clr  = STATUS_CLR[s.status] || 'var(--border)';
+      const icon = s.status === 'done'    ? '✓'
+                 : s.status === 'error'   ? '✗'
+                 : s.status === 'running' ? '⟳'
+                 : '○';
+      const dur  = s.duration_s != null
+        ? _gwFmtDur(s.duration_s)
+        : (s.started_at && s.status === 'running')
+          ? _fmtDurIso(s.started_at, null) + '…'
+          : '';
+      const cost  = s.cost_usd > 0 ? `$${Number(s.cost_usd).toFixed(4)}` : '';
+      const tok   = (s.input_tokens || 0) + (s.output_tokens || 0);
+      const tokStr = tok > 0
+        ? (tok >= 1000 ? `${(tok / 1000).toFixed(1)}k` : String(tok)) + ' tok'
+        : '';
+      const nodePart = (s.stage_key || 'node').toLowerCase().replace(/\s+/g, '_');
+      const outPath  = `documents/pipeline/${pipeName}/${nodePart}.md`;
+
+      let detail = '';
+      if (s.status === 'done') {
+        const meta = [dur, cost, tokStr].filter(Boolean).join(' · ');
+        const summary = (s.output_text || '').replace(/\n+/g, ' ').slice(0, 160);
+        detail = `
+          <div style="font-size:0.62rem;color:var(--muted);margin-top:0.15rem;line-height:1.5">
+            ${meta ? `<span>${_esc(meta)}</span> · ` : ''}
+            output: <code style="font-size:0.6rem;color:var(--accent)">${_esc(outPath)}</code>
+          </div>
+          ${summary ? `<div style="font-size:0.63rem;color:var(--fg);margin-top:0.12rem;
+                            line-height:1.4;max-height:36px;overflow:hidden;
+                            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">
+            ${_esc(summary)}${s.output_text && s.output_text.length > 160 ? '…' : ''}
+          </div>` : ''}`;
+      } else if (s.status === 'error') {
+        const errMsg = (s.output_text || 'Error').slice(0, 140);
+        detail = `<div style="font-size:0.62rem;color:#e85d75;margin-top:0.1rem">${_esc(errMsg)}</div>`;
+      } else if (s.status === 'running' && dur) {
+        detail = `<div style="font-size:0.62rem;color:var(--muted);margin-top:0.1rem">${_esc(dur)}</div>`;
+      }
+
+      const isActive = s.status !== 'pending';
+      return `
+        <div style="display:flex;align-items:flex-start;gap:0.4rem;padding:0.3rem 0.4rem;
+                    border:1px solid ${isActive ? clr + '66' : 'var(--border)'};border-radius:5px;
+                    background:${s.status === 'running' ? clr + '0e' : 'var(--bg1)'}">
+          <div style="width:15px;height:15px;border-radius:50%;flex-shrink:0;margin-top:0.05rem;
+                      background:${clr};display:flex;align-items:center;justify-content:center;
+                      font-size:0.6rem;font-weight:700;color:${s.status === 'pending' ? 'transparent' : '#fff'}">
+            ${icon}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.72rem;font-weight:600;
+                        color:${s.status === 'pending' ? 'var(--muted)' : 'var(--fg)'}">
+              NODE ${idx + 1} – ${_esc(s.stage_key || '')}
+              <span style="font-weight:400;font-size:0.67rem;color:var(--muted)">(${_esc(s.role_name || '')})</span>
+            </div>
+            ${detail}
+          </div>
+        </div>`;
     }).join('');
   }
 
-  // Log lines (dedup)
+  // Log lines (dedup) — appended to pp-log inside <details>
   const logEl = document.getElementById('pp-log');
   if (logEl) {
     if (!logEl._seen) logEl._seen = new Set();
@@ -1552,6 +1623,8 @@ function _gwPpLog(text, level = 'info') {
 function _gwPpClearLog() {
   const el = document.getElementById('pp-log');
   if (el) { el.innerHTML = ''; el._seen = new Set(); }
+  const cards = document.getElementById('pp-stage-cards');
+  if (cards) cards.innerHTML = '';
 }
 
 async function _gwLoadHistory() {
@@ -1644,6 +1717,24 @@ function _findMatchingRole(node) {
   return null;
 }
 
+/** Return reasonable default acceptance criteria based on the node name. */
+function _gwDefaultCriteria(nodeName) {
+  const nm = (nodeName || '').toLowerCase();
+  if (nm.includes('pm') || nm.includes('product manager') || nm.includes('project manager')) {
+    return `- Summarise all inputs into structured requirement sections\n- Identify what is already implemented vs what needs to be built\n- List prioritised action items with clear scope\n- Output: structured markdown summary`;
+  }
+  if (nm.includes('architect') || nm.includes('design')) {
+    return `- Provide implementation plan with specific files to create / modify\n- Define approach, sequence of steps, and key design decisions\n- Identify risks or dependencies\n- Output: architecture document with file-level breakdown`;
+  }
+  if (nm.includes('developer') || nm.includes('dev') || nm.includes('coder') || nm.includes('engineer')) {
+    return `- Implement all requirements from the plan — read each file before editing\n- Follow existing code style and patterns, no breaking changes\n- Verify each change compiles / runs as expected\n- Output: working code changes with a summary of what was done`;
+  }
+  if (nm.includes('reviewer') || nm.includes('review') || nm.includes('qa') || nm.includes('tester')) {
+    return `- Verify all acceptance criteria from prior stages are met\n- Check for regressions or broken functionality\n- Output: verdict (approved / needs changes / rejected) with specific, actionable issues`;
+  }
+  return '';
+}
+
 function _renderDetailPanel(node) {
   _gwPanelMode = 'node';
   const title  = document.getElementById('gw-detail-title');
@@ -1674,7 +1765,7 @@ function _renderDetailPanel(node) {
   const nodeIndex  = _currentWf?.nodes?.findIndex(n => n.id === node.id) ?? -1;
   const priorNodes = nodeIndex > 0 ? _currentWf.nodes.slice(0, nodeIndex) : [];
 
-  const acceptanceCriteria = node.acceptance_criteria || node.success_criteria || '';
+  const acceptanceCriteria = node.acceptance_criteria || node.success_criteria || _gwDefaultCriteria(node.name);
 
   // Pipeline output path hint
   const pipeFolder = `documents/pipeline/${_currentWf?.name || 'pipeline'}/${(node.name||'node').toLowerCase().replace(/\s+/g,'_')}.md`;
@@ -1704,23 +1795,28 @@ function _renderDetailPanel(node) {
       </div>
     </div>
 
-    <div style="display:flex;gap:0.4rem">
-      <div class="gw-field" style="width:70px">
-        <label>Max Retry</label>
-        <input type="number" id="dn-max-retry" value="${effRetry}" min="1" max="10" />
+    <!-- Controls row: Max Retry + Stateless + Continue on Fail + Approval gate -->
+    <div style="display:flex;gap:0.3rem;align-items:stretch;margin-bottom:0.75rem">
+      <div style="flex-shrink:0;width:60px;display:flex;flex-direction:column;gap:0.2rem">
+        <div style="font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;
+                    font-weight:600">Max Retry</div>
+        <input type="number" id="dn-max-retry" value="${effRetry}" min="1" max="10"
+          style="width:100%;box-sizing:border-box;padding:0.28rem 0.3rem;border:1px solid var(--border);
+                 border-radius:4px;background:var(--bg1);color:var(--fg);font-size:0.8rem;text-align:center" />
       </div>
-      <div class="gw-field" style="flex:1">
-        <div class="gw-toggle-row" style="margin-top:1.3rem">
-          <label style="margin:0;font-size:0.72rem">Stateless</label>
-          <input type="checkbox" id="dn-stateless" ${node.stateless?'checked':''} />
-        </div>
-      </div>
-      <div class="gw-field" style="flex:1">
-        <div class="gw-toggle-row" style="margin-top:1.3rem">
-          <label style="margin:0;font-size:0.72rem">Approval gate</label>
-          <input type="checkbox" id="dn-approval" ${node.require_approval?'checked':''} />
-        </div>
-      </div>
+      ${[['dn-stateless','Stateless',node.stateless,'#2dd4bf'],
+         ['dn-continue-fail','Cont. Fail',node.continue_on_fail,'#f5a623'],
+         ['dn-approval','Approval gate',node.require_approval,'#9b7ef8'],
+        ].map(([id,lbl,chk,col]) => `
+        <label for="${id}" style="flex:1;display:flex;flex-direction:column;align-items:center;
+                      justify-content:center;gap:0.22rem;padding:0.28rem 0.15rem;cursor:pointer;
+                      border:1px solid ${chk ? col+'66' : 'var(--border)'};border-radius:5px;
+                      background:${chk ? col+'18' : 'var(--bg1)'};min-width:50px;text-align:center">
+          <input type="checkbox" id="${id}" ${chk ? 'checked' : ''}
+            style="width:15px;height:15px;margin:0;cursor:pointer;accent-color:${col}" />
+          <span style="font-size:0.62rem;color:${chk ? col : 'var(--muted)'};
+                       text-transform:uppercase;letter-spacing:0.03em;white-space:nowrap">${lbl}</span>
+        </label>`).join('')}
     </div>
 
     <!-- Context flow -->
@@ -1736,7 +1832,7 @@ function _renderDetailPanel(node) {
           : `<b style="color:var(--fg)">${_esc(node.name)}</b> — first node, receives all pipeline inputs`}
       </div>
       <div style="margin-top:0.3rem;font-size:0.63rem;color:var(--muted)">
-        Output saved to: <code style="font-size:0.62rem">${_esc(pipeFolder)}</code>
+        Output saved to: <code id="dn-ctx-path" style="font-size:0.62rem">${_esc(pipeFolder)}</code>
       </div>
       <div style="margin-top:0.2rem;display:flex;gap:0.2rem;flex-wrap:wrap">
         ${[effProvider, effModel||'', effTemp!=null?`t=${effTemp}`:'', `retry=${effRetry}`].filter(Boolean).map(t =>
@@ -1764,21 +1860,8 @@ function _renderDetailPanel(node) {
     <div class="gw-field">
       <label>Acceptance Criteria <span style="font-weight:400;color:var(--muted);font-size:0.62rem">(what "done" looks like for this node)</span></label>
       <textarea id="dn-criteria" rows="4"
-        placeholder="Describe the expected output for this stage.
-Output file: ${_esc(pipeFolder)}
-
-Example for PM node:
-- Summarise all input requirements into structured sections
-- Identify what is already implemented vs what needs to be done
-- List prioritised action items"
+        placeholder="Describe the expected output for this stage…"
         style="font-size:0.73rem;font-family:inherit">${_esc(acceptanceCriteria)}</textarea>
-    </div>
-
-    <div class="gw-field">
-      <div class="gw-toggle-row">
-        <label style="margin:0">Continue on Fail</label>
-        <input type="checkbox" id="dn-continue-fail" ${node.continue_on_fail?'checked':''} />
-      </div>
     </div>
   `;
 }

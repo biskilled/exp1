@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 08:55 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 09:17 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -50,8 +50,8 @@ _Last updated: 2026-04-30_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-30] Dashboard missing old componenets like total usage per llm (that already had data in it) and total events (promots, item
 - [2026-04-30] Are you working ?
 - [2026-04-30] conintue
 - [2026-04-30] it is started to looks better. inn dashboard  there use to be counters off all event as  you did. AI/LL is old and not r
 - [2026-04-30] Looks much better.  Execute can consume file be reffering  to  exisiting file unde document or by uploading a file from 
+- [2026-04-30] Do not need to have an option to choose a file or prompt. input can be both. search document and file uplod can be in th
