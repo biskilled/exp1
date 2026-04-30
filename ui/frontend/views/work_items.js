@@ -2029,19 +2029,40 @@ function _ucPollRun(runId) {
 
         // Build the completion / apply UI in the verdict zone
         if (verdEl) {
-          const isLinked = data.linked_uc_id || data.linked_item_id;
-          const lastDone = [...(data.stages || [])].filter(s => s.status === 'done').pop();
+          const isLinked  = data.linked_uc_id || data.linked_item_id;
+          const lastDone  = [...(data.stages || [])].filter(s => s.status === 'done').pop();
           const suggested = (lastDone?.output_preview || '').slice(0, 300).trim();
           const applyTarget = data.linked_item_id ? 'Item' : 'Use Case';
           const sid = `_ps_${runId.replace(/-/g,'')}`; // summary textarea id (safe)
 
+          // Auto-score from backend: approved=5, needs_changes=3, rejected=1, error=0
+          const autoScore = typeof data.score === 'number' ? data.score : 0;
+
+          // Render score dots: filled up to autoScore, empty after
+          const scoreDots = [1,2,3,4,5].map(n =>
+            `<span style="font-size:0.85rem;color:${n <= autoScore ? vColor : 'var(--border)'}">${n <= autoScore ? '●' : '○'}</span>`
+          ).join('');
+
+          // Score buttons — pre-highlight up to autoScore
+          const scoreBtns = [1,2,3,4,5].map(n => {
+            const active = n <= autoScore;
+            return `<button data-sn="${n}" onclick="window._ucScoreSet(this,'${sid}')"
+              style="width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:0.62rem;
+                     border:1px solid ${active ? vColor : 'var(--border)'};
+                     background:${active ? vColor + '33' : 'var(--surface2)'};
+                     color:${active ? vColor : 'var(--muted)'}">${n}</button>`;
+          }).join('');
+
           verdEl.style.cssText = 'display:block;margin-top:0.5rem;flex-shrink:0';
           verdEl.innerHTML = `
-            <div style="font-size:0.75rem;font-weight:700;color:${vColor};margin-bottom:0.5rem;
-                        padding:0.35rem 0.5rem;background:${vColor}18;border-radius:4px;border:1px solid ${vColor}44">
-              ${verdict.toUpperCase()}
-              ${data.error ? `<div style="font-size:0.65rem;font-weight:400;margin-top:0.2rem;word-break:break-word">${_esc(data.error.slice(0, 120))}</div>` : ''}
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;
+                        padding:0.4rem 0.55rem;background:${vColor}18;border-radius:4px;border:1px solid ${vColor}44">
+              <span style="font-size:0.75rem;font-weight:700;color:${vColor}">${verdict.toUpperCase()}</span>
+              <span style="display:flex;gap:1px;align-items:center" title="${autoScore}/5">${scoreDots}</span>
+              <span style="font-size:0.68rem;font-weight:600;color:${vColor}">${autoScore}/5</span>
+              ${data.duration_s ? `<span style="font-size:0.65rem;color:var(--muted);margin-left:auto">${data.duration_s.toFixed(0)}s · $${(data.total_cost_usd||0).toFixed(3)}</span>` : ''}
             </div>
+            ${data.error ? `<div style="font-size:0.65rem;color:#e85d75;margin-bottom:0.4rem;word-break:break-word">${_esc(data.error.slice(0, 120))}</div>` : ''}
             ${isLinked ? `
               <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.25rem">
                 Summary to apply (1-2 sentences):
@@ -2053,13 +2074,9 @@ function _ucPollRun(runId) {
                 placeholder="Write a brief summary of what was done…">${_esc(suggested.slice(0, 200))}</textarea>
               <div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.4rem;flex-wrap:wrap">
                 <span style="font-size:0.68rem;color:var(--muted)">Score:</span>
-                ${[1,2,3,4,5].map(n => `
-                  <button data-sn="${n}" onclick="window._ucScoreSet(this,'${sid}')"
-                    style="width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:0.62rem;
-                           border:1px solid var(--border);background:var(--surface2);color:var(--muted)">
-                    ${n}
-                  </button>`).join('')}
-                <span id="${sid}_score" data-v="0" style="font-size:0.68rem;color:var(--muted)"></span>
+                ${scoreBtns}
+                <span id="${sid}_score" data-v="${autoScore}"
+                      style="font-size:0.68rem;color:var(--muted)">${autoScore > 0 ? autoScore+'/5' : ''}</span>
                 <button onclick="window._ucApplyRun('${runId}','${sid}')"
                   style="margin-left:auto;padding:0.25rem 0.7rem;border-radius:4px;font-size:0.72rem;
                          font-weight:600;cursor:pointer;background:#3ecf8e;color:#fff;border:none">
