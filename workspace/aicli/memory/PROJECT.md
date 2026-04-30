@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline execution UI: Pipelines tab (◈ icon) now shows execution panel with pipeline flow visualization and per-stage outputs; left panel lists all activated pipelines/roles; clicking a pipeline displays full config with node parameters (provider, model, temperature); POST /agents/pipeline-runs triggers async DAG execution
-- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired
+- Pipeline execution UI: Pipelines tab (◈ icon) shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, retry); POST /agents/pipeline-runs triggers async DAG execution
+- Role activation in Settings/Roles & Pipelines: dual-pane dual-column view with left pane showing all roles/pipelines and activation checkboxes; only activated items appear in Roles/Pipelines tabs; reset-to-base and role-versioning via mng_agent_role_versions fully wired with BASED (green), UPDATED (orange), EXTERNAL (amber) status badges
 - UI visual design consolidation: role pills styled with provider color backgrounds; status badges (BASED green, UPDATED orange, EXTERNAL amber); buttons and model displays have background fills for clarity; removed redundant inline reset button from role rows
-- Tool category bundles: tool selection now by category (git/files/memory) instead of individual items; categories show tool count; multi-select dropdown in role editor; MCP catalog moved to main nav under Workflows group with dedicated card-based view showing all 10 MCPs
-- Pipeline YAML organization: workspace/_templates/pipelines/ contains role_*.yaml (10 files) and pl_*.yaml (8 pipeline files); workspace/aicli/pipelines/roles/ mirrors templates; backend/memory/yaml_config/ and backend/agents/yaml_config/ organized by concern; samples/ folder deleted
-- Project folder cleanup: removed aicli/documents/, aicli/features/, cli/ folder; project root now contains only active: backend/, ui/, workspace/, and top-level config files; CLAUDE.md auto-regenerated to reflect structure
+- Tool category bundles: tool selection now by category (git/files/memory) instead of individual items; categories show tool count; multi-select dropdown in role editor; MCP Catalog moved to main nav as dedicated card-based view showing all 10 MCPs with activate/deactivate/edit modals
+- Pipeline YAML organization: workspace/_templates/pipelines/ contains role_*.yaml (10 files) and pl_*.yaml (8 pipeline files); workspace/aicli/pipelines/roles/ mirrors templates; backend/memory/yaml_config/ and backend/agents/yaml_config/ organized by concern; samples/ folder and old documentation folders (aicli/documents/, aicli/features/, cli/) deleted
+- Temperature parameter propagation: all provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) now accept temperature parameter; roles store temperature; pipeline nodes can override per-stage temperature; defaults preserved when None
 
 ## Key Decisions
 
@@ -319,13 +319,13 @@ sidebar tabs:
 - Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations configured per role; base_snapshot stores pristine role state for restore and versioning via mng_agent_role_versions
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p per node at execution time
 - Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details and per-node temperature overrides; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
+- Pipeline activation: Settings/Roles & Pipelines tab with dual-pane dual-column view shows all roles/pipelines with activation checkboxes; only activated items appear in Roles/Pipelines main tabs; activation checkbox in settings controls visibility and executability
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Code.md generation: per-symbol diffs via tree-sitter with file coupling/hotspot tables; hotspot scores use 180-day half-life recency weighting EXP(-0.693 × age_ratio)
 - Embeddings strategy: ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector; code.md, project_state.json, project facts, prompts, commits never embed
-- MCP server: 10 MCPs (github, postgres, slack, linear, jira, stripe, contentful, supabase, s3, openapi) with multi-select in role editor; unified REST dispatch; stdio transport, local machine, no auth required
-- Authentication: JWT (python-jose + bcrypt) with hierarchical Clients → Users → Projects; DEV_MODE toggle for passwordless local development; MCP runs with no auth (stdio-only, local)
+- MCP server: 10 MCPs (github, postgres, slack, linear, jira, stripe, contentful, supabase, s3, openapi) with multi-select in role editor under MCP Catalog (main nav); unified REST dispatch; stdio transport, local machine, no auth required
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
