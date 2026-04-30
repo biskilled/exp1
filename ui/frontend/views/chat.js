@@ -892,16 +892,16 @@ function _renderSessionList(container) {
   }
   container.innerHTML = _sessionCache.slice(0, 60).map((s) => {
     const isActive  = s.id === _sessionId;
-    const srcColor  = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? 'var(--blue)' : 'var(--green)';
+    const srcColor  = s.source === 'ui' ? 'var(--accent)' : s.source === 'claude_cli' ? '#3b82f6' : '#22c55e';
     const srcLabel  = s.source === 'ui' ? 'UI' : s.source === 'claude_cli' ? 'CLI' : 'WF';
     const hasPhase  = !!(s.phase);
     const phaseTxt  = s.phase || null;
     const tagDot    = hasPhase
       ? `<span style="font-size:0.5rem;background:var(--accent)22;color:var(--accent);padding:0 0.22rem;border-radius:2px;flex-shrink:0">${_esc(phaseTxt)}</span>`
-      : `<span style="font-size:0.5rem;color:#e74c3c;flex-shrink:0" title="Missing phase">⚠</span>`;
+      : '';
     const featureTxt = s.feature ? `<span style="font-size:0.5rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60px">#${_esc(s.feature)}</span>` : '';
-    const borderL   = !hasPhase ? '2px solid #e74c3c' : (isActive ? '2px solid var(--accent)' : '2px solid transparent');
-    const sid5      = s.id ? s.id.slice(-5) : '?????';
+    const borderL   = isActive ? '2px solid var(--accent)' : '2px solid transparent';
+    const tsStr     = s.ts ? _fmtTs(s.ts) : '';
     return `
       <div onclick="window._chatLoadAny('${_esc(s.id)}')"
         style="padding:0.32rem 0.45rem;border-radius:var(--radius);cursor:pointer;
@@ -913,11 +913,12 @@ function _renderSessionList(container) {
         onmouseenter="this.style.background='var(--surface2)'"
         onmouseleave="this.style.background='${isActive ? 'var(--surface2)' : ''}'">
         <div style="display:flex;align-items:center;gap:0.3rem;margin-bottom:2px">
-          <span style="font-size:0.5rem;color:${srcColor};background:${srcColor}1a;
+          <span style="font-size:0.5rem;color:${srcColor};background:${srcColor}22;
                        padding:0 0.22rem;border-radius:2px;flex-shrink:0;letter-spacing:0.5px">${srcLabel}</span>
+          ${s.user_name ? `<span style="font-size:0.5rem;color:${_userColor(s.user_name)};font-weight:600;flex-shrink:0">${_esc(s.user_name)}</span>` : ''}
           ${tagDot}
           ${featureTxt}
-          <span style="margin-left:auto;font-family:monospace;font-size:0.48rem;color:var(--accent);flex-shrink:0">(${_esc(sid5)})</span>
+          ${tsStr ? `<span style="margin-left:auto;font-size:0.48rem;color:var(--muted);flex-shrink:0;white-space:nowrap">${_esc(tsStr)}</span>` : ''}
         </div>
         <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.6rem">${_esc(s.title)}</div>
       </div>`;
@@ -985,6 +986,7 @@ async function _loadSessions(opts = {}) {
       }
       for (const e of (histData.entries || [])) {
         const src = e.source || 'ui';
+        // skip pure UI entries — those come from api.chatSessions() above
         if (src === 'ui') continue;
         const sid = e.session_id || ('hist_' + e.ts);
         if (!bySession.has(sid)) {
@@ -994,11 +996,14 @@ async function _loadSessions(opts = {}) {
             source: src,
             ts: e.ts || '',
             message_count: 0,
+            user_name: e.user_name || '',
             entries: [],
           });
         }
         const s = bySession.get(sid);
         if (!s.entries) s.entries = [];
+        // Use the earliest non-empty user_name found in the session
+        if (!s.user_name && e.user_name) s.user_name = e.user_name;
         s.message_count = (s.message_count || 0) + 1;
         s.entries.push(e);
         if (!s.phase) {
@@ -1071,7 +1076,7 @@ window._chatLoadAny = async (id) => {
     const inp = e.user_input || '';
     // Skip internal Claude Code tool noise entries
     if (_NOISE.some(p => inp.startsWith(p))) continue;
-    if (inp) _appendUserMsg(inp, { ts: e.created_at || e.ts, tags: e.tags || [], sourceId: e.ts });
+    if (inp) _appendUserMsg(inp, { ts: e.created_at || e.ts, tags: e.tags || [], sourceId: e.ts, userName: e.user_name || '' });
     if (e.output) _appendAssistantMsg(e.output);
   }
   // Highlight active in sidebar
@@ -1677,7 +1682,7 @@ function _appendSystemMsg(md) {
 }
 
 function _appendUserMsg(text, opts = {}) {
-  // opts: { ts, tags, sourceId }
+  // opts: { ts, tags, sourceId, userName }
   const container = document.getElementById('chat-messages');
   if (!container) return;
   const el = document.createElement('div');
@@ -1686,6 +1691,9 @@ function _appendUserMsg(text, opts = {}) {
   const tsStr   = opts.ts ? _fmtTs(opts.ts) : '';
   const sid     = opts.sourceId || '';
   const tags    = opts.tags || [];
+  const uName   = opts.userName || '';
+  const uColor  = _userColor(uName);
+  const uLabel  = uName || 'YOU';
 
   // Tag chips (phase/feature/bug/source etc.)
   const chipHtml = tags.map(t => {
@@ -1704,7 +1712,7 @@ function _appendUserMsg(text, opts = {}) {
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end">
-      <span style="font-size:0.55rem;color:#27ae60;font-weight:600;letter-spacing:.5px">YOU${tsStr ? ' — ' + _esc(tsStr) : ''}</span>
+      <span style="font-size:0.55rem;color:${uColor};font-weight:600;letter-spacing:.5px">${_esc(uLabel)}${tsStr ? ' — ' + _esc(tsStr) : ''}</span>
     </div>
     <div class="chat-msg-chips" data-sid="${_esc(sid)}"
          style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;min-height:${(chipHtml || tagBtnHtml) ? '16px' : '0'}">
@@ -1898,7 +1906,7 @@ function _esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-/** Format ISO timestamp → YY/MM/DD-HH:MM (local time). */
+/** Format ISO timestamp → DD/MM/YY HH:MM (local time). */
 function _fmtTs(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -1908,7 +1916,16 @@ function _fmtTs(ts) {
   const DD  = String(d.getDate()).padStart(2, '0');
   const HH  = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
-  return `${YY}/${MM}/${DD}-${HH}:${min}`;
+  return `${DD}/${MM}/${YY} ${HH}:${min}`;
+}
+
+/** Deterministic color per username from a fixed palette. */
+const _USER_PALETTE = ['#27ae60','#3b82f6','#e67e22','#9b59b6','#e74c3c','#1abc9c','#f59e0b','#06b6d4'];
+function _userColor(name) {
+  if (!name) return _USER_PALETTE[0];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = Math.imul(31, h) + name.charCodeAt(i) | 0;
+  return _USER_PALETTE[Math.abs(h) % _USER_PALETTE.length];
 }
 
 /** Tag color by prefix (phase/feature/bug/source/task). */

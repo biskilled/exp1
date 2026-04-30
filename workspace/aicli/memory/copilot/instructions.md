@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 15:05 UTC -->
+<!-- Last updated: 2026-04-30 15:10 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -19,9 +19,9 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state for versioning
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system roles table cleaned to 3 canonical entries only
-- Role parameters: system_prompt + system_prompt_preset, provider/model/temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning via mng_agent_role_versions
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); all provider adapters accept temperature parameter; pipeline stages can override temperature/top_p per node
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
+- Role parameters: system_prompt + system_prompt_preset, provider/model/temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations; base_snapshot stores pristine state for restore and versioning; all provider adapters accept temperature parameter
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
+- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; GET /agent-roles/pipelines/{name} returns full config; POST /agents/pipeline-runs starts async execution
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore commits from claude cli sessions (session 5cf393d1): backend stability, memory layer consistency, and data integrity fixes across multiple runs from 2026-04-30
-- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload in same row; files as removable chips above textarea; integrated into Pipelines tab and Roles library view
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings, Pipeline Runs health tiles
-- Pipeline execution UI: Pipelines tab shows builder with node configuration; right panel shows pipeline flow visualization and per-stage node properties; dynamic role/doc search dropdown
+- Auto-commit-push hook execution after Claude CLI sessions (chore commits via 5cf393d1 session)
+- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; integrated into Pipelines tab and Roles library direct execution
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages), approved vs waiting-to-approve work items, total embeddings, Pipeline Runs health tiles
+- Pipeline execution UI: Pipelines tab with full builder graph, left panel activated pipelines/roles, right detail panel node properties (provider, model, temperature, max_iterations)
 
-_Last updated: 2026-04-30 15:05 UTC_
+_Last updated: 2026-04-30 15:10 UTC_

@@ -265,11 +265,13 @@ async def chat_history(
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     noise_filter = " AND NOT (" + " OR ".join(
-                        "prompt LIKE %s" for _ in range(4)
+                        "p.prompt LIKE %s" for _ in range(4)
                     ) + ")"
                     noise_args = tuple(f"{pat}%" for pat in _NOISE_PATTERNS)
 
-                    provider_filter = " AND tags->>'source' = %s" if provider else ""
+                    # src column holds the real source ('claude_cli'/'ui'/'workflow')
+                    # tags->>'source' was removed before save, so must use src column
+                    provider_filter = " AND p.src = %s" if provider else ""
                     provider_arg    = (provider,) if provider else ()
 
                     # Fetch DB rows with a generous cap, then merge JSONL in Python.
@@ -277,13 +279,16 @@ async def chat_history(
                     # newest DB rows and appending JSONL gives correct merge coverage.
                     db_limit = max(offset + limit + 50, 600) if limit > 0 else 10000
                     cur.execute(
-                        f"""SELECT source_id, session_id, tags->>'source' AS source, prompt,
-                                   response, tags, created_at
-                            FROM mem_mrr_prompts
-                            WHERE project_id=%s
-                              AND prompt IS NOT NULL AND prompt != ''
+                        f"""SELECT p.source_id, p.session_id,
+                                   COALESCE(p.src, p.tags->>'source', 'ui') AS source,
+                                   p.prompt, p.response, p.tags, p.created_at,
+                                   u.username AS user_name
+                            FROM mem_mrr_prompts p
+                            LEFT JOIN mng_users u ON u.id = p.user_id
+                            WHERE p.project_id=%s
+                              AND p.prompt IS NOT NULL AND p.prompt != ''
                               {noise_filter}{provider_filter}
-                            ORDER BY created_at DESC
+                            ORDER BY p.created_at DESC
                             LIMIT %s""",
                         (project_id,) + noise_args + provider_arg + (db_limit,),
                     )
@@ -299,6 +304,7 @@ async def chat_history(
                     "user_input": r[3],
                     "output":     r[4] or "",
                     "tags":       tags_to_list(r[5] or {}),
+                    "user_name":  r[7],
                 }
                 for r in rows
             ]
