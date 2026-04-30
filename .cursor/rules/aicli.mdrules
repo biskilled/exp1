@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 00:48 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 01:10 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -24,9 +24,11 @@ _Last updated: 2026-04-30_
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) with per-node temperature/top_p/provider/model overrides
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
+- **role_config**: YAML factory defaults (workspace/_templates/pipelines/roles/) with DB source-of-truth (mng_agent_roles); role versioning via mng_agent_role_versions
+- **system_prompts**: 3 shared presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml
+- **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
-- **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
 
 ## Key Decisions
 
@@ -34,7 +36,7 @@ _Last updated: 2026-04-30_
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state; POST /agent-roles/{id}/refresh reloads YAML and updates DB
-- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding — General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
+- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding—General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
 - Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations configured per role; base_snapshot stores pristine role state for restore and versioning via mng_agent_role_versions
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p per node at execution time
 - Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details and per-node temperature overrides; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
@@ -48,8 +50,8 @@ _Last updated: 2026-04-30_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-29] I dont understand what was implemeted.  On the Pipeline section - what React run ? what is it running ? I also dont unde
 - [2026-04-30] Let me try again :   pipeline and roles can be executed from pipeline tab (activated pipeline and roles in setting).  Pi
 - [2026-04-30] I dont see anything. is it under pipeline section ?
 - [2026-04-30] Ok. it is not supposed to be under dashboard. it is uppose to be i=under pipeline. piple section have to columns - one w
 - [2026-04-30] Why you remove the pipeline builder that used to define each node with all his properties ? (Action itmes, retry .. ) ca
+- [2026-04-30] Dashboard missing old componenets like total usage per llm (that already had data in it) and total events (promots, item

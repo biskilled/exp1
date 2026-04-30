@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 00:48 UTC -->
+<!-- Last updated: 2026-04-30 01:10 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -82,6 +82,8 @@ aicli/
 │   ├── pyproject.toml
 │   ├── requirements.txt
 │   └── start_backend.sh
+├── data/
+│   └── usage/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_context_builder.py

@@ -297,13 +297,20 @@ export function renderGraphWorkflow(container) {
         cursor:pointer; font-size:0.75rem; }
       .gw-run-row:hover { background:var(--hover); }
       .gw-run-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+      /* Inline pipeline panels (above/below canvas) */
+      .gw-props-bar { background:var(--bg2); flex-shrink:0; border-bottom:1px solid var(--border); }
+      .gw-exec-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:50%; }
+      .gw-hist-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:35%;
+                      border-top:1px solid var(--border); }
+      .gw-canvas-area { flex:1; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
     </style>
 
     <div class="gw-toolbar2">
       <button class="btn btn-primary btn-sm" id="gw-new-btn" onclick="window._gwNew()">+ New Pipeline</button>
       <button class="btn btn-ghost btn-sm" onclick="window._gwFromTemplate(event)" title="Create from template">From Template ▾</button>
       <button class="btn btn-ghost btn-sm" id="gw-react-btn" onclick="window._gwOpenReActRunner()" title="Run a YAML-defined ReAct pipeline (PM → Architect → Developer → Reviewer)">▶ ReAct Run</button>
-      <button class="btn btn-ghost btn-sm" id="gw-props-btn" onclick="window._gwShowProps()" style="display:none" title="Pipeline global properties, execute and history">⚙ Properties</button>
+      <span id="gw-props-btn" style="display:none"></span>
       <div id="gw-wf-name-wrap" style="display:none">
         <input class="gw-wf-name" id="gw-wf-name" placeholder="Flow name" onblur="window._gwSaveName(this.value)" />
       </div>
@@ -334,6 +341,7 @@ export function renderGraphWorkflow(container) {
       </div>
 
       <div class="gw-main">
+        <div id="gw-props-bar" class="gw-props-bar" style="display:none"></div>
         <div class="gw-canvas-area">
           <div class="gw-pipeline-scroll" id="gw-pipeline-scroll">
             <div class="gw-empty" id="gw-empty-state">
@@ -386,6 +394,8 @@ export function renderGraphWorkflow(container) {
             </div>
           </div>
         </div>
+        <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
+        <div id="gw-hist-bar" class="gw-hist-bar" style="display:none"></div>
       </div>
 
       <div class="gw-detail" id="gw-detail">
@@ -991,104 +1001,115 @@ function _showPipelineProps() {
   _selectedNodeId = null;
   document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
 
+  // Close right detail panel — pipeline props are now inline bars
   const detail = document.getElementById('gw-detail');
-  const footer = document.querySelector('.gw-detail-footer');
-  const title  = document.getElementById('gw-detail-title');
-  const body   = document.getElementById('gw-detail-body');
-  if (!detail || !body) return;
+  if (detail) detail.classList.remove('open');
 
-  if (title) title.textContent = 'Pipeline Properties';
-  if (footer) footer.style.display = 'none';   // auto-save, no button needed
-  detail.classList.add('open');
+  const propsBar = document.getElementById('gw-props-bar');
+  const execBar  = document.getElementById('gw-exec-bar');
+  const histBar  = document.getElementById('gw-hist-bar');
+  if (!propsBar || !execBar || !histBar) return;
 
-  // Detect if this workflow name matches a YAML pipeline
-  const wfName = _currentWf.name;
+  propsBar.style.display = '';
+  execBar.style.display  = '';
+  histBar.style.display  = '';
 
-  body.innerHTML = `
-    <!-- ① Global Properties -->
-    <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                letter-spacing:0.07em;color:var(--muted);margin-bottom:0.5rem">
-      Global Properties
-    </div>
+  // ── ① Properties bar (compact row above canvas) ──────────────────────
+  propsBar.innerHTML = `
+    <div style="padding:0.4rem 0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem 1rem;align-items:center">
+      <div style="font-size:0.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+                  letter-spacing:0.05em;flex-shrink:0">Properties</div>
 
-    <div class="gw-field">
-      <label>Max rejection retries</label>
-      <input id="pp-retries" type="number" min="1" max="10"
-        value="${_currentWf.max_rejection_retries ?? _currentWf.max_iterations ?? 3}"
-        style="width:60px;text-align:center">
-      <div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">reviewer loop limit</div>
-    </div>
+      <div style="display:flex;align-items:center;gap:0.3rem;flex-shrink:0">
+        <label style="font-size:0.65rem;color:var(--muted)">Max retries</label>
+        <input id="pp-retries" type="number" min="1" max="10"
+          value="${_currentWf.max_rejection_retries ?? _currentWf.max_iterations ?? 3}"
+          style="width:44px;font-size:0.72rem;padding:0.1rem 0.3rem;border:1px solid var(--border);
+                 border-radius:3px;background:var(--bg1);color:var(--fg);text-align:center">
+      </div>
 
-    <div class="gw-field">
-      <label>Default temperature</label>
-      <input id="pp-temp" type="number" min="0" max="1" step="0.05"
-        value="${_currentWf.default_temperature ?? ''}"
-        placeholder="role default"
-        style="width:80px">
-      <div style="font-size:0.65rem;color:var(--muted);margin-top:0.2rem">0–1, blank = use each role's default</div>
-    </div>
+      <div style="display:flex;align-items:center;gap:0.3rem;flex-shrink:0">
+        <label style="font-size:0.65rem;color:var(--muted)">Temp</label>
+        <input id="pp-temp" type="number" min="0" max="1" step="0.05"
+          value="${_currentWf.default_temperature ?? ''}"
+          placeholder="default"
+          style="width:58px;font-size:0.72rem;padding:0.1rem 0.3rem;border:1px solid var(--border);
+                 border-radius:3px;background:var(--bg1);color:var(--fg)">
+      </div>
 
-    <div class="gw-field">
-      <div class="gw-toggle-row">
-        <label style="margin:0">Continue on failure</label>
+      <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.65rem;cursor:pointer;flex-shrink:0">
         <input type="checkbox" id="pp-continue" ${_currentWf.continue_on_failure ? 'checked' : ''}>
-      </div>
-    </div>
+        Continue on fail
+      </label>
 
-    <div class="gw-field">
-      <div class="gw-toggle-row">
-        <label style="margin:0">Save to memory</label>
+      <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.65rem;cursor:pointer;flex-shrink:0">
         <input type="checkbox" id="pp-savemem" ${_currentWf.save_memory !== false ? 'checked' : ''}>
-      </div>
+        Save memory
+      </label>
+
+      <span id="pp-save-status" style="font-size:0.65rem;color:var(--muted)"></span>
     </div>
+  `;
 
-    <div id="pp-save-status" style="font-size:0.68rem;color:var(--muted);min-height:1rem;margin-bottom:0.5rem"></div>
+  // Auto-save when properties change
+  let saveTimer = null;
+  const schedSave = () => {
+    const s = document.getElementById('pp-save-status');
+    if (s) { s.textContent = 'Unsaved…'; s.style.color = 'var(--muted)'; }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(_gwSavePipelineProps, 800);
+  };
+  ['pp-retries','pp-temp','pp-continue','pp-savemem'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', schedSave);
+  });
 
-    <div style="border-top:1px solid var(--border);margin:0 -0.75rem 0.75rem;padding-top:0.75rem;
-                padding-left:0.75rem;padding-right:0.75rem">
+  // ── ② Execution bar (below canvas) ───────────────────────────────────
+  execBar.innerHTML = `
+    <div style="display:flex;align-items:center;padding:0.4rem 0.75rem;
+                background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
+      <span style="font-size:0.72rem;font-weight:600;flex:1">Execute</span>
+    </div>
+    <div id="gw-exec-body" style="padding:0.6rem 0.75rem;display:flex;flex-direction:column;
+                                   gap:0.45rem;overflow-y:auto">
 
-      <!-- ② Execute -->
-      <div style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                  letter-spacing:0.07em;color:var(--muted);margin-bottom:0.5rem">
-        Execute
-      </div>
-
-      <div class="gw-field">
-        <label>Task / Prompt</label>
-        <textarea id="pp-task" rows="4"
+      <div>
+        <div style="font-size:0.65rem;font-weight:600;color:var(--muted);text-transform:uppercase;
+                    letter-spacing:0.04em;margin-bottom:0.25rem">Task / Prompt</div>
+        <textarea id="pp-task" rows="3"
           placeholder="Describe what you want the pipeline to do…"
-          style="font-size:0.78rem;resize:vertical"></textarea>
+          style="width:100%;box-sizing:border-box;font-size:0.78rem;resize:vertical;
+                 background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+                 padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"></textarea>
       </div>
 
-      <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem;flex-wrap:wrap">
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
         <button id="pp-run-btn" class="btn btn-primary btn-sm"
           style="font-size:0.76rem" onclick="window._gwPpRun()">▶ Run Pipeline</button>
         <button id="pp-cancel-btn" class="btn btn-ghost btn-sm"
           style="font-size:0.76rem;display:none" onclick="window._gwPpCancel()">■ Cancel</button>
+        <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c"></div>
       </div>
-      <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c;margin-bottom:0.35rem"></div>
 
-      <!-- Stage progress (shown when async run started) -->
+      <!-- Stage progress (shown when run started) -->
       <div id="pp-progress" style="display:none">
         <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Progress</div>
-        <div id="pp-dots" style="margin-bottom:0.4rem;font-size:0.72rem"></div>
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.25rem">Progress</div>
+        <div id="pp-dots" style="margin-bottom:0.35rem;font-size:0.72rem"></div>
         <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.2rem">Log</div>
-        <div id="pp-log" style="font-family:monospace;font-size:0.65rem;line-height:1.4;
-             background:var(--bg1,var(--surface));border:1px solid var(--border);border-radius:4px;
-             padding:0.35rem;height:130px;overflow-y:auto"></div>
+                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.15rem">Log</div>
+        <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.65rem;
+             line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+             padding:0.3rem 0.4rem;height:110px;overflow-y:auto"></div>
       </div>
 
       <!-- Approval gate -->
-      <div id="pp-approval" style="display:none;margin-top:0.5rem;
-        border:2px solid #9b59b6;border-radius:6px;padding:0.55rem;
-        background:rgba(155,89,182,0.06)">
-        <div style="font-weight:700;color:#9b59b6;font-size:0.76rem;margin-bottom:0.25rem">⏸ Approval Required</div>
-        <div id="pp-apv-msg" style="font-size:0.7rem;color:var(--muted);margin-bottom:0.25rem"></div>
+      <div id="pp-approval" style="display:none;border:2px solid #9b59b6;border-radius:6px;
+           padding:0.5rem;background:rgba(155,89,182,0.06)">
+        <div style="font-weight:700;color:#9b59b6;font-size:0.76rem;margin-bottom:0.2rem">⏸ Approval Required</div>
+        <div id="pp-apv-msg" style="font-size:0.7rem;color:var(--muted);margin-bottom:0.2rem"></div>
         <textarea id="pp-apv-fb" rows="2" placeholder="Feedback (optional)…"
           style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border);
-                 border-radius:4px;padding:0.25rem;font-size:0.72rem;resize:vertical;margin-bottom:0.3rem;font-family:inherit"></textarea>
+                 border-radius:4px;padding:0.25rem;font-size:0.72rem;resize:vertical;margin-bottom:0.25rem;font-family:inherit"></textarea>
         <div style="display:flex;gap:0.3rem">
           <button class="btn btn-primary btn-sm" style="font-size:0.7rem;flex:1"
             onclick="window._gwPpApprove(true)">✓ Approve</button>
@@ -1097,40 +1118,39 @@ function _showPipelineProps() {
         </div>
       </div>
     </div>
+  `;
 
-    <div style="border-top:1px solid var(--border);margin:0 -0.75rem;padding:0.75rem 0.75rem 0">
-
-      <!-- ③ History -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem">
-        <span style="font-size:0.63rem;font-weight:700;text-transform:uppercase;
-                     letter-spacing:0.07em;color:var(--muted)">History</span>
-        <span style="display:flex;gap:0.2rem">
-          ${[10,20,50].map(n =>
-            `<button class="btn btn-ghost" style="font-size:0.6rem;padding:0.02rem 0.22rem;min-height:0"
-               onclick="window._gwPpHistLimit(${n})">${n}</button>`
-          ).join('')}
-        </span>
-      </div>
+  // ── ③ History bar (toggle at bottom) ─────────────────────────────────
+  histBar.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:0.4rem 0.75rem;cursor:pointer;background:var(--bg2);flex-shrink:0"
+         onclick="window._gwToggleHist()">
+      <span style="font-size:0.72rem;font-weight:600" id="gw-hist-toggle-lbl">▸ History</span>
+      <span style="display:flex;gap:0.2rem">
+        ${[10,20,50].map(n =>
+          `<button class="btn btn-ghost" style="font-size:0.6rem;padding:0.02rem 0.22rem;min-height:0"
+             onclick="event.stopPropagation();window._gwPpHistLimit(${n})">${n}</button>`
+        ).join('')}
+      </span>
+    </div>
+    <div id="gw-hist-body" style="display:none;overflow-y:auto;flex:1;padding:0.4rem 0.75rem">
       <div id="pp-hist"></div>
     </div>
   `;
-
-  // Auto-save when properties change
-  const statusEl = document.getElementById('pp-save-status');
-  let saveTimer  = null;
-  const schedSave = () => {
-    statusEl.textContent = 'Unsaved…'; statusEl.style.color = 'var(--muted)';
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(_gwSavePipelineProps, 800);
-  };
-  ['pp-retries','pp-temp','pp-continue','pp-savemem'].forEach(id => {
-    document.getElementById(id)?.addEventListener('change', schedSave);
-  });
 
   window._gwPpRun       = _gwPpRun;
   window._gwPpCancel    = _gwPpCancel;
   window._gwPpApprove   = _gwPpApprove;
   window._gwPpHistLimit = n => { _gwHistLimit = n; _gwLoadHistory(); };
+  window._gwToggleHist  = () => {
+    const body = document.getElementById('gw-hist-body');
+    const lbl  = document.getElementById('gw-hist-toggle-lbl');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    if (lbl) lbl.textContent = open ? '▸ History' : '▾ History';
+    if (!open) _gwLoadHistory();
+  };
 
   _gwLoadHistory();
 }
@@ -1342,17 +1362,12 @@ function _gwFmtDur(s) {
   return sec < 60 ? `${sec}s` : `${Math.floor(sec/60)}m ${sec%60}s`;
 }
 
-// ── Close detail (back to pipeline props if possible) ─────────────────────────
+// ── Close detail panel (node config) ─────────────────────────────────────────
 
 function _closeDetail() {
   _selectedNodeId = null;
-  document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
-  // If we closed a node panel, revert to pipeline properties
-  if (_gwPanelMode === 'node' && _currentWf) {
-    _showPipelineProps();
-    return;
-  }
   _gwPanelMode = null;
+  document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
   const detail = document.getElementById('gw-detail');
   if (detail) detail.classList.remove('open');
   const footer = document.querySelector('.gw-detail-footer');
