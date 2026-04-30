@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Execute bar unified input: output folder combobox (default = pipeline name) + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea; supports multiple selections; integrated into both Pipelines tab (DAG builder) and Roles library view
+- Execute bar unified input: output folder combobox (default = pipeline name) + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea; supports multiple selections; integrated into both Pipelines tab (DAG builder) and Roles library view; dropdown redesigned with explicit background, shadow, and z-index to prevent bleed
 - Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings, Pipeline Runs health tiles showing last 24h execution status
-- Pipeline execution UI: Pipelines tab shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, max_iterations)
-- Role library direct execution: Roles can be executed directly (not just within pipelines) via Role Library view; same exec bar interface (output folder, file upload, document search, prompt input) as pipeline execution
-- Checkpoint control UI: Max retry, stateless, continue-on-fail, and approval gate checkboxes aligned and highlighted in execution bar for visibility and usability
-- Bug fixes in progress: Remove unused mem_ai_events columns, remove lifecycle tags from Planner, fix drag-and-drop in Planner, fix tagging UI error, fix commit-prompt reference display, fix PROJECT.md file loading timeout (>1min), fix recent projects list missing aiCli project
+- Pipeline execution UI: Pipelines tab shows full builder (graph_workflow.js) with node configuration panel; left panel lists all activated pipelines/roles; right detail panel shows pipeline flow visualization and per-stage node properties (name, provider, model, temperature, max_iterations); dynamic role/doc search dropdown with improved styling
+- Role library direct execution: Roles can be executed directly (not just within pipelines) via Role Library view; same exec bar interface (output folder, file upload, document search, prompt input) as pipeline execution; supports both file upload and document reference
+- Checkpoint control UI: Max retry, stateless, continue-on-fail, and approval gate checkboxes aligned and highlighted in execution bar for visibility and usability; exec bar positioned below node diagram with proper layout flow
+- Bug fixes in progress: Remove unused mem_ai_events columns, remove lifecycle tags from Planner, fix drag-and-drop in Planner, fix tagging UI error, fix commit-prompt reference display, fix PROJECT.md file loading timeout (>1min), fix recent projects list missing aiCli project, fix backend startup race condition on first load, fix undefined column errors in route_history and route_entities
 
 ## Key Decisions
 

@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 13:20 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-04-30 14:05 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -50,8 +50,8 @@ _Last updated: 2026-04-30_
 
 ## Recent Context (last 5 changes)
 
-- [2026-04-30] Looks much better.  Execute can consume file be reffering  to  exisiting file unde document or by uploading a file from 
 - [2026-04-30] Do not need to have an option to choose a file or prompt. input can be both. search document and file uplod can be in th
 - [2026-04-30] Looks better.  output   in context  flow suppose to be updated if user update output folder  name. default  output is go
 - [2026-04-30] I dont see any  UI update, when I am trying to load new document - it is not working. dropbox - shows all files, but I c
 - [2026-04-30] Why can I do the same when using role libery. I  would like to start using role (the  same way) also  on role (instead o
+- [2026-04-30] the dynamic drop box (FILE &   Document) not  looks good.  it is on most  of the row. alway  shoew with  all open items.

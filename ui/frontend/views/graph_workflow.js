@@ -300,7 +300,7 @@ export function renderGraphWorkflow(container) {
 
       /* Inline pipeline panels (above/below canvas) */
       .gw-props-bar { background:var(--bg2); flex-shrink:0; border-bottom:1px solid var(--border); }
-      .gw-exec-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden;
+      .gw-exec-bar  { flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden;
                       border-top:1px solid var(--border); }
       .gw-hist-bar  { flex-shrink:0; display:flex; flex-direction:column; overflow:hidden; max-height:35%;
                       border-top:1px solid var(--border); }
@@ -311,7 +311,7 @@ export function renderGraphWorkflow(container) {
         position:absolute; top:calc(100% + 3px); left:0;
         min-width:200px; max-width:340px; width:max-content;
         z-index:9100;
-        background:#1a1c2a; /* solid dark — avoids transparency bleed */
+        background:var(--bg);
         border:1px solid rgba(255,255,255,0.18);
         border-radius:6px;
         max-height:190px; overflow-y:auto;
@@ -1065,6 +1065,9 @@ function _showPipelineProps() {
   propsBar.style.display = '';
   execBar.style.display  = '';
   histBar.style.display  = '';
+  // Restore pipeline canvas in case it was hidden by role exec view
+  const pipeScroll = document.getElementById('gw-pipeline-scroll');
+  if (pipeScroll) pipeScroll.style.display = '';
 
   // ── ① Properties bar (compact row above canvas) ──────────────────────
   propsBar.innerHTML = `
@@ -1117,98 +1120,99 @@ function _showPipelineProps() {
 
   // ── ② Execution bar (below canvas) ───────────────────────────────────
   execBar.innerHTML = `
-    <div style="display:flex;align-items:center;padding:0.4rem 0.75rem;
+    <div style="display:flex;align-items:center;padding:0.35rem 0.75rem;
                 background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0">
       <span style="font-size:0.72rem;font-weight:600;flex:1">Execute</span>
     </div>
-    <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
-                                   gap:0.4rem;overflow-y:auto;max-height:55vh">
 
-      <!-- Row 1: Pipeline name | Doc search | Browse button (side by side) -->
-      <div style="display:flex;gap:0.35rem;align-items:flex-start">
-
-        <!-- Pipeline output name (left, fixed width) -->
-        <div style="width:130px;flex-shrink:0;position:relative">
-          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
-                      text-transform:uppercase;letter-spacing:0.04em">Output folder</div>
-          <input type="text" id="pp-pipe-name"
-            placeholder="pipeline name…" autocomplete="off"
-            style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
+    <!-- ── Compact inputs (fixed height) ─────────────────────────── -->
+    <div id="gw-exec-inputs" style="padding:0.4rem 0.75rem 0.35rem;flex-shrink:0;
+                                      border-bottom:1px solid var(--border);display:flex;
+                                      flex-direction:column;gap:0.3rem">
+      <!-- Row: output folder | doc search | files button (all inline) -->
+      <div style="display:flex;gap:0.4rem;align-items:flex-end;flex-wrap:wrap">
+        <div style="position:relative">
+          <div style="font-size:0.58rem;color:var(--muted);font-weight:600;text-transform:uppercase;
+                      letter-spacing:0.04em;margin-bottom:0.1rem">Output folder</div>
+          <input type="text" id="pp-pipe-name" placeholder="pipeline name…" autocomplete="off"
+            style="width:120px;box-sizing:border-box;padding:0.25rem 0.4rem;font-size:0.72rem;
                    background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
             oninput="window._gwPpPipeSearch(this.value);window._gwPpUpdateCtxPath(this.value)"
             onfocus="window._gwPpPipeSearch(this.value)"
             onblur="setTimeout(()=>{ const l=document.getElementById('pp-pipe-list'); if(l) l.style.display='none'; },150)">
           <div id="pp-pipe-list" class="gw-combobox-drop"></div>
         </div>
-
-        <!-- Doc search + file upload (right, grows) -->
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:0.2rem">
-          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
-                      text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
-          <div style="display:flex;gap:0.3rem;align-items:center">
-            <!-- Searchable doc combobox — dropdown is width-capped, solid bg -->
-            <div style="width:180px;flex-shrink:0;position:relative">
-              <input type="text" id="pp-doc-search"
-                placeholder="🔍 Search docs…" autocomplete="off"
-                style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
-                       background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
-                oninput="window._gwPpDocSearch(this.value)"
-                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },160)">
-              <div id="pp-doc-list" class="gw-combobox-drop"></div>
+        <div style="position:relative" id="pp-doc-wrap">
+          <div style="font-size:0.58rem;color:var(--muted);font-weight:600;text-transform:uppercase;
+                      letter-spacing:0.04em;margin-bottom:0.1rem">Documents</div>
+          <div id="pp-doc-trigger" onclick="window._gwPpDocToggle()"
+               style="display:flex;align-items:center;gap:0.3rem;width:155px;box-sizing:border-box;
+                      padding:0.25rem 0.45rem;background:var(--bg);border:1px solid var(--border);
+                      border-radius:4px;cursor:pointer;user-select:none;min-height:30px">
+            <span id="pp-doc-label" style="flex:1;font-size:0.7rem;color:var(--muted);
+                                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pick docs…</span>
+            <span style="color:var(--muted);font-size:0.65rem;flex-shrink:0">▾</span>
+          </div>
+          <div id="pp-doc-list" class="gw-combobox-drop" style="min-width:240px">
+            <div style="padding:0.28rem 0.5rem;border-bottom:1px solid var(--border)">
+              <input type="text" id="pp-doc-search" placeholder="🔍 filter documents…"
+                     oninput="window._gwPpDocSearch(this.value)"
+                     onclick="event.stopPropagation()"
+                     autocomplete="off"
+                     style="width:100%;box-sizing:border-box;background:transparent;border:none;
+                            outline:none;color:var(--fg);font-size:0.7rem;font-family:inherit">
             </div>
-            <!-- File upload button (multiple) -->
-            <button class="btn btn-ghost btn-sm"
-              style="font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap"
-              onclick="document.getElementById('pp-file-input').click()">+ Files</button>
-            <input type="file" id="pp-file-input" multiple style="display:none"
-              onchange="window._gwPpFileAdd(this)">
+            <div id="pp-doc-items"></div>
           </div>
         </div>
+        <div>
+          <div style="font-size:0.58rem;color:transparent;margin-bottom:0.1rem">·</div>
+          <button class="btn btn-ghost btn-sm"
+            style="font-size:0.7rem;padding:0.22rem 0.5rem;white-space:nowrap"
+            onclick="document.getElementById('pp-file-input').click()">+ Files</button>
+          <input type="file" id="pp-file-input" multiple style="display:none"
+            onchange="window._gwPpFileAdd(this)">
+        </div>
       </div>
-
-      <!-- Selected file/doc chips -->
-      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem;min-height:0"></div>
-
-      <!-- Prompt textarea (always visible) -->
-      <textarea id="pp-task" rows="5"
-        placeholder="Describe what you want the pipeline to do… (optional if files are provided)"
+      <!-- File chips -->
+      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem"></div>
+      <!-- Task textarea -->
+      <textarea id="pp-task" rows="3"
+        placeholder="Describe what the pipeline should do… (optional if files provided)"
         style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
                background:var(--bg1);border:1px solid var(--border);border-radius:4px;
                padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"
         oninput="window._gwPpValidate()"></textarea>
-
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+      <!-- Run controls -->
+      <div style="display:flex;gap:0.4rem;align-items:center">
         <button id="pp-run-btn" class="btn btn-primary btn-sm"
           style="font-size:0.76rem;opacity:0.4" disabled onclick="window._gwPpRun()">▶ Run Pipeline</button>
         <button id="pp-cancel-btn" class="btn btn-ghost btn-sm"
           style="font-size:0.76rem;display:none" onclick="window._gwPpCancel()">■ Cancel</button>
         <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c"></div>
       </div>
+    </div>
 
-      <!-- Stage progress (shown when run started) -->
-      <div id="pp-progress" style="display:none;border-top:1px solid var(--border);padding-top:0.45rem;margin-top:0.1rem">
-        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Execution Progress</div>
-        <!-- Rich per-stage status cards -->
-        <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.3rem"></div>
-        <!-- Collapsible detailed log -->
-        <details style="margin-top:0.1rem">
-          <summary style="font-size:0.62rem;color:var(--muted);cursor:pointer;user-select:none;
-                          list-style:none;padding:0.1rem 0">▸ Detailed log</summary>
-          <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;
-               line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
-               padding:0.3rem 0.4rem;max-height:120px;overflow-y:auto;margin-top:0.15rem"></div>
-        </details>
+    <!-- ── Execution log (fills remaining height, always visible) ───── -->
+    <div id="pp-progress" style="flex:1;min-height:0;overflow-y:auto;display:flex;
+                                   flex-direction:column;padding:0.4rem 0.75rem;gap:0.25rem">
+      <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                  color:var(--muted);flex-shrink:0;margin-bottom:0.1rem">Execution Log</div>
+      <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.18rem;flex-shrink:0"></div>
+      <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;line-height:1.55;
+           flex:1;overflow-y:auto;color:var(--muted);border-top:1px solid var(--border);
+           margin-top:0.2rem;padding-top:0.3rem;min-height:30px">
+        <span style="opacity:0.35;font-style:italic">Run output will appear here…</span>
       </div>
-
       <!-- Approval gate -->
       <div id="pp-approval" style="display:none;border:2px solid #9b59b6;border-radius:6px;
-           padding:0.5rem;background:rgba(155,89,182,0.06)">
+           padding:0.5rem;background:rgba(155,89,182,0.06);flex-shrink:0;margin-top:0.2rem">
         <div style="font-weight:700;color:#9b59b6;font-size:0.76rem;margin-bottom:0.2rem">⏸ Approval Required</div>
         <div id="pp-apv-msg" style="font-size:0.7rem;color:var(--muted);margin-bottom:0.2rem"></div>
         <textarea id="pp-apv-fb" rows="2" placeholder="Feedback (optional)…"
           style="width:100%;box-sizing:border-box;background:var(--bg1);border:1px solid var(--border);
-                 border-radius:4px;padding:0.25rem;font-size:0.72rem;resize:vertical;margin-bottom:0.25rem;font-family:inherit"></textarea>
+                 border-radius:4px;padding:0.25rem;font-size:0.72rem;resize:vertical;
+                 margin-bottom:0.25rem;font-family:inherit"></textarea>
         <div style="display:flex;gap:0.3rem">
           <button class="btn btn-primary btn-sm" style="font-size:0.7rem;flex:1"
             onclick="window._gwPpApprove(true)">✓ Approve</button>
@@ -1242,6 +1246,7 @@ function _showPipelineProps() {
   window._gwPpApprove   = _gwPpApprove;
   window._gwPpHistLimit = n => { _gwHistLimit = n; _gwLoadHistory(); };
   window._gwPpDocSearch  = _gwPpDocSearch;
+  window._gwPpDocToggle  = _gwPpDocToggle;
   window._gwPpValidate   = _gwPpValidate;
   window._gwPpDocPick    = (path, label) => {
     // Add doc to file list
@@ -1250,9 +1255,8 @@ function _showPipelineProps() {
       _gwPpRenderChips();
     }
     const src = document.getElementById('pp-doc-search');
-    const lst = document.getElementById('pp-doc-list');
     if (src) src.value = '';
-    if (lst) lst.style.display = 'none';
+    _gwPpUpdateDocTrigger();
     _gwPpValidate();
   };
   window._gwPpFileAdd = (input) => {
@@ -1289,9 +1293,12 @@ function _showPipelineProps() {
 }
 
 async function _gwPpLoadDocs() {
-  if (_gwPpDocsCache) { _gwPpDocSearch(''); return; }
-  const src = document.getElementById('pp-doc-search');
-  if (src) src.placeholder = 'Loading…';
+  if (_gwPpDocsCache) {
+    _gwPpDocSearch(document.getElementById('pp-doc-search')?.value || '');
+    return;
+  }
+  const lbl = document.getElementById('pp-doc-label');
+  if (lbl && lbl.textContent === 'Pick docs…') { lbl.textContent = 'Loading…'; }
   try {
     const data = await api.documents.list(_project);
     const raw  = Array.isArray(data) ? data : (data?.documents || data?.files || []);
@@ -1302,43 +1309,71 @@ async function _gwPpLoadDocs() {
   } catch (_) {
     _gwPpDocsCache = [];
   }
-  if (src) src.placeholder = 'Search project docs…';
-  _gwPpDocSearch('');
+  _gwPpUpdateDocTrigger();
+  _gwPpDocSearch(document.getElementById('pp-doc-search')?.value || '');
+}
+
+function _gwPpDocToggle() {
+  const lst  = document.getElementById('pp-doc-list');
+  const wrap = document.getElementById('pp-doc-wrap');
+  if (!lst) return;
+  const isOpen = lst.style.display === 'block';
+  if (isOpen) { lst.style.display = 'none'; return; }
+  lst.style.display = 'block';
+  if (!_gwPpDocsCache) {
+    _gwPpLoadDocs();
+  } else {
+    _gwPpDocSearch(document.getElementById('pp-doc-search')?.value || '');
+  }
+  setTimeout(() => document.getElementById('pp-doc-search')?.focus(), 50);
+  const closer = (e) => {
+    if (wrap && !wrap.contains(e.target)) {
+      lst.style.display = 'none';
+      document.removeEventListener('mousedown', closer);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', closer), 0);
+}
+
+function _gwPpUpdateDocTrigger() {
+  const lbl = document.getElementById('pp-doc-label');
+  if (!lbl) return;
+  const docCount = _gwPpFileList.filter(f => f.type === 'doc').length;
+  lbl.textContent = docCount > 0 ? `${docCount} doc${docCount > 1 ? 's' : ''} selected` : 'Pick docs…';
+  lbl.style.color  = docCount > 0 ? 'var(--fg)' : 'var(--muted)';
 }
 
 function _gwPpDocSearch(q) {
   if (!_gwPpDocsCache) { _gwPpLoadDocs(); return; }
-  const lst = document.getElementById('pp-doc-list');
-  if (!lst) return;
+  const itemsEl = document.getElementById('pp-doc-items');
+  if (!itemsEl) return;
   const query = (q || '').trim().toLowerCase();
-  // Don't show on empty query — user must type to search
-  if (!query) { lst.style.display = 'none'; return; }
   const already = new Set(_gwPpFileList.filter(f => f.type === 'doc').map(f => f.path));
-  const matches = (_gwPpDocsCache || []).filter(d =>
-    !already.has(d.path) &&
-    (d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
-  );
+  const matches = query
+    ? (_gwPpDocsCache || []).filter(d =>
+        !already.has(d.path) &&
+        (d.name.toLowerCase().includes(query) || d.path.toLowerCase().includes(query))
+      )
+    : (_gwPpDocsCache || []).filter(d => !already.has(d.path));
   if (!matches.length) {
-    lst.style.display = 'block';
-    lst.innerHTML = `<div class="gw-combobox-hint">No documents match "${_esc(query)}"</div>`;
+    itemsEl.innerHTML = `<div class="gw-combobox-hint">No documents${query ? ` match "${_esc(query)}"` : ' available'}</div>`;
     return;
   }
-  const visible = matches.slice(0, 10);
+  const visible = matches.slice(0, 12);
   const extra   = matches.length - visible.length;
-  lst.style.display = 'block';
-  lst.innerHTML = visible.map(d => `
+  itemsEl.innerHTML = visible.map(d => `
     <div class="gw-combobox-item" title="${_esc(d.path)}">
       📄 <strong>${_esc(d.name)}</strong>
       ${d.path !== d.name ? `<span style="font-size:0.6rem;opacity:0.5;margin-left:0.4rem">${_esc(d.path)}</span>` : ''}
     </div>`).join('')
-    + (extra > 0 ? `<div class="gw-combobox-hint">+ ${extra} more — keep typing to narrow</div>` : '');
-
-  // Programmatic listeners — avoids inline-handler issues in Electron
-  Array.from(lst.querySelectorAll('.gw-combobox-item')).forEach((item, i) => {
+    + (extra > 0 ? `<div class="gw-combobox-hint">+ ${extra} more — type to filter</div>` : '');
+  Array.from(itemsEl.querySelectorAll('.gw-combobox-item')).forEach((item, i) => {
     const d = visible[i];
     item.addEventListener('mousedown', (e) => {
       e.preventDefault();
       if (window._gwPpDocPick) window._gwPpDocPick(d.path, d.name);
+      const lst2 = document.getElementById('pp-doc-list');
+      if (lst2) lst2.style.display = 'none';
     });
   });
 }
@@ -1346,6 +1381,7 @@ function _gwPpDocSearch(q) {
 function _gwPpRenderChips() {
   const el = document.getElementById('pp-file-chips');
   if (!el) return;
+  _gwPpUpdateDocTrigger();
   if (!_gwPpFileList.length) { el.innerHTML = ''; return; }
   el.innerHTML = _gwPpFileList.map((f, i) => `
     <span style="display:inline-flex;align-items:center;gap:0.2rem;padding:0.1rem 0.35rem;
@@ -1491,8 +1527,8 @@ async function _gwPpRun() {
   document.getElementById('pp-run-err').textContent = '';
   document.getElementById('pp-run-btn').style.display    = 'none';
   document.getElementById('pp-cancel-btn').style.display = '';
-  document.getElementById('pp-progress').style.display   = '';
-  document.getElementById('pp-approval').style.display   = 'none';
+  const _apEl = document.getElementById('pp-approval');
+  if (_apEl) _apEl.style.display = 'none';
   _gwPpClearLog();
 
   // Try as a YAML pipeline run (async)
@@ -1669,7 +1705,10 @@ function _gwPpLog(text, level = 'info') {
 
 function _gwPpClearLog() {
   const el = document.getElementById('pp-log');
-  if (el) { el.innerHTML = ''; el._seen = new Set(); }
+  if (el) {
+    el.innerHTML = '<span style="opacity:0.35;font-style:italic">Running…</span>';
+    el._seen = new Set();
+  }
   const cards = document.getElementById('pp-stage-cards');
   if (cards) cards.innerHTML = '';
 }
@@ -1781,94 +1820,115 @@ function _showRoleExec(role) {
   const propsBar = document.getElementById('gw-props-bar');
   const execBar  = document.getElementById('gw-exec-bar');
   const histBar  = document.getElementById('gw-hist-bar');
-  if (propsBar) propsBar.style.display = 'none';
+  // Hide pipeline canvas (nodes) — role exec is its own full view
+  const pipeScroll = document.getElementById('gw-pipeline-scroll');
+  if (pipeScroll) pipeScroll.style.display = 'none';
+  // Show role info in propsBar
+  if (propsBar) {
+    propsBar.style.display = '';
+    const TYPE_COLORS = { agent:'#3ecf8e', system_designer:'#9b7ef8', reviewer:'#2dd4bf' };
+    const dotColor = TYPE_COLORS[role.role_type || 'agent'] || '#6b7490';
+    propsBar.innerHTML = `
+      <div style="padding:0.3rem 0.75rem;display:flex;align-items:center;gap:0.55rem;
+                  border-bottom:1px solid var(--border)">
+        <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
+        <span style="font-size:0.78rem;font-weight:600">${_esc(role.name)}</span>
+        <span style="font-size:0.65rem;color:var(--muted)">${_esc(modelLabel)}</span>
+        ${role.description ? `<span style="font-size:0.65rem;color:var(--muted);flex:1;overflow:hidden;
+          text-overflow:ellipsis;white-space:nowrap;padding-left:0.3rem;
+          border-left:1px solid var(--border)">${_esc(role.description)}</span>` : ''}
+      </div>`;
+  }
   if (execBar)  execBar.style.display  = '';
-  if (histBar)  histBar.style.display  = 'none';  // roles have no pipeline history
+  if (histBar)  histBar.style.display  = 'none';
 
   const provLabel  = role.provider || 'claude';
   const modelLabel = role.model ? `${provLabel} / ${role.model}` : provLabel;
 
   execBar.innerHTML = `
-    <div style="display:flex;align-items:center;padding:0.4rem 0.75rem;
+    <div style="display:flex;align-items:center;padding:0.35rem 0.75rem;
                 background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;gap:0.5rem">
       <span style="font-size:0.72rem;font-weight:600;flex:1">▶ ${_esc(role.name)}</span>
       <span style="font-size:0.65rem;color:var(--muted)">${_esc(modelLabel)}</span>
     </div>
-    <div id="gw-exec-body" style="padding:0.55rem 0.75rem;display:flex;flex-direction:column;
-                                   gap:0.4rem;overflow-y:auto;max-height:55vh">
 
-      <!-- Row: Output folder | Doc search | + Files -->
-      <div style="display:flex;gap:0.35rem;align-items:flex-start">
-
-        <!-- Output folder (fixed width) -->
-        <div style="width:130px;flex-shrink:0;position:relative">
-          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
-                      text-transform:uppercase;letter-spacing:0.04em">Output folder</div>
-          <input type="text" id="pp-role-output"
-            placeholder="output name…" autocomplete="off"
-            style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
+    <!-- ── Compact inputs (fixed height) ─────────────────────────── -->
+    <div id="gw-exec-inputs" style="padding:0.4rem 0.75rem 0.35rem;flex-shrink:0;
+                                      border-bottom:1px solid var(--border);display:flex;
+                                      flex-direction:column;gap:0.3rem">
+      <div style="display:flex;gap:0.4rem;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-size:0.58rem;color:var(--muted);font-weight:600;text-transform:uppercase;
+                      letter-spacing:0.04em;margin-bottom:0.1rem">Output folder</div>
+          <input type="text" id="pp-role-output" placeholder="output name…" autocomplete="off"
+            style="width:120px;box-sizing:border-box;padding:0.25rem 0.4rem;font-size:0.72rem;
                    background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)">
         </div>
-
-        <!-- Doc search + file upload -->
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:0.2rem">
-          <div style="font-size:0.6rem;color:var(--muted);margin-bottom:0.15rem;font-weight:600;
-                      text-transform:uppercase;letter-spacing:0.04em">Files &amp; documents</div>
-          <div style="display:flex;gap:0.3rem;align-items:center">
-            <div style="width:180px;flex-shrink:0;position:relative">
-              <input type="text" id="pp-doc-search" placeholder="🔍 Search docs…" autocomplete="off"
-                style="width:100%;box-sizing:border-box;padding:0.28rem 0.4rem;font-size:0.72rem;
-                       background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)"
-                oninput="window._gwPpDocSearch(this.value)"
-                onblur="setTimeout(()=>{ const l=document.getElementById('pp-doc-list'); if(l) l.style.display='none'; },160)">
-              <div id="pp-doc-list" class="gw-combobox-drop"></div>
+        <div style="position:relative" id="pp-doc-wrap">
+          <div style="font-size:0.58rem;color:var(--muted);font-weight:600;text-transform:uppercase;
+                      letter-spacing:0.04em;margin-bottom:0.1rem">Documents</div>
+          <div id="pp-doc-trigger" onclick="window._gwPpDocToggle()"
+               style="display:flex;align-items:center;gap:0.3rem;width:155px;box-sizing:border-box;
+                      padding:0.25rem 0.45rem;background:var(--bg);border:1px solid var(--border);
+                      border-radius:4px;cursor:pointer;user-select:none;min-height:30px">
+            <span id="pp-doc-label" style="flex:1;font-size:0.7rem;color:var(--muted);
+                                           overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pick docs…</span>
+            <span style="color:var(--muted);font-size:0.65rem;flex-shrink:0">▾</span>
+          </div>
+          <div id="pp-doc-list" class="gw-combobox-drop" style="min-width:240px">
+            <div style="padding:0.28rem 0.5rem;border-bottom:1px solid var(--border)">
+              <input type="text" id="pp-doc-search" placeholder="🔍 filter documents…"
+                     oninput="window._gwPpDocSearch(this.value)"
+                     onclick="event.stopPropagation()"
+                     autocomplete="off"
+                     style="width:100%;box-sizing:border-box;background:transparent;border:none;
+                            outline:none;color:var(--fg);font-size:0.7rem;font-family:inherit">
             </div>
-            <button class="btn btn-ghost btn-sm"
-              style="font-size:0.7rem;flex-shrink:0;padding:0.22rem 0.5rem;white-space:nowrap"
-              onclick="document.getElementById('pp-role-file-input').click()">+ Files</button>
-            <input type="file" id="pp-role-file-input" multiple style="display:none"
-              onchange="window._gwPpFileAdd(this)">
+            <div id="pp-doc-items"></div>
           </div>
         </div>
+        <div>
+          <div style="font-size:0.58rem;color:transparent;margin-bottom:0.1rem">·</div>
+          <button class="btn btn-ghost btn-sm"
+            style="font-size:0.7rem;padding:0.22rem 0.5rem;white-space:nowrap"
+            onclick="document.getElementById('pp-role-file-input').click()">+ Files</button>
+          <input type="file" id="pp-role-file-input" multiple style="display:none"
+            onchange="window._gwPpFileAdd(this)">
+        </div>
       </div>
-
-      <!-- Selected file/doc chips -->
-      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem;min-height:0"></div>
-
-      <!-- Task textarea -->
-      <textarea id="pp-task" rows="5"
+      <div id="pp-file-chips" style="display:flex;flex-wrap:wrap;gap:0.2rem"></div>
+      <textarea id="pp-task" rows="3"
         placeholder="Task for ${_esc(role.name)}…"
         style="width:100%;box-sizing:border-box;font-size:0.76rem;resize:vertical;
                background:var(--bg1);border:1px solid var(--border);border-radius:4px;
                padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"
         oninput="window._gwPpValidate()"></textarea>
-
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:0.4rem;align-items:center">
         <button id="pp-run-btn" class="btn btn-primary btn-sm"
           style="font-size:0.76rem;opacity:0.4" disabled onclick="window._gwRoleRun()">▶ Run ${_esc(role.name)}</button>
         <button id="pp-cancel-btn" class="btn btn-ghost btn-sm"
           style="font-size:0.76rem;display:none">■ Running…</button>
         <div id="pp-run-err" style="font-size:0.72rem;color:#e74c3c"></div>
       </div>
+    </div>
 
-      <!-- Progress section (same structure as pipeline) -->
-      <div id="pp-progress" style="display:none;border-top:1px solid var(--border);padding-top:0.45rem;margin-top:0.1rem">
-        <div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.06em;color:var(--muted);margin-bottom:0.3rem">Execution Progress</div>
-        <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.2rem;margin-bottom:0.3rem"></div>
-        <details style="margin-top:0.1rem">
-          <summary style="font-size:0.62rem;color:var(--muted);cursor:pointer;user-select:none;
-                          list-style:none;padding:0.1rem 0">▸ Detailed log</summary>
-          <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;
-               line-height:1.4;background:var(--bg1);border:1px solid var(--border);border-radius:4px;
-               padding:0.3rem 0.4rem;max-height:120px;overflow-y:auto;margin-top:0.15rem"></div>
-        </details>
+    <!-- ── Execution log (fills remaining height, always visible) ───── -->
+    <div id="pp-progress" style="flex:1;min-height:0;overflow-y:auto;display:flex;
+                                   flex-direction:column;padding:0.4rem 0.75rem;gap:0.25rem">
+      <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                  color:var(--muted);flex-shrink:0;margin-bottom:0.1rem">Execution Log</div>
+      <div id="pp-stage-cards" style="display:flex;flex-direction:column;gap:0.18rem;flex-shrink:0"></div>
+      <div id="pp-log" style="font-family:var(--font-mono,monospace);font-size:0.62rem;line-height:1.55;
+           flex:1;overflow-y:auto;color:var(--muted);border-top:1px solid var(--border);
+           margin-top:0.2rem;padding-top:0.3rem;min-height:30px">
+        <span style="opacity:0.35;font-style:italic">Run output will appear here…</span>
       </div>
     </div>
   `;
 
   // Register shared globals
   window._gwPpDocSearch  = _gwPpDocSearch;
+  window._gwPpDocToggle  = _gwPpDocToggle;
   window._gwPpValidate   = _gwPpValidate;
   window._gwPpDocPick    = (path, label) => {
     if (!_gwPpFileList.find(f => f.path === path)) {
@@ -1876,9 +1936,8 @@ function _showRoleExec(role) {
       _gwPpRenderChips();
     }
     const src = document.getElementById('pp-doc-search');
-    const lst = document.getElementById('pp-doc-list');
     if (src) src.value = '';
-    if (lst) lst.style.display = 'none';
+    _gwPpUpdateDocTrigger();
     _gwPpValidate();
   };
   window._gwPpFileAdd = (input) => {
@@ -1935,7 +1994,6 @@ async function _gwRoleRun() {
   document.getElementById('pp-run-err').textContent     = '';
   document.getElementById('pp-run-btn').style.display    = 'none';
   document.getElementById('pp-cancel-btn').style.display = '';
-  document.getElementById('pp-progress').style.display   = '';
   _gwPpClearLog();
 
   const cardsEl  = document.getElementById('pp-stage-cards');
