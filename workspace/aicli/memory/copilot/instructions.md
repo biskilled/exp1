@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 21:37 UTC -->
+<!-- Last updated: 2026-04-30 21:39 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -21,7 +21,7 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
 - Pipeline execution: 4-agent async DAG triggered only on approved items under approved use cases; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate
-- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated; mode_use_case and mode_item flags control visibility
+- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 
 ## Active Features (do not break)
 
@@ -34,8 +34,8 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 ## In Progress
 
 - Auto-deploy workflow: stop hook integration with auto_commit_push.sh triggers after every Claude Code session to sync memory and work items back to central repo
-- Settings/pipeline UI mode filtering: mode_use_case and mode_item checkboxes (m087 migration) control pipeline visibility in use case vs item execution contexts
-- DOM update optimization in settings: in-place DOM patches on checkbox toggles instead of full page reloads; _toggleRoleActivated/_togglePipelineActivated now patch UI without renderAgentRoles refresh
+- Backlog pipeline: Mirror → Backlog digest → User review → Use case file classification with delivery_type and auto-detected tech_tags
+- Work item classification endpoint: POST /wi/{project}/classify deletes AI draft rows and promotes reviewed items to UC/FE/BU/TA prefixes with embedding vectors
 - Dashboard restoration: Mirror Data cards, Work Items/Use Cases sections, Pipeline Runs health tiles for last 24h
 
-_Last updated: 2026-04-30 21:37 UTC_
+_Last updated: 2026-04-30 21:39 UTC_
