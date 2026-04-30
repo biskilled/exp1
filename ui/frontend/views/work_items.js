@@ -2022,16 +2022,53 @@ function _ucPollRun(runId) {
         clearInterval(_ucPollTimer);
         _ucPollTimer = null;
         const verdict = data.final_verdict || data.status;
-        const vColor  = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f59e0b';
+        const vColor  = verdict === 'approved' ? '#3ecf8e'
+                      : verdict === 'error'    ? '#e85d75'
+                      : verdict === 'rejected' ? '#f59e0b' : '#3ecf8e';
         dot.style.background = vColor;
+
+        // Build the completion / apply UI in the verdict zone
         if (verdEl) {
-          verdEl.style.display = 'block';
-          verdEl.style.background = `${vColor}22`;
-          verdEl.style.color = vColor;
-          verdEl.textContent = verdict.toUpperCase() + (data.error ? `: ${data.error.slice(0, 100)}` : '');
+          const isLinked = data.linked_uc_id || data.linked_item_id;
+          const lastDone = [...(data.stages || [])].filter(s => s.status === 'done').pop();
+          const suggested = (lastDone?.output_preview || '').slice(0, 300).trim();
+          const applyTarget = data.linked_item_id ? 'Item' : 'Use Case';
+          const sid = `_ps_${runId.replace(/-/g,'')}`; // summary textarea id (safe)
+
+          verdEl.style.cssText = 'display:block;margin-top:0.5rem;flex-shrink:0';
+          verdEl.innerHTML = `
+            <div style="font-size:0.75rem;font-weight:700;color:${vColor};margin-bottom:0.5rem;
+                        padding:0.35rem 0.5rem;background:${vColor}18;border-radius:4px;border:1px solid ${vColor}44">
+              ${verdict.toUpperCase()}
+              ${data.error ? `<div style="font-size:0.65rem;font-weight:400;margin-top:0.2rem;word-break:break-word">${_esc(data.error.slice(0, 120))}</div>` : ''}
+            </div>
+            ${isLinked ? `
+              <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.25rem">
+                Summary to apply (1-2 sentences):
+              </div>
+              <textarea id="${sid}"
+                style="width:100%;min-height:64px;font-size:0.7rem;padding:0.4rem;box-sizing:border-box;
+                       border:1px solid var(--border);border-radius:4px;resize:vertical;
+                       background:var(--surface2);color:var(--text);font-family:inherit"
+                placeholder="Write a brief summary of what was done…">${_esc(suggested.slice(0, 200))}</textarea>
+              <div style="display:flex;align-items:center;gap:0.35rem;margin-top:0.4rem;flex-wrap:wrap">
+                <span style="font-size:0.68rem;color:var(--muted)">Score:</span>
+                ${[1,2,3,4,5].map(n => `
+                  <button data-sn="${n}" onclick="window._ucScoreSet(this,'${sid}')"
+                    style="width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:0.62rem;
+                           border:1px solid var(--border);background:var(--surface2);color:var(--muted)">
+                    ${n}
+                  </button>`).join('')}
+                <span id="${sid}_score" data-v="0" style="font-size:0.68rem;color:var(--muted)"></span>
+                <button onclick="window._ucApplyRun('${runId}','${sid}')"
+                  style="margin-left:auto;padding:0.25rem 0.7rem;border-radius:4px;font-size:0.72rem;
+                         font-weight:600;cursor:pointer;background:#3ecf8e;color:#fff;border:none">
+                  Apply to ${_esc(applyTarget)}
+                </button>
+              </div>
+            ` : `<div style="font-size:0.7rem;color:var(--muted)">Run complete — no linked item.</div>`}
+          `;
         }
-        // Reload UC items after 1s to reflect summary updates
-        setTimeout(() => _loadUseCases().catch(() => {}), 1000);
       }
     } catch (_e) {
       // silent poll error — keep trying
@@ -2041,6 +2078,37 @@ function _ucPollRun(runId) {
   _ucPollTimer = setInterval(poll, 1500);
   poll(); // immediate first poll
 }
+
+// ── Panel apply helpers ───────────────────────────────────────────────────────
+
+window._ucScoreSet = (btn, sid) => {
+  const score = parseInt(btn.dataset.sn, 10);
+  const scoreEl = document.getElementById(`${sid}_score`);
+  if (scoreEl) { scoreEl.dataset.v = score; scoreEl.textContent = `${score}/5`; }
+  // Highlight all buttons up to selected score
+  btn.closest('div').querySelectorAll('[data-sn]').forEach(b => {
+    const active = parseInt(b.dataset.sn, 10) <= score;
+    b.style.background    = active ? '#3ecf8e33' : 'var(--surface2)';
+    b.style.borderColor   = active ? '#3ecf8e'   : 'var(--border)';
+    b.style.color         = active ? '#3ecf8e'   : 'var(--muted)';
+  });
+};
+
+window._ucApplyRun = async (runId, sid) => {
+  const summary = document.getElementById(sid)?.value?.trim() || '';
+  if (!summary) { toast('Please write a summary before applying', 'error'); return; }
+  const score = parseInt(document.getElementById(`${sid}_score`)?.dataset.v || '0', 10) || null;
+  try {
+    await api.agents.applyPipelineRun(runId, { summary, score });
+    toast('Summary applied to item/use case', 'success');
+    // Invalidate UC cache so next visit shows updated summary
+    _ucCacheData = null;
+    _ucClosePanel();
+    setTimeout(() => _loadUseCases().catch(() => {}), 300);
+  } catch (e) {
+    toast('Apply failed: ' + e.message, 'error');
+  }
+};
 
 /** Neutral badge shown on approved use cases: "📂 12d open" */
 function _openDaysBadge(approvedAt) {

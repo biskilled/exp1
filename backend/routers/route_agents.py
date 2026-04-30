@@ -606,16 +606,8 @@ async def _run_pipeline_bg(
     except Exception as _de:
         log.warning("Could not save pipeline output document: %s", _de)
 
-    # Post-completion: update linked item/UC summary and score
-    if linked_item_id or linked_uc_id:
-        try:
-            _update_item_after_run(
-                project_id, pipeline_name, final_verdict, dur_total,
-                (stage_result.output if stage_result else "") or "",
-                linked_item_id, linked_uc_id,
-            )
-        except Exception as _ue:
-            log.warning("Could not update linked item after run: %s", _ue)
+    # NOTE: linked item/UC summary is NOT updated automatically.
+    # The user reviews the run in the panel and clicks "Apply" to write their summary.
 
     log.info(
         "Async pipeline run done: run_id=%s verdict=%s cost=$%.4f dur=%.1fs",
@@ -733,7 +725,8 @@ async def get_pipeline_run(run_id: str) -> dict:
                 cur.execute(
                     """SELECT id, pipeline_name, task, status, final_verdict, score,
                               total_cost_usd, total_input_tokens, total_output_tokens,
-                              duration_s, error, started_at, finished_at
+                              duration_s, error, started_at, finished_at,
+                              linked_uc_id, linked_item_id
                        FROM pr_pipeline_runs WHERE id=%s""",
                     (run_id,),
                 )
@@ -758,7 +751,7 @@ async def get_pipeline_run(run_id: str) -> dict:
                 "role_name":       sr[2],
                 "status":          sr[3],
                 "attempt":         sr[4],
-                "output_preview":  (sr[5] or "")[-500:],
+                "output_preview":  (sr[5] or "")[:1500],
                 "log_lines":       sr[6] or [],
                 "input_tokens":    sr[7],
                 "output_tokens":   sr[8],
@@ -785,6 +778,8 @@ async def get_pipeline_run(run_id: str) -> dict:
             "error":               row[10],
             "started_at":          row[11].isoformat() if row[11] else None,
             "finished_at":         row[12].isoformat() if row[12] else None,
+            "linked_uc_id":        str(row[13]) if row[13] else None,
+            "linked_item_id":      str(row[14]) if row[14] else None,
             "stages":              stages,
         }
     except HTTPException:
@@ -804,6 +799,88 @@ async def approve_pipeline_run(run_id: str, body: dict) -> dict:
     if event:
         event.set()
     return {"ok": True, "run_id": run_id, "approved": approved}
+
+
+@router.post("/pipeline-runs/{run_id}/apply")
+async def apply_pipeline_run(run_id: str, body: dict) -> dict:
+    """Write user-reviewed summary + score to the linked UC/item.
+
+    Body: { summary: str, score: int (1-5) }
+    Only writes when the run has a linked_uc_id or linked_item_id.
+    """
+    from core.database import db
+    from datetime import datetime as _dt
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    summary_text = str(body.get("summary", "")).strip()
+    score_val    = int(body.get("score", 0)) if body.get("score") is not None else None
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT linked_uc_id, linked_item_id, project_id, pipeline_name
+                       FROM pr_pipeline_runs WHERE id=%s""",
+                    (run_id,),
+                )
+                row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Run not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+    linked_uc_id, linked_item_id, project_id, pipeline_name = row
+
+    if not linked_uc_id and not linked_item_id:
+        return {"ok": True, "message": "No linked item to update"}
+
+    if not summary_text:
+        raise HTTPException(400, "summary is required")
+
+    now_str = _dt.utcnow().strftime("%d/%m/%y %H:%M")
+    summary_line = f"\n{now_str}: {summary_text}"
+
+    def _do_update(item_id: str) -> None:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT summary FROM mem_work_items WHERE id=%s AND project_id=%s",
+                    (item_id, project_id),
+                )
+                existing = cur.fetchone()
+                if not existing:
+                    return
+                new_summary = (existing[0] or "") + summary_line
+                update_parts = ["summary = %s"]
+                update_vals: list = [new_summary]
+                if score_val is not None:
+                    update_parts.append("score_status = %s")
+                    update_vals.append(score_val)
+                update_vals.append(item_id)
+                cur.execute(
+                    f"UPDATE mem_work_items SET {', '.join(update_parts)} WHERE id=%s",
+                    update_vals,
+                )
+            conn.commit()
+
+    updated: list[str] = []
+    try:
+        if linked_item_id:
+            _do_update(str(linked_item_id))
+            updated.append(f"item:{linked_item_id}")
+        if linked_uc_id and str(linked_uc_id) != str(linked_item_id):
+            _do_update(str(linked_uc_id))
+            updated.append(f"uc:{linked_uc_id}")
+    except Exception as e:
+        log.exception("apply_pipeline_run: DB update failed: %s", e)
+        raise HTTPException(500, str(e))
+
+    log.info("apply_pipeline_run: run_id=%s updated=%s score=%s", run_id, updated, score_val)
+    return {"ok": True, "updated": updated}
 
 
 @router.get("/pipeline-runs")

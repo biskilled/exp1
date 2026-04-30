@@ -448,7 +448,8 @@ class Agent:
                 )
 
             from agents.tools import invoke_tool
-            messages.append({"role": "assistant", "content": resp.get("raw", resp)})
+            _raw = resp.get("raw")
+            messages.append({"role": "assistant", "content": _raw.content if hasattr(_raw, "content") else resp.get("content", "")})
             tool_results: list[dict] = []
             for tc in tool_calls:
                 if isinstance(tc, dict):
@@ -565,7 +566,8 @@ class Agent:
                     self.name, iteration, hallucination_guard_count, _MAX_GUARD_RETRIES,
                 )
                 # Append the assistant turn that has tool_use, then inject the guard
-                messages.append({"role": "assistant", "content": resp.get("raw", resp)})
+                _raw = resp.get("raw")
+                messages.append({"role": "assistant", "content": _raw.content if hasattr(_raw, "content") else resp.get("content", "")})
                 messages.append({
                     "role": "user",
                     "content": (
@@ -594,7 +596,8 @@ class Agent:
 
             # ── Execute tools ──────────────────────────────────────────────────
             thought = self._extract_thought(content)
-            messages.append({"role": "assistant", "content": resp.get("raw", resp)})
+            _raw = resp.get("raw")
+            messages.append({"role": "assistant", "content": _raw.content if hasattr(_raw, "content") else resp.get("content", "")})
             tool_results: list[dict] = []
 
             for tc in tool_calls:
