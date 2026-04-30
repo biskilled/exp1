@@ -14,13 +14,42 @@ Key functions:
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
 
-# ── Default per-token costs (USD/token) ────────────────────────────────────────
+# ── Pricing YAML path ──────────────────────────────────────────────────────────
 
-_DEFAULTS: dict[str, dict[str, dict[str, float]]] = {
+_PRICING_YAML = Path(__file__).parent.parent.parent.parent / "workspace" / "_templates" / "pricing.yaml"
+
+
+def _load_yaml_defaults() -> dict[str, dict[str, dict[str, float]]]:
+    """Load per-token pricing from workspace/_templates/pricing.yaml."""
+    try:
+        if _PRICING_YAML.exists():
+            import yaml
+            with open(_PRICING_YAML) as f:
+                data = yaml.safe_load(f) or {}
+            # Normalise: each entry must be {"input": float, "output": float}
+            result: dict = {}
+            for provider, models in data.items():
+                if isinstance(models, dict):
+                    result[provider] = {
+                        model: {k: float(v) for k, v in costs.items()}
+                        for model, costs in models.items()
+                        if isinstance(costs, dict)
+                    }
+            if result:
+                return result
+    except Exception as e:
+        log.debug(f"Could not load pricing YAML: {e}")
+    return {}
+
+
+# ── Default per-token costs (USD/token) — fallback if YAML missing ─────────────
+
+_HARDCODED_DEFAULTS: dict[str, dict[str, dict[str, float]]] = {
     "claude": {
         "claude-sonnet-4-6":         {"input": 0.000003,   "output": 0.000015},
         "claude-opus-4-6":           {"input": 0.000015,   "output": 0.000075},
@@ -46,6 +75,16 @@ _DEFAULTS: dict[str, dict[str, dict[str, float]]] = {
         "grok-3-fast": {"input": 0.000005, "output": 0.000025},
     },
 }
+
+# Merge: YAML takes precedence over hardcoded, hardcoded fills any gaps
+_yaml = _load_yaml_defaults()
+_DEFAULTS: dict[str, dict[str, dict[str, float]]] = {}
+for _p, _models in _HARDCODED_DEFAULTS.items():
+    _DEFAULTS[_p] = {**_models, **_yaml.get(_p, {})}
+for _p, _models in _yaml.items():
+    if _p not in _DEFAULTS:
+        _DEFAULTS[_p] = _models
+del _yaml, _p, _models  # cleanup module namespace
 
 _DEFAULT_CONFIG: dict = {
     "updated_at": None,

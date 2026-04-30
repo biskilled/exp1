@@ -451,25 +451,33 @@ async def get_data_dashboard(
                 # Work items (replaces planner_tags)
                 try:
                     cur.execute(
-                        """SELECT COUNT(*),
-                                  COUNT(*) FILTER (WHERE completed_at IS NULL AND deleted_at IS NULL),
-                                  COUNT(*) FILTER (WHERE completed_at IS NOT NULL),
-                                  COUNT(*) FILTER (WHERE updated_at > NOW() - INTERVAL '24 hours'),
+                        """SELECT
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL) AS total,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND completed_at IS NULL) AS active,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND completed_at IS NOT NULL) AS done,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND updated_at > NOW() - INTERVAL '24 hours') AS last_24h,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND approved_at IS NOT NULL) AS approved,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND approved_at IS NULL) AS draft,
+                                  COUNT(*) FILTER (WHERE deleted_at IS NULL AND embedding IS NOT NULL) AS embedded,
                                   MAX(updated_at)
-                           FROM mem_work_items WHERE project_id = %s AND deleted_at IS NULL""",
+                           FROM mem_work_items WHERE project_id = %s""",
                         (project_id,),
                     )
                     r = cur.fetchone()
                     ai["work_items"] = {
-                        "total":      r[0] or 0,
-                        "active":     r[1] or 0,
-                        "done":       r[2] or 0,
-                        "last_24h":   r[3] or 0,
-                        "last_at":    r[4].isoformat() if r[4] else None,
+                        "total":    r[0] or 0,
+                        "active":   r[1] or 0,
+                        "done":     r[2] or 0,
+                        "last_24h": r[3] or 0,
+                        "approved": r[4] or 0,
+                        "draft":    r[5] or 0,
+                        "embedded": r[6] or 0,
+                        "last_at":  r[7].isoformat() if r[7] else None,
                     }
                 except Exception:
                     conn.rollback()
-                    ai["work_items"] = {"total": 0, "active": 0, "done": 0, "last_24h": 0, "last_at": None}
+                    ai["work_items"] = {"total": 0, "active": 0, "done": 0, "last_24h": 0,
+                                        "approved": 0, "draft": 0, "embedded": 0, "last_at": None}
 
                 # Backlog stats
                 try:
@@ -644,10 +652,10 @@ async def get_data_dashboard(
 
 @router.get("/{project}/llm-costs")
 async def llm_costs(project: str):
-    """Return LLM cost breakdown for memory pipeline calls (last 24h + all time).
+    """Return LLM cost breakdown across all usage sources (last 24h + all time).
 
-    Queries mng_usage_logs WHERE source='memory', grouped by provider and model.
-    Does NOT filter by project — pipeline costs are system-wide.
+    Queries mng_usage_logs for all sources (request, memory, backlog, etc.),
+    grouped by provider and model. System-wide (not filtered by project).
     """
     if not db.is_available():
         return {"last_24h": {"total_calls": 0, "total_cost_usd": 0, "by_model": []},
@@ -660,7 +668,7 @@ async def llm_costs(project: str):
                    SUM(input_tokens) AS input_tokens,
                    SUM(output_tokens) AS output_tokens
             FROM mng_usage_logs
-            WHERE source IN ('memory', 'backlog') {where_extra}
+            WHERE source NOT IN ('api_fetch') {where_extra}
             GROUP BY provider, model
             ORDER BY SUM(cost_usd) DESC
         """

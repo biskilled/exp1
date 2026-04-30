@@ -1,10 +1,10 @@
 /**
  * pipeline.js — Data Dashboard view.
  *
- * Three sections:
+ * Sections:
  *   1. Mirror Data  — mem_mrr_* counts (commits, prompts, items, messages)
- *   2. AI / LLM     — mem_ai_* counts (events, work_items, feature snapshots)
- *   3. Pipeline Runs — last-24h health per background job
+ *   2. Work Items   — approved vs draft, embedded, status breakdown
+ *   3. LLM Usage    — token + cost per provider/model (24h + all-time)
  *   4. Recent Workflow Runs
  */
 
@@ -33,19 +33,12 @@ export async function renderPipeline(container, project) {
         ${_skeleton(4)}
       </div>
 
-      <div class="dd-section-label">AI / LLM</div>
-      <div id="dd-ai" class="dd-grid dd-grid-3" style="margin-bottom:1.5rem">
-        ${_skeleton(3)}
+      <div class="dd-section-label">Work Items / Use Cases</div>
+      <div id="dd-workitems" style="margin-bottom:1.5rem">
+        <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
       </div>
 
-      <div class="dd-section-label">Pipeline Runs <span style="font-weight:400;color:var(--muted)">(last 24h)</span></div>
-      <div id="dd-pipeline" class="dd-grid dd-grid-6" style="margin-bottom:1.5rem">
-        ${_skeleton(6)}
-      </div>
-
-      <div id="dd-errors" style="margin-bottom:1.2rem"></div>
-
-      <div class="dd-section-label">LLM Pipeline Costs</div>
+      <div class="dd-section-label">LLM Usage <span style="font-weight:400;color:var(--muted)">(all sources)</span></div>
       <div id="dd-costs" style="margin-bottom:1.5rem">
         <div style="color:var(--muted);font-size:0.8rem">Loading…</div>
       </div>
@@ -64,12 +57,7 @@ export async function renderPipeline(container, project) {
       }
       .dd-grid { display:grid;gap:0.65rem }
       .dd-grid-4 { grid-template-columns:repeat(4,1fr) }
-      .dd-grid-3 { grid-template-columns:repeat(3,1fr) }
-      .dd-grid-6 { grid-template-columns:repeat(6,1fr) }
-      @media(max-width:780px){
-        .dd-grid-4{grid-template-columns:repeat(2,1fr)}
-        .dd-grid-6{grid-template-columns:repeat(3,1fr)}
-      }
+      @media(max-width:780px){ .dd-grid-4{grid-template-columns:repeat(2,1fr)} }
       .dd-card {
         background:var(--surface2);border:1px solid var(--border);
         border-radius:var(--radius);padding:0.8rem 0.85rem 0.65rem;
@@ -83,7 +71,7 @@ export async function renderPipeline(container, project) {
       .dd-card-icon { font-size:0.85rem;flex-shrink:0 }
       .dd-card-title { flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
       .dd-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0 }
-      .dd-stats { display:flex;gap:1rem;align-items:flex-end }
+      .dd-stats { display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap }
       .dd-stat { display:flex;flex-direction:column }
       .dd-stat-val { font-size:1.35rem;font-weight:700;color:var(--text);line-height:1 }
       .dd-stat-lbl { font-size:0.62rem;color:var(--muted);margin-top:0.15rem;text-transform:uppercase }
@@ -93,15 +81,6 @@ export async function renderPipeline(container, project) {
       }
       .dd-tag { background:var(--surface3,rgba(128,128,128,.12));padding:0.1rem 0.35rem;
                 border-radius:3px;white-space:nowrap }
-      .dd-pipe-card {
-        background:var(--surface2);border:1px solid var(--border);
-        border-radius:var(--radius);padding:0.55rem 0.6rem;min-width:0
-      }
-      .dd-pipe-name { font-size:0.62rem;font-weight:600;color:var(--muted);
-                      font-family:monospace;margin-bottom:0.35rem;
-                      overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
-      .dd-pipe-counts { display:flex;gap:0.4rem;font-size:0.72rem;align-items:center }
-      .dd-pipe-last { font-size:0.6rem;color:var(--muted);margin-top:0.25rem }
       .dd-skel { background:var(--surface2);border:1px solid var(--border);
                  border-radius:var(--radius);padding:0.8rem;opacity:.5;min-height:90px }
     </style>
@@ -121,7 +100,9 @@ function _skeleton(n) {
 
 function _fmtNum(n) {
   if (n == null) return '—';
-  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+  return n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + 'M'
+       : n >= 1000      ? (n / 1000).toFixed(1) + 'k'
+       : String(n);
 }
 
 function _fmtTime(iso) {
@@ -134,18 +115,17 @@ function _fmtTime(iso) {
   return d.toLocaleDateString();
 }
 
-/** Status dot: green=active 24h, orange=stale, gray=empty, red=errors */
 function _dot(total, last24h, hasError) {
   if (hasError)    return '#e74c3c';
-  if (last24h > 0) return 'var(--green, #27ae60)';
+  if (last24h > 0) return 'var(--green,#27ae60)';
   if (total > 0)   return '#f39c12';
   return 'var(--muted)';
 }
 
 async function _loadAll(container, project) {
   if (!project) {
-    container.querySelector('#dd-mirror').innerHTML =
-      '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">No project selected</div>';
+    const el = container.querySelector('#dd-mirror');
+    if (el) el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">No project selected</div>';
     return;
   }
   try {
@@ -155,9 +135,7 @@ async function _loadAll(container, project) {
       api.pipeline.llmCosts(project).catch(() => null),
     ]);
     _renderMirror(container, dash?.mirror);
-    _renderAI(container, dash?.ai);
-    _renderPipeline(container, dash?.pipeline);
-    _renderErrors(container, dash?.recent_errors);
+    _renderWorkItems(container, dash?.ai?.work_items);
     _renderCosts(container, costsData);
     _renderRuns(container, runsData);
   } catch (e) {
@@ -168,8 +146,8 @@ async function _loadAll(container, project) {
 // ── Mirror cards ──────────────────────────────────────────────────────────────
 
 const _MIRROR_DEFS = [
-  { key: 'commits',  icon: '⊙', label: 'Commits',  extra: d => _pendingTag(d?.pending_embed, 'pending') },
-  { key: 'prompts',  icon: '◎', label: 'Prompts',  extra: d => _pendingTag(d?.pending_embed, 'pending') },
+  { key: 'commits',  icon: '⊙', label: 'Commits',  extra: d => _pendingTag(d?.pending_embed, 'embed pending') },
+  { key: 'prompts',  icon: '◎', label: 'Prompts',  extra: d => _pendingTag(d?.pending_backlog, 'backlog pending') },
   { key: 'items',    icon: '◈', label: 'Items',    extra: () => '' },
   { key: 'messages', icon: '✉', label: 'Messages', extra: () => '' },
 ];
@@ -215,221 +193,119 @@ function _renderMirror(container, mirror) {
   }).join('');
 }
 
-// ── AI cards ──────────────────────────────────────────────────────────────────
+// ── Work Items card ───────────────────────────────────────────────────────────
 
-function _renderAI(container, ai) {
-  const el = container.querySelector('#dd-ai');
+function _renderWorkItems(container, wi) {
+  const el = container.querySelector('#dd-workitems');
   if (!el) return;
-  if (!ai) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem;grid-column:1/-1">AI data unavailable</div>';
+  if (!wi) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Work item data unavailable</div>';
     return;
   }
 
-  const ev = ai.events || {};
-  const wi = ai.work_items || {};
-  const fs = ai.feature_snapshots || {};
+  const approvedPct = wi.total > 0 ? Math.round(wi.approved / wi.total * 100) : 0;
+  const embeddedPct = wi.total > 0 ? Math.round(wi.embedded / wi.total * 100) : 0;
 
-  // Events by-type breakdown (top 3)
-  const byType = ev.by_type || {};
-  const typeLines = Object.entries(byType)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([t, n]) => `<span class="dd-tag">${t}: ${n}</span>`)
-    .join('');
-
-  const cards = [
-    // Events  (row 1, col 1)
-    `<div class="dd-card">
-      <div class="dd-card-hdr">
-        <span class="dd-card-icon">⚡</span>
-        <span class="dd-card-title">Events</span>
-        <div class="dd-dot" style="background:${_dot(ev.total, ev.last_24h, false)}"></div>
-      </div>
-      <div class="dd-stats">
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(ev.total)}</div>
-          <div class="dd-stat-lbl">Total</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val" style="color:${ev.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(ev.last_24h)}</div>
-          <div class="dd-stat-lbl">24h</div>
-        </div>
-      </div>
-      <div class="dd-card-footer">
-        <span>Last: ${_fmtTime(ev.last_at)}</span>
-      </div>
-      <div class="dd-card-footer" style="margin-top:0.2rem">${typeLines}</div>
-    </div>`,
-
-    // Feature Snapshots  (row 1, col 2)
-    `<div class="dd-card">
-      <div class="dd-card-hdr">
-        <span class="dd-card-icon">◉</span>
-        <span class="dd-card-title">Feature Snaps</span>
-        <div class="dd-dot" style="background:${_dot(fs.total, fs.last_24h, false)}"></div>
-      </div>
-      <div class="dd-stats">
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(fs.total)}</div>
-          <div class="dd-stat-lbl">Total</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val" style="color:${fs.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(fs.last_24h)}</div>
-          <div class="dd-stat-lbl">24h</div>
-        </div>
-      </div>
-      <div class="dd-card-footer">
-        <span>Last: ${_fmtTime(fs.last_at)}</span>
-      </div>
-    </div>`,
-
-    // Work Items  (row 2, full-width)
-    `<div class="dd-card" style="grid-column:1/-1">
-      <div class="dd-card-hdr">
-        <span class="dd-card-icon">▦</span>
-        <span class="dd-card-title">Work Items</span>
-        <div class="dd-dot" style="background:${_dot(wi.total, wi.promoted_24h ?? wi.last_24h, false)}"></div>
-      </div>
-
-      <!-- Row 1: volume stats -->
-      <div class="dd-stats">
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(wi.total)}</div>
-          <div class="dd-stat-lbl">Total</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val" style="color:${(wi.last_24h??0) > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(wi.last_24h)}</div>
-          <div class="dd-stat-lbl">New 24h</div>
-        </div>
-        <div class="dd-stat" title="Items whose AI summary was refreshed in the last 24h (via /memory or Refresh AI)">
-          <div class="dd-stat-val" style="color:${(wi.promoted_24h??0) > 0 ? '#27ae60' : 'var(--text)'}">${_fmtNum(wi.promoted_24h)}</div>
-          <div class="dd-stat-lbl">Promoted 24h</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(wi.active)}</div>
-          <div class="dd-stat-lbl">Open</div>
-        </div>
-        <div class="dd-stat">
-          <div class="dd-stat-val">${_fmtNum(wi.done)}</div>
-          <div class="dd-stat-lbl">Done</div>
-        </div>
-      </div>
-
-      <!-- Row 2: linkage quality (hallucination guard) -->
-      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.4rem 0 0.2rem;align-items:center">
-        <span style="font-size:0.52rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-right:0.2rem">Linkage</span>
-        <span class="dd-tag" style="color:#27ae60;border-color:#27ae6044"
-              title="User confirmed the planner tag link">✓ user-linked: ${wi.linked ?? 0}</span>
-        <span class="dd-tag" style="color:#f39c12;border-color:#f39c1244"
-              title="AI suggested a tag match, waiting for user confirmation">✦ ai-suggested: ${wi.ai_suggested ?? 0}</span>
-        <span class="dd-tag" style="color:${(wi.unlinked_ai_only??0) > 20 ? '#e74c3c' : 'var(--muted)'};border-color:${(wi.unlinked_ai_only??0) > 20 ? '#e74c3c44' : 'var(--border)'}"
-              title="No tag link at all — fully AI-managed, may include hallucinated items">⚠ unlinked: ${wi.unlinked_ai_only ?? 0}</span>
-      </div>
-
-      <!-- Row 3: AI score distribution -->
-      ${(() => {
-        const bs = wi.by_score || {};
-        const total = Object.values(bs).reduce((s,v)=>s+(v||0), 0) || 1;
-        const cols = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#27ae60','#1abc9c'];
-        const labels = ['0 – not started','1 – early','2 – in progress','3 – good progress','4 – nearly done','5 – complete'];
-        const bars = [0,1,2,3,4,5].map(i => {
-          const cnt = bs[String(i)] || 0;
-          const pct = Math.round(cnt/total*100);
-          return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;min-width:28px" title="${labels[i]}: ${cnt}">
-            <div style="font-size:0.55rem;color:${cols[i]};font-weight:600">${cnt}</div>
-            <div style="width:22px;height:${Math.max(2,Math.round(pct*0.32))}px;background:${cols[i]};border-radius:2px;opacity:0.85"></div>
-            <div style="font-size:0.48rem;color:var(--muted)">${i}</div>
-          </div>`;
-        }).join('');
-        return `<div style="display:flex;gap:0;align-items:flex-end;margin-top:0.35rem">
-          <span style="font-size:0.5rem;text-transform:uppercase;color:var(--muted);letter-spacing:.06em;margin-right:0.5rem;align-self:center">Score</span>
-          ${bars}
-        </div>`;
-      })()}
-
-      <div class="dd-card-footer" style="margin-top:0.4rem">
-        <span>Created: ${_fmtTime(wi.last_at)}</span>
-        <span style="margin-left:0.5rem">Promoted: ${_fmtTime(wi.last_promoted_at)}</span>
-      </div>
-    </div>`,
-  ];
-
-  el.innerHTML = cards.join('');
-}
-
-// ── Pipeline tiles ────────────────────────────────────────────────────────────
-
-const _PL_LABELS = {
-  commit_embed:        'commit_embed',
-  commit_store:        'commit_store',
-  commit_code_extract: 'commit_code',
-  session_summary:     'session',
-  tag_match:           'tag_match',
-  work_item_embed:     'wi_embed',
-  work_item_promote:   'wi_promote',
-};
-
-function _renderPipeline(container, pipeline) {
-  const el = container.querySelector('#dd-pipeline');
-  if (!el) return;
-  if (!pipeline) { el.innerHTML = ''; return; }
-
-  el.innerHTML = Object.entries(_PL_LABELS).map(([key, label]) => {
-    const s = pipeline[key] || { ok: 0, error: 0, skipped: 0, last_run: null };
-    const hasActivity = s.ok > 0 || s.error > 0 || s.skipped > 0;
-    const dotColor = !hasActivity ? 'var(--muted)' : s.error > 0 ? '#e74c3c' : 'var(--green,#27ae60)';
-    return `
-      <div class="dd-pipe-card">
-        <div style="display:flex;align-items:center;gap:0.35rem;margin-bottom:0.3rem">
-          <div class="dd-dot" style="background:${dotColor}"></div>
-          <div class="dd-pipe-name" title="${key}">${label}</div>
-        </div>
-        <div class="dd-pipe-counts">
-          <span style="color:var(--green,#27ae60)">✓${s.ok}</span>
-          <span style="color:${s.error > 0 ? '#e74c3c' : 'var(--muted)'}">✗${s.error}</span>
-          <span style="color:var(--muted)">⊘${s.skipped}</span>
-        </div>
-        <div class="dd-pipe-last">${_fmtTime(s.last_run)}</div>
-      </div>
-    `;
-  }).join('');
-}
-
-// ── Errors ────────────────────────────────────────────────────────────────────
-
-function _renderErrors(container, errors) {
-  const el = container.querySelector('#dd-errors');
-  if (!el) return;
-  if (!errors?.length) { el.innerHTML = ''; return; }
   el.innerHTML = `
-    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;
-                color:var(--muted);margin-bottom:0.5rem">Recent Errors</div>
-    ${errors.map(e => `
-      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.25rem;
-                  display:flex;gap:0.5rem;align-items:baseline">
-        <span style="color:#e74c3c;font-family:monospace;flex-shrink:0">${e.pipeline}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-              title="${e.error_msg}">${e.error_msg || '(no message)'}</span>
-        <span style="flex-shrink:0">${_fmtTime(e.at)}</span>
+    <div class="dd-card" style="padding:0.8rem 1rem">
+      <div style="display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-start">
+
+        <!-- Approval status -->
+        <div style="flex:1;min-width:160px">
+          <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                      color:var(--muted);margin-bottom:0.5rem">Approval Status</div>
+          <div class="dd-stats">
+            <div class="dd-stat">
+              <div class="dd-stat-val">${_fmtNum(wi.total)}</div>
+              <div class="dd-stat-lbl">Total</div>
+            </div>
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:var(--green,#27ae60)">${_fmtNum(wi.approved)}</div>
+              <div class="dd-stat-lbl">Approved</div>
+            </div>
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:#f39c12">${_fmtNum(wi.draft)}</div>
+              <div class="dd-stat-lbl">Waiting</div>
+            </div>
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:var(--muted)">${_fmtNum(wi.done)}</div>
+              <div class="dd-stat-lbl">Done</div>
+            </div>
+          </div>
+          <!-- Approval progress bar -->
+          ${wi.total > 0 ? `
+          <div style="margin-top:0.55rem">
+            <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${approvedPct}%;background:var(--green,#27ae60);border-radius:2px;transition:width 0.4s"></div>
+            </div>
+            <div style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${approvedPct}% approved</div>
+          </div>` : ''}
+        </div>
+
+        <!-- Vertical divider -->
+        <div style="width:1px;background:var(--border);align-self:stretch;flex-shrink:0"></div>
+
+        <!-- Embeddings -->
+        <div style="min-width:120px">
+          <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                      color:var(--muted);margin-bottom:0.5rem">Embeddings</div>
+          <div class="dd-stats">
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:var(--accent)">${_fmtNum(wi.embedded)}</div>
+              <div class="dd-stat-lbl">Embedded</div>
+            </div>
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:var(--muted)">${_fmtNum((wi.approved || 0) - (wi.embedded || 0))}</div>
+              <div class="dd-stat-lbl">Pending</div>
+            </div>
+          </div>
+          ${wi.approved > 0 ? `
+          <div style="margin-top:0.55rem">
+            <div style="height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+              <div style="height:100%;width:${embeddedPct}%;background:var(--accent);border-radius:2px;transition:width 0.4s"></div>
+            </div>
+            <div style="font-size:0.6rem;color:var(--muted);margin-top:0.2rem">${embeddedPct}% of total embedded</div>
+          </div>` : ''}
+        </div>
+
+        <!-- Vertical divider -->
+        <div style="width:1px;background:var(--border);align-self:stretch;flex-shrink:0"></div>
+
+        <!-- Activity -->
+        <div style="min-width:100px">
+          <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;
+                      color:var(--muted);margin-bottom:0.5rem">Activity</div>
+          <div class="dd-stats">
+            <div class="dd-stat">
+              <div class="dd-stat-val" style="color:${wi.last_24h > 0 ? 'var(--accent)' : 'var(--text)'}">${_fmtNum(wi.last_24h)}</div>
+              <div class="dd-stat-lbl">Updated 24h</div>
+            </div>
+          </div>
+          <div class="dd-card-footer" style="margin-top:0.5rem">
+            Last: ${_fmtTime(wi.last_at)}
+          </div>
+        </div>
+
       </div>
-    `).join('')}
+    </div>
   `;
 }
 
-// ── LLM Pipeline Costs ────────────────────────────────────────────────────────
+// ── LLM Usage / Costs ─────────────────────────────────────────────────────────
 
 function _renderCosts(container, data) {
   const el = container.querySelector('#dd-costs');
   if (!el) return;
   if (!data) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Cost data unavailable</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:0.8rem">Usage data unavailable</div>';
     return;
   }
 
   function _table(title, bucket) {
-    const rows = bucket?.by_model || [];
+    const rows  = bucket?.by_model || [];
     const total = bucket?.total_cost_usd ?? 0;
     const calls = bucket?.total_calls ?? 0;
+    const totalTok = rows.reduce((s, m) => s + (m.input_tokens || 0) + (m.output_tokens || 0), 0);
     return `
       <div style="flex:1;min-width:280px">
         <div style="font-size:0.68rem;font-weight:700;color:var(--muted);text-transform:uppercase;
@@ -450,19 +326,19 @@ function _renderCosts(container, data) {
                 <td style="padding:0.2rem 0.4rem 0.2rem 0;color:var(--text)">${m.provider}</td>
                 <td style="padding:0.2rem 0.4rem;color:var(--muted);font-family:monospace;font-size:0.65rem"
                   >${m.model}</td>
-                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right">${m.calls}</td>
+                <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right">${_fmtNum(m.calls)}</td>
                 <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right"
-                  >${_fmtNum(m.input_tokens + m.output_tokens)}</td>
+                  >${_fmtNum((m.input_tokens || 0) + (m.output_tokens || 0))}</td>
                 <td style="padding:0.2rem 0 0.2rem 0.4rem;text-align:right;color:var(--accent)"
                   >$${m.cost_usd.toFixed(4)}</td>
               </tr>
             `).join('') : `
-              <tr><td colspan="5" style="color:var(--muted);padding:0.5rem 0">No data</td></tr>
+              <tr><td colspan="5" style="color:var(--muted);padding:0.5rem 0;font-size:0.75rem">No data yet</td></tr>
             `}
             <tr style="border-top:2px solid var(--border);font-weight:700">
               <td colspan="2" style="padding:0.25rem 0">Total</td>
-              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem">${calls}</td>
-              <td></td>
+              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem">${_fmtNum(calls)}</td>
+              <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem">${_fmtNum(totalTok)}</td>
               <td style="text-align:right;padding:0.25rem 0 0.25rem 0.4rem;color:var(--accent)">$${total.toFixed(4)}</td>
             </tr>
           </tbody>

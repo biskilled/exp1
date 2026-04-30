@@ -117,7 +117,6 @@ export function renderGraphWorkflow(container) {
       .gw-wf-name:focus { border-color:var(--accent); outline:none; background:var(--bg2); }
 
       /* Canvas area */
-      .gw-canvas-area { flex:1; overflow:hidden; display:flex; flex-direction:column; }
       .gw-pipeline-scroll { flex-shrink:0; overflow-x:auto; overflow-y:hidden;
         padding:1.5rem 2rem; max-height:260px; min-height:120px; }
       .gw-pipeline { display:flex; align-items:flex-start; gap:0; min-height:160px; }
@@ -356,6 +355,7 @@ export function renderGraphWorkflow(container) {
             </div>
             <div class="gw-pipeline" id="gw-pipeline" style="display:none"></div>
           </div>
+          <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
           <!-- Run progress panel (directly below nodes, fills remaining canvas space) -->
           <div class="gw-run-panel" id="gw-run-panel">
             <div class="gw-rp-hdr">
@@ -394,7 +394,6 @@ export function renderGraphWorkflow(container) {
             </div>
           </div>
         </div>
-        <div id="gw-exec-bar" class="gw-exec-bar" style="display:none"></div>
         <div id="gw-hist-bar" class="gw-hist-bar" style="display:none"></div>
       </div>
 
@@ -994,11 +993,13 @@ let _gwPollTimer   = null;   // async pipeline run poll
 let _gwRunId       = null;   // current async run id
 let _gwHistLimit   = 10;
 let _gwPanelMode   = null;   // 'node' | 'pipeline'
+let _gwPpFileData  = null;   // { type: 'doc'|'upload', path?: str, file?: File } or null
 
 function _showPipelineProps() {
   if (!_currentWf) return;
   _gwPanelMode = 'pipeline';
   _selectedNodeId = null;
+  _gwPpFileData  = null;
   document.querySelectorAll('.gw-node-card').forEach(c => c.classList.remove('selected'));
 
   // Close right detail panel — pipeline props are now inline bars
@@ -1072,14 +1073,45 @@ function _showPipelineProps() {
     <div id="gw-exec-body" style="padding:0.6rem 0.75rem;display:flex;flex-direction:column;
                                    gap:0.45rem;overflow-y:auto">
 
-      <div>
-        <div style="font-size:0.65rem;font-weight:600;color:var(--muted);text-transform:uppercase;
-                    letter-spacing:0.04em;margin-bottom:0.25rem">Task / Prompt</div>
+      <!-- Input mode toggle -->
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <span style="font-size:0.65rem;font-weight:600;color:var(--muted);text-transform:uppercase;
+                     letter-spacing:0.04em">Input</span>
+        <label style="display:flex;align-items:center;gap:0.2rem;font-size:0.72rem;cursor:pointer">
+          <input type="radio" name="pp-input-mode" value="prompt" checked
+            onchange="window._gwPpModeSwitch('prompt')"> Prompt
+        </label>
+        <label style="display:flex;align-items:center;gap:0.2rem;font-size:0.72rem;cursor:pointer">
+          <input type="radio" name="pp-input-mode" value="file"
+            onchange="window._gwPpModeSwitch('file')"> File
+        </label>
+      </div>
+
+      <!-- Prompt section -->
+      <div id="pp-prompt-section">
         <textarea id="pp-task" rows="3"
           placeholder="Describe what you want the pipeline to do…"
           style="width:100%;box-sizing:border-box;font-size:0.78rem;resize:vertical;
                  background:var(--bg1);border:1px solid var(--border);border-radius:4px;
                  padding:0.3rem 0.45rem;color:var(--fg);font-family:inherit"></textarea>
+      </div>
+
+      <!-- File section (hidden initially) -->
+      <div id="pp-file-section" style="display:none;flex-direction:column;gap:0.3rem">
+        <div style="font-size:0.65rem;color:var(--muted)">From project docs:</div>
+        <select id="pp-doc-select"
+          style="width:100%;box-sizing:border-box;padding:0.3rem 0.4rem;font-size:0.76rem;
+                 background:var(--bg1);border:1px solid var(--border);border-radius:4px;color:var(--fg)">
+          <option value="">Select document…</option>
+        </select>
+        <div style="text-align:center;font-size:0.62rem;color:var(--muted);margin:0.1rem 0">— or upload —</div>
+        <label class="btn btn-ghost btn-sm"
+          style="cursor:pointer;font-size:0.72rem;width:100%;box-sizing:border-box;text-align:center">
+          Browse file…
+          <input type="file" id="pp-file-input" style="display:none"
+            onchange="window._gwPpFileSelect(this)">
+        </label>
+        <div id="pp-file-name" style="font-size:0.65rem;color:var(--muted)"></div>
       </div>
 
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
@@ -1142,6 +1174,21 @@ function _showPipelineProps() {
   window._gwPpCancel    = _gwPpCancel;
   window._gwPpApprove   = _gwPpApprove;
   window._gwPpHistLimit = n => { _gwHistLimit = n; _gwLoadHistory(); };
+  window._gwPpModeSwitch = (mode) => {
+    const ps = document.getElementById('pp-prompt-section');
+    const fs = document.getElementById('pp-file-section');
+    if (ps) ps.style.display = mode === 'prompt' ? '' : 'none';
+    if (fs) fs.style.display = mode === 'file'   ? 'flex' : 'none';
+    if (mode === 'file') _gwPpLoadDocs();
+  };
+  window._gwPpFileSelect = (input) => {
+    const fn = document.getElementById('pp-file-name');
+    const sel = document.getElementById('pp-doc-select');
+    const f = input.files?.[0];
+    if (fn) fn.textContent = f ? f.name : '';
+    if (sel) sel.value = '';   // deselect doc when file chosen
+    _gwPpFileData = f ? { type: 'upload', file: f } : null;
+  };
   window._gwToggleHist  = () => {
     const body = document.getElementById('gw-hist-body');
     const lbl  = document.getElementById('gw-hist-toggle-lbl');
@@ -1153,6 +1200,24 @@ function _showPipelineProps() {
   };
 
   _gwLoadHistory();
+}
+
+async function _gwPpLoadDocs() {
+  const sel = document.getElementById('pp-doc-select');
+  if (!sel || sel.dataset.loaded) return;
+  sel.dataset.loaded = '1';
+  try {
+    const data = await api.documents.list(_project);
+    const list = Array.isArray(data) ? data : (data?.documents || data?.files || []);
+    sel.innerHTML = '<option value="">Select document…</option>' +
+      list.map(d => {
+        const name = d.name || d.filename || d.path?.split('/').pop() || d;
+        const path = d.path || d.name || d;
+        return `<option value="${_esc(path)}">${_esc(name)}</option>`;
+      }).join('');
+  } catch (_) {
+    sel.innerHTML = '<option value="">Failed to load documents</option>';
+  }
 }
 
 async function _gwSavePipelineProps() {
@@ -1178,8 +1243,46 @@ async function _gwSavePipelineProps() {
 }
 
 async function _gwPpRun() {
-  const task = (document.getElementById('pp-task')?.value || '').trim();
-  if (!task) { document.getElementById('pp-run-err').textContent = 'Enter a task first.'; return; }
+  const mode = document.querySelector('input[name="pp-input-mode"]:checked')?.value || 'prompt';
+  let task = '';
+  let inputFiles = [];
+
+  if (mode === 'file') {
+    const docPath = document.getElementById('pp-doc-select')?.value;
+    if (docPath) {
+      // Load doc content from project documents
+      try {
+        const data = await api.documents.read(docPath, _project);
+        const content = data?.content || data?.text || '';
+        task = content || `Process document: ${docPath}`;
+        inputFiles = [{ type: 'doc', path: docPath }];
+      } catch (_) {
+        task = `Process document: ${docPath}`;
+        inputFiles = [{ type: 'doc', path: docPath }];
+      }
+    } else if (_gwPpFileData?.file) {
+      // Read uploaded file content client-side
+      try {
+        task = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result);
+          reader.onerror = reject;
+          reader.readAsText(_gwPpFileData.file);
+        });
+        inputFiles = [{ type: 'upload', name: _gwPpFileData.file.name }];
+      } catch (_) {
+        document.getElementById('pp-run-err').textContent = 'Failed to read file.';
+        return;
+      }
+    } else {
+      document.getElementById('pp-run-err').textContent = 'Select a document or upload a file.';
+      return;
+    }
+  } else {
+    task = (document.getElementById('pp-task')?.value || '').trim();
+    if (!task) { document.getElementById('pp-run-err').textContent = 'Enter a task first.'; return; }
+  }
+
   document.getElementById('pp-run-err').textContent = '';
   document.getElementById('pp-run-btn').style.display    = 'none';
   document.getElementById('pp-cancel-btn').style.display = '';
@@ -1189,7 +1292,9 @@ async function _gwPpRun() {
 
   // Try as a YAML pipeline run (async)
   try {
-    const res = await api.agents.startPipelineRun({ pipeline: _currentWf.name, task, project: _project });
+    const payload = { pipeline: _currentWf.name, task, project: _project };
+    if (inputFiles.length) payload.input_files = inputFiles;
+    const res = await api.agents.startPipelineRun(payload);
     _gwRunId = res.run_id;
     _gwPpLog(`Run started: ${_gwRunId}`);
     _gwStartPoll();

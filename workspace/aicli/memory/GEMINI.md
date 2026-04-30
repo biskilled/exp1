@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-04-30 01:10 UTC -->
+<!-- Last updated: 2026-04-30 01:40 UTC -->
 # aicli
-_2026-04-30 01:10 UTC | Memory synced: 2026-04-30_
+_2026-04-30 01:40 UTC | Memory synced: 2026-04-30_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -42,20 +42,21 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) with per-node temperature/top_p/provider/model overrides
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
-- **deployment_backend**: Railway (Dockerfile + railway.toml)
-- **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **role_config**: YAML factory defaults (workspace/_templates/pipelines/roles/) with DB source-of-truth (mng_agent_roles); role versioning via mng_agent_role_versions
+- **system_prompts**: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding–General, Design & Planning, Review & Quality)
 - **mcp_transport**: Stdio MCP server with 10 MCPs; unified REST dispatch
+- **deployment_backend**: Railway (Dockerfile + railway.toml)
 
 ## Key Architectural Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved work items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state
-- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding — General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
-- Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations configured per role; base_snapshot stores pristine role state
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p per node
-- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details and per-node temperature overrides
+- Role YAML as factory defaults: workspace/_templates/pipelines/roles/role_*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING; mng_agent_roles DB is single source of truth at runtime; UI edits persist in DB only; base_snapshot JSONB stores pristine state; POST /agent-roles/{id}/refresh reloads YAML and updates DB
+- System prompts consolidation: 3 shared presets in workspace/_templates/pipelines/system_prompts.yaml (Coding–General, Design & Planning, Review & Quality); all roles default to canonical preset; system roles cleaned to 3 canonical entries only
+- Role parameters: system_prompt + system_prompt_preset (references 3 shared presets), provider/model, temperature/top_p, tools (by category: git/files/memory), mcp (multi-select), max_iterations configured per role; base_snapshot stores pristine role state for restore and versioning via mng_agent_role_versions
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); provider adapters (Claude/OpenAI/DeepSeek/Gemini/Grok) all accept temperature parameter; pipeline stages can override temperature/top_p per node at execution time
+- Pipeline execution: 4-agent async DAG (PM → Architect → Developer → Reviewer) triggered only on approved items under approved use cases; executed via asyncio.gather; GET /agent-roles/pipelines/{name} returns full config with stage role details and per-node temperature overrides; POST /agents/pipeline-runs starts async execution; max_iterations mandatory per node
 - Pipeline activation: Settings/Roles & Pipelines tab with dual-pane dual-column view shows all roles/pipelines with activation checkboxes; only activated items appear in Roles/Pipelines main tabs; activation checkbox in settings controls visibility and executability
 - Tech tag auto-detection: reads tech_stack from project_state.json instead of hardcoded regex; tags validated against actual project technologies in _build_tech_tags_block()
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
@@ -122,4 +123,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-04-30 01:10 UTC_
+_Last updated: 2026-04-30 01:40 UTC_

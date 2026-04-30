@@ -1,0 +1,74 @@
+# LLM Provider Pricing — per-token costs (USD/token)
+#
+# Used as the default fallback when no DB-stored configuration exists.
+# Admins can override these values via Admin → Provider Costs in the UI.
+# Prices are per individual token, not per 1M tokens.
+#
+# Formula: cost = (input_tokens * input_price) + (output_tokens * output_price)
+
+claude:
+  claude-sonnet-4-6:
+    input:  0.000003      # $3.00 / 1M tokens
+    output: 0.000015      # $15.00 / 1M tokens
+  claude-opus-4-6:
+    input:  0.000015      # $15.00 / 1M tokens
+    output: 0.000075      # $75.00 / 1M tokens
+  claude-haiku-4-5-20251001:
+    input:  0.0000008     # $0.80 / 1M tokens
+    output: 0.000004      # $4.00 / 1M tokens
+  claude-haiku-3-5:
+    input:  0.0000008
+    output: 0.000004
+
+openai:
+  gpt-4.1:
+    input:  0.000002      # $2.00 / 1M tokens
+    output: 0.000008      # $8.00 / 1M tokens
+  gpt-4.1-mini:
+    input:  0.0000004     # $0.40 / 1M tokens
+    output: 0.0000016     # $1.60 / 1M tokens
+  gpt-4o:
+    input:  0.000005      # $5.00 / 1M tokens
+    output: 0.000015      # $15.00 / 1M tokens
+  gpt-4o-mini:
+    input:  0.00000015    # $0.15 / 1M tokens
+    output: 0.0000006     # $0.60 / 1M tokens
+  o3:
+    input:  0.000010      # $10.00 / 1M tokens
+    output: 0.000040      # $40.00 / 1M tokens
+  o4-mini:
+    input:  0.0000011     # $1.10 / 1M tokens
+    output: 0.0000044     # $4.40 / 1M tokens
+
+deepseek:
+  deepseek-chat:
+    input:  0.00000027    # $0.27 / 1M tokens
+    output: 0.0000011     # $1.10 / 1M tokens
+  deepseek-reasoner:
+    input:  0.00000055    # $0.55 / 1M tokens
+    output: 0.00000219    # $2.19 / 1M tokens
+
+gemini:
+  gemini-2.0-flash:
+    input:  0.0000001     # $0.10 / 1M tokens
+    output: 0.0000004     # $0.40 / 1M tokens
+  gemini-2.5-flash:
+    input:  0.0000003     # $0.30 / 1M tokens
+    output: 0.0000025     # $2.50 / 1M tokens
+  gemini-1.5-pro:
+    input:  0.0000035     # $3.50 / 1M tokens
+    output: 0.0000105     # $10.50 / 1M tokens
+  gemini-1.5-flash:
+    input:  0.000000075   # $0.075 / 1M tokens
+    output: 0.0000003     # $0.30 / 1M tokens
+
+grok:
+  grok-3:
+    input:  0.000003      # $3.00 / 1M tokens
+    output: 0.000015      # $15.00 / 1M tokens
+  grok-3-fast:
+    input:  0.000005      # $5.00 / 1M tokens
+    output: 0.000025      # $25.00 / 1M tokens
+  grok-3-mini:
+    input:  0.0000003     # $0.30 / 1M tokens
+    output: 0.0000005     # $0.50 / 1M tokens
