@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 14:05 UTC -->
+<!-- Last updated: 2026-04-30 15:05 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips above textarea; supports multiple selections
-- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings
-- Pipeline execution UI: Pipelines tab shows full builder with node configuration panel; right detail panel shows pipeline flow visualization and per-stage node properties
-- Role library direct execution: Roles can be executed directly via Role Library view; same exec bar interface as pipeline execution (output folder, file upload, document search, prompt input)
+- Chore commits from claude cli sessions (session 5cf393d1): backend stability, memory layer consistency, and data integrity fixes across multiple runs from 2026-04-30
+- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload in same row; files as removable chips above textarea; integrated into Pipelines tab and Roles library view
+- Dashboard restoration: Mirror Data cards (commits, prompts, items, messages—total + 24h), approved vs waiting-to-approve work items/use cases, total embeddings, Pipeline Runs health tiles
+- Pipeline execution UI: Pipelines tab shows builder with node configuration; right panel shows pipeline flow visualization and per-stage node properties; dynamic role/doc search dropdown
 
-_Last updated: 2026-04-30 14:05 UTC_
+_Last updated: 2026-04-30 15:05 UTC_

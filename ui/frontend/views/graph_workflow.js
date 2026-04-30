@@ -1147,9 +1147,9 @@ function _showPipelineProps() {
                       letter-spacing:0.04em;margin-bottom:0.1rem">Documents</div>
           <div id="pp-doc-trigger" onclick="window._gwPpDocToggle()"
                style="display:flex;align-items:center;gap:0.3rem;width:155px;box-sizing:border-box;
-                      padding:0.25rem 0.45rem;background:var(--bg);border:1px solid var(--border);
-                      border-radius:4px;cursor:pointer;user-select:none;min-height:30px">
-            <span id="pp-doc-label" style="flex:1;font-size:0.7rem;color:var(--muted);
+                      padding:0.25rem 0.4rem;background:var(--bg1);border:1px solid var(--border);
+                      border-radius:4px;cursor:pointer;user-select:none">
+            <span id="pp-doc-label" style="flex:1;font-size:0.72rem;color:var(--muted);
                                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pick docs…</span>
             <span style="color:var(--muted);font-size:0.65rem;flex-shrink:0">▾</span>
           </div>
@@ -1168,7 +1168,7 @@ function _showPipelineProps() {
         <div>
           <div style="font-size:0.58rem;color:transparent;margin-bottom:0.1rem">·</div>
           <button class="btn btn-ghost btn-sm"
-            style="font-size:0.7rem;padding:0.22rem 0.5rem;white-space:nowrap"
+            style="font-size:0.72rem;padding:0.25rem 0.5rem;white-space:nowrap"
             onclick="document.getElementById('pp-file-input').click()">+ Files</button>
           <input type="file" id="pp-file-input" multiple style="display:none"
             onchange="window._gwPpFileAdd(this)">
@@ -1869,9 +1869,9 @@ function _showRoleExec(role) {
                       letter-spacing:0.04em;margin-bottom:0.1rem">Documents</div>
           <div id="pp-doc-trigger" onclick="window._gwPpDocToggle()"
                style="display:flex;align-items:center;gap:0.3rem;width:155px;box-sizing:border-box;
-                      padding:0.25rem 0.45rem;background:var(--bg);border:1px solid var(--border);
-                      border-radius:4px;cursor:pointer;user-select:none;min-height:30px">
-            <span id="pp-doc-label" style="flex:1;font-size:0.7rem;color:var(--muted);
+                      padding:0.25rem 0.4rem;background:var(--bg1);border:1px solid var(--border);
+                      border-radius:4px;cursor:pointer;user-select:none">
+            <span id="pp-doc-label" style="flex:1;font-size:0.72rem;color:var(--muted);
                                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Pick docs…</span>
             <span style="color:var(--muted);font-size:0.65rem;flex-shrink:0">▾</span>
           </div>
@@ -1890,7 +1890,7 @@ function _showRoleExec(role) {
         <div>
           <div style="font-size:0.58rem;color:transparent;margin-bottom:0.1rem">·</div>
           <button class="btn btn-ghost btn-sm"
-            style="font-size:0.7rem;padding:0.22rem 0.5rem;white-space:nowrap"
+            style="font-size:0.72rem;padding:0.25rem 0.5rem;white-space:nowrap"
             onclick="document.getElementById('pp-role-file-input').click()">+ Files</button>
           <input type="file" id="pp-role-file-input" multiple style="display:none"
             onchange="window._gwPpFileAdd(this)">
