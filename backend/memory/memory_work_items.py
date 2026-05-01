@@ -650,7 +650,8 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                              COUNT(*) FILTER (
                                WHERE due_date < CURRENT_DATE
                                AND wi_id IS NOT NULL AND wi_id NOT LIKE 'REJ%%'
-                               AND COALESCE(user_status, score_status, 0) < 5
+                               AND COALESCE(score_status, 0) < 5
+                               AND COALESCE(user_status, '') NOT IN ('done', 'review')
                              ) AS overdue
                            FROM mem_work_items
                            WHERE project_id=%s AND deleted_at IS NULL""",
