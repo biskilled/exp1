@@ -565,17 +565,23 @@ class Agent:
                     "Agent '%s' step %d: tool call without Thought — firing hallucination guard (%d/%d)",
                     self.name, iteration, hallucination_guard_count, _MAX_GUARD_RETRIES,
                 )
-                # Append the assistant turn that has tool_use, then inject the guard
+                # Anthropic requires every tool_use to be followed by tool_result blocks.
+                # Satisfy each tool_use with a tool_result error, so the message
+                # history remains valid, then continue so the model retries with a Thought.
                 _raw = resp.get("raw")
-                messages.append({"role": "assistant", "content": _raw.content if hasattr(_raw, "content") else resp.get("content", "")})
-                messages.append({
-                    "role": "user",
-                    "content": (
-                        "⚠️ You called a tool without writing 'Thought:' first. "
-                        "You MUST explain your reasoning before every tool call. "
-                        "Please write your Thought, then call the tool again."
-                    ),
-                })
+                messages.append({"role": "assistant", "content": _raw.content if hasattr(_raw, "content") else []})
+                guard_results = []
+                for tc in tool_calls:
+                    tid = getattr(tc, "id", "") if not isinstance(tc, dict) else tc.get("id", "")
+                    guard_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": (
+                            "Tool call skipped — you must write 'Thought: [your reasoning]' "
+                            "before every tool call. Please restart your response with a Thought."
+                        ),
+                    })
+                messages.append({"role": "user", "content": guard_results})
                 continue  # re-call LLM — don't execute the tool yet
 
             # ── Loop detection ─────────────────────────────────────────────────

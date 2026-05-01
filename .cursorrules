@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-04-30 22:16 UTC -->
+<!-- Last updated: 2026-05-01 10:23 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Chat history & session grouping: session-level organization in History view with proper prompt/response display; CLI session source detection via src column (not tags); multiple session filtering per phase
 - Unified execution experience: execute bar now standard across Pipeline tab, Role Library, and Use Cases; multi-file upload with chips, doc search dropdown, output folder context updates
 
-_Last updated: 2026-04-30 22:16 UTC_
+_Last updated: 2026-05-01 10:23 UTC_
