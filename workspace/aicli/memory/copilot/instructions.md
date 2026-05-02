@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 19:16 UTC -->
+<!-- Last updated: 2026-05-02 20:10 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Pipeline execution cost tracking: fixed cost_usd calculation to account for max_iterations terminal states (done/timeout/error); now properly applies _calc_cost(provider, model, in_tokens, out_tokens) for all completion scenarios
+- Automated pipeline execution via hooks: auto_commit_push.sh triggers after Claude Code sessions; integration with mem_mrr_commits for work item linking and auto-closure patterns
 - Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps showing tool calls and observations, duration and cost breakdown per stage
-- Pipeline report generation: markdown files saved to pipeline/{output_folder}/{use_case_id}__{pipeline_name}.md when executing from Use Cases; reports built from in-memory _stage_mem trace during execution
-- DOM update optimization: in-place checkbox updates for role/pipeline activation and mode flags (use_case/item) without full page reloads; reduced layout jank in Settings panel
+- Pipeline cost tracking and reporting: fixed cost_usd calculation for max_iterations terminal states; applies _calc_cost(provider, model, in_tokens, out_tokens) for all completion scenarios; pipeline reports saved with cost breakdown
+- DOM updates and Settings optimization: in-place checkbox updates for role/pipeline activation and mode flags without full page reloads; reduced layout jank in Settings panel
 
-_Last updated: 2026-05-02 19:16 UTC_
+_Last updated: 2026-05-02 20:10 UTC_

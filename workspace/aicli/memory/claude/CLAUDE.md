@@ -17,7 +17,7 @@ You are working on **aicli**.
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (●●●●● visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to pipeline/{folder}/{use_case_id}__{pipeline_name}.md
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to pipeline/{folder}/{use_case_id}__{pipeline_name}.md
 - Verdict banner with score visualization: approved/needs_changes/rejected verdict with ●/○ dots (0-5), stage details panel with input summary, output artifacts (code diffs), collapsible ReAct steps per stage with duration/cost breakdown
 
 ---

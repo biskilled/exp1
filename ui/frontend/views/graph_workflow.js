@@ -42,7 +42,7 @@ let _timerInterval = null;      // setInterval handle for live clock
 let _approvalChatHistory = [];  // [{role, content}] — chat within current approval gate
 
 // Cache for sidebar data — loaded once per project, refreshed on mutation
-let _listCache = null;  // { workflows, roles, recentRuns, project } or null
+let _listCache = null;  // { workflows, roles, yamlPipes, project } or null
 
 // Run log accumulator — live text log entries for current run
 let _runLog = [];  // [{node, msg, ts}]
@@ -356,16 +356,16 @@ export function renderGraphWorkflow(container) {
     <div class="gw-body2">
       <div class="gw-sidebar2">
         <div class="gw-sb-section">
-          <div class="gw-sb-label">Saved Pipelines</div>
+          <div class="gw-sb-label">Pipelines</div>
+          <div id="gw-yaml-list"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
+        </div>
+        <div class="gw-sb-section">
+          <div class="gw-sb-label">Custom Flows</div>
           <div id="gw-wf-list"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
         <div class="gw-sb-section">
           <div class="gw-sb-label">Role Library</div>
           <div id="gw-role-library"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
-        </div>
-        <div class="gw-sb-section">
-          <div class="gw-sb-label">Recent Runs</div>
-          <div id="gw-recent-runs"><div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">Loading…</div></div>
         </div>
       </div>
 
@@ -547,7 +547,7 @@ async function _loadList() {
 
   // Render from cache immediately if available for this project
   if (_listCache && _listCache.project === _project) {
-    _applyListData(_listCache.workflows, _listCache.roles, _listCache.recentRuns);
+    _applyListData(_listCache.workflows, _listCache.roles, _listCache.yamlPipes || []);
     // Refresh in background (fire and forget)
     _refreshListInBackground();
     return;
@@ -560,35 +560,54 @@ async function _loadList() {
 
 async function _refreshListInBackground() {
   try {
-    const [wfResult, roleResult, runsResult] = await Promise.allSettled([
+    const [wfResult, roleResult, yamlResult] = await Promise.allSettled([
       api.graphWorkflows.list(_project || ''),
       api.agentRoles.list(_project || '_global'),
-      api.graphWorkflows.recentRuns(_project || '', 15),
+      api.agents.listPipelines(),
     ]);
 
-    const workflows = wfResult.status === 'fulfilled' ? (wfResult.value.workflows || []) : null;
-    const roles = roleResult.status === 'fulfilled' ? (roleResult.value.roles || []) : null;
-    const recentRuns = runsResult.status === 'fulfilled' ? (runsResult.value.runs || []) : [];
+    const workflows  = wfResult.status   === 'fulfilled' ? (wfResult.value.workflows  || []) : null;
+    const roles      = roleResult.status === 'fulfilled' ? (roleResult.value.roles    || []) : null;
+    const yamlPipes  = yamlResult.status === 'fulfilled' ? (yamlResult.value          || []) : [];
 
     if (workflows !== null) {
-      _listCache = { project: _project, workflows, roles: roles || _roles, recentRuns };
-      _applyListData(workflows, roles, recentRuns);
+      _listCache = { project: _project, workflows, roles: roles || _roles, yamlPipes };
+      _applyListData(workflows, roles, yamlPipes);
     }
   } catch (_) {}
 }
 
-function _applyListData(workflows, roles, recentRuns) {
+function _applyListData(workflows, roles, yamlPipes) {
   const el = document.getElementById('gw-wf-list');
-  if (!el) return;
-
   if (roles) {
     _roles = roles;
     _renderRoleLibrary();
   }
-  _renderRecentRuns(recentRuns);
 
+  // ── YAML pipelines section ─────────────────────────────────────────────────
+  const yamlEl = document.getElementById('gw-yaml-list');
+  if (yamlEl) {
+    if (!yamlPipes || !yamlPipes.length) {
+      yamlEl.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No activated pipelines</div>';
+    } else {
+      yamlEl.innerHTML = yamlPipes.map(p => {
+        const isActive = _currentWf?._yamlName === p.name;
+        const stagesLabel = (p.stages || []).map(s => s.role || s.key).join(' → ');
+        return `
+          <div class="gw-wf-item ${isActive ? 'active' : ''}"
+               onclick="window._gwOpenYamlPipeline('${_esc(p.name)}')">
+            <div style="font-size:0.78rem;font-weight:600">${_esc(p.name.replace(/_/g,' '))}</div>
+            <div style="font-size:0.62rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                 title="${_esc(stagesLabel)}">${_esc(stagesLabel)}</div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  // ── Custom flows (graph workflows) ─────────────────────────────────────────
+  if (!el) return;
   if (!workflows || !workflows.length) {
-    el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No flows yet — use "From Template" to start</div>';
+    el.innerHTML = '<div style="padding:0.4rem 0.75rem;color:var(--muted);font-size:0.75rem">No custom flows — use "From Template" to create one</div>';
     return;
   }
   el.innerHTML = workflows.map(wf => {
@@ -607,6 +626,48 @@ function _applyListData(workflows, roles, recentRuns) {
   }).join('');
   window._gwOpenWf = _openWorkflow;
 }
+
+// ── Open YAML pipeline (read-only view with exec bar) ─────────────────────────
+
+window._gwOpenYamlPipeline = async (name) => {
+  try {
+    const pl = await api.agentRoles.getPipelineConfig(name);
+    // Build synthetic workflow object that _renderPipeline + _showPipelineProps can consume
+    const nodes = (pl.stages || []).map((s, i) => ({
+      id:            s.key || `stage_${i}`,
+      name:          s.role || s.key,
+      role_id:       null,
+      provider:      s.provider || null,
+      model:         s.model    || null,
+      temperature:   s.temperature_override ?? null,
+      stateless:     false,
+      max_retry:     s.retry ?? 1,
+      continue_on_fail: false,
+      require_approval: false,
+      _isYamlStage:  true,   // flag: no delete button, no add
+    }));
+    const edges = nodes.slice(0, -1).map((_, i) => ({
+      id: `e${i}`, source_node_id: nodes[i].id, target_node_id: nodes[i + 1].id, label: '',
+    }));
+    _currentWf = {
+      id:                    null,
+      name:                  name,
+      _yamlName:             name,         // used for sidebar active highlight
+      _isYaml:               true,          // flag: read-only rendering
+      description:           (pl.description || '').split('\n')[0].trim(),
+      nodes,
+      edges,
+      max_rejection_retries: pl.max_rejection_retries ?? 2,
+      continue_on_failure:   pl.continue_on_failure ?? false,
+      save_memory:           pl.save_memory ?? true,
+      default_temperature:   pl.default_temperature ?? null,
+    };
+    _showWorkflow(_currentWf);
+    _loadList();  // refresh active highlights
+  } catch (e) {
+    toast(`Failed to load pipeline: ${e.message}`, 'error');
+  }
+};
 
 function _renderRoleLibrary() {
   const lib = document.getElementById('gw-role-library');
@@ -702,11 +763,18 @@ function _showWorkflow(wf) {
   const nameWrap = document.getElementById('gw-wf-name-wrap');
   const runControls = document.getElementById('gw-run-controls');
   const propsBtn = document.getElementById('gw-props-btn');
-  const displayName = wf.name === '_work_item_pipeline' ? 'Work Item Pipeline' : wf.name;
-  if (nameEl) nameEl.value = displayName;
+  const isYaml = !!wf._isYaml;
+  const displayName = wf.name === '_work_item_pipeline'
+    ? 'Work Item Pipeline'
+    : isYaml ? wf.name.replace(/_/g, ' ') : wf.name;
+  if (nameEl) {
+    nameEl.value = displayName;
+    nameEl.readOnly = isYaml;
+    nameEl.title = isYaml ? 'YAML pipeline — name is read-only (edit in Settings)' : '';
+  }
   if (nameWrap) nameWrap.style.display = '';
   if (runControls) runControls.style.display = 'flex';
-  if (propsBtn) propsBtn.style.display = '';
+  if (propsBtn) propsBtn.style.display = isYaml ? 'none' : '';
   _renderPipeline(wf);
   // Auto-open properties panel when a workflow is first selected
   _showPipelineProps();
@@ -765,7 +833,7 @@ let _pipelineTemplates = null;
 async function _loadPipelineTemplates() {
   if (_pipelineTemplates) return _pipelineTemplates;
   try {
-    const pipelines = await api.listPipelines();
+    const pipelines = await api.agents.listPipelines();
     _pipelineTemplates = pipelines.map(p => ({
       key:         p.name,
       label:       p.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
@@ -933,12 +1001,14 @@ function _renderPipeline(wf) {
     }
   });
 
-  // Add button at end
-  html += `
-    <div style="display:flex;align-items:center;padding-left:${nodes.length ? '0.5rem' : '0'}">
-      <button class="gw-add-btn" onclick="window._gwShowAddMenu(event)" title="Add node">+</button>
-    </div>
-  `;
+  // Add button at end — hidden for read-only YAML pipelines
+  if (!wf._isYaml) {
+    html += `
+      <div style="display:flex;align-items:center;padding-left:${nodes.length ? '0.5rem' : '0'}">
+        <button class="gw-add-btn" onclick="window._gwShowAddMenu(event)" title="Add node">+</button>
+      </div>
+    `;
+  }
 
   pipeline.innerHTML = html;
 
@@ -991,7 +1061,7 @@ function _renderNodeCard(node) {
         <div class="gw-node-dot" style="background:${dotColor}"></div>
         <div class="gw-node-name">${_esc(node.name)}</div>
         <div class="gw-node-badge">${_esc(badge)}</div>
-        <button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)" title="Delete node">✕</button>
+        ${node._isYamlStage ? '' : `<button class="gw-node-del" onclick="window._gwDeleteNode('${node.id}', event)" title="Delete node">✕</button>`}
       </div>
       <div class="gw-node-body">
         <div class="gw-node-row">
