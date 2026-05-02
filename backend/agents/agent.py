@@ -563,6 +563,45 @@ class Agent:
             # ── Terminal turn ──────────────────────────────────────────────────
             if stop_reason != "tool_use" or not tool_calls:
                 structured = self._parse_structured_output(content)
+
+                # ── Force-JSON step ────────────────────────────────────────────
+                # If the model ended on a "Thought:" continuation without emitting
+                # JSON, inject one more user turn demanding the output JSON now.
+                if not structured and steps:
+                    _raw = resp.get("raw")
+                    _assistant_content = _raw.content if (
+                        _raw and hasattr(_raw, "content")
+                    ) else content
+                    messages.append({"role": "assistant", "content": _assistant_content})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "You have finished your research. "
+                            "Do NOT call any more tools. "
+                            "Output ONLY the required JSON object right now based on "
+                            "everything you found. No Thought: prefix, no markdown fences — "
+                            "just the raw JSON."
+                        ),
+                    })
+                    resp2 = await self._call_provider(
+                        messages, max_tokens, api_key, system_override=system
+                    )
+                    total_input  += resp2.get("input_tokens", 0)
+                    total_output += resp2.get("output_tokens", 0)
+                    content2 = resp2.get("content", "")
+                    structured = self._parse_structured_output(content2)
+                    if structured:
+                        content = content2
+                        log.info(
+                            "Agent '%s' force-JSON succeeded on extra turn",
+                            self.name,
+                        )
+                    else:
+                        log.warning(
+                            "Agent '%s' force-JSON failed — structured_out will be None",
+                            self.name,
+                        )
+
                 log.info(
                     "Agent '%s' finished: %d steps, structured=%s, tokens=%d/%d",
                     self.name, len(steps), bool(structured), total_input, total_output,

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 23:24 UTC -->
+<!-- Last updated: 2026-05-02 23:40 UTC -->
 You are a senior developer working on **aicli**.
 Respect all project facts below. Never contradict them unless explicitly asked.
 When working on a specific feature, ask for its snapshot before making decisions.

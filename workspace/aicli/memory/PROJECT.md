@@ -306,8 +306,8 @@ sidebar tabs:
 - Resizable pipeline run panel UI: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage('uc_panel_width')
 - Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible <details> log toggle below stage summary; logs appear only under their respective stage (no duplication)
 - Pipeline report MD folder/filename editing: PATCH endpoint live; folder path and filename are now independently editable inputs in panel; supports path changes with automatic save
-- Bug fixes in active migration: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
-- Database schema cleanup: lifecycle tags removal from Planner UI; audit of unused mem_ai_events columns; table structure persistence validation
+- Verdict zone with item-by-item scoring: items reviewed table shows each work item with final score (0-5) + reasoning; score calculated from Code Reviewer step output and displayed as dots + numeric
+- Database schema cleanup & bug fixes: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
 
 ## Key Decisions
 
@@ -317,7 +317,7 @@ sidebar tabs:
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{slug}.md
 - Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
@@ -325,7 +325,7 @@ sidebar tabs:
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs collapsible under stage summary only (no global toggle); stage summaries appear first, followed by per-role log toggles below
+- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs collapsible under stage summary only (no global toggle); stage summaries appear first, followed by per-role log toggles below; pipeline MD reports editable folder path and filename with PATCH endpoint
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
