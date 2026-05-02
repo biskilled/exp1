@@ -592,3 +592,59 @@ async def _run_pipeline_bg(project: str, item_id: str, pid: int, task: str, wi) 
             wi.update(item_id, pid, {"pipeline_status": "error"})
         except Exception:
             pass
+
+
+@router.post("/{project}/embed-all")
+async def embed_all_items(project: str, background_tasks: BackgroundTasks):
+    """Trigger background embedding for all work items that lack an embedding vector.
+
+    Safe to call repeatedly — only processes items where embedding IS NULL.
+    Returns count of items queued.
+    """
+    from core.database import db
+    pid = _pid(project)
+
+    if not db.is_available():
+        raise HTTPException(503, "PostgreSQL required")
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, name, wi_type, summary, deliveries, delivery_type,
+                              acceptance_criteria, implementation_plan
+                       FROM mem_work_items
+                       WHERE project_id=%s AND embedding IS NULL AND deleted_at IS NULL
+                       ORDER BY created_at DESC
+                       LIMIT 500""",
+                    (pid,),
+                )
+                rows = cur.fetchall()
+    except Exception as exc:
+        raise HTTPException(500, str(exc))
+
+    if not rows:
+        return {"queued": 0, "message": "All items already have embeddings"}
+
+    def _do_embed():
+        from memory._wi_helpers import _embed_work_item
+        ok = 0
+        for r in rows:
+            item_id, name, wi_type, summary, deliveries, delivery_type, ac, impl = r
+            try:
+                _embed_work_item(str(item_id), {
+                    "name": name or "",
+                    "wi_type": wi_type or "",
+                    "summary": summary or "",
+                    "deliveries": deliveries or "",
+                    "delivery_type": delivery_type or "",
+                    "acceptance_criteria": ac or "",
+                    "implementation_plan": impl or "",
+                })
+                ok += 1
+            except Exception as e:
+                _logger.warning("embed_all: failed for %s: %s", item_id, e)
+        _logger.info("embed_all: embedded %d/%d items for project=%s", ok, len(rows), project)
+
+    background_tasks.add_task(_do_embed)
+    return {"queued": len(rows), "message": f"Embedding {len(rows)} items in background"}

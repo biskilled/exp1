@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 20:10 UTC -->
+<!-- Last updated: 2026-05-02 21:14 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Automated pipeline execution via hooks: auto_commit_push.sh triggers after Claude Code sessions; integration with mem_mrr_commits for work item linking and auto-closure patterns
-- Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps showing tool calls and observations, duration and cost breakdown per stage
-- Pipeline cost tracking and reporting: fixed cost_usd calculation for max_iterations terminal states; applies _calc_cost(provider, model, in_tokens, out_tokens) for all completion scenarios; pipeline reports saved with cost breakdown
-- DOM updates and Settings optimization: in-place checkbox updates for role/pipeline activation and mode flags without full page reloads; reduced layout jank in Settings panel
+- Auto-commit hooks after Claude Code sessions: auto_commit_push.sh triggers MCP tool calls and mem_mrr_commits capture; work item linking and auto-closure patterns via commit regex
+- Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps with tool calls/observations, duration/cost breakdown per stage
+- Pipeline cost tracking: fixed cost_usd calculation for max_iterations terminal states; _calc_cost(provider, model, in_tokens, out_tokens) applied across all completion scenarios; cost breakdown in pipeline reports
+- Pipeline node diagram and execution flow: Cytoscape.js visualization with async DAG execution, per-node checkpoint/resume, approval gates, and real-time status updates
 
-_Last updated: 2026-05-02 20:10 UTC_
+_Last updated: 2026-05-02 21:14 UTC_

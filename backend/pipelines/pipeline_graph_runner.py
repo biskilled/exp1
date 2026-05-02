@@ -203,7 +203,12 @@ async def _execute_node(node: dict, run_id: str, ctx: dict, iteration: int, proj
             f"\nRespond with valid JSON only. Required fields: {', '.join(fields)}."
         )
 
-    user_parts.append(f"\n<task>\nIteration {iteration + 1}. Proceed.\n</task>")
+    ac = (node.get("acceptance_criteria") or node.get("success_criteria") or "").strip()
+    task_str = f"Iteration {iteration + 1}."
+    if ac:
+        task_str += f"\n\nAcceptance criteria for this stage:\n{ac}"
+    task_str += "\nProceed."
+    user_parts.append(f"\n<task>\n{task_str}\n</task>")
     user_msg = "\n".join(user_parts)
 
     result_id = None

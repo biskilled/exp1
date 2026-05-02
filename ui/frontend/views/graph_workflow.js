@@ -1110,6 +1110,7 @@ let _gwPpFileList     = [];    // [{type:'doc'|'upload', name:str, path?:str, fi
 let _gwPpDocsCache    = null;  // cached [{name, path}] from api.documents.list
 let _gwPpPipeNames    = null;  // cached existing pipeline folder names
 let _gwPpFileData     = null;  // legacy compat — always null now
+let _gwProviderModels = null;  // cached from GET /agent-roles/providers
 
 function _showPipelineProps() {
   if (!_currentWf) return;
@@ -2211,7 +2212,9 @@ function _renderDetailPanel(node) {
   const effTemp     = node.temperature != null ? node.temperature : (matchedRole?.temperature ?? null);
   const effRetry    = node.max_retry   != null ? node.max_retry   : (matchedRole?.max_iterations ?? 3);
 
-  const providerOptions = ['claude','openai','deepseek','gemini','grok'].map(p =>
+  // Initial options — replaced by _gwPopulateProviderModels() after render
+  const providerOptions = ['claude','openai','deepseek','gemini','grok',
+                           'claude_sdk','codex_sdk','gemini_sdk'].map(p =>
     `<option value="${p}" ${effProvider===p?'selected':''}>${p}</option>`
   ).join('');
 
@@ -2235,11 +2238,13 @@ function _renderDetailPanel(node) {
     <div style="display:flex;gap:0.4rem">
       <div class="gw-field" style="flex:1;min-width:0">
         <label>Provider</label>
-        <select id="dn-provider">${providerOptions}</select>
+        <select id="dn-provider" onchange="window._gwOnProviderChange()">${providerOptions}</select>
       </div>
-      <div class="gw-field" style="width:120px">
+      <div class="gw-field" style="width:140px">
         <label>Model</label>
-        <input id="dn-model" value="${_esc(effModel)}" placeholder="default" style="font-size:0.72rem" />
+        <select id="dn-model" style="font-size:0.72rem;width:100%">
+          <option value="${_esc(effModel)}">${_esc(effModel || 'default')}</option>
+        </select>
       </div>
       <div class="gw-field" style="width:52px">
         <label>Temp</label>
@@ -2318,7 +2323,64 @@ function _renderDetailPanel(node) {
         style="font-size:0.73rem;font-family:inherit">${_esc(acceptanceCriteria)}</textarea>
     </div>
   `;
+
+  // Async-populate provider + model dropdowns from API
+  _gwPopulateProviderModels(effProvider, effModel);
 }
+
+// ── Provider/model dropdowns ──────────────────────────────────────────────────
+
+async function _gwPopulateProviderModels(effProvider, effModel) {
+  try {
+    if (!_gwProviderModels) {
+      const data = await api.agentRoles.providers();
+      _gwProviderModels = data.providers || [];
+    }
+    const provSel = document.getElementById('dn-provider');
+    if (!provSel) return;  // panel was closed before fetch completed
+
+    // Replace provider options with full API list
+    provSel.innerHTML = _gwProviderModels.map(p =>
+      `<option value="${p.id}" ${p.id === effProvider ? 'selected' : ''}>${p.label || p.id}</option>`
+    ).join('');
+
+    // Populate model select for the current provider
+    _gwUpdateModelSelect(effProvider, effModel);
+  } catch (e) {
+    // Fallback: hardcoded list already in place, leave model select as-is
+  }
+}
+
+function _gwUpdateModelSelect(provider, currentModel) {
+  const modelSel = document.getElementById('dn-model');
+  if (!modelSel || !_gwProviderModels) return;
+
+  const prov = _gwProviderModels.find(p => p.id === provider);
+  const models = prov?.models || [];
+
+  modelSel.innerHTML = `<option value="">default</option>` +
+    models.map(m =>
+      `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`
+    ).join('');
+
+  // If saved model isn't in the list (custom override), add it
+  if (currentModel && !models.includes(currentModel)) {
+    const opt = document.createElement('option');
+    opt.value = currentModel;
+    opt.textContent = currentModel;
+    opt.selected = true;
+    modelSel.appendChild(opt);
+  }
+}
+
+window._gwOnProviderChange = function() {
+  const provSel  = document.getElementById('dn-provider');
+  const modelSel = document.getElementById('dn-model');
+  if (!provSel || !modelSel) return;
+  _gwUpdateModelSelect(provSel.value, '');
+};
+
+// ── Node I/O rows ─────────────────────────────────────────────────────────────
 
 function _addIORow(type) {
   const containerId = type === 'input' ? 'dn-inputs' : 'dn-outputs';

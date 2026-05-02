@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-02 20:10 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-02 21:13 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -44,13 +44,13 @@ _Last updated: 2026-05-02_
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (●●●●● visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{timestamp}_{uc_slug}.md
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
 - Verdict banner with score visualization: approved/needs_changes/rejected verdict with ●/○ dots (0-5), stage details panel with input summary, output artifacts (code diffs), collapsible ReAct steps per stage with duration/cost breakdown
 
 ## Recent Context (last 5 changes)
 
-- [2026-05-02] I am looking to the sample pipeline - and try to run a pipeline on use case  Issues - tokens per stage - Architect - 122
 - [2026-05-02] I cant see the approved use cases, can tou check that it is loaind properly.  About saving the md file for pipeline - al
 - [2026-05-02] It seems that it is not working can you please check and fix the following:   1. pipeline output md file  - not working.
 - [2026-05-02] About MD file - I suppose to see that under documents as the UI - so it is suppose to be under documents I think. Also I
 - [2026-05-02] Ok. I do see the logs in the md file , but do not see them at the execution logs . which they suppose to be as well. Als
+- [2026-05-02] When I look at the pipelines - I dont see this pipeline. can you confirm that all pipeline are using proper yaml file , 

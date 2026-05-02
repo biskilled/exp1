@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Anthropic message sequencing: fixed tool_result block ordering for multi-turn agent conversations; ensuring tool_use IDs have corresponding tool_result blocks in correct sequence (session 2026-05-01 10:43)
-- Pipeline report generation to Documents: markdown files now saved to documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md when executing from Use Cases; reports built from in-memory _stage_mem trace during execution (session 2026-05-02 18:53, 19:10)
-- Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps showing tool calls and observations, duration and cost breakdown per stage (session 2026-05-02 04:04)
-- Use Cases cache and display: fixed cache freshness checks to load approved use cases properly; added length validation for empty cache scenarios (session 2026-05-02 14:27)
-- Pipeline execution cost tracking: fixed cost_usd calculation to account for max_iterations terminal states (done/timeout/error); now properly applies _calc_cost(provider, model, in_tokens, out_tokens) for all completion scenarios (session 2026-05-02 13:23)
-- DOM update optimization: in-place checkbox updates for role/pipeline activation and mode flags (use_case/item) without full page reloads; reduced layout jank in Settings panel (session 2026-04-30 21:12)
+- Execution logs visibility: Execution Log section now open by default (<details open>) displaying ReAct iterations (tool steps, observations) instead of just start/done markers
+- Pipeline list validation: All 8 YAML pipelines validated (standard, build_feature, etc.) using correct role references; pipeline display now uses listPipelines() API consistently without duplicate 'Recent Run' section
+- Embedding scope expansion: Architect agent now checks memory for sorted items; embedding only on closed/approved items; CODE.md requires embedding scope update per memory architecture
+- Batch document delete: DELETE /documents/batch endpoint implemented with checkbox UI for bulk deletion of files in Documents tab
+- Pipeline reports routing: Reports now save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md and appear in Documents tab tree under pipelines/ folder
+- History UI consolidation: Pipeline execution runs displayed under History tab (not Pipelines tab); phase filter synced between Chat and History; removed Recent Run duplication
 
 ## Key Decisions
 
@@ -324,7 +324,7 @@ sidebar tabs:
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (●●●●● visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{timestamp}_{uc_slug}.md
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
 - Verdict banner with score visualization: approved/needs_changes/rejected verdict with ●/○ dots (0-5), stage details panel with input summary, output artifacts (code diffs), collapsible ReAct steps per stage with duration/cost breakdown
 
 ## Deprecated
