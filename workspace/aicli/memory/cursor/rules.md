@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 21:41 UTC -->
+<!-- Last updated: 2026-05-02 21:51 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -14,7 +14,7 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim)
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state for versioning
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Pipeline cost tracking: fixed cost_usd calculation for max_iterations terminal states; _calc_cost(provider, model, in_tokens, out_tokens) applied across all completion scenarios; cost breakdown in pipeline reports
 - Pipeline node diagram and execution flow: Cytoscape.js visualization with async DAG execution, per-node checkpoint/resume, approval gates, and real-time status updates
 
-_Last updated: 2026-05-02 21:41 UTC_
+_Last updated: 2026-05-02 21:51 UTC_

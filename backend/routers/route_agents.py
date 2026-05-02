@@ -471,6 +471,7 @@ class AsyncPipelineRunRequest(BaseModel):
     source:          str           = "direct"   # direct|use_case|item|chat
     linked_uc_id:    str | None    = None
     linked_item_id:  str | None    = None
+    output_md_name:  str           = ""         # custom filename for the MD report (e.g. "my_feature.md")
 
 
 def _append_stage_log(conn, stage_id: int, text: str, level: str = "info") -> None:
@@ -492,6 +493,7 @@ async def _run_pipeline_bg(
     input_files: list,
     linked_uc_id: str | None = None,
     linked_item_id: str | None = None,
+    output_md_name: str = "",
 ) -> None:
     """Background coroutine: execute a pipeline and persist stage results to DB."""
     from agents.orchestrator import AgentWorkflow, PipelineDef
@@ -857,18 +859,25 @@ async def _run_pipeline_bg(
         run_dir = _docs_dir(project) / "pipelines" / safe_name
         run_dir.mkdir(parents=True, exist_ok=True)
         ts_file = _dt2.utcnow().strftime("%d%m%y_%H%M")
-        # Use UC name in filename when triggered from a use case
-        _uc_slug = None
-        if linked_uc_id:
-            try:
-                with db.conn() as _cn:
-                    with _cn.cursor() as _cr:
-                        _cr.execute("SELECT name FROM mem_work_items WHERE id=%s", (str(linked_uc_id),))
-                        _r = _cr.fetchone()
-                        _uc_slug = _re.sub(r"[^a-zA-Z0-9_-]", "_", (_r[0] if _r else "run"))[:40]
-            except Exception:
-                _uc_slug = "run"
-        doc_path = run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
+        # Determine filename: user-provided → UC name slug → timestamp only
+        if output_md_name:
+            # Sanitise and enforce .md extension
+            _fname = _re.sub(r"[^a-zA-Z0-9_.\-]", "_", output_md_name.strip())
+            if not _fname.lower().endswith(".md"):
+                _fname += ".md"
+            doc_path = run_dir / _fname
+        else:
+            _uc_slug = None
+            if linked_uc_id:
+                try:
+                    with db.conn() as _cn:
+                        with _cn.cursor() as _cr:
+                            _cr.execute("SELECT name FROM mem_work_items WHERE id=%s", (str(linked_uc_id),))
+                            _r = _cr.fetchone()
+                            _uc_slug = _re.sub(r"[^a-zA-Z0-9_-]", "_", (_r[0] if _r else "run"))[:40]
+                except Exception:
+                    _uc_slug = "run"
+            doc_path = run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
 
         # Build stage sections from in-memory data (no DB re-query needed)
         stage_sections: list[str] = []
@@ -1075,6 +1084,7 @@ async def start_pipeline_run(req: AsyncPipelineRunRequest) -> dict:
         _run_pipeline_bg(
             run_id, req.pipeline, req.task, req.project, req.input_files,
             linked_uc_id=req.linked_uc_id, linked_item_id=req.linked_item_id,
+            output_md_name=req.output_md_name,
         )
     )
 
@@ -1096,7 +1106,7 @@ async def get_pipeline_run(run_id: str) -> dict:
                     """SELECT id, pipeline_name, task, status, final_verdict, score,
                               total_cost_usd, total_input_tokens, total_output_tokens,
                               duration_s, error, started_at, finished_at,
-                              linked_uc_id, linked_item_id
+                              linked_uc_id, linked_item_id, source
                        FROM pr_pipeline_runs WHERE id=%s""",
                     (run_id,),
                 )
@@ -1154,6 +1164,7 @@ async def get_pipeline_run(run_id: str) -> dict:
             "finished_at":         row[12].isoformat() if row[12] else None,
             "linked_uc_id":        str(row[13]) if row[13] else None,
             "linked_item_id":      str(row[14]) if row[14] else None,
+            "source":              row[15] or "direct",
             "stages":              stages,
         }
     except HTTPException:

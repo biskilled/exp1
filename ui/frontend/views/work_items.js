@@ -39,6 +39,9 @@ let _ucPipeNamesUC   = null;  // cached pipeline names for use_case mode
 let _ucPipeNamesItem = null;  // cached pipeline names for item mode
 let _ucPollTimer  = null;   // polling interval for active run
 let _ucRunCtx     = null;   // { mode, ucId, itemId, panelId }
+let _ucLastRuns   = {};     // { ucId|itemId → { runId, pipeName, label } } — last completed run per target
+let _ucActivePipeName  = '';
+let _ucActiveCtxLabel  = '';
 const _UC_DROP_ID = 'uc-pipe-body-drop';  // body-level pipeline dropdown (avoids overflow:hidden clipping)
 
 // ── Type config ──────────────────────────────────────────────────────────────
@@ -1787,6 +1790,15 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
   }
   const pipeNames = apiMode === 'use_case' ? _ucPipeNamesUC : _ucPipeNamesItem;
 
+  // Look up last run for this target (session memory → localStorage)
+  let lastRun = _ucLastRuns[targetId];
+  if (!lastRun) {
+    try {
+      const stored = localStorage.getItem('uc_lr_' + targetId);
+      if (stored) lastRun = JSON.parse(stored);
+    } catch(_) {}
+  }
+
   // Build a body-level fixed dropdown to avoid overflow:hidden clipping on .wi-uc-card
   const rect = triggerEl.getBoundingClientRect();
   const drop = document.createElement('div');
@@ -1794,9 +1806,20 @@ window._ucRunMenu = async (targetId, mode, triggerEl, ucId = '') => {
   drop.style.cssText = `
     position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;
     background:var(--bg);border:1px solid var(--border);border-radius:6px;
-    min-width:160px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,.25);
+    min-width:180px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,.25);
   `;
-  drop.innerHTML = pipeNames.map(name =>
+
+  // "Last Run" item at top if a prior run exists
+  const lastRunHtml = lastRun ? `
+    <div onclick="document.getElementById('${_UC_DROP_ID}')?.remove();window._ucShowLastRun('${_esc(lastRun.runId)}','${_esc(lastRun.pipeName || '')}','${_esc(lastRun.label || '')}')"
+         style="padding:0.4rem 0.8rem;font-size:0.76rem;cursor:pointer;
+                border-bottom:2px solid var(--border);color:#9b7ef8;
+                display:flex;align-items:center;gap:0.4rem"
+         onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+      <span>📋</span><span>View Last Run</span>
+    </div>` : '';
+
+  drop.innerHTML = lastRunHtml + pipeNames.map(name =>
     `<div onclick="document.getElementById('${_UC_DROP_ID}')?.remove();window._ucStartRun('${_esc(name)}','${_esc(targetId)}','${_esc(mode)}','${_esc(ucId)}')"
           style="padding:0.4rem 0.8rem;font-size:0.78rem;cursor:pointer;border-bottom:1px solid var(--border);
                  color:var(--text)"
@@ -1883,16 +1906,22 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
       contextLabel = itemName;
     }
 
+    // Build default MD filename from context label
+    const mdName = contextLabel
+      ? contextLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) + '.md'
+      : 'report.md';
+
     // Start the run
     const res = await api.agents.startPipelineRun({
       pipeline: pipeName, task, project: _project,
       source, linked_uc_id, linked_item_id,
+      output_md_name: mdName,
     });
 
     _ucRunCtx = { mode, ucId: linked_uc_id, itemId: linked_item_id, runId: res.run_id };
 
     // Open fixed right-side drawer
-    _ucOpenPanel(res.run_id, pipeName, contextLabel);
+    _ucOpenPanel(res.run_id, pipeName, contextLabel, mdName);
   } catch (e) {
     toast(`Failed to start pipeline run: ${e.message}`, 'error');
   }
@@ -1906,27 +1935,43 @@ const _PANEL_LOG_ID    = 'uc-panel-log';
 const _PANEL_VERDICT_ID= 'uc-panel-verdict';
 const _PANEL_TITLE_ID  = 'uc-panel-title';
 
-function _ucOpenPanel(runId, pipeName, contextLabel) {
+function _ucOpenPanel(runId, pipeName, contextLabel, mdName) {
   // Remove any existing panel
   const existing = document.getElementById(_PANEL_ID);
   if (existing) existing.remove();
   if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
 
+  _ucActivePipeName = pipeName || '';
+  _ucActiveCtxLabel = contextLabel || '';
+
   const label = contextLabel
     ? `${_esc(pipeName)} — ${_esc(contextLabel.slice(0, 30))}`
     : _esc(pipeName);
 
+  // Restore saved width (user can resize by dragging the left edge)
+  const savedWidth = localStorage.getItem('uc_panel_width') || '440px';
+
   const panel = document.createElement('div');
   panel.id = _PANEL_ID;
   panel.style.cssText = `
-    position:fixed; right:0; top:0; height:100vh; width:420px; z-index:9999;
+    position:fixed; right:0; top:0; height:100vh; width:${savedWidth}; z-index:9999;
     background:var(--bg); border-left:2px solid var(--accent);
-    display:flex; flex-direction:column; padding:1rem 1.1rem;
+    display:flex; flex-direction:column; padding:1rem 1.1rem 1rem 1.3rem;
     box-shadow:-6px 0 24px rgba(0,0,0,.25); overflow:hidden;
   `;
+
+  const defaultMd = mdName || (contextLabel
+    ? contextLabel.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g,'').slice(0,40) + '.md'
+    : 'report.md');
+
   panel.innerHTML = `
+    <!-- Resize handle (drag left edge to resize) -->
+    <div id="uc-panel-resize"
+         style="position:absolute;left:0;top:0;width:7px;height:100%;cursor:col-resize;
+                z-index:1;background:transparent"></div>
+
     <!-- Header -->
-    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.7rem;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.35rem;flex-shrink:0">
       <span id="${_PANEL_DOT_ID}"
             style="width:10px;height:10px;border-radius:50%;background:#f5a623;flex-shrink:0"></span>
       <span id="${_PANEL_TITLE_ID}"
@@ -1937,26 +1982,59 @@ function _ucOpenPanel(runId, pipeName, contextLabel) {
                      border-radius:4px;cursor:pointer;background:transparent;flex-shrink:0">✕</button>
     </div>
 
+    <!-- MD file path row -->
+    <div style="display:flex;align-items:center;gap:0.35rem;margin-bottom:0.5rem;flex-shrink:0">
+      <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap;
+                   text-transform:uppercase;letter-spacing:.04em">MD file:</span>
+      <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap">documents/pipelines/${_esc(pipeName)}/</span>
+      <input id="uc-panel-md-name" value="${_esc(defaultMd)}"
+             title="Edit to change the output markdown filename"
+             style="flex:1;min-width:0;font-size:0.65rem;padding:2px 5px;border:1px solid var(--border);
+                    border-radius:3px;background:var(--bg2);color:var(--text);font-family:var(--font-mono,monospace)" />
+    </div>
+
     <!-- Stages (scrollable) -->
     <div id="${_PANEL_STAGES_ID}"
          style="flex:1;overflow-y:auto;font-size:0.78rem;padding-right:0.25rem"></div>
 
-    <!-- Log (open by default) -->
-    <details open style="flex-shrink:0;margin-top:0.5rem">
-      <summary style="font-size:0.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
-                      text-transform:uppercase;cursor:pointer;padding:0.3rem 0;
-                      border-top:1px solid var(--border)">Execution Log</summary>
-      <div id="${_PANEL_LOG_ID}"
-           style="font-family:monospace;font-size:0.68rem;color:var(--muted);
-                  max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;
-                  margin-top:0.25rem">Starting…</div>
-    </details>
+    <!-- Logs: global summary + per-role sub-toggles -->
+    <div style="flex-shrink:0;margin-top:0.5rem;border-top:1px solid var(--border)">
+      <details open>
+        <summary style="font-size:0.67rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
+                        text-transform:uppercase;cursor:pointer;padding:0.3rem 0">Execution Log</summary>
+        <div id="${_PANEL_LOG_ID}"
+             style="font-family:monospace;font-size:0.67rem;color:var(--muted);
+                    max-height:100px;overflow-y:auto;white-space:pre-wrap;line-height:1.45;
+                    margin-top:0.15rem">Starting…</div>
+      </details>
+      <!-- Per-role log sub-toggles (populated by poll) -->
+      <div id="uc-panel-stage-logs" style="padding-left:0.6rem"></div>
+    </div>
 
     <!-- Verdict / approval gate -->
     <div id="${_PANEL_VERDICT_ID}"
          style="display:none;margin-top:0.5rem;flex-shrink:0"></div>
   `;
   document.body.appendChild(panel);
+
+  // ── Resize handle ─────────────────────────────────────────────────────────
+  const handle = document.getElementById('uc-panel-resize');
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panel.offsetWidth;
+    const onMove = e => {
+      const newW = Math.max(300, Math.min(Math.round(window.innerWidth * 0.85), startW + (startX - e.clientX)));
+      panel.style.width = newW + 'px';
+    };
+    const onUp = () => {
+      localStorage.setItem('uc_panel_width', panel.style.width);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 
   _ucPollRun(runId);
 }
@@ -1965,6 +2043,114 @@ window._ucClosePanel = () => {
   const panel = document.getElementById(_PANEL_ID);
   if (panel) panel.remove();
   if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
+};
+
+/** Open the panel in read-only mode showing a previously completed run. */
+window._ucShowLastRun = async (runId, pipeName, label) => {
+  // Re-use _ucOpenPanel but without starting a new run
+  _ucOpenPanel(runId, pipeName || 'last run', label);
+
+  // Immediately fetch + render (no poll loop)
+  try {
+    const data = await api.agents.getPipelineRun(runId);
+    const dot      = document.getElementById(_PANEL_DOT_ID);
+    const stagesEl = document.getElementById(_PANEL_STAGES_ID);
+    const logEl    = document.getElementById(_PANEL_LOG_ID);
+    const titleEl  = document.getElementById(_PANEL_TITLE_ID);
+
+    if (titleEl) titleEl.textContent = `${pipeName || 'Pipeline'} — Last Run`;
+    if (dot) dot.style.background = data.status === 'done' ? '#3ecf8e' : data.status === 'error' ? '#e85d75' : '#6b7490';
+
+    // Render stages read-only (reuse same logic as poll)
+    // Trigger a single poll-render by injecting the data into the poll cycle
+    if (stagesEl) {
+      // We call _ucPollRun but immediately stop after first render by using a one-shot approach
+      clearInterval(_ucPollTimer);
+      _ucPollTimer = null;
+      // Simulate the rendering inline using the fetched data
+      const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', waiting_approval: '#9b7ef8' };
+      const STAGE_ICONS   = { done: '●', running: '⟳', error: '✗', pending: '○' };
+      if (data.stages) {
+        stagesEl.innerHTML = data.stages.map(s => {
+          const icon  = STAGE_ICONS[s.status] || '○';
+          const color = STATUS_COLORS[s.status] || 'var(--muted)';
+          const dur   = s.duration_s != null ? `${s.duration_s.toFixed(1)}s` : '';
+          const cost  = s.cost_usd > 0 ? `$${Number(s.cost_usd).toFixed(3)}` : '';
+          const toks  = s.input_tokens ? `${Math.round((s.input_tokens + s.output_tokens) / 1000)}k tok` : '';
+          const so = s.structured_out;
+          let outSnippet = '';
+          if (so?.summary) outSnippet = so.summary.slice(0, 200);
+          else if (s.output_preview) outSnippet = s.output_preview.replace(/^(Thought:.*?\n)+/m,'').trim().slice(0,200);
+          return `<div style="border-bottom:1px solid var(--border);padding:0.3rem 0">
+            <div style="display:flex;align-items:center;gap:0.35rem;color:${color}">
+              <span style="font-size:0.85rem">${icon}</span>
+              <span style="font-weight:600">${_esc(s.stage_key)}</span>
+              <span style="font-size:0.7rem;color:var(--muted)">${_esc(s.role_name || '')}</span>
+              <span style="font-size:0.68rem;color:var(--muted);margin-left:auto">${_esc(dur)} ${_esc(toks)} ${_esc(cost)}</span>
+            </div>
+            ${outSnippet ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem;
+                                        padding-left:1.1rem;font-style:italic">${_esc(outSnippet.slice(0,200))}</div>` : ''}
+          </div>`;
+        }).join('');
+      }
+
+      // Global log
+      if (logEl) {
+        const lines = [];
+        for (const s of data.stages || []) {
+          if (s.log_lines?.length) lines.push(...s.log_lines.map(l => l.text || ''));
+        }
+        logEl.textContent = lines.slice(-30).join('\n') || '(no log)';
+      }
+
+      // Per-stage logs
+      const stlEl = document.getElementById('uc-panel-stage-logs');
+      if (stlEl) {
+        stlEl.innerHTML = (data.stages || [])
+          .filter(s => s.log_lines?.length)
+          .map(s => {
+            const c = s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : 'var(--muted)';
+            const txt = s.log_lines.map(l => l.text || '').join('\n');
+            return `<details open data-stid="${s.id}">
+              <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
+                              text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
+                ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
+              </summary>
+              <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:130px;
+                          overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
+                          padding-left:0.4rem">${_esc(txt)}</div>
+            </details>`;
+          }).join('');
+      }
+    }
+
+    // Show verdict + "Run Again" button in verdict zone
+    const verdEl = document.getElementById(_PANEL_VERDICT_ID);
+    if (verdEl && (data.status === 'done' || data.status === 'error')) {
+      const verdict = data.final_verdict || data.status;
+      const vColor  = verdict === 'approved' ? '#3ecf8e' : verdict === 'error' ? '#e85d75' : '#f59e0b';
+      const targetId = data.linked_item_id || data.linked_uc_id;
+      const rerunMode = data.linked_item_id ? 'item' : 'uc';
+      const rerunUcId = data.linked_uc_id || '';
+      verdEl.style.cssText = 'display:block;margin-top:0.5rem;flex-shrink:0';
+      verdEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.55rem;
+                    background:${vColor}18;border-radius:4px;border:1px solid ${vColor}44;margin-bottom:0.5rem">
+          <span style="font-size:0.75rem;font-weight:700;color:${vColor}">${verdict.toUpperCase()}</span>
+          <span style="font-size:0.65rem;color:var(--muted)">Previous run</span>
+          ${data.duration_s ? `<span style="font-size:0.65rem;color:var(--muted);margin-left:auto">${data.duration_s.toFixed(0)}s · $${(data.total_cost_usd||0).toFixed(3)}</span>` : ''}
+        </div>
+        ${targetId ? `
+        <button onclick="window._ucClosePanel();window._ucStartRun('${_esc(pipeName || 'standard')}','${_esc(targetId)}','${_esc(rerunMode)}','${_esc(rerunUcId)}')"
+          style="width:100%;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.75rem;font-weight:600;
+                 cursor:pointer;background:var(--accent);color:#fff;border:none">
+          ▶ Run Again
+        </button>` : ''}
+      `;
+    }
+  } catch(e) {
+    toast('Could not load last run: ' + e.message, 'error');
+  }
 };
 
 function _ucPollRun(runId) {
@@ -2096,6 +2282,7 @@ function _ucPollRun(runId) {
         }).join('');
       }
 
+      // ── Global log (all lines concatenated) ──────────────────────────────
       if (logEl && data.stages) {
         const lines = [];
         for (const s of data.stages) {
@@ -2103,6 +2290,34 @@ function _ucPollRun(runId) {
         }
         logEl.textContent = lines.slice(-30).join('\n') || 'Running…';
         logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      // ── Per-role log sub-toggles ──────────────────────────────────────────
+      const stageLogsEl = document.getElementById('uc-panel-stage-logs');
+      if (stageLogsEl && data.stages) {
+        // Preserve open/closed state before rebuild
+        const openMap = {};
+        stageLogsEl.querySelectorAll('details[data-stid]').forEach(d => {
+          openMap[d.dataset.stid] = d.open;
+        });
+        stageLogsEl.innerHTML = data.stages
+          .filter(s => s.log_lines?.length)
+          .map(s => {
+            const isOpen = openMap[s.id] !== false;
+            const c = s.status === 'done' ? '#3ecf8e'
+                    : s.status === 'error' ? '#e85d75'
+                    : s.status === 'running' ? '#f5a623' : 'var(--muted)';
+            const txt = s.log_lines.map(l => l.text || '').join('\n');
+            return `<details data-stid="${s.id}" ${isOpen ? 'open' : ''}>
+              <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
+                              text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
+                ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
+              </summary>
+              <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:130px;
+                          overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
+                          padding-left:0.4rem">${_esc(txt)}</div>
+            </details>`;
+          }).join('');
       }
 
       if (data.status === 'waiting_approval' && verdEl) {
@@ -2123,6 +2338,15 @@ function _ucPollRun(runId) {
       if (data.status === 'done' || data.status === 'error') {
         clearInterval(_ucPollTimer);
         _ucPollTimer = null;
+
+        // Remember this run so "Last Run" option appears in the Run menu
+        const _lrKey = _ucRunCtx?.ucId || _ucRunCtx?.itemId;
+        if (_lrKey) {
+          const entry = { runId, pipeName: _ucActivePipeName, label: _ucActiveCtxLabel };
+          _ucLastRuns[_lrKey] = entry;
+          try { localStorage.setItem('uc_lr_' + _lrKey, JSON.stringify(entry)); } catch(_) {}
+        }
+
         const verdict = data.final_verdict || data.status;
         const vColor  = verdict === 'approved' ? '#3ecf8e'
                       : verdict === 'error'    ? '#e85d75'
