@@ -133,3 +133,34 @@ async def write_file_content(
     full_path.parent.mkdir(parents=True, exist_ok=True)
     full_path.write_text(content, encoding="utf-8")
     return {"saved": True, "path": path, "size": len(content)}
+
+
+from pydantic import BaseModel
+
+
+class DeleteFilesRequest(BaseModel):
+    paths: list[str]
+
+
+@router.delete("/delete-batch")
+async def delete_files_batch(req: DeleteFilesRequest):
+    """Delete one or more files from the code directory."""
+    code_dir = Path(settings.code_dir) if settings.code_dir else None
+    if not code_dir:
+        raise HTTPException(status_code=400, detail="code_dir not configured")
+    deleted = []
+    errors = []
+    for rel_path in req.paths:
+        try:
+            full_path = _safe_path(code_dir, rel_path)
+            if not full_path.exists():
+                errors.append(f"Not found: {rel_path}")
+                continue
+            if full_path.is_dir():
+                errors.append(f"Is directory: {rel_path}")
+                continue
+            full_path.unlink()
+            deleted.append(rel_path)
+        except Exception as exc:
+            errors.append(f"{rel_path}: {exc}")
+    return {"deleted": deleted, "errors": errors}

@@ -10,6 +10,9 @@
 import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 
+let _selectedFiles = new Set();  // paths of files checked for deletion
+let _selectMode    = false;      // true when select/delete mode is active
+
 export async function renderCode(container, projectName, project) {
   container.className = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
@@ -30,9 +33,22 @@ export async function renderCode(container, projectName, project) {
 
       <div style="flex:1;display:flex;overflow:hidden">
         <!-- Resizable file tree -->
-        <div class="code-file-tree" id="code-file-tree"
-             style="width:${savedW}px;flex:none;overflow-y:auto">
-          <div style="padding:0.5rem 0.75rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
+        <div style="width:${savedW}px;flex:none;display:flex;flex-direction:column;overflow:hidden">
+          <div id="code-tree-toolbar"
+               style="padding:0.3rem 0.5rem;border-bottom:1px solid var(--border);
+                      display:flex;align-items:center;gap:0.4rem;flex-shrink:0;font-size:0.65rem">
+            <button id="code-select-btn" class="btn btn-ghost btn-sm"
+                    style="font-size:0.62rem;padding:0.15rem 0.4rem"
+                    onclick="window._toggleSelectMode()">☐ Select</button>
+            <button id="code-delete-btn" class="btn btn-sm"
+                    style="font-size:0.62rem;padding:0.15rem 0.4rem;display:none;
+                           background:#dc2626;color:#fff;border:none;border-radius:4px;cursor:pointer"
+                    onclick="window._deleteSelected()">🗑 Delete (0)</button>
+          </div>
+          <div class="code-file-tree" id="code-file-tree"
+               style="flex:1;overflow-y:auto">
+            <div style="padding:0.5rem 0.75rem;font-size:0.65rem;color:var(--muted)">Loading…</div>
+          </div>
         </div>
 
         <!-- Drag handle -->
@@ -144,11 +160,15 @@ function _renderNode(node, depth, nextId) {
       <div id="${id}-ch" style="display:none">${children}</div>`;
   }
 
+  const safePath = _esc(node.path);
   return `
-    <div class="code-file-item" data-path="${_esc(node.path)}"
-         style="padding-left:${pad + 14}px"
-         onclick="window._viewCodeFile('${_esc(node.path)}')">
-      <span style="font-size:0.55rem;color:var(--muted)">·</span>
+    <div class="code-file-item" data-path="${safePath}"
+         style="padding-left:${pad + 14}px;display:flex;align-items:center;gap:0.3rem"
+         onclick="window._codeFileClick('${safePath}')">
+      <input type="checkbox" class="code-file-cb" data-path="${safePath}"
+             style="display:none;flex-shrink:0;cursor:pointer;accent-color:var(--accent)"
+             onclick="event.stopPropagation();window._toggleFileSelect('${safePath}',this)">
+      <span class="code-file-dot" style="font-size:0.55rem;color:var(--muted)">·</span>
       <span>${_esc(node.name)}</span>
     </div>`;
 }
@@ -160,6 +180,57 @@ window._toggleCodeDir = (id) => {
   const open = ch.style.display !== 'none';
   ch.style.display     = open ? 'none'  : 'block';
   icon.style.transform = open ? ''      : 'rotate(90deg)';
+};
+
+window._codeFileClick = (path) => {
+  if (_selectMode) {
+    const cb = document.querySelector(`.code-file-cb[data-path="${CSS.escape(path)}"]`);
+    if (cb) { cb.checked = !cb.checked; window._toggleFileSelect(path, cb); }
+  } else {
+    window._viewCodeFile(path);
+  }
+};
+
+window._toggleSelectMode = () => {
+  _selectMode = !_selectMode;
+  _selectedFiles.clear();
+  const btn = document.getElementById('code-select-btn');
+  const delBtn = document.getElementById('code-delete-btn');
+  if (btn) btn.textContent = _selectMode ? '✕ Cancel' : '☐ Select';
+  // Show/hide checkboxes
+  document.querySelectorAll('.code-file-cb').forEach(cb => {
+    cb.style.display = _selectMode ? 'inline-block' : 'none';
+    cb.checked = false;
+  });
+  if (delBtn) { delBtn.style.display = 'none'; delBtn.textContent = '🗑 Delete (0)'; }
+};
+
+window._toggleFileSelect = (path, cb) => {
+  if (cb.checked) _selectedFiles.add(path); else _selectedFiles.delete(path);
+  const delBtn = document.getElementById('code-delete-btn');
+  if (delBtn) {
+    const n = _selectedFiles.size;
+    delBtn.style.display = n > 0 ? 'inline-block' : 'none';
+    delBtn.textContent = `🗑 Delete (${n})`;
+  }
+};
+
+window._deleteSelected = async () => {
+  if (!_selectedFiles.size) return;
+  const paths = [..._selectedFiles];
+  if (!confirm(`Delete ${paths.length} file${paths.length > 1 ? 's' : ''}?\n${paths.join('\n')}`)) return;
+  try {
+    const res = await api.deleteFiles(paths);
+    const n = res.deleted?.length || 0;
+    const errs = res.errors || [];
+    if (errs.length) toast(`Deleted ${n}, ${errs.length} error(s): ${errs[0]}`, 'warning');
+    else toast(`Deleted ${n} file${n > 1 ? 's' : ''}`, 'success');
+    _selectMode = false;
+    _selectedFiles.clear();
+    await _loadFileTree();
+  } catch (e) {
+    toast(`Delete failed: ${e.message}`, 'error');
+  }
 };
 
 // ── File viewer ────────────────────────────────────────────────────────────────

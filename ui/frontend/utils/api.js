@@ -128,7 +128,8 @@ export const api = {
 
   // Files (code dir browser)
   getFiles: (maxDepth = 3) => _get(`/files/code?max_depth=${maxDepth}`),
-  readFile: (path) => _get(`/files/read?path=${encodeURIComponent(path)}&root=code`),
+  readFile:    (path) => _get(`/files/read?path=${encodeURIComponent(path)}&root=code`),
+  deleteFiles: (paths) => _post('/files/delete-batch', { paths }),
 
   // Chat streaming — returns a ReadableStream, caller reads chunks
   async chatStream(message, provider, sessionId, system = '', tags = {}) {

@@ -9,16 +9,16 @@ You are working on **aicli**.
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state for versioning; edit/reset/set-as-base workflow preserves template integrity
 - System prompts: 3 shared canonical presets (Coding — General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries; old presets soft-deleted
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability in UC vs item contexts
-- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden; ToolUseBlock handling via getattr(tc, 'input') with fallback
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability in UC vs item contexts; each stage captures steps_json (ReAct trace) and input_snapshot (handoff dict) to pr_pipeline_run_stages
+- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated; DOM updates are in-place (no full page reload) on checkbox changes
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips; supports multiple document and file selections; integrated into pipeline, role, and use-case execution
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating and pipeline selection per item
+- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat using all preceding prompts as context, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating and pipeline selection per item (filtered by mode_use_case and mode_item flags)
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - Auto-deploy workflow: stop hook integration with auto_commit_push.sh to sync memory and work items back to central repo after Claude Code sessions
-- ToolUseBlock handling: all provider agents use getattr(tc, 'input') with fallback to support Anthropic ToolUseBlock; fixes 'object has no attribute get' errors during tool invocation
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (●●●●○ visual indicator of completion 0-5); input_snapshot preserves handoff context; stage detail panels show input summary and output artifacts (files, code changes, text)
 
 ---
 
@@ -26,7 +26,7 @@ You are working on **aicli**.
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-05-01_
+_Last updated: 2026-05-02_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.

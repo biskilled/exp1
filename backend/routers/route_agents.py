@@ -586,16 +586,27 @@ async def _run_pipeline_bg(
     except Exception as e:
         log.error("Could not finalize pipeline run: %s", e)
 
-    # Post-completion: save execution report to documents folder
+    # Post-completion: save execution report to pipelines/runs/{pipeline_name}/ folder
     try:
-        from core.project_paths import documents_dir as _docs_dir
+        from core.project_paths import runs_dir as _runs_dir
         from datetime import datetime as _dt2
         import re as _re
-        docs = _docs_dir(project)
-        docs.mkdir(parents=True, exist_ok=True)
         safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", pipeline_name)
-        ts_file = _dt2.utcnow().strftime("%Y%m%d_%H%M%S")
-        doc_path = docs / f"{safe_name}_pipeline_{ts_file}.md"
+        run_dir = _runs_dir(project) / safe_name
+        run_dir.mkdir(parents=True, exist_ok=True)
+        ts_file = _dt2.utcnow().strftime("%d%m%y_%H%M")
+        # Use UC name in filename when run from a use case
+        _uc_slug = None
+        if linked_uc_id:
+            try:
+                with db.conn() as _cn:
+                    with _cn.cursor() as _cr:
+                        _cr.execute("SELECT name FROM mem_work_items WHERE id=%s", (str(linked_uc_id),))
+                        _r = _cr.fetchone()
+                        _uc_slug = _re.sub(r"[^a-zA-Z0-9_-]", "_", (_r[0] if _r else "run"))[:40]
+            except Exception:
+                _uc_slug = "run"
+        doc_path = run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
         stage_sections: list[str] = []
         try:
             with db.conn() as conn:

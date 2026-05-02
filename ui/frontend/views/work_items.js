@@ -2925,7 +2925,7 @@ export async function renderUseCases(container, projectName) {
   _tab     = 'use_cases';
 
   // Use cached data when re-entering the same project — renders instantly, no network call
-  const hasFreshCache = _ucCacheData !== null && _ucCacheProject === _project;
+  const hasFreshCache = _ucCacheData !== null && _ucCacheData.length > 0 && _ucCacheProject === _project;
   if (hasFreshCache) {
     _ucItems = _ucCacheData;
   } else {
