@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 21:51 UTC -->
+<!-- Last updated: 2026-05-02 22:20 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -14,10 +14,10 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector (1536-dim)
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state for versioning
+- Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
 - Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit hooks after Claude Code sessions: auto_commit_push.sh triggers MCP tool calls and mem_mrr_commits capture; work item linking and auto-closure patterns via commit regex
-- Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps with tool calls/observations, duration/cost breakdown per stage
-- Pipeline cost tracking: fixed cost_usd calculation for max_iterations terminal states; _calc_cost(provider, model, in_tokens, out_tokens) applied across all completion scenarios; cost breakdown in pipeline reports
-- Pipeline node diagram and execution flow: Cytoscape.js visualization with async DAG execution, per-node checkpoint/resume, approval gates, and real-time status updates
+- Auto-deployment hooks: auto_commit_push.sh triggered after each Claude CLI session (session 90bb3086) for continuous sync
+- Work item embedding consistency: re-embed on delivery_type, acceptance_criteria, implementation_plan changes; audit embedded items post-schema-change
+- Pipeline YAML validation and UI alignment: ensure all 8 pipelines use correct role references; remove inline Python role definitions
+- Execution logs visibility and content: render full ReAct steps (tool calls, observations) per stage; include duration and cost breakdown in pipeline output
 
-_Last updated: 2026-05-02 21:51 UTC_
+_Last updated: 2026-05-02 22:20 UTC_

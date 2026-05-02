@@ -1931,7 +1931,6 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
 const _PANEL_ID        = 'uc-run-panel';
 const _PANEL_DOT_ID    = 'uc-panel-dot';
 const _PANEL_STAGES_ID = 'uc-panel-stages';
-const _PANEL_LOG_ID    = 'uc-panel-log';
 const _PANEL_VERDICT_ID= 'uc-panel-verdict';
 const _PANEL_TITLE_ID  = 'uc-panel-title';
 
@@ -1993,23 +1992,9 @@ function _ucOpenPanel(runId, pipeName, contextLabel, mdName) {
                     border-radius:3px;background:var(--bg2);color:var(--text);font-family:var(--font-mono,monospace)" />
     </div>
 
-    <!-- Stages (scrollable) -->
+    <!-- Stages + per-step logs (all scrollable together) -->
     <div id="${_PANEL_STAGES_ID}"
          style="flex:1;overflow-y:auto;font-size:0.78rem;padding-right:0.25rem"></div>
-
-    <!-- Logs: global summary + per-role sub-toggles -->
-    <div style="flex-shrink:0;margin-top:0.5rem;border-top:1px solid var(--border)">
-      <details open>
-        <summary style="font-size:0.67rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
-                        text-transform:uppercase;cursor:pointer;padding:0.3rem 0">Execution Log</summary>
-        <div id="${_PANEL_LOG_ID}"
-             style="font-family:monospace;font-size:0.67rem;color:var(--muted);
-                    max-height:100px;overflow-y:auto;white-space:pre-wrap;line-height:1.45;
-                    margin-top:0.15rem">Starting…</div>
-      </details>
-      <!-- Per-role log sub-toggles (populated by poll) -->
-      <div id="uc-panel-stage-logs" style="padding-left:0.6rem"></div>
-    </div>
 
     <!-- Verdict / approval gate -->
     <div id="${_PANEL_VERDICT_ID}"
@@ -2055,73 +2040,58 @@ window._ucShowLastRun = async (runId, pipeName, label) => {
     const data = await api.agents.getPipelineRun(runId);
     const dot      = document.getElementById(_PANEL_DOT_ID);
     const stagesEl = document.getElementById(_PANEL_STAGES_ID);
-    const logEl    = document.getElementById(_PANEL_LOG_ID);
     const titleEl  = document.getElementById(_PANEL_TITLE_ID);
 
     if (titleEl) titleEl.textContent = `${pipeName || 'Pipeline'} — Last Run`;
     if (dot) dot.style.background = data.status === 'done' ? '#3ecf8e' : data.status === 'error' ? '#e85d75' : '#6b7490';
 
-    // Render stages read-only (reuse same logic as poll)
-    // Trigger a single poll-render by injecting the data into the poll cycle
-    if (stagesEl) {
-      // We call _ucPollRun but immediately stop after first render by using a one-shot approach
+    // Render stages read-only (same combined summaries + per-step logs layout)
+    if (stagesEl && data.stages) {
       clearInterval(_ucPollTimer);
       _ucPollTimer = null;
-      // Simulate the rendering inline using the fetched data
       const STATUS_COLORS = { done: '#3ecf8e', error: '#e85d75', running: '#f5a623', waiting_approval: '#9b7ef8' };
       const STAGE_ICONS   = { done: '●', running: '⟳', error: '✗', pending: '○' };
-      if (data.stages) {
-        stagesEl.innerHTML = data.stages.map(s => {
-          const icon  = STAGE_ICONS[s.status] || '○';
-          const color = STATUS_COLORS[s.status] || 'var(--muted)';
-          const dur   = s.duration_s != null ? `${s.duration_s.toFixed(1)}s` : '';
-          const cost  = s.cost_usd > 0 ? `$${Number(s.cost_usd).toFixed(3)}` : '';
-          const toks  = s.input_tokens ? `${Math.round((s.input_tokens + s.output_tokens) / 1000)}k tok` : '';
-          const so = s.structured_out;
-          let outSnippet = '';
-          if (so?.summary) outSnippet = so.summary.slice(0, 200);
-          else if (s.output_preview) outSnippet = s.output_preview.replace(/^(Thought:.*?\n)+/m,'').trim().slice(0,200);
-          return `<div style="border-bottom:1px solid var(--border);padding:0.3rem 0">
-            <div style="display:flex;align-items:center;gap:0.35rem;color:${color}">
-              <span style="font-size:0.85rem">${icon}</span>
-              <span style="font-weight:600">${_esc(s.stage_key)}</span>
-              <span style="font-size:0.7rem;color:var(--muted)">${_esc(s.role_name || '')}</span>
-              <span style="font-size:0.68rem;color:var(--muted);margin-left:auto">${_esc(dur)} ${_esc(toks)} ${_esc(cost)}</span>
-            </div>
-            ${outSnippet ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem;
-                                        padding-left:1.1rem;font-style:italic">${_esc(outSnippet.slice(0,200))}</div>` : ''}
-          </div>`;
-        }).join('');
-      }
 
-      // Global log
-      if (logEl) {
-        const lines = [];
-        for (const s of data.stages || []) {
-          if (s.log_lines?.length) lines.push(...s.log_lines.map(l => l.text || ''));
-        }
-        logEl.textContent = lines.slice(-30).join('\n') || '(no log)';
-      }
+      const summaryHtml = data.stages.map(s => {
+        const icon  = STAGE_ICONS[s.status] || '○';
+        const color = STATUS_COLORS[s.status] || 'var(--muted)';
+        const dur   = s.duration_s != null ? `${s.duration_s.toFixed(1)}s` : '';
+        const cost  = s.cost_usd > 0 ? `$${Number(s.cost_usd).toFixed(3)}` : '';
+        const toks  = s.input_tokens ? `${Math.round((s.input_tokens + s.output_tokens) / 1000)}k tok` : '';
+        const so = s.structured_out;
+        let outSnippet = '';
+        if (so?.summary) outSnippet = so.summary.slice(0, 200);
+        else if (s.output_preview) outSnippet = s.output_preview.replace(/^(Thought:.*?\n)+/m,'').trim().slice(0,200);
+        return `<div style="border-bottom:1px solid var(--border);padding:0.3rem 0">
+          <div style="display:flex;align-items:center;gap:0.35rem;color:${color}">
+            <span style="font-size:0.85rem">${icon}</span>
+            <span style="font-weight:600">${_esc(s.stage_key)}</span>
+            <span style="font-size:0.7rem;color:var(--muted)">${_esc(s.role_name || '')}</span>
+            <span style="font-size:0.68rem;color:var(--muted);margin-left:auto">${_esc(dur)} ${_esc(toks)} ${_esc(cost)}</span>
+          </div>
+          ${outSnippet ? `<div style="font-size:0.68rem;color:var(--muted);margin-top:0.2rem;
+                                      padding-left:1.1rem;font-style:italic">${_esc(outSnippet.slice(0,200))}</div>` : ''}
+        </div>`;
+      }).join('');
 
-      // Per-stage logs
-      const stlEl = document.getElementById('uc-panel-stage-logs');
-      if (stlEl) {
-        stlEl.innerHTML = (data.stages || [])
-          .filter(s => s.log_lines?.length)
-          .map(s => {
-            const c = s.status === 'done' ? '#3ecf8e' : s.status === 'error' ? '#e85d75' : 'var(--muted)';
-            const txt = s.log_lines.map(l => l.text || '').join('\n');
-            return `<details open data-stid="${s.id}">
-              <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
-                              text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
-                ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
-              </summary>
-              <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:130px;
-                          overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
-                          padding-left:0.4rem">${_esc(txt)}</div>
-            </details>`;
-          }).join('');
-      }
+      const stagesWithLogs = data.stages.filter(s => s.log_lines?.length);
+      const logsHtml = stagesWithLogs.map(s => {
+        const c = STATUS_COLORS[s.status] || 'var(--muted)';
+        const txt = s.log_lines.map(l => l.text || '').join('\n');
+        return `<details open data-stid="${s.id}">
+          <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
+                          text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
+            ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
+          </summary>
+          <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:160px;
+                      overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
+                      padding-left:0.4rem">${_esc(txt)}</div>
+        </details>`;
+      }).join('');
+
+      stagesEl.innerHTML = summaryHtml
+        + (logsHtml ? `<div style="border-top:1px solid var(--border);margin-top:0.5rem;
+                                   padding-top:0.3rem">${logsHtml}</div>` : '');
     }
 
     // Show verdict + "Run Again" button in verdict zone
@@ -2163,7 +2133,6 @@ function _ucPollRun(runId) {
       const data = await api.agents.getPipelineRun(runId);
       const dot      = document.getElementById(_PANEL_DOT_ID);
       const stagesEl = document.getElementById(_PANEL_STAGES_ID);
-      const logEl    = document.getElementById(_PANEL_LOG_ID);
       const verdEl   = document.getElementById(_PANEL_VERDICT_ID);
 
       if (!dot) return; // panel was closed
@@ -2171,7 +2140,13 @@ function _ucPollRun(runId) {
       dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
 
       if (stagesEl && data.stages) {
-        stagesEl.innerHTML = data.stages.map(s => {
+        // Save log-toggle open/closed state BEFORE we reset innerHTML
+        const openMap = {};
+        stagesEl.querySelectorAll('details[data-stid]').forEach(d => {
+          openMap[d.dataset.stid] = d.open;
+        });
+
+        const summaryHtml = data.stages.map(s => {
           const icon  = STAGE_ICONS[s.status] || '○';
           const color = s.status === 'done'    ? '#3ecf8e'
                       : s.status === 'error'   ? '#e85d75'
@@ -2241,7 +2216,13 @@ function _ucPollRun(runId) {
               if (so.suggested_fixes?.length) outLines.push(`Fixes: ${so.suggested_fixes.slice(0,2).join('; ').slice(0,120)}`);
               if (so.files_changed?.length) outLines.push(`Files: ${so.files_changed.slice(0,5).join(', ')}`);
               if (so.commit_hash) outLines.push(`Commit: ${so.commit_hash.slice(0,8)}`);
-              if (so.work_items?.length) outLines.push(`Work items assessed: ${so.work_items.length}`);
+              if (so.work_items_reviewed?.length) {
+                outLines.push(`Items reviewed: ${so.work_items_reviewed.length}`);
+                so.work_items_reviewed.slice(0, 6).forEach(wi => {
+                  const sc = wi.score != null ? ` (${wi.score}/5)` : '';
+                  outLines.push(`  ${wi.wi_id || '?'}: ${wi.status || '?'}${sc}${wi.summary ? ' — ' + wi.summary.slice(0, 70) : ''}`);
+                });
+              } else if (so.work_items?.length) outLines.push(`Work items assessed: ${so.work_items.length}`);
               if (outLines.length) {
                 outputHtml = `<div style="margin-bottom:0.35rem">
                   <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Output</span>
@@ -2280,44 +2261,29 @@ function _ucPollRun(runId) {
             ${detailHtml}
           </div>`;
         }).join('');
-      }
 
-      // ── Global log (all lines concatenated) ──────────────────────────────
-      if (logEl && data.stages) {
-        const lines = [];
-        for (const s of data.stages) {
-          if (s.log_lines?.length) lines.push(...s.log_lines.map(l => l.text || ''));
-        }
-        logEl.textContent = lines.slice(-30).join('\n') || 'Running…';
-        logEl.scrollTop = logEl.scrollHeight;
-      }
+        // ── Per-stage log toggles (below summaries, same scrollable area) ──
+        const stagesWithLogs = data.stages.filter(s => s.log_lines?.length);
+        const logsHtml = stagesWithLogs.length ? stagesWithLogs.map(s => {
+          const isOpen = openMap[s.id] !== undefined
+            ? openMap[s.id]
+            : (s.status === 'running');   // auto-open the active stage
+          const c = STATUS_COLORS[s.status] || 'var(--muted)';
+          const txt = s.log_lines.map(l => l.text || '').join('\n');
+          return `<details data-stid="${s.id}" ${isOpen ? 'open' : ''}>
+            <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
+                            text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
+              ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
+            </summary>
+            <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:160px;
+                        overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
+                        padding-left:0.4rem">${_esc(txt)}</div>
+          </details>`;
+        }).join('') : '';
 
-      // ── Per-role log sub-toggles ──────────────────────────────────────────
-      const stageLogsEl = document.getElementById('uc-panel-stage-logs');
-      if (stageLogsEl && data.stages) {
-        // Preserve open/closed state before rebuild
-        const openMap = {};
-        stageLogsEl.querySelectorAll('details[data-stid]').forEach(d => {
-          openMap[d.dataset.stid] = d.open;
-        });
-        stageLogsEl.innerHTML = data.stages
-          .filter(s => s.log_lines?.length)
-          .map(s => {
-            const isOpen = openMap[s.id] !== false;
-            const c = s.status === 'done' ? '#3ecf8e'
-                    : s.status === 'error' ? '#e85d75'
-                    : s.status === 'running' ? '#f5a623' : 'var(--muted)';
-            const txt = s.log_lines.map(l => l.text || '').join('\n');
-            return `<details data-stid="${s.id}" ${isOpen ? 'open' : ''}>
-              <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
-                              text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
-                ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
-              </summary>
-              <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:130px;
-                          overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
-                          padding-left:0.4rem">${_esc(txt)}</div>
-            </details>`;
-          }).join('');
+        stagesEl.innerHTML = summaryHtml
+          + (logsHtml ? `<div style="border-top:1px solid var(--border);margin-top:0.5rem;
+                                     padding-top:0.3rem">${logsHtml}</div>` : '');
       }
 
       if (data.status === 'waiting_approval' && verdEl) {

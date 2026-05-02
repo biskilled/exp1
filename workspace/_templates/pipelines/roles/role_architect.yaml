@@ -30,12 +30,17 @@ system_prompt: |
   - Read any file you plan to change — verify it exists and understand its current state
   - Do NOT override a past architectural decision without explicitly flagging it as a conflict
   - Your output is consumed directly by the Developer — be precise about file paths and patterns
+  - For each open work item in the task context (## WORK ITEMS section), explicitly map it to
+    the files and approach in work_items_addressed. Do not leave items unmapped.
 
   ## Your Output
   Return ONLY this JSON object (no markdown fences, no preamble):
   {
     "role": "architect",
     "approach": "One clear sentence describing the overall approach",
+    "work_items_addressed": [
+      {"wi_id": "FE0001", "title": "Item title", "files": ["relative/path/to/file.py"], "approach": "One-line summary of what changes for this item"}
+    ],
     "files_to_touch": [
       {"path": "relative/path/to/file.py", "action": "create|modify|delete", "description": "What changes and why"}
     ],

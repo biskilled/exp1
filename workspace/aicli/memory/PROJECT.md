@@ -302,30 +302,30 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Node properties dynamic model dropdown: cache provider-model mappings; when provider changes, update available models; expose model as combobox in node editor
-- Pipeline report output to Documents folder: save reports to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md; appear in Documents tab tree
-- Execution logs visibility and content: unfold <details> by default; render full ReAct steps (tool calls, observations) per stage; include duration and cost breakdown
+- Node properties dynamic model dropdown: provider-model mappings cached; when provider changes, available models update via combobox
+- Execution logs per-role visibility: global 'Execution Log' toggle + per-stage <details> toggles showing input, tool calls (ReAct steps), observations, and output with duration/cost
+- Resizable execution panel: left-edge drag handle (7px col-resize zone), saves width to localStorage, min 300px / max 85% viewport
 - Batch document delete: DELETE /documents/batch endpoint with checkbox multi-select UI in Documents tab for bulk deletion
-- Pipeline YAML validation and UI alignment: ensure all 8 pipelines use correct role references; fix missing role linkers in pipeline definitions; remove inline Python role definitions
-- Work item embedding consistency after schema changes: verify re-embed on delivery_type, acceptance_criteria, implementation_plan changes; audit 212 recently embedded items post-restart
+- Pipeline YAML validation: ensure all 8 pipelines use correct role references; verify no inline Python role definitions remain
+- Work item embedding consistency post-schema: verify re-embed on delivery_type, acceptance_criteria, implementation_plan changes; audit 212 recently embedded items
 
 ## Key Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() call to _embed_work_item()
+- Memory 3-layer architecture: raw captures (mem_mrr_*) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() call to _embed_work_item()
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
+- Pipeline execution: 4+ agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
-- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
+- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating and per-use-case pipeline selection (mode_use_case/mode_item flags)
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - MCP server tool integration: 10 tools via stdio transport (search_memory, get_project_state, tags, backlog, etc.); unified REST dispatch; agent roles execute tools via per-node mcp flag
-- Work item classification and embedding: AI draft rows cleaned up; approved items (UC/FE/BU/TA prefix) embedded to pgvector; semantic search via cosine similarity; re-embed on field change
+- Work item classification and embedding: AI draft rows cleaned up; approved items (UC/FE/BU/TA prefix) embedded to pgvector; semantic search via cosine similarity; re-embed on field change (name, summary, deliveries, delivery_type, acceptance_criteria, implementation_plan)
+- Pipeline execution reporting: stage input_snapshot and steps_json (ReAct traces) captured in pr_pipeline_run_stages; reports saved to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md with full input/output per stage; visible in Documents tab
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

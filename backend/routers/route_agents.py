@@ -798,9 +798,41 @@ async def _run_pipeline_bg(
             "raw_output": (stage_result.output or "")[:2000] if stage_result else "",
         }
 
-        # Reviewer rejection handling
+        # Reviewer rejection handling + per-item score updates
         if stage_order[i] == "reviewer":
             verdict = (handoff or {}).get("verdict", "approved")
+
+            # Update individual work item scores from work_items_reviewed
+            reviewed_items = (handoff or {}).get("work_items_reviewed", [])
+            if reviewed_items and (linked_uc_id or linked_item_id):
+                try:
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            for ri in reviewed_items:
+                                wi_id_str = ri.get("wi_id") or ""
+                                score     = ri.get("score")
+                                summary   = (ri.get("summary") or "")[:300]
+                                if not wi_id_str or score is None:
+                                    continue
+                                cur.execute(
+                                    "UPDATE mem_work_items SET score_status=%s "
+                                    "WHERE wi_id=%s AND project_id=%s",
+                                    (int(score), wi_id_str, project_id),
+                                )
+                                if summary:
+                                    cur.execute(
+                                        "UPDATE mem_work_items "
+                                        "SET summary = COALESCE(summary,'') || %s "
+                                        "WHERE wi_id=%s AND project_id=%s",
+                                        (f"\n[REVIEW {_datetime.utcnow().strftime('%d/%m/%y')}] {summary}",
+                                         wi_id_str, project_id),
+                                    )
+                        conn.commit()
+                    log.info("Updated %d item scores from reviewer (run_id=%s)",
+                             len(reviewed_items), run_id)
+                except Exception as _re:
+                    log.warning("Could not update item scores from reviewer: %s", _re)
+
             if verdict in ("rejected", "needs_changes"):
                 if rejection_retries < max_rejection_retries:
                     rejection_retries += 1
