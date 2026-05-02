@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 14:41 UTC -->
+<!-- Last updated: 2026-05-02 19:05 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Pipeline execution refinement: fixing ToolUseBlock attribute errors with getattr fallback, Anthropic format messages.N tool_result sequencing, cost calculation for max_iterations path
-- Stage visibility and output rendering: displaying input_snapshot summaries, output_snapshot artifacts (code diffs, file outputs), collapsible ReAct steps per stage with duration/cost breakdown
-- Execution history UI: session-level chat history grouped by source (CLI vs web), verdict banner with score_dots (●/○), stage detail panels with artifact downloads
-- In-place DOM updates: avoiding full page reloads on role/pipeline activation toggles and mode flag changes; reducing layout jank on Settings changes
+- Auto-deploy hook integration: 14+ consecutive chore commits from session 90bb3086 indicate active stop hook testing and auto_commit_push.sh refinement after Claude Code sessions
+- Pipeline execution refinement: ToolUseBlock attribute error handling with getattr fallbacks, Anthropic format messages.N tool_result sequencing, cost calculation for max_iterations path
+- Stage visibility and output rendering: input_snapshot summaries, output_snapshot artifacts (code diffs, file outputs), collapsible ReAct steps per stage with duration/cost breakdown
+- Execution history UI: session-level chat history grouped by source (CLI vs web), verdict banner with score_dots (●/◯), stage detail panels with artifact downloads
 
-_Last updated: 2026-05-02 14:41 UTC_
+_Last updated: 2026-05-02 19:05 UTC_

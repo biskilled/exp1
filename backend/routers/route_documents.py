@@ -74,3 +74,25 @@ async def delete_document(path: str = Query(...), project: str | None = Query(No
         raise HTTPException(status_code=404, detail=f"Not found: {path}")
     full_path.unlink()
     return {"deleted": path}
+
+
+class DeleteBatchRequest(BaseModel):
+    paths: list[str]
+
+
+@router.delete("/batch")
+async def delete_documents_batch(body: DeleteBatchRequest, project: str | None = Query(None)):
+    """Delete multiple document files."""
+    deleted: list[str] = []
+    errors: list[str] = []
+    for path in body.paths:
+        try:
+            full_path = _workspace_path(f"documents/{path}", project)
+            if not full_path.exists():
+                errors.append(f"{path}: not found")
+                continue
+            full_path.unlink()
+            deleted.append(path)
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+    return {"deleted": deleted, "errors": errors}

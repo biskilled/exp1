@@ -15,10 +15,14 @@ const TREE_W_KEY = 'aicli_docs_tree_w';
 
 let _project = '';
 let _selectedPath = '';
+let _selectMode   = false;
+let _selectedDocs = new Set();
 
 export async function renderDocuments(container, projectName, opts = {}) {
   _project = projectName || '';
   _selectedPath = '';
+  _selectMode   = false;
+  _selectedDocs.clear();
 
   container.className = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
@@ -32,10 +36,20 @@ export async function renderDocuments(container, projectName, opts = {}) {
            style="width:${savedW}px;flex:none;overflow-y:auto;border-right:1px solid var(--border);
                   display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;
-                    padding:0.5rem 0.75rem;border-bottom:1px solid var(--border)">
-          <span style="font-size:0.68rem;color:var(--muted);font-weight:600">documents/</span>
+                    padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);gap:0.3rem">
+          <span style="font-size:0.68rem;color:var(--muted);font-weight:600;flex:1">documents/</span>
+          <button class="btn btn-ghost btn-sm" id="doc-select-btn"
+                  style="font-size:0.62rem;padding:0.15rem 0.4rem">☐ Select</button>
           <button class="btn btn-ghost btn-sm" id="doc-new-btn"
                   style="font-size:0.65rem;padding:0.15rem 0.4rem">+ New</button>
+        </div>
+        <div id="doc-delete-bar"
+             style="display:none;padding:0.3rem 0.5rem;border-bottom:1px solid var(--border);
+                    background:rgba(220,38,38,.08);align-items:center;gap:0.4rem">
+          <button id="doc-delete-btn"
+                  style="font-size:0.62rem;padding:0.15rem 0.45rem;background:#dc2626;color:#fff;
+                         border:none;border-radius:4px;cursor:pointer">🗑 Delete (0)</button>
+          <span style="font-size:0.6rem;color:var(--muted)">files selected</span>
         </div>
         <div id="doc-tree-body" style="flex:1;overflow-y:auto;padding:0.25rem 0">
           <div style="padding:0.75rem;font-size:0.68rem;color:var(--muted)">Loading…</div>
@@ -59,6 +73,8 @@ export async function renderDocuments(container, projectName, opts = {}) {
 
   _initResizeHandle();
   document.getElementById('doc-new-btn').addEventListener('click', _newDoc);
+  document.getElementById('doc-select-btn').addEventListener('click', _toggleDocSelectMode);
+  document.getElementById('doc-delete-btn').addEventListener('click', _deleteSelectedDocs);
   await _loadDocs();
 
   // Auto-open a file if requested (e.g. navigating from Use Cases → MD file)
@@ -188,6 +204,9 @@ function _renderTree(node, depth) {
              style="padding:0.2rem 0.4rem 0.2rem ${pad + 8}px;cursor:pointer;
                     font-size:0.7rem;border-radius:3px;display:flex;align-items:center;gap:0.25rem;
                     ${isSel ? 'background:var(--accent-dim,rgba(99,102,241,.15));color:var(--accent)' : 'color:var(--text)'}">
+          <input type="checkbox" class="doc-file-cb" data-path="${_esc(child.path)}"
+                 style="display:none;flex-shrink:0;cursor:pointer;accent-color:var(--accent)"
+                 onclick="event.stopPropagation()">
           <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(child.name)}</span>
           <span class="doc-tree-del" data-del-path="${_esc(child.path)}"
                 style="opacity:0;transition:opacity 0.1s;flex-shrink:0;font-size:0.75rem;
@@ -203,10 +222,17 @@ function _attachTreeEvents(body) {
   body.querySelectorAll('.doc-file-row').forEach(row => {
     row.addEventListener('click', (e) => {
       if (e.target.classList.contains('doc-tree-del')) return; // handled below
+      if (e.target.classList.contains('doc-file-cb')) return;  // checkbox handled separately
+      if (_selectMode) {
+        const cb = row.querySelector('.doc-file-cb');
+        if (cb) { cb.checked = !cb.checked; _onDocCbChange(row.dataset.path, cb.checked); }
+        return;
+      }
       _docSelect(row.dataset.path);
     });
-    // Show/hide × button on hover
+    // Show/hide × button on hover (only when not in select mode)
     row.addEventListener('mouseenter', () => {
+      if (_selectMode) return;
       const btn = row.querySelector('.doc-tree-del');
       if (btn) btn.style.opacity = '1';
     });
@@ -214,6 +240,9 @@ function _attachTreeEvents(body) {
       const btn = row.querySelector('.doc-tree-del');
       if (btn) btn.style.opacity = '0';
     });
+    // Checkbox change
+    const cb = row.querySelector('.doc-file-cb');
+    if (cb) cb.addEventListener('change', () => _onDocCbChange(row.dataset.path, cb.checked));
   });
 
   body.querySelectorAll('.doc-tree-del').forEach(btn => {
@@ -235,6 +264,58 @@ function _attachTreeEvents(body) {
       }
     });
   });
+}
+
+function _onDocCbChange(path, checked) {
+  if (checked) _selectedDocs.add(path); else _selectedDocs.delete(path);
+  const bar = document.getElementById('doc-delete-bar');
+  const btn = document.getElementById('doc-delete-btn');
+  const n   = _selectedDocs.size;
+  if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+  if (btn) btn.textContent = `🗑 Delete (${n})`;
+}
+
+function _toggleDocSelectMode() {
+  _selectMode = !_selectMode;
+  _selectedDocs.clear();
+  const selBtn = document.getElementById('doc-select-btn');
+  const bar    = document.getElementById('doc-delete-bar');
+  const delBtn = document.getElementById('doc-delete-btn');
+  if (selBtn) selBtn.textContent = _selectMode ? '✕ Cancel' : '☐ Select';
+  if (bar)    bar.style.display = 'none';
+  if (delBtn) delBtn.textContent = '🗑 Delete (0)';
+  // Show/hide checkboxes; hide × buttons in select mode
+  document.querySelectorAll('.doc-file-cb').forEach(cb => {
+    cb.style.display = _selectMode ? 'inline-block' : 'none';
+    cb.checked = false;
+  });
+  document.querySelectorAll('.doc-tree-del').forEach(btn => {
+    btn.style.opacity = _selectMode ? '0' : '';
+    btn.style.pointerEvents = _selectMode ? 'none' : '';
+  });
+}
+
+async function _deleteSelectedDocs() {
+  if (!_selectedDocs.size) return;
+  const paths = [..._selectedDocs];
+  if (!confirm(`Delete ${paths.length} file${paths.length > 1 ? 's' : ''}?\n${paths.join('\n')}`)) return;
+  try {
+    const res  = await api.documents.deleteMany(paths, _project);
+    const n    = res.deleted?.length || 0;
+    const errs = res.errors || [];
+    if (errs.length) toast(`Deleted ${n}, ${errs.length} error(s): ${errs[0]}`, 'warning');
+    else             toast(`Deleted ${n} file${n > 1 ? 's' : ''}`, 'success');
+    if (paths.includes(_selectedPath)) {
+      _selectedPath = '';
+      const viewer = document.getElementById('doc-viewer');
+      if (viewer) viewer.innerHTML = `<div style="color:var(--muted);font-size:0.72rem;padding:1.5rem;margin:auto">Select a file from the tree</div>`;
+    }
+    _selectMode = false;
+    _selectedDocs.clear();
+    await _loadDocs();
+  } catch (e) {
+    toast(`Delete failed: ${e.message}`, 'error');
+  }
 }
 
 window._docToggleDir = (id) => {

@@ -778,11 +778,11 @@ async def _run_pipeline_bg(
 
     # Post-completion: save execution report (built from in-memory _stage_mem)
     try:
-        from core.project_paths import runs_dir as _runs_dir
+        from core.project_paths import documents_dir as _docs_dir
         from datetime import datetime as _dt2
         import re as _re
         safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", pipeline_name)
-        run_dir = _runs_dir(project) / safe_name
+        run_dir = _docs_dir(project) / "pipelines" / safe_name
         run_dir.mkdir(parents=True, exist_ok=True)
         ts_file = _dt2.utcnow().strftime("%d%m%y_%H%M")
         # Use UC name in filename when triggered from a use case

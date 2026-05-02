@@ -464,6 +464,10 @@ api.documents = {
     _base() + `/documents/?path=${enc(path)}&project=${enc(project)}`,
     { method: 'DELETE', headers: _headers() },
   ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
+  deleteMany: (paths, project)     => fetch(
+    _base() + `/documents/batch?project=${enc(project)}`,
+    { method: 'DELETE', headers: _headers(), body: JSON.stringify({ paths }) },
+  ).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
 };
 
 // ── Work Items (mem_work_items) API ───────────────────────────────────────────

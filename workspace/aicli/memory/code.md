@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 14:41 UTC -->
+<!-- Last updated: 2026-05-02 19:05 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -84,6 +84,7 @@ aicli/
 │   └── start_backend.sh
 ├── data/
 │   └── usage/
+│       └── pipeline.jsonl
 ├── tests/
 │   ├── __init__.py
 │   ├── test_context_builder.py
@@ -210,8 +211,8 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/memory/memory_files.py` | 20.0 | 18 | 1176 | 0 | 2026-04-27 |
 | `backend/routers/route_projects.py` | 19.0 | 17 | 1693 | 0 | 2026-04-29 |
 | `ui/frontend/views/work_items.js` | 17.0 | 15 | 3092 | 0 | 2026-05-02 |
+| `backend/routers/route_agents.py` | 13.0 | 11 | 1278 | 0 | 2026-05-02 |
 | `backend/routers/route_agent_roles.py` | 13.0 | 11 | 1692 | 0 | 2026-04-30 |
-| `backend/routers/route_agents.py` | 12.0 | 10 | 1061 | 0 | 2026-05-02 |
 | `ui/frontend/views/prompts.js` | 12.0 | 10 | 1642 | 0 | 2026-04-29 |
 | `backend/agents/mcp/server.py` | 11.0 | 9 | 854 | 0 | 2026-04-27 |
 | `backend/routers/route_git.py` | 9.0 | 7 | 1691 | 0 | 2026-04-27 |
@@ -219,6 +220,7 @@ _Files with highest commit frequency — candidates for refactoring._
 | `ui/frontend/views/settings.js` | 7.0 | 5 | 1887 | 0 | 2026-04-30 |
 | `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
 | `backend/routers/route_history.py` | 6.0 | 4 | 938 | 0 | 2026-04-30 |
+| `backend/agents/agent.py` | 5.0 | 5 | 686 | 0 | 2026-05-02 |
 | `ui/frontend/views/chat.js` | 5.0 | 3 | 2261 | 0 | 2026-04-30 |
 | `ui/frontend/views/pipeline.js` | 5.0 | 3 | 828 | 0 | 2026-04-29 |
 | `backend/routers/route_memory.py` | 5.0 | 3 | 836 | 0 | 2026-04-27 |
