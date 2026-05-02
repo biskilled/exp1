@@ -462,6 +462,40 @@ async def _dispatch(name: str, args: dict) -> Any:
             h.setdefault("title",   h.get("fact_key",   ""))
             h.setdefault("snippet", h.get("fact_value", ""))
         merged = sorted(wi_hits + fact_hits, key=lambda r: r.get("score", 0), reverse=True)[:limit]
+
+        # Text fallback: if semantic found fewer than half the limit, also scan all
+        # work items by keyword (catches non-approved items without embeddings).
+        if len(wi_hits) < max(1, limit // 2):
+            try:
+                all_wi = await _get(f"/wi/{project}")
+                q_words = [w for w in args["query"].lower().split() if len(w) > 2]
+                seen_ids = {r.get("id") for r in merged}
+                for wi in (all_wi.get("items") or [])[:200]:
+                    wi_id = str(wi.get("id", ""))
+                    if wi_id in seen_ids:
+                        continue
+                    haystack = (
+                        (wi.get("name") or "") + " " +
+                        (wi.get("summary") or "") + " " +
+                        (wi.get("wi_id") or "")
+                    ).lower()
+                    if any(w in haystack for w in q_words):
+                        merged.append({
+                            "id":          wi_id,
+                            "source_type": wi.get("wi_type", "work_item"),
+                            "title":       wi.get("name", ""),
+                            "snippet":     (wi.get("summary") or "")[:200],
+                            "score":       0.4,  # lower than semantic matches
+                            "source":      "work_item_text",
+                            "user_status": wi.get("user_status"),
+                            "wi_id":       wi.get("wi_id"),
+                        })
+                        seen_ids.add(wi_id)
+                        if len(merged) >= limit:
+                            break
+            except Exception:
+                pass
+
         return {"query": args["query"], "project": project, "total": len(merged), "results": merged}
 
     elif name == "get_project_state":
@@ -737,14 +771,58 @@ async def _dispatch(name: str, args: dict) -> Any:
         return await _get(f"/memory/{_up.quote(project)}/hotspots?{qs}")
 
     elif name == "get_tag_context":
-        import urllib.parse as _up
-        params = {
-            "tag_name": args["tag_name"],
-            "project": project,
-            "limit": str(args.get("limit", 20)),
+        # The old /tags/context endpoint (planner_tags) was dropped.
+        # Now we resolve a tag by searching work items + recent history by keyword.
+        tag_name  = args.get("tag_name", "")
+        limit     = int(args.get("limit", 20))
+        tag_lower = tag_name.lower()
+        q_words   = [w for w in tag_lower.split() if len(w) > 2]
+
+        wi_all = await _get(f"/wi/{project}")
+        matched_items = []
+        for wi in (wi_all.get("items") or []):
+            if wi.get("deleted_at"):
+                continue
+            haystack = (
+                (wi.get("name") or "") + " " +
+                (wi.get("wi_id") or "") + " " +
+                (wi.get("summary") or "")
+            ).lower()
+            if tag_lower in haystack or any(w in haystack for w in q_words):
+                matched_items.append({
+                    "wi_id":       wi.get("wi_id"),
+                    "name":        wi.get("name"),
+                    "wi_type":     wi.get("wi_type"),
+                    "user_status": wi.get("user_status"),
+                    "summary":     (wi.get("summary") or "")[:200],
+                    "score_status": wi.get("score_status"),
+                })
+                if len(matched_items) >= limit:
+                    break
+
+        # Also check recent history for this tag
+        try:
+            hist = await _get("/history/chat", {"project": project, "limit": "30"})
+            hist_hits = [
+                {"ts": e.get("ts","")[:16], "prompt": (e.get("user_input") or "")[:200],
+                 "feature": e.get("feature"), "phase": e.get("phase")}
+                for e in hist.get("entries", [])
+                if tag_lower in (
+                    (e.get("user_input") or "") + (e.get("feature") or "") + (e.get("phase") or "")
+                ).lower()
+            ][:10]
+        except Exception:
+            hist_hits = []
+
+        return {
+            "tag_name":     tag_name,
+            "work_items":   matched_items,
+            "history":      hist_hits,
+            "note": (
+                "Resolved via text search on work items + history. "
+                "Use list_work_items for a full listing."
+            ),
         }
-        qs = "&".join(f"{k}={_up.quote(str(v))}" for k, v in params.items())
-        return await _get(f"/tags/context?{qs}")
 
     elif name == "get_file_history":
         import urllib.parse as _up

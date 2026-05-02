@@ -195,6 +195,45 @@ async def semantic_search(body: SemanticSearchRequest, user=Depends(get_optional
                         "score":       round(float(row[6] or 0), 4),
                     })
 
+                # Text fallback: if embedding search returned fewer than half limit,
+                # also keyword-search items without embeddings so open/pending items appear.
+                if len(results) < max(1, limit // 2):
+                    seen_ids = {r["id"] for r in results}
+                    q_words  = [w for w in body.query.lower().split() if len(w) > 2]
+                    if q_words:
+                        like_clauses = " OR ".join(
+                            f"(lower(w.name) LIKE %s OR lower(COALESCE(w.summary,'')) LIKE %s)"
+                            for _ in q_words
+                        )
+                        text_params: list = [project_id]
+                        for w in q_words:
+                            text_params += [f"%{w}%", f"%{w}%"]
+                        text_params.append(limit - len(results))
+                        cur.execute(
+                            f"""SELECT w.id::text, w.wi_type, w.name,
+                                       left(COALESCE(w.summary,''), 300),
+                                       w.created_at, w.tags
+                                FROM mem_work_items w
+                                WHERE w.project_id = %s
+                                  AND w.embedding IS NULL
+                                  AND w.deleted_at IS NULL
+                                  AND ({like_clauses})
+                                LIMIT %s""",
+                            text_params,
+                        )
+                        for row in cur.fetchall():
+                            if row[0] not in seen_ids:
+                                results.append({
+                                    "id":          row[0],
+                                    "source_type": row[1] or "work_item",
+                                    "title":       row[2] or "",
+                                    "snippet":     row[3] or "",
+                                    "created_at":  row[4].isoformat() if row[4] else None,
+                                    "tags":        row[5] or {},
+                                    "session_id":  None,
+                                    "score":       0.35,  # lower score for text-only match
+                                })
+
     except Exception as exc:
         raise HTTPException(500, str(exc))
 

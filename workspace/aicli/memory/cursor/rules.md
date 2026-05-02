@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 19:05 UTC -->
+<!-- Last updated: 2026-05-02 19:16 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-deploy hook integration: 14+ consecutive chore commits from session 90bb3086 indicate active stop hook testing and auto_commit_push.sh refinement after Claude Code sessions
-- Pipeline execution refinement: ToolUseBlock attribute error handling with getattr fallbacks, Anthropic format messages.N tool_result sequencing, cost calculation for max_iterations path
-- Stage visibility and output rendering: input_snapshot summaries, output_snapshot artifacts (code diffs, file outputs), collapsible ReAct steps per stage with duration/cost breakdown
-- Execution history UI: session-level chat history grouped by source (CLI vs web), verdict banner with score_dots (●/◯), stage detail panels with artifact downloads
+- Pipeline execution cost tracking: fixed cost_usd calculation to account for max_iterations terminal states (done/timeout/error); now properly applies _calc_cost(provider, model, in_tokens, out_tokens) for all completion scenarios
+- Stage artifact rendering: input_snapshot summaries, output_snapshot code diffs and file artifacts, collapsible ReAct steps showing tool calls and observations, duration and cost breakdown per stage
+- Pipeline report generation: markdown files saved to pipeline/{output_folder}/{use_case_id}__{pipeline_name}.md when executing from Use Cases; reports built from in-memory _stage_mem trace during execution
+- DOM update optimization: in-place checkbox updates for role/pipeline activation and mode flags (use_case/item) without full page reloads; reduced layout jank in Settings panel
 
-_Last updated: 2026-05-02 19:05 UTC_
+_Last updated: 2026-05-02 19:16 UTC_

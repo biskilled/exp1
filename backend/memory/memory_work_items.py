@@ -994,7 +994,7 @@ class MemoryWorkItems(_ClassifyMixin, _MarkdownMixin):
                                 (item_id, pid),
                             )
                             _row = _cur.fetchone()
-                    if _row and _row[5]:  # only re-embed if approved
+                    if _row:  # embed all items (not just approved) so search_memory finds them
                         _embed_work_item(item_id, {
                             "name": _row[0] or "", "wi_type": _row[1] or "",
                             "summary": _row[2] or "", "deliveries": _row[3] or "",

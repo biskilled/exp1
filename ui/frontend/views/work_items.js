@@ -1941,14 +1941,14 @@ function _ucOpenPanel(runId, pipeName, contextLabel) {
     <div id="${_PANEL_STAGES_ID}"
          style="flex:1;overflow-y:auto;font-size:0.78rem;padding-right:0.25rem"></div>
 
-    <!-- Log (compact, collapsed) -->
-    <details style="flex-shrink:0;margin-top:0.5rem">
+    <!-- Log (open by default) -->
+    <details open style="flex-shrink:0;margin-top:0.5rem">
       <summary style="font-size:0.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;
                       text-transform:uppercase;cursor:pointer;padding:0.3rem 0;
                       border-top:1px solid var(--border)">Execution Log</summary>
       <div id="${_PANEL_LOG_ID}"
-           style="font-family:monospace;font-size:0.7rem;color:var(--muted);
-                  max-height:100px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;
+           style="font-family:monospace;font-size:0.68rem;color:var(--muted);
+                  max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;
                   margin-top:0.25rem">Starting…</div>
     </details>
 
@@ -2099,9 +2099,9 @@ function _ucPollRun(runId) {
       if (logEl && data.stages) {
         const lines = [];
         for (const s of data.stages) {
-          if (s.log_lines?.length) lines.push(...s.log_lines.slice(-3).map(l => l.text || ''));
+          if (s.log_lines?.length) lines.push(...s.log_lines.map(l => l.text || ''));
         }
-        logEl.textContent = lines.slice(-10).join('\n') || 'Running…';
+        logEl.textContent = lines.slice(-30).join('\n') || 'Running…';
         logEl.scrollTop = logEl.scrollHeight;
       }
 

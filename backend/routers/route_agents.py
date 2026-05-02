@@ -627,11 +627,27 @@ async def _run_pipeline_bg(
 
         dur_s = _time.monotonic() - t0
 
-        # Log stage result
+        # Log stage result + ReAct steps
         if stage_id:
             try:
                 with db.conn() as conn:
-                    out_preview = (stage_result.output or "")[:500] if stage_result else ""
+                    # Write each ReAct step so the log shows the thinking process
+                    if stage_result and stage_result.steps:
+                        for st in stage_result.steps:
+                            thought_preview = (st.thought or "")[:300].strip()
+                            step_txt = f"Step {st.step_num}"
+                            if thought_preview:
+                                step_txt += f": {thought_preview}"
+                            if st.action_name:
+                                args_preview = ", ".join(
+                                    f"{k}={str(v)[:60]}"
+                                    for k, v in list((st.action_args or {}).items())[:3]
+                                )
+                                step_txt += f"\n  → {st.action_name}({args_preview})"
+                            if st.observation:
+                                step_txt += f"\n  ← {st.observation[:200]}"
+                            _append_stage_log(conn, stage_id, step_txt)
+                    # Final status line
                     _append_stage_log(
                         conn, stage_id,
                         f"[{stage_def.key}] Stage {'done' if not stage_error else 'error'}. "
