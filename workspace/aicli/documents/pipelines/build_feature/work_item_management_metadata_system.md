@@ -1,11 +1,11 @@
 # Pipeline Execution Report: build_feature
-**Run ID:** 5af87ade-429a-4472-9866-4c62e7baf701
+**Run ID:** 51159f12-24da-492e-a2cd-1a470acad272
 **Project:** aicli
-**Date:** 2026-05-02 22:47 UTC
+**Date:** 2026-05-02 23:27 UTC
 **Verdict:** APPROVED
-**Duration:** 126.5s
-**Total Tokens:** 110,691 in / 1,926 out
-**Total Cost:** $0.3610
+**Duration:** 101.9s
+**Total Tokens:** 77,792 in / 1,647 out
+**Total Cost:** $0.2581
 **Linked UC:** 56557c83-15d1-4183-8e85-2098f3bb21d2
 
 ## Task Input
@@ -35,18 +35,18 @@ COMPLETED ITEMS (20):
 ---
 
 ## Stage: architect (Sr. Architect) — DONE
-_Duration: 34.4s | Tokens: 22,667 in / 505 out | Cost: $0.0756_
+_Duration: 36.1s | Tokens: 31,079 in / 599 out | Cost: $0.1022_
 
 **Input:** _(first stage — receives task directly)_
 
 **Tool calls (6):**
-  1. `search_memory`(query=work item management metadata system pipeline architecture)
-     → No results found for: work item management metadata system pipeline architecture
+  1. `search_memory`(query=Work Item Management US1002 pipeline tag management UI category display)
+     → No results found for: Work Item Management US1002 pipeline tag management UI category display
   2. `get_project_facts`()
      → Project Facts:
 
 [code]
-  code_structure: <!-- Last updated: 2026-05-02 22:20 UTC -->
+  code_structure: <!-- Last updated: 2026-05-02 23:24 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -59,41 +59,35 @@ aicli/
 │   │   ├── mcp/
 │   │   ├── providers/
 │   │   ├── to
-  3. `get_tag_context`(tag_name=FE2007)
-     → Work item 'FE2007' not found in project 'aicli'.
-  4. `get_tag_context`(tag_name=BU3008)
+  3. `get_tag_context`(tag_name=BU3008)
      → Work item 'BU3008' not found in project 'aicli'.
-  5. `get_tag_context`(tag_name=Per-Prompt Tag Addition & Management)
-     → === Work Item: Per-Prompt Tag Addition & Management ===
-Type: feature  |  Status: blocked
-Summary: Add UI option to tag individual user prompts in chat view. Show all existing user tags for each prompt (same functionality as History/Prompts). Tags should persist to mem_mrr_prompts table with phase, 
-  6. `get_tag_context`(tag_name=Work Item UI Category Display Bug)
-     → === Work Item: Work Item UI Category Display Bug ===
-Type: bug  |  Status: pending
-Summary: Planner UI not displaying bug/category labels properly—only shows 'work_item' category. When AI tag is accepted, work item disappears but top screen remains empty. UI not rendering category distinctions corre
+  4. `get_tag_context`(tag_name=FE2007)
+     → Work item 'FE2007' not found in project 'aicli'.
+  5. `get_tag_context`(tag_name=TA4009)
+     → Work item 'TA4009' not found in project 'aicli'.
+  6. `get_tag_context`(tag_name=RE6001)
+     → Work item 'RE6001' not found in project 'aicli'.
 
 **Output:**
 ```
-Thought: Let me get context for the remaining two open items and search for related features.
+Thought: Tags not found by ID. Let me search by name and also look at the relevant source files.
 ```
 
 ---
 
 ## Stage: developer (Web Developer) — DONE
-_Duration: 35.9s | Tokens: 41,587 in / 580 out | Cost: $0.1335_
+_Duration: 26.7s | Tokens: 19,339 in / 391 out | Cost: $0.0639_
 
 **Input from previous stage:**
 - From role: **Sr. Architect**
-- Raw preview: Thought: Let me get context for the remaining two open items and search for related features.
+- Raw preview: Thought: Tags not found by ID. Let me search by name and also look at the relevant source files.
 
-**Tool calls (7):**
-  1. `search_memory`(query=work item category display bug UI planner tags)
-     → No results found for: work item category display bug UI planner tags
-  2. `get_project_facts`()
+**Tool calls (4):**
+  1. `get_project_facts`()
      → Project Facts:
 
 [code]
-  code_structure: <!-- Last updated: 2026-05-02 22:20 UTC -->
+  code_structure: <!-- Last updated: 2026-05-02 23:24 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -106,45 +100,41 @@ aicli/
 │   │   ├── mcp/
 │   │   ├── providers/
 │   │   ├── to
-  3. `search_memory`(query=per-prompt tag addition UI chat view mem_mrr_prompts)
-     → No results found for: per-prompt tag addition UI chat view mem_mrr_prompts
-  4. `search_memory`(query=hook-log endpoint DB storage migration m050 prompts)
-     → No results found for: hook-log endpoint DB storage migration m050 prompts
-  5. `list_dir`(path=ui/frontend/views)
-     → Error: path not found: ui/frontend/views
-  6. `list_dir`(path=ui/frontend/stores)
-     → Error: path not found: ui/frontend/stores
-  7. `list_dir`(path=ui)
-     → Error: path not found: ui
+  2. `search_memory`(query=work item category display bug planner UI)
+     → No results found for: work item category display bug planner UI
+  3. `search_memory`(query=work item category type display planner tags UI rendering)
+     → No results found for: work item category type display planner tags UI rendering
+  4. `search_memory`(query=hook-log endpoint DB storage prompts migration m050)
+     → No results found for: hook-log endpoint DB storage prompts migration m050
 
 **Output:**
 ```
-Thought: The path might be different. Let me check the root directory structure.
+Thought: Let me look at the frontend views directory and the work items route to understand the current state.
 ```
 
 ---
 
 ## Stage: reviewer (Code Reviewer) — DONE
-_Duration: 40.4s | Tokens: 46,437 in / 841 out | Cost: $0.1519_
+_Duration: 26.4s | Tokens: 27,374 in / 657 out | Cost: $0.0920_
 
 **Input from previous stage:**
 - From role: **Web Developer**
-- Raw preview: Thought: The path might be different. Let me check the root directory structure.
+- Raw preview: Thought: Let me look at the frontend views directory and the work items route to understand the current state.
 
-**Tool calls (9):**
+**Tool calls (6):**
   1. `git_diff`(cwd=., staged=True)
-  2. `search_memory`(query=Work Item Management US1002 FE2007 TA4009 BU3008 RE6001)
-     → No results found for: Work Item Management US1002 FE2007 TA4009 BU3008 RE6001
+  2. `search_memory`(query=Work Item Management US1002 pipeline decisions)
+     → No results found for: Work Item Management US1002 pipeline decisions
   3. `git_diff`(cwd=., staged=False)
-     → diff --git a/workspace/aicli/history/commit_log.jsonl b/workspace/aicli/history/commit_log.jsonl
-index 42896cd9..6acad59a 100644
---- a/workspace/aicli/history/commit_log.jsonl
-+++ b/workspace/aicli/history/commit_log.jsonl
-@@ -1729,3 +1729,5 @@
- {"ts": "2026-05-02T21:50:57Z", "action": "commit_push"
-  4. `search_memory`(query=per-prompt tag addition chat view mem_mrr_prompts)
-     → No results found for: per-prompt tag addition chat view mem_mrr_prompts
-  5. `list_dir`(path=.)
+     → diff --git a/.cursor/rules/aicli.mdrules b/.cursor/rules/aicli.mdrules
+index 024c1aa8..17b9da50 100644
+--- a/.cursor/rules/aicli.mdrules
++++ b/.cursor/rules/aicli.mdrules
+@@ -1,5 +1,5 @@
+ # aicli — AI Coding Rules
+-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-02 21:51 UTC
++> Mana
+  4. `list_dir`(path=.)
      → f  .env
 f  __init__.py
 d  __pycache__
@@ -159,9 +149,7 @@ f  pyproject.toml
 f  requirements.txt
 d  routers
 f  start_backend.sh
-  6. `search_memory`(query=hook-log DB storage migration m050 prompt persistence)
-     → No results found for: hook-log DB storage migration m050 prompt persistence
-  7. `list_dir`(path=routers)
+  5. `list_dir`(path=routers)
      → f  __init__.py
 d  __pycache__
 f  route_admin.py
@@ -178,17 +166,12 @@ f  route_graph_workflows.py
 f  route_history.py
 f  route_logs.py
 f  route_m
-  8. `list_dir`(path=workspace/aicli)
-     → Error: path not found: workspace/aicli
-  9. `list_dir`(path=data)
+  6. `list_dir`(path=., pattern=*.py)
      → f  __init__.py
-d  __pycache__
-f  clean_pg_db.py
-f  dl_api_keys.py
-f  dl_seq.py
-f  dl_user.py
+f  main.py
+f  pwa_router.py
 
 **Output:**
 ```
-Thought: Let me look at the memory directory and check for frontend files.
+Thought: Let me check the data directory and search memory for hook-log related decisions.
 ```

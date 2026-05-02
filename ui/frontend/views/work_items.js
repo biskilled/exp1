@@ -2168,6 +2168,32 @@ window._ucShowLastRun = async (runId, pipeName, label) => {
       const targetId = data.linked_item_id || data.linked_uc_id;
       const rerunMode = data.linked_item_id ? 'item' : 'uc';
       const rerunUcId = data.linked_uc_id || '';
+      // Per-item review scores
+      const rvStage = (data.stages || []).find(s => s.stage_key === 'reviewer');
+      const rvItems = rvStage?.structured_out?.work_items_reviewed || [];
+      const rvHtml = rvItems.length ? `
+        <div style="margin-bottom:0.5rem;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+          <div style="padding:0.25rem 0.45rem;background:var(--surface2);font-size:0.62rem;
+                      font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">
+            Items reviewed
+          </div>
+          ${rvItems.map(wi => {
+            const sc = wi.score != null ? wi.score : '?';
+            const stColor = (wi.status === 'done' || wi.status === 'already_working') ? '#3ecf8e'
+                          : wi.status === 'partial' ? '#f59e0b' : '#e85d75';
+            const firstFail = (wi.ac_results || []).find(a => a.status === 'FAIL');
+            const reason = firstFail
+              ? (firstFail.criterion || firstFail.evidence || wi.summary || '').slice(0, 90)
+              : (wi.summary || '').slice(0, 90);
+            return `<div style="display:flex;align-items:flex-start;gap:0.35rem;
+                                padding:0.25rem 0.45rem;border-top:1px solid var(--border)">
+              <span style="font-size:0.68rem;font-weight:700;color:${stColor};min-width:30px">${sc}/5</span>
+              <span style="font-size:0.65rem;color:var(--muted);min-width:52px;flex-shrink:0">${_esc(wi.wi_id || '?')}</span>
+              <span style="font-size:0.65rem;color:${stColor};min-width:60px;flex-shrink:0">${wi.status || '?'}</span>
+              <span style="font-size:0.65rem;color:var(--text);flex:1;word-break:break-word">${_esc(reason)}</span>
+            </div>`;
+          }).join('')}
+        </div>` : '';
       verdEl.style.cssText = 'display:block;margin-top:0.5rem;flex-shrink:0';
       verdEl.innerHTML = `
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.55rem;
@@ -2176,6 +2202,7 @@ window._ucShowLastRun = async (runId, pipeName, label) => {
           <span style="font-size:0.65rem;color:var(--muted)">Previous run</span>
           ${data.duration_s ? `<span style="font-size:0.65rem;color:var(--muted);margin-left:auto">${data.duration_s.toFixed(0)}s · $${(data.total_cost_usd||0).toFixed(3)}</span>` : ''}
         </div>
+        ${rvHtml}
         ${targetId ? `
         <button onclick="window._ucClosePanel();window._ucStartRun('${_esc(pipeName || 'standard')}','${_esc(targetId)}','${_esc(rerunMode)}','${_esc(rerunUcId)}')"
           style="width:100%;padding:0.3rem 0.8rem;border-radius:4px;font-size:0.75rem;font-weight:600;
@@ -2283,10 +2310,16 @@ function _ucPollRun(runId) {
               if (so.files_changed?.length) outLines.push(`Files: ${so.files_changed.slice(0,5).join(', ')}`);
               if (so.commit_hash) outLines.push(`Commit: ${so.commit_hash.slice(0,8)}`);
               if (so.work_items_reviewed?.length) {
-                outLines.push(`Items reviewed: ${so.work_items_reviewed.length}`);
-                so.work_items_reviewed.slice(0, 6).forEach(wi => {
-                  const sc = wi.score != null ? ` (${wi.score}/5)` : '';
-                  outLines.push(`  ${wi.wi_id || '?'}: ${wi.status || '?'}${sc}${wi.summary ? ' — ' + wi.summary.slice(0, 70) : ''}`);
+                so.work_items_reviewed.slice(0, 8).forEach(wi => {
+                  const sc = wi.score != null ? `${wi.score}/5` : '?';
+                  const stMark = (wi.status === 'done' || wi.status === 'already_working') ? '✓'
+                               : wi.status === 'partial' ? '~' : '✗';
+                  // Show first FAIL criterion as reason, else summary
+                  const firstFail = (wi.ac_results || []).find(a => a.status === 'FAIL');
+                  const reason = firstFail
+                    ? `FAIL: ${(firstFail.criterion || firstFail.evidence || '').slice(0, 60)}`
+                    : (wi.summary || '').slice(0, 70);
+                  outLines.push(`${stMark} ${wi.wi_id || '?'} [${sc}] ${wi.status || '?'}${reason ? ' — ' + reason : ''}`);
                 });
               } else if (so.work_items?.length) outLines.push(`Work items assessed: ${so.work_items.length}`);
               if (outLines.length) {
@@ -2396,11 +2429,6 @@ function _ucPollRun(runId) {
           // Auto-score from backend: approved=5, needs_changes=3, rejected=1, error=0
           const autoScore = typeof data.score === 'number' ? data.score : 0;
 
-          // Render score dots: filled up to autoScore, empty after
-          const scoreDots = [1,2,3,4,5].map(n =>
-            `<span style="font-size:0.85rem;color:${n <= autoScore ? vColor : 'var(--border)'}">${n <= autoScore ? '●' : '○'}</span>`
-          ).join('');
-
           // Score buttons — pre-highlight up to autoScore
           const scoreBtns = [1,2,3,4,5].map(n => {
             const active = n <= autoScore;
@@ -2411,15 +2439,42 @@ function _ucPollRun(runId) {
                      color:${active ? vColor : 'var(--muted)'}">${n}</button>`;
           }).join('');
 
+          // Per-item review scores from reviewer stage
+          const reviewerStage = (data.stages || []).find(s => s.stage_key === 'reviewer');
+          const reviewedItems = reviewerStage?.structured_out?.work_items_reviewed || [];
+          const itemScoresHtml = reviewedItems.length ? `
+            <div style="margin-bottom:0.5rem;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+              <div style="padding:0.25rem 0.45rem;background:var(--surface2);font-size:0.62rem;
+                          font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">
+                Items reviewed
+              </div>
+              ${reviewedItems.map(wi => {
+                const sc = wi.score != null ? wi.score : '?';
+                const stColor = wi.status === 'done' || wi.status === 'already_working' ? '#3ecf8e'
+                              : wi.status === 'partial' ? '#f59e0b' : '#e85d75';
+                // Reason: first FAIL ac_result criterion, else summary
+                let reason = wi.summary || '';
+                const firstFail = (wi.ac_results || []).find(a => a.status === 'FAIL');
+                if (firstFail) reason = (firstFail.criterion || firstFail.evidence || reason).slice(0, 90);
+                return `<div style="display:flex;align-items:flex-start;gap:0.35rem;
+                                    padding:0.25rem 0.45rem;border-top:1px solid var(--border)">
+                  <span style="font-size:0.68rem;font-weight:700;color:${stColor};min-width:30px">${sc}/5</span>
+                  <span style="font-size:0.65rem;color:var(--muted);min-width:52px;flex-shrink:0">${_esc(wi.wi_id || '?')}</span>
+                  <span style="font-size:0.65rem;color:${stColor};min-width:60px;flex-shrink:0">${wi.status || '?'}</span>
+                  <span style="font-size:0.65rem;color:var(--text);flex:1;word-break:break-word">${_esc(reason)}</span>
+                </div>`;
+              }).join('')}
+            </div>` : '';
+
           verdEl.style.cssText = 'display:block;margin-top:0.5rem;flex-shrink:0';
           verdEl.innerHTML = `
             <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;
                         padding:0.4rem 0.55rem;background:${vColor}18;border-radius:4px;border:1px solid ${vColor}44">
               <span style="font-size:0.75rem;font-weight:700;color:${vColor}">${verdict.toUpperCase()}</span>
-              <span style="display:flex;gap:1px;align-items:center" title="${autoScore}/5">${scoreDots}</span>
               <span style="font-size:0.68rem;font-weight:600;color:${vColor}">${autoScore}/5</span>
               ${data.duration_s ? `<span style="font-size:0.65rem;color:var(--muted);margin-left:auto">${data.duration_s.toFixed(0)}s · $${(data.total_cost_usd||0).toFixed(3)}</span>` : ''}
             </div>
+            ${itemScoresHtml}
             ${data.error ? `<div style="font-size:0.65rem;color:#e85d75;margin-bottom:0.4rem;word-break:break-word">${_esc(data.error.slice(0, 120))}</div>` : ''}
             ${isLinked ? `
               <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.25rem">

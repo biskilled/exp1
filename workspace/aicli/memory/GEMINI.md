@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-05-02 22:20 UTC -->
+<!-- Last updated: 2026-05-02 23:24 UTC -->
 # aicli
-_2026-05-02 22:20 UTC | Memory synced: 2026-05-02_
+_2026-05-02 23:24 UTC | Memory synced: 2026-05-02_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -37,7 +37,7 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **backend_auth**: JWT (python-jose + bcrypt) + DEV_MODE toggle
 - **database**: PostgreSQL 15+ with pgvector (1536-dim, text-embedding-3-small)
 - **database_client**: psycopg2
-- **frontend_framework**: Vanilla JS + Electron + Vite
+- **frontend_framework**: Vanilla JS (Vite) + Electron
 - **ui_components**: xterm.js + Monaco editor + Cytoscape.js
 - **llm_providers**: Claude (Haiku/Sonnet/Opus) + OpenAI (GPT-4/mini) + DeepSeek + Gemini + Grok
 - **workflow_engine**: Async DAG executor (asyncio.gather) with per-node temperature/top_p/provider/model/max_iterations overrides
@@ -45,24 +45,25 @@ No more copy-pasting context. No more re-explaining your architecture.
 - **mcp_transport**: Stdio MCP server with 10 tools; unified REST dispatch
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
+- **pipeline_config**: YAML files (8 pipelines in workspace/_templates/pipelines/)
 
 ## Key Architectural Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic
-- Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
+- 3-layer memory architecture: raw captures (mem_mrr_* tables: prompts, commits, commits_code, commits_file_stats, commits_file_coupling, items, messages) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic
+- Single source of truth: /memory POST endpoint + project_synthesis Haiku call is ONLY writer to project_state.json; CLAUDE.md, CODE.md, PROJECT.md all regenerated from this JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
-- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
+- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
+- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
 - MCP server tool integration: 10 tools via stdio transport (search_memory, get_project_state, tags, backlog, etc.); unified REST dispatch; agent roles execute tools via per-node mcp flag
-- Work item classification and embedding: AI draft rows cleaned up; approved items (UC/FE/BU/TA prefix) embedded to pgvector; semantic search via cosine similarity; re-embed on field change
+- Work item classification and embedding: AI draft rows cleaned up; approved items (UC/FE/BU/TA prefix) embedded to pgvector; semantic search via cosine similarity; re-embed on field change; stage input/output captured to steps_json and input_snapshot JSONB columns for pipeline report generation
 
 ## In Progress
 
@@ -91,11 +92,11 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 - `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
 - `backend/memory/memory_work_items.py` — score 31.0 (29 commits, 1379 lines)
-- `backend/core/db_migrations.py` — score 20.0 (18 commits, 3468 lines)
+- `backend/core/db_migrations.py` — score 23.0 (21 commits, 3902 lines)
+- `ui/frontend/views/work_items.js` — score 21.0 (19 commits, 3354 lines)
 - `backend/memory/memory_files.py` — score 20.0 (18 commits, 1176 lines)
-- `ui/frontend/views/work_items.js` — score 19.0 (17 commits, 3322 lines)
+- `backend/routers/route_agents.py` — score 19.0 (17 commits, 1447 lines)
 - `backend/routers/route_projects.py` — score 19.0 (17 commits, 1693 lines)
-- `backend/routers/route_agents.py` — score 17.0 (15 commits, 1361 lines)
 - `backend/routers/route_agent_roles.py` — score 13.0 (11 commits, 1692 lines)
 - `backend/agents/mcp/server.py` — score 12.0 (10 commits, 932 lines)
 - `ui/frontend/views/prompts.js` — score 12.0 (10 commits, 1642 lines)
@@ -122,4 +123,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-05-02 22:20 UTC_
+_Last updated: 2026-05-02 23:24 UTC_

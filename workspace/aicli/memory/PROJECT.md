@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline report generation and Documents folder persistence: all pipeline runs now save structured markdown reports to workspace/{project}/documents/pipelines/{pipeline_name}/ with input/output per stage, cost/token breakdown, and per-stage execution logs
-- Per-node dynamic model dropdown: provider-model cache wired; when user changes provider in node properties, available models update automatically via combobox
-- Execution logs UI refinement: removed global execution log toggle; per-stage logs now appear as collapsible details under each stage summary only (no duplication); stage summaries show at top, followed by log toggles below
-- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; height is 100% viewport
-- Stage input/output snapshot visibility: architect stage now receives summarized use case + open items context; input_snapshot and steps_json populated during execution for debugging and report generation
-- UI performance and reactivity: eliminated full-page reloads on checkbox changes (roles/pipelines activation); implemented in-place DOM updates and delta rendering for settings panel
+- Architect role system prompt refinement: mandatory research sequence (search_memory → get_project_facts → search_features → list_dir → read_file) now explicit in DB; outputs file_analysis with current_state and required_changes per file to provide actionable context to developer
+- Resizable pipeline run panel UI: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage('uc_panel_width')
+- Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible <details> log toggle below stage summary; logs appear only under their respective stage (no duplication)
+- Pipeline report MD folder/filename editing: PATCH endpoint live; folder path and filename are now independently editable inputs in panel; supports path changes with automatic save
+- Bug fixes in active migration: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
+- Database schema cleanup: lifecycle tags removal from Planner UI; audit of unused mem_ai_events columns; table structure persistence validation
 
 ## Key Decisions
 
@@ -318,14 +318,14 @@ sidebar tabs:
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
 - Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md
+- Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- MCP server tool integration: 10 tools via stdio transport (search_memory, get_project_state, tags, backlog, etc.); unified REST dispatch; agent roles execute tools via per-node mcp flag
-- Work item classification and embedding: AI draft rows cleaned up; approved items (UC/FE/BU/TA prefix) embedded to pgvector; semantic search via cosine similarity; re-embed on field change; stage input/output captured to steps_json and input_snapshot JSONB columns for pipeline report generation
+- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs collapsible under stage summary only (no global toggle); stage summaries appear first, followed by per-role log toggles below
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
