@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 14:10 UTC -->
+<!-- Last updated: 2026-05-02 14:41 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -17,11 +17,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts via /memory POST + Haiku synthesis) → approved work items (mem_work_items with wi_parent_id hierarchy); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Work item classification pipeline: POST /wi/{project}/classify deletes AI draft rows, classifies new backlog items via Haiku, promotes AI→UC/FE/BU/TA on user approval
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state for versioning
-- System prompts: 3 shared canonical presets (Coding — General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; system_roles table contains only 3 canonical entries
-- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate
+- System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
+- Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
+- Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-deploy hook integration: stop hook execution with auto_commit_push.sh, memory/work item sync back to central repo after Claude Code sessions (multiple commits across 2 days)
-- Work item classification pipeline refinement: AI→UC/FE/BU/TA promotion workflow and /wi/{project}/classify endpoint optimization
-- Memory synthesis via /memory POST: project_state.json regeneration and Haiku-driven fact extraction to mem_ai_project_facts
-- Execution history and logging: execution logs panel below pipeline node diagram, session-level chat history organization
+- Pipeline execution refinement: fixing ToolUseBlock attribute errors with getattr fallback, Anthropic format messages.N tool_result sequencing, cost calculation for max_iterations path
+- Stage visibility and output rendering: displaying input_snapshot summaries, output_snapshot artifacts (code diffs, file outputs), collapsible ReAct steps per stage with duration/cost breakdown
+- Execution history UI: session-level chat history grouped by source (CLI vs web), verdict banner with score_dots (●/○), stage detail panels with artifact downloads
+- In-place DOM updates: avoiding full page reloads on role/pipeline activation toggles and mode flag changes; reducing layout jank on Settings changes
 
-_Last updated: 2026-05-02 14:10 UTC_
+_Last updated: 2026-05-02 14:41 UTC_

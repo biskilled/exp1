@@ -28,6 +28,170 @@ router = APIRouter()
 _run_cache: dict[str, dict] = {}
 
 
+# ── Task enrichment ───────────────────────────────────────────────────────────
+
+def _enrich_task_from_db(
+    project_id: int,
+    original_task: str,
+    linked_uc_id: str | None,
+    linked_item_id: str | None,
+) -> str:
+    """Append full UC/item context from DB to the pipeline task string.
+
+    Adds: UC summary, acceptance criteria, implementation plan, all children
+    (open + done), per-item scores, related activity counts, and clear
+    instructions so each agent knows what to produce.
+    """
+    from core.database import db
+    if not db.is_available() or (not linked_uc_id and not linked_item_id):
+        return original_task
+
+    sections: list[str] = [original_task.strip()]
+
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+
+                if linked_uc_id:
+                    # ── Full UC data ─────────────────────────────────────────
+                    cur.execute(
+                        """SELECT name, wi_id, summary, acceptance_criteria,
+                                  implementation_plan, score_status, user_status
+                           FROM mem_work_items WHERE id=%s""",
+                        (str(linked_uc_id),),
+                    )
+                    uc_row = cur.fetchone()
+                    if uc_row:
+                        uc_name, uc_wi_id, uc_sum, uc_ac, uc_impl, uc_score, uc_status = uc_row
+                        uc_sec = [
+                            "\n## USE CASE",
+                            f"**{uc_name}** [{uc_wi_id}]  "
+                            f"status={uc_status or 'open'}  score={uc_score or 0}/5",
+                        ]
+                        if uc_sum:
+                            uc_sec.append(f"\n**Summary:**\n{uc_sum[:800]}")
+                        if uc_ac:
+                            uc_sec.append(f"\n**Acceptance Criteria:**\n{uc_ac[:600]}")
+                        if uc_impl:
+                            uc_sec.append(f"\n**Implementation Plan:**\n{uc_impl[:600]}")
+                        sections.append("\n".join(uc_sec))
+
+                    # ── All children ─────────────────────────────────────────
+                    cur.execute(
+                        """SELECT name, wi_id, wi_type, user_status, score_status,
+                                  summary, acceptance_criteria
+                           FROM mem_work_items
+                           WHERE wi_parent_id=%s AND deleted_at IS NULL
+                           ORDER BY COALESCE(score_status,0) DESC, created_at""",
+                        (str(linked_uc_id),),
+                    )
+                    children = cur.fetchall()
+                    if children:
+                        open_ch  = [c for c in children if (c[3] or "open") not in ("done",)]
+                        done_ch  = [c for c in children if (c[3] or "open") in ("done",)]
+                        item_sec = [
+                            f"\n## WORK ITEMS  "
+                            f"({len(children)} total · {len(open_ch)} open · {len(done_ch)} done)",
+                        ]
+                        if open_ch:
+                            item_sec.append("\n### Open Items (must be implemented):")
+                            for c in open_ch:
+                                n, wid, wtype, st, sc, sm, ac = c
+                                item_sec.append(
+                                    f"\n**[{(wtype or 'task').upper()}] "
+                                    f"{wid or 'pending'} — {n}**\n"
+                                    f"status={st or 'open'}  current_score={sc or 0}/5"
+                                    + (f"\nSummary: {sm[:300]}" if sm else "")
+                                    + (f"\nAcceptance Criteria: {ac[:300]}" if ac else "")
+                                )
+                        if done_ch:
+                            item_sec.append(f"\n### Completed Items ({len(done_ch)}):")
+                            for c in done_ch[:15]:
+                                item_sec.append(f"- ✓ [{c[2]}] {c[1] or ''} {c[0]}")
+                        sections.append("\n".join(item_sec))
+
+                elif linked_item_id:
+                    # ── Single item ──────────────────────────────────────────
+                    cur.execute(
+                        """SELECT w.name, w.wi_id, w.wi_type, w.user_status,
+                                  w.score_status, w.summary, w.acceptance_criteria,
+                                  w.implementation_plan, w.due_date,
+                                  p.name, p.wi_id, p.summary
+                           FROM mem_work_items w
+                           LEFT JOIN mem_work_items p ON p.id = w.wi_parent_id
+                           WHERE w.id=%s""",
+                        (str(linked_item_id),),
+                    )
+                    ir = cur.fetchone()
+                    if ir:
+                        (n, wid, wtype, st, sc, sm, ac, impl, due,
+                         p_name, p_wid, p_sum) = ir
+                        it_sec = [
+                            "\n## ITEM",
+                            f"**[{(wtype or 'task').upper()}] {wid or 'pending'} — {n}**\n"
+                            f"status={st or 'open'}  current_score={sc or 0}/5",
+                        ]
+                        if sm:   it_sec.append(f"\n**Summary:**\n{sm[:600]}")
+                        if ac:   it_sec.append(f"\n**Acceptance Criteria:**\n{ac[:600]}")
+                        if impl: it_sec.append(f"\n**Implementation Plan:**\n{impl[:400]}")
+                        if due:  it_sec.append(f"\n**Due:** {due}")
+                        if p_name:
+                            it_sec.append(f"\n**Parent UC:** {p_name} [{p_wid}]")
+                            if p_sum:
+                                it_sec.append(f"UC Summary: {p_sum[:400]}")
+                        sections.append("\n".join(it_sec))
+
+                # ── Recent activity ───────────────────────────────────────────
+                try:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s "
+                        "AND created_at > NOW() - INTERVAL '30 days'",
+                        (project_id,),
+                    )
+                    p_cnt = (cur.fetchone() or [0])[0]
+                    cur.execute(
+                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s",
+                        (project_id,),
+                    )
+                    c_cnt = (cur.fetchone() or [0])[0]
+                    sections.append(
+                        f"\n## PROJECT ACTIVITY\n"
+                        f"Recent prompts (30d): {p_cnt}  |  Total commits: {c_cnt}"
+                    )
+                except Exception:
+                    pass
+
+    except Exception as e:
+        log.warning("_enrich_task_from_db failed: %s", e)
+
+    # ── Pipeline instructions ─────────────────────────────────────────────────
+    if linked_uc_id:
+        sections.append(
+            "\n## PIPELINE INSTRUCTIONS\n"
+            "All pipeline stages must:\n"
+            "1. **PM**: break down open items into sub-tasks; query search_memory for prior decisions\n"
+            "2. **Architect**: design implementation; read relevant files with read_file/list_dir\n"
+            "3. **Developer**: implement EVERY open item using tools:\n"
+            "   - search_memory → read_file → write_file → git_diff (verify) → git_commit\n"
+            "   - Score each item 0-5 in structured output (changes_made list)\n"
+            "4. **Reviewer**: verify actual file changes with git_diff; approve/reject per item\n"
+            "\nOutput must include per-item scores (0-5) in structured JSON."
+        )
+    elif linked_item_id:
+        sections.append(
+            "\n## PIPELINE INSTRUCTIONS\n"
+            "Implement the single item above:\n"
+            "1. search_memory → check past decisions\n"
+            "2. read_file → understand current code\n"
+            "3. write_file → implement changes\n"
+            "4. git_diff → verify correctness\n"
+            "5. git_commit → commit changes\n"
+            "Score the item 0-5 in structured output."
+        )
+
+    return "\n\n".join(sections)
+
+
 # ── Request / response models ─────────────────────────────────────────────────
 
 class AgentRunRequest(BaseModel):
@@ -286,6 +450,14 @@ async def _run_pipeline_bg(
 
     project_id = db.get_or_create_project_id(project)
 
+    # Enrich task with full UC/item context from DB
+    if linked_uc_id or linked_item_id:
+        task = _enrich_task_from_db(project_id, task, linked_uc_id, linked_item_id)
+        log.info("Task enriched for run_id=%s (%d chars)", run_id, len(task))
+
+    # In-memory stage data for report (avoids fragile DB re-query at the end)
+    _stage_mem: list[dict] = []
+
     # Load pipeline + DB overrides
     try:
         pipeline_def = PipelineDef.load(pipeline_name)
@@ -423,6 +595,8 @@ async def _run_pipeline_bg(
         # Run the stage
         stage_result = None
         stage_error  = None
+        # Capture handoff BEFORE running (for report — avoids DB re-query)
+        _input_handoff_snap = dict(handoff) if isinstance(handoff, dict) else handoff
         max_attempts = max(1, stage_def.retry)
         for retry_num in range(max_attempts):
             try:
@@ -468,6 +642,22 @@ async def _run_pipeline_bg(
                     )
             except Exception:
                 pass
+
+        # Collect stage data in memory (used for report — no DB re-query needed)
+        _stage_mem.append({
+            "key":          stage_def.key,
+            "role":         stage_def.role,
+            "status":       "error" if stage_error else "done",
+            "input_handoff": _input_handoff_snap,
+            "output_text":  (stage_result.output or "")[:10000] if stage_result else "",
+            "structured_out": stage_result.structured_output if stage_result else None,
+            "steps":        list(stage_result.steps) if stage_result and stage_result.steps else [],
+            "cost":         stage_result.cost_usd if stage_result else 0.0,
+            "in_tok":       stage_result.input_tokens if stage_result else 0,
+            "out_tok":      stage_result.output_tokens if stage_result else 0,
+            "dur":          dur_s,
+            "error":        stage_error,
+        })
 
         # Persist stage result
         if stage_result:
@@ -586,7 +776,7 @@ async def _run_pipeline_bg(
     except Exception as e:
         log.error("Could not finalize pipeline run: %s", e)
 
-    # Post-completion: save execution report to pipelines/runs/{pipeline_name}/ folder
+    # Post-completion: save execution report (built from in-memory _stage_mem)
     try:
         from core.project_paths import runs_dir as _runs_dir
         from datetime import datetime as _dt2
@@ -595,7 +785,7 @@ async def _run_pipeline_bg(
         run_dir = _runs_dir(project) / safe_name
         run_dir.mkdir(parents=True, exist_ok=True)
         ts_file = _dt2.utcnow().strftime("%d%m%y_%H%M")
-        # Use UC name in filename when run from a use case
+        # Use UC name in filename when triggered from a use case
         _uc_slug = None
         if linked_uc_id:
             try:
@@ -607,53 +797,77 @@ async def _run_pipeline_bg(
             except Exception:
                 _uc_slug = "run"
         doc_path = run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
+
+        # Build stage sections from in-memory data (no DB re-query needed)
         stage_sections: list[str] = []
-        try:
-            with db.conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """SELECT stage_key, role_name, status, output_text, structured_out,
-                                  duration_s, cost_usd, input_tokens, output_tokens,
-                                  input_snapshot, steps_json
-                           FROM pr_pipeline_run_stages WHERE run_id=%s ORDER BY id""",
-                        (run_id,),
+        for sm in _stage_mem:
+            lines: list[str] = [
+                f"## Stage: {sm['key']} ({sm['role']}) — {sm['status'].upper()}",
+                f"_Duration: {sm['dur']:.1f}s | "
+                f"Tokens: {sm['in_tok']:,} in / {sm['out_tok']:,} out | "
+                f"Cost: ${sm['cost']:.4f}_",
+            ]
+            # ── Input received ────────────────────────────────────────────────
+            snap = sm["input_handoff"]
+            if snap and isinstance(snap, dict):
+                snap_parts: list[str] = []
+                if snap.get("role"):    snap_parts.append(f"From role: **{snap['role']}**")
+                if snap.get("verdict"): snap_parts.append(f"Verdict: {snap['verdict']}")
+                for _k in ("summary", "plan", "description"):
+                    if snap.get(_k): snap_parts.append(f"{_k.title()}: {str(snap[_k])[:500]}")
+                if snap.get("issues"):
+                    snap_parts.append("Issues:\n" + "\n".join(f"  - {x}" for x in snap["issues"][:5]))
+                if snap.get("work_items"):
+                    snap_parts.append(f"Work items: {_json.dumps(snap['work_items'])[:400]}")
+                if snap.get("changes_made"):
+                    snap_parts.append(f"Changes: {_json.dumps(snap['changes_made'])[:400]}")
+                if snap.get("suggested_fixes"):
+                    snap_parts.append("Suggested fixes:\n" + "\n".join(f"  - {x}" for x in snap["suggested_fixes"][:5]))
+                if snap.get("raw_output"):
+                    snap_parts.append(f"Raw preview: {str(snap['raw_output'])[:400]}")
+                if snap_parts:
+                    lines.append("\n**Input from previous stage:**\n" + "\n".join(f"- {p}" for p in snap_parts))
+            else:
+                lines.append("\n**Input:** _(first stage — receives task directly)_")
+
+            # ── Tool calls ────────────────────────────────────────────────────
+            steps = sm["steps"]
+            if steps:
+                tool_lines: list[str] = []
+                for st in steps:
+                    args = getattr(st, "action_args", None) or {}
+                    obs  = (getattr(st, "observation", None) or "")[:300]
+                    args_str = ", ".join(
+                        f"{k}={str(v)[:80]}" for k, v in list(args.items())[:4]
                     )
-                    for row in cur.fetchall():
-                        s_key, s_role, s_status, s_out, s_struct, s_dur, s_cost, s_in, s_out_tok, s_snap, s_steps = row
-                        lines = [f"## Stage: {s_key} ({s_role}) — {s_status.upper()}"]
-                        lines.append(f"_Duration: {(s_dur or 0):.1f}s | Tokens: {(s_in or 0):,} in / {(s_out_tok or 0):,} out | Cost: ${(s_cost or 0):.4f}_")
-                        # Input from previous stage
-                        if s_snap:
-                            snap = s_snap if isinstance(s_snap, dict) else _json.loads(s_snap)
-                            snap_lines = []
-                            if snap.get("role"):  snap_lines.append(f"- From: **{snap['role']}**")
-                            if snap.get("summary"): snap_lines.append(f"- Summary: {snap['summary'][:300]}")
-                            if snap.get("verdict"): snap_lines.append(f"- Verdict: {snap['verdict']}")
-                            if snap.get("issues"):  snap_lines.append(f"- Issues: {'; '.join(snap['issues'][:3])}")
-                            if snap.get("raw_output"): snap_lines.append(f"- Input preview: {snap['raw_output'][:200]}")
-                            if snap_lines:
-                                lines.append("\n**Input from previous stage:**\n" + "\n".join(snap_lines))
-                        # Tool calls
-                        if s_steps:
-                            steps_list = s_steps if isinstance(s_steps, list) else _json.loads(s_steps)
-                            if steps_list:
-                                tool_lines = []
-                                for st in steps_list:
-                                    args = st.get("args", {})
-                                    main_arg = next((str(v)[:60] for v in args.values() if v), "")
-                                    tool_lines.append(f"  {st['step']}. `{st['tool']}`({main_arg}) → {str(st.get('observation',''))[:80]}")
-                                lines.append(f"\n**Tool calls ({len(steps_list)}):**\n" + "\n".join(tool_lines))
-                        # Output
-                        if s_struct:
-                            so = s_struct if isinstance(s_struct, dict) else _json.loads(s_struct)
-                            lines.append(f"\n**Structured output:**\n```json\n{_json.dumps(so, indent=2)[:1500]}\n```")
-                        elif s_out:
-                            cleaned = s_out.replace("Thought:", "\nThought:")[:800].strip()
-                            lines.append(f"\n**Output preview:**\n```\n{cleaned}\n```")
-                        stage_sections.append("\n".join(lines))
-        except Exception as _se:
-            log.warning("Could not collect stage details for report: %s", _se)
-        header = "\n".join([
+                    tool_lines.append(
+                        f"  {getattr(st,'step_num','')}. "
+                        f"`{getattr(st,'action_name','?')}`({args_str})"
+                    )
+                    if obs:
+                        tool_lines.append(f"     → {obs}")
+                lines.append(f"\n**Tool calls ({len(steps)}):**\n" + "\n".join(tool_lines))
+            else:
+                lines.append("\n**Tool calls:** None")
+
+            # ── Output ────────────────────────────────────────────────────────
+            sout = sm["structured_out"]
+            if sout:
+                lines.append(
+                    f"\n**Structured Output:**\n```json\n"
+                    f"{_json.dumps(sout, indent=2)[:3000]}\n```"
+                )
+            elif sm["output_text"]:
+                cleaned = sm["output_text"].replace("Thought:", "\nThought:")[:3000].strip()
+                lines.append(f"\n**Output:**\n```\n{cleaned}\n```")
+
+            if sm["error"]:
+                lines.append(f"\n**ERROR:** {sm['error']}")
+
+            stage_sections.append("\n".join(lines))
+
+        # ── Report header ─────────────────────────────────────────────────────
+        header_lines = [
             f"# Pipeline Execution Report: {pipeline_name}",
             f"**Run ID:** {run_id}",
             f"**Project:** {project}",
@@ -662,13 +876,16 @@ async def _run_pipeline_bg(
             f"**Duration:** {dur_total:.1f}s",
             f"**Total Tokens:** {total_in:,} in / {total_out:,} out",
             f"**Total Cost:** ${total_cost:.4f}",
-            f"**Task:**\n> {task[:500]}",
-        ])
-        doc_content = header + "\n\n---\n\n" + "\n\n---\n\n".join(stage_sections)
+        ]
+        if linked_uc_id:  header_lines.append(f"**Linked UC:** {linked_uc_id}")
+        if linked_item_id: header_lines.append(f"**Linked Item:** {linked_item_id}")
+        header_lines.append(f"\n## Task Input\n```\n{task[:2000]}\n```")
+
+        doc_content = "\n".join(header_lines) + "\n\n---\n\n" + "\n\n---\n\n".join(stage_sections)
         doc_path.write_text(doc_content, encoding="utf-8")
-        log.info("Execution report saved to %s", doc_path)
+        log.info("Execution report saved: %s", doc_path)
     except Exception as _de:
-        log.warning("Could not save execution report: %s", _de)
+        log.warning("Could not save execution report: %s", _de, exc_info=True)
 
     # Post-completion: log aggregate usage to mng_usage_logs
     if total_in > 0:

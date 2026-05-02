@@ -203,6 +203,34 @@ class Agent:
             except Exception as e:
                 log.debug("Agent.from_role DB error for '%s': %s", role_name, e)
 
+        # YAML fallback: if DB has no tools configured, scan template YAMLs by name field
+        if not role_tool_names:
+            try:
+                import yaml as _yaml
+                from pathlib import Path as _Path
+                _roles_dir = (
+                    _Path(__file__).parent.parent.parent
+                    / "workspace" / "_templates" / "pipelines" / "roles"
+                )
+                for _yp in _roles_dir.glob("role_*.yaml"):
+                    try:
+                        _yd = _yaml.safe_load(_yp.read_text())
+                        if _yd and _yd.get("name", "").strip() == role_name.strip():
+                            role_tool_names = _yd.get("tools") or []
+                            if role_tool_names:
+                                log.info(
+                                    "Agent.from_role '%s': YAML tools fallback (%s) → %s",
+                                    role_name, _yp.name, role_tool_names,
+                                )
+                            break
+                    except Exception:
+                        continue
+            except Exception as _ye:
+                log.debug("Agent.from_role YAML fallback failed for '%s': %s", role_name, _ye)
+
+        log.info("Agent.from_role '%s': provider=%s model=%s tools=%s",
+                 role_name, provider, model, role_tool_names or [])
+
         # Build tool definitions filtered to this role's allowed tool list
         tools: list[dict] = []
         if with_tools or role_tool_names:

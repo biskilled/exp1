@@ -1835,21 +1835,28 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
       const name    = ucData?.name || targetId;
       const wiId    = ucData?.wi_id  || '';
       const summary = ucData?.summary || '';
-      let itemLines = '';
-      try {
-        const res = await api.wi.openItems(_project, targetId);
-        const items = res.items || [];
-        itemLines = items.map(it =>
-          `- [${it.wi_type}]${it.wi_id ? ' ' + it.wi_id : ''} ${it.name}` +
-          (it.summary ? `: ${it.summary.slice(0, 200)}` : '')
-        ).join('\n');
-      } catch (_) {}
+      const ac      = ucData?.acceptance_criteria || '';
+      const impl    = ucData?.implementation_plan || '';
+      const children = ucData?.children || [];
+      const openItems = children.filter(c => !['done'].includes(c.user_status));
+      const doneItems = children.filter(c =>  ['done'].includes(c.user_status));
+      const itemLines = openItems.map(it =>
+        `- [${it.wi_type}] ${it.wi_id || 'pending'} ${it.name}` +
+        (it.user_status ? ` (${it.user_status}, score=${it.score_status || 0}/5)` : '') +
+        (it.summary ? `\n  Summary: ${it.summary.slice(0, 250)}` : '') +
+        (it.acceptance_criteria ? `\n  AC: ${it.acceptance_criteria.slice(0, 200)}` : '')
+      ).join('\n');
+      const doneLines = doneItems.slice(0,10).map(it =>
+        `- ✓ [${it.wi_type}] ${it.wi_id || ''} ${it.name}`
+      ).join('\n');
       task = [
-        `USE CASE: ${name}${wiId ? ' [' + wiId + ']' : ''}`,
+        `RUN PIPELINE ON USE CASE: ${name}${wiId ? ' [' + wiId + ']' : ''}`,
         summary ? `SUMMARY:\n${summary}` : '',
-        `\nOPEN ITEMS:`,
+        ac      ? `ACCEPTANCE CRITERIA:\n${ac}` : '',
+        impl    ? `IMPLEMENTATION PLAN:\n${impl.slice(0, 600)}` : '',
+        `\nOPEN ITEMS (${openItems.length}):`,
         itemLines || '(none)',
-        `\nINSTRUCTIONS: Analyse the use case and each open item. For each item produce a concrete implementation plan with acceptance criteria. Consider the full context above.`,
+        doneItems.length ? `\nCOMPLETED ITEMS (${doneItems.length}):\n${doneLines}` : '',
       ].filter(Boolean).join('\n');
       linked_uc_id = targetId;
       source = 'use_case';
@@ -1863,13 +1870,12 @@ window._ucStartRun = async (pipeName, targetId, mode, ucId) => {
       const itemName = item?.name || targetId;
       const itemWiId = item?.wi_id || '';
       task = [
-        `ITEM: ${itemName}${itemWiId ? ' [' + itemWiId + ']' : ''}`,
-        `TYPE: ${item?.wi_type || 'unknown'}`,
-        `STATUS: ${item?.user_status || 'open'}`,
+        `RUN PIPELINE ON ITEM: ${itemName}${itemWiId ? ' [' + itemWiId + ']' : ''}`,
+        `TYPE: ${item?.wi_type || 'unknown'} | STATUS: ${item?.user_status || 'open'} | SCORE: ${item?.score_status || 0}/5`,
         item?.summary ? `SUMMARY:\n${item.summary}` : '',
+        item?.acceptance_criteria ? `ACCEPTANCE CRITERIA:\n${item.acceptance_criteria}` : '',
         ucData ? `\nPARENT USE CASE: ${ucData.name}${ucData.wi_id ? ' [' + ucData.wi_id + ']' : ''}` : '',
         ucData?.summary ? `UC SUMMARY:\n${ucData.summary.slice(0, 400)}` : '',
-        `\nINSTRUCTIONS: Analyse this work item and produce a concrete implementation plan with acceptance criteria and step-by-step developer guidance.`,
       ].filter(Boolean).join('\n');
       linked_item_id = targetId;
       linked_uc_id   = ucId || null;
