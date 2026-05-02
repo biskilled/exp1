@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-01 10:23 UTC -->
+<!-- Last updated: 2026-05-01 10:44 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -23,14 +23,6 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability in UC vs item contexts
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 
-## Active Features (do not break)
-
-Work Item UI Category Display Bug: Planner UI not displaying bug/category labels properly—only shows 'work_item' ca
-Work Item Management & Metadata System: Build comprehensive work item lifecycle management with AI-generated metadata, t
-MCP Configuration: Set up Model Context Protocol (MCP) configurations for multiple LLM providers an
-Verify Hook-Log DB Storage After Migration: Verify that hook-log endpoint correctly stores all prompts to database after mig
-Audit and clean planner_tags table schema: Review planner_tags table for redundant/unused columns: drop seq_num (always nul
-
 ## In Progress
 
 - Pipeline execution UI improvements: execution logs/history panel below node diagram, output folder context flow updates, doc search dropdown styling and selection handling
@@ -38,4 +30,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Chat history & session grouping: session-level organization in History view with proper prompt/response display; CLI session source detection via src column (not tags); multiple session filtering per phase
 - Unified execution experience: execute bar now standard across Pipeline tab, Role Library, and Use Cases; multi-file upload with chips, doc search dropdown, output folder context updates
 
-_Last updated: 2026-05-01 10:23 UTC_
+_Last updated: 2026-05-01 10:44 UTC_

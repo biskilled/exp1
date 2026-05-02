@@ -30,8 +30,8 @@ from data.dl_user import find_by_id, list_users
 # background records, ensuring aggregation queries return accurate user-facing stats.
 _SQL_INSERT_USAGE_LOG = """
     INSERT INTO mng_usage_logs
-       (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd)
-       VALUES (%s, %s, %s, %s, %s, %s, %s)
+       (user_id, provider, model, input_tokens, output_tokens, cost_usd, charged_usd, source, metadata)
+       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
 """
 
 # ── Router definition ─────────────────────────────────────────────────────────
@@ -63,15 +63,26 @@ def _usage_path(user_id: str) -> Path:
 
 
 def log_usage(
-    user_id: str,
+    user_id: str | int | None,
     provider: str,
     model: str,
     input_tokens: int,
     output_tokens: int,
     charged_usd: float = 0.0,
+    source: str = "request",
+    metadata: dict | None = None,
 ) -> None:
     """Append one usage record to PostgreSQL (when available) and JSONL file."""
+    import json as _json
     real_cost = _cost(model, input_tokens, output_tokens)
+    meta_json = _json.dumps(metadata) if metadata else None
+    # DB user_id must be INT or NULL
+    try:
+        db_user_id = int(user_id) if user_id is not None and str(user_id).isdigit() else None
+    except (ValueError, TypeError):
+        db_user_id = None
+    # File path uses string user_id (or "system" fallback)
+    file_uid = str(user_id) if user_id is not None else "system"
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "provider": provider,
@@ -80,21 +91,23 @@ def log_usage(
         "output_tokens": output_tokens,
         "cost_usd": real_cost,
         "charged_usd": charged_usd,
+        "source": source,
     }
-    # Primary: PostgreSQL — benefits from idx_usage_user_id and idx_usage_created_at
+    # Primary: PostgreSQL
     if db.is_available():
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         _SQL_INSERT_USAGE_LOG,
-                        (user_id, provider, model, input_tokens, output_tokens, real_cost, charged_usd),
+                        (db_user_id, provider, model, input_tokens, output_tokens,
+                         real_cost, charged_usd, source, meta_json),
                     )
         except Exception:
             pass
     # Always write to file (fallback / portability)
-    with open(_usage_path(user_id), "a", encoding="utf-8") as f:
-        f.write(json.dumps(record) + "\n")
+    with open(_usage_path(file_uid), "a", encoding="utf-8") as f:
+        f.write(_json.dumps(record) + "\n")
 
 
 def _load_usage(user_id: str) -> list[dict]:

@@ -586,7 +586,7 @@ async def _run_pipeline_bg(
     except Exception as e:
         log.error("Could not finalize pipeline run: %s", e)
 
-    # Post-completion: save final output to documents folder
+    # Post-completion: save execution report to documents folder
     try:
         from core.project_paths import documents_dir as _docs_dir
         from datetime import datetime as _dt2
@@ -596,42 +596,92 @@ async def _run_pipeline_bg(
         safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", pipeline_name)
         ts_file = _dt2.utcnow().strftime("%Y%m%d_%H%M%S")
         doc_path = docs / f"{safe_name}_pipeline_{ts_file}.md"
-        final_output = (stage_result.output if stage_result else "") or ""
-        # Collect all stage outputs for a comprehensive document
         stage_sections: list[str] = []
         try:
             with db.conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """SELECT stage_key, role_name, status, output_text, structured_out,
-                                  duration_s, cost_usd
+                                  duration_s, cost_usd, input_tokens, output_tokens,
+                                  input_snapshot, steps_json
                            FROM pr_pipeline_run_stages WHERE run_id=%s ORDER BY id""",
                         (run_id,),
                     )
                     for row in cur.fetchall():
-                        s_key, s_role, s_status, s_out, s_struct, s_dur, s_cost = row
-                        section = [f"## Stage: {s_key} ({s_role}) — {s_status}"]
-                        if s_dur: section.append(f"_Duration: {s_dur:.1f}s | Cost: ${s_cost or 0:.4f}_")
-                        if s_out: section.append(f"\n{s_out}")
-                        if s_struct: section.append(f"\n**Structured output:**\n```json\n{_json.dumps(s_struct, indent=2)[:2000]}\n```")
-                        stage_sections.append("\n".join(section))
-        except Exception:
-            stage_sections = [final_output]
-        doc_content = "\n\n---\n\n".join([
-            f"# Pipeline Run: {pipeline_name}",
-            f"**Run ID:** {run_id}  \n**Verdict:** {final_verdict}  \n**Duration:** {dur_total:.1f}s  \n**Cost:** ${total_cost:.4f}",
-        ] + stage_sections)
+                        s_key, s_role, s_status, s_out, s_struct, s_dur, s_cost, s_in, s_out_tok, s_snap, s_steps = row
+                        lines = [f"## Stage: {s_key} ({s_role}) — {s_status.upper()}"]
+                        lines.append(f"_Duration: {(s_dur or 0):.1f}s | Tokens: {(s_in or 0):,} in / {(s_out_tok or 0):,} out | Cost: ${(s_cost or 0):.4f}_")
+                        # Input from previous stage
+                        if s_snap:
+                            snap = s_snap if isinstance(s_snap, dict) else _json.loads(s_snap)
+                            snap_lines = []
+                            if snap.get("role"):  snap_lines.append(f"- From: **{snap['role']}**")
+                            if snap.get("summary"): snap_lines.append(f"- Summary: {snap['summary'][:300]}")
+                            if snap.get("verdict"): snap_lines.append(f"- Verdict: {snap['verdict']}")
+                            if snap.get("issues"):  snap_lines.append(f"- Issues: {'; '.join(snap['issues'][:3])}")
+                            if snap.get("raw_output"): snap_lines.append(f"- Input preview: {snap['raw_output'][:200]}")
+                            if snap_lines:
+                                lines.append("\n**Input from previous stage:**\n" + "\n".join(snap_lines))
+                        # Tool calls
+                        if s_steps:
+                            steps_list = s_steps if isinstance(s_steps, list) else _json.loads(s_steps)
+                            if steps_list:
+                                tool_lines = []
+                                for st in steps_list:
+                                    args = st.get("args", {})
+                                    main_arg = next((str(v)[:60] for v in args.values() if v), "")
+                                    tool_lines.append(f"  {st['step']}. `{st['tool']}`({main_arg}) → {str(st.get('observation',''))[:80]}")
+                                lines.append(f"\n**Tool calls ({len(steps_list)}):**\n" + "\n".join(tool_lines))
+                        # Output
+                        if s_struct:
+                            so = s_struct if isinstance(s_struct, dict) else _json.loads(s_struct)
+                            lines.append(f"\n**Structured output:**\n```json\n{_json.dumps(so, indent=2)[:1500]}\n```")
+                        elif s_out:
+                            cleaned = s_out.replace("Thought:", "\nThought:")[:800].strip()
+                            lines.append(f"\n**Output preview:**\n```\n{cleaned}\n```")
+                        stage_sections.append("\n".join(lines))
+        except Exception as _se:
+            log.warning("Could not collect stage details for report: %s", _se)
+        header = "\n".join([
+            f"# Pipeline Execution Report: {pipeline_name}",
+            f"**Run ID:** {run_id}",
+            f"**Project:** {project}",
+            f"**Date:** {_dt2.utcnow().strftime('%Y-%m-%d %H:%M UTC')}",
+            f"**Verdict:** {final_verdict.upper()}",
+            f"**Duration:** {dur_total:.1f}s",
+            f"**Total Tokens:** {total_in:,} in / {total_out:,} out",
+            f"**Total Cost:** ${total_cost:.4f}",
+            f"**Task:**\n> {task[:500]}",
+        ])
+        doc_content = header + "\n\n---\n\n" + "\n\n---\n\n".join(stage_sections)
         doc_path.write_text(doc_content, encoding="utf-8")
-        log.info("Pipeline output saved to %s", doc_path)
+        log.info("Execution report saved to %s", doc_path)
     except Exception as _de:
-        log.warning("Could not save pipeline output document: %s", _de)
+        log.warning("Could not save execution report: %s", _de)
+
+    # Post-completion: log aggregate usage to mng_usage_logs
+    if total_in > 0:
+        try:
+            from routers.route_usage import log_usage as _log_usage
+            _log_usage(
+                user_id="pipeline",
+                provider="claude",
+                model=f"pipeline:{pipeline_name}",
+                input_tokens=total_in,
+                output_tokens=total_out,
+                charged_usd=round(total_cost, 8),
+                source="pipeline",
+                metadata={"run_id": run_id, "project": project, "verdict": final_verdict},
+            )
+        except Exception as _ue:
+            log.debug("Could not log pipeline usage: %s", _ue)
 
     # NOTE: linked item/UC summary is NOT updated automatically.
     # The user reviews the run in the panel and clicks "Apply" to write their summary.
 
     log.info(
-        "Async pipeline run done: run_id=%s verdict=%s cost=$%.4f dur=%.1fs",
-        run_id, final_verdict, total_cost, dur_total,
+        "Async pipeline run done: run_id=%s verdict=%s cost=$%.4f dur=%.1fs in=%d out=%d",
+        run_id, final_verdict, total_cost, dur_total, total_in, total_out,
     )
 
 

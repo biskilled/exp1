@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline execution UI improvements: execution logs/history panel below node diagram, output folder context flow updates, doc search dropdown styling and selection handling
-- Work item & use case dashboard: approved vs waiting-to-approve counters, total embedding count, nested item display for both UC and bug/feature/task categories, scoring visualization per item
-- Chat history & session grouping: session-level organization in History view with proper prompt/response display; CLI session source detection via src column (not tags); multiple session filtering per phase
-- Unified execution experience: execute bar now standard across Pipeline tab, Role Library, and Use Cases; multi-file upload with chips, doc search dropdown, output folder context updates
-- Settings UI optimization: in-place DOM patching on checkbox toggles (role/pipeline activation, mode flags) without full page reload; reduced layout jank on rapid changes
-- Auto-deploy workflow: stop hook integration with auto_commit_push.sh to sync memory and work items back to central repo after Claude Code sessions
+- Work item classification pipeline: DELETE AI draft rows, classify new backlog items via /wi/{project}/classify endpoint, AI→UC/FE/BU/TA promotion workflow
+- Memory synthesis via /memory POST: project_state.json regeneration, Haiku-driven fact extraction to mem_ai_project_facts, document upload and ingestion
+- Auto-deploy hook integration: stop hook execution with auto_commit_push.sh, memory/work item sync back to central repo after Claude Code sessions
+- Execution history and logging: execution logs panel below pipeline node diagram, session-level chat history organization with prompt/response display, filtered multi-session browsing
+- Settings UI optimization: in-place DOM patching for role/pipeline activation and mode flag toggles without full page reload, reduced layout jank on rapid changes
+- MCP server tool expansion: 10-tool unified stdio transport with search_memory, get_project_state, tags, backlog, and additional memory/work item operations
 
 ## Key Decisions
 
@@ -322,9 +322,9 @@ sidebar tabs:
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload in same row; files shown as removable chips; supports multiple document and file selections; integrated into pipeline, role, and use-case execution
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating and pipeline selection per item
-- Role library direct execution: Roles executable directly via Pipelines tab card selection with same exec bar interface; history panel shows execution logs; same interface as pipeline execution
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
+- Auto-deploy workflow: stop hook integration with auto_commit_push.sh to sync memory and work items back to central repo after Claude Code sessions
 - ToolUseBlock handling: all provider agents use getattr(tc, 'input') with fallback to support Anthropic ToolUseBlock; fixes 'object has no attribute get' errors during tool invocation
 
 ## Deprecated

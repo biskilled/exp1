@@ -30,7 +30,17 @@ from core.prompt_loader import prompts
 
 log = get_logger(__name__)
 
-_CTX_CAP = 3000  # chars per prior-node output injected into user message
+_CTX_CAP = 3000   # chars per prior-node output injected into user message
+_OBS_CAP = 4000   # max chars of a single tool observation sent back to the LLM
+
+
+def _calc_cost(provider: str, model: str | None, input_tok: int, output_tok: int) -> float:
+    """Return estimated USD cost; never raises."""
+    try:
+        from agents.providers.pr_costs import estimate_cost
+        return estimate_cost(provider, model or provider, input_tok, output_tok)
+    except Exception:
+        return 0.0
 
 # ── ReAct base injected into EVERY pipeline agent system prompt ────────────────
 # Role-specific content (job, must-nots, output format) lives in each YAML.
@@ -430,15 +440,7 @@ class Agent:
             stop_reason = resp.get("stop_reason", "end_turn")
 
             if stop_reason != "tool_use" or not tool_calls:
-                cost = 0.0
-                try:
-                    from agents.providers.pr_costs import estimate_cost
-                    cost = estimate_cost(
-                        self.provider, self.model or self.provider,
-                        total_input, total_output,
-                    )
-                except Exception:
-                    pass
+                cost = _calc_cost(self.provider, self.model, total_input, total_output)
                 return AgentResult(
                     output=resp.get("content", ""),
                     tool_calls_made=tool_calls_made,
@@ -462,6 +464,8 @@ class Agent:
                     if tool_input is None: tool_input = {}
                     tool_id    = getattr(tc, "id",    "") or ""
                 result_text = invoke_tool(tool_name, tool_input)
+                if len(result_text) > _OBS_CAP:
+                    result_text = result_text[:_OBS_CAP] + f"\n[...truncated {len(result_text)-_OBS_CAP} chars]"
                 tool_calls_made.append({"name": tool_name, "input": tool_input})
                 tool_results.append({
                     "type": "tool_result",
@@ -470,9 +474,11 @@ class Agent:
                 })
             messages.append({"role": "user", "content": tool_results})
 
+        cost = _calc_cost(self.provider, self.model, total_input, total_output)
         return AgentResult(
             output=resp.get("content", ""),
             tool_calls_made=tool_calls_made,
+            cost_usd=cost,
             input_tokens=total_input,
             output_tokens=total_output,
             status="max_steps_reached",
@@ -536,16 +542,7 @@ class Agent:
                 if structured:
                     await self._save_to_memory(task, structured, project)
 
-                cost = 0.0
-                try:
-                    from agents.providers.pr_costs import estimate_cost
-                    cost = estimate_cost(
-                        self.provider, self.model or self.provider,
-                        total_input, total_output,
-                    )
-                except Exception:
-                    pass
-
+                cost = _calc_cost(self.provider, self.model, total_input, total_output)
                 return AgentResult(
                     output=content,
                     structured_output=structured,
@@ -590,10 +587,12 @@ class Agent:
                     "Agent '%s' loop detected at step %d — aborting",
                     self.name, iteration,
                 )
+                cost = _calc_cost(self.provider, self.model, total_input, total_output)
                 return AgentResult(
                     output=content,
                     steps=steps,
                     tool_calls_made=tool_calls_made,
+                    cost_usd=cost,
                     input_tokens=total_input,
                     output_tokens=total_output,
                     status="loop_detected",
@@ -621,11 +620,15 @@ class Agent:
                           self.name, iteration, tool_name, json.dumps(tool_input)[:200])
 
                 observation = invoke_tool(tool_name, tool_input)
+                obs_for_llm = (
+                    observation if len(observation) <= _OBS_CAP
+                    else observation[:_OBS_CAP] + f"\n[...truncated {len(observation)-_OBS_CAP} chars]"
+                )
                 tool_calls_made.append({"name": tool_name, "input": tool_input})
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_id,
-                    "content": observation,
+                    "content": obs_for_llm,
                 })
 
                 steps.append(ReactStep(
@@ -642,10 +645,12 @@ class Agent:
 
         # Max iterations exceeded
         log.warning("Agent '%s' exceeded max_iterations=%d", self.name, self.max_iterations)
+        cost = _calc_cost(self.provider, self.model, total_input, total_output)
         return AgentResult(
             output=resp.get("content", ""),
             steps=steps,
             tool_calls_made=tool_calls_made,
+            cost_usd=cost,
             input_tokens=total_input,
             output_tokens=total_output,
             status="max_steps_reached",
