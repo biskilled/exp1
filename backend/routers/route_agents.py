@@ -888,16 +888,32 @@ async def _run_pipeline_bg(
         from datetime import datetime as _dt2
         import re as _re
         safe_name = _re.sub(r"[^a-zA-Z0-9_-]", "_", pipeline_name)
-        run_dir = _docs_dir(project) / "pipelines" / safe_name
-        run_dir.mkdir(parents=True, exist_ok=True)
         ts_file = _dt2.utcnow().strftime("%d%m%y_%H%M")
-        # Determine filename: user-provided → UC name slug → timestamp only
-        if output_md_name:
-            # Sanitise and enforce .md extension
-            _fname = _re.sub(r"[^a-zA-Z0-9_.\-]", "_", output_md_name.strip())
-            if not _fname.lower().endswith(".md"):
-                _fname += ".md"
-            doc_path = run_dir / _fname
+
+        # Re-read output_md_path from DB — user may have updated it mid-run via PATCH
+        _db_md_path = None
+        try:
+            with db.conn() as _c:
+                with _c.cursor() as _cr:
+                    _cr.execute("SELECT output_md_path FROM pr_pipeline_runs WHERE id=%s", (run_id,))
+                    _row = _cr.fetchone()
+                    _db_md_path = (_row[0] if _row else None) or output_md_name or None
+        except Exception:
+            _db_md_path = output_md_name or None
+
+        # Determine doc_path from (in priority order):
+        #  1. _db_md_path — user may have updated via PATCH; can be "folder/file.md" or just "file.md"
+        #  2. auto-generated: documents/pipelines/{pipeline}/{ts}_{uc_slug}.md
+        _default_run_dir = _docs_dir(project) / "pipelines" / safe_name
+        if _db_md_path:
+            _clean = _re.sub(r"[^a-zA-Z0-9_.\-/]", "_", _db_md_path.strip())
+            if not _clean.lower().endswith(".md"):
+                _clean += ".md"
+            if "/" in _clean:
+                # Treat as path relative to workspace root (documents dir parent)
+                doc_path = _docs_dir(project).parent / _clean
+            else:
+                doc_path = _default_run_dir / _clean
         else:
             _uc_slug = None
             if linked_uc_id:
@@ -909,7 +925,8 @@ async def _run_pipeline_bg(
                             _uc_slug = _re.sub(r"[^a-zA-Z0-9_-]", "_", (_r[0] if _r else "run"))[:40]
                 except Exception:
                     _uc_slug = "run"
-            doc_path = run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
+            doc_path = _default_run_dir / (f"{ts_file}_{_uc_slug}.md" if _uc_slug else f"{ts_file}.md")
+        doc_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Build stage sections from in-memory data (no DB re-query needed)
         stage_sections: list[str] = []
@@ -1100,11 +1117,12 @@ async def start_pipeline_run(req: AsyncPipelineRunRequest) -> dict:
                 cur.execute(
                     """INSERT INTO pr_pipeline_runs
                            (id, project_id, pipeline_name, task, input_files, status,
-                            source, linked_uc_id, linked_item_id)
-                       VALUES (%s, %s, %s, %s, %s::jsonb, 'running', %s, %s, %s)""",
+                            source, linked_uc_id, linked_item_id, output_md_path)
+                       VALUES (%s, %s, %s, %s, %s::jsonb, 'running', %s, %s, %s, %s)""",
                     (run_id, project_id, req.pipeline, req.task,
                      _json.dumps(req.input_files),
-                     req.source, req.linked_uc_id, req.linked_item_id),
+                     req.source, req.linked_uc_id, req.linked_item_id,
+                     req.output_md_name or None),
                 )
             conn.commit()
     except Exception as e:
@@ -1138,7 +1156,7 @@ async def get_pipeline_run(run_id: str) -> dict:
                     """SELECT id, pipeline_name, task, status, final_verdict, score,
                               total_cost_usd, total_input_tokens, total_output_tokens,
                               duration_s, error, started_at, finished_at,
-                              linked_uc_id, linked_item_id, source
+                              linked_uc_id, linked_item_id, source, output_md_path
                        FROM pr_pipeline_runs WHERE id=%s""",
                     (run_id,),
                 )
@@ -1197,6 +1215,7 @@ async def get_pipeline_run(run_id: str) -> dict:
             "linked_uc_id":        str(row[13]) if row[13] else None,
             "linked_item_id":      str(row[14]) if row[14] else None,
             "source":              row[15] or "direct",
+            "output_md_path":      row[16],
             "stages":              stages,
         }
     except HTTPException:
@@ -1204,6 +1223,41 @@ async def get_pipeline_run(run_id: str) -> dict:
     except Exception as e:
         log.exception("get_pipeline_run failed: %s", e)
         raise HTTPException(500, str(e))
+
+
+@router.patch("/pipeline-runs/{run_id}")
+async def patch_pipeline_run(run_id: str, body: dict) -> dict:
+    """Update mutable fields on a pipeline run (output_md_path for now)."""
+    from core.database import db
+    import re as _re2
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+    updates: dict[str, object] = {}
+    if "output_md_path" in body:
+        raw = (body["output_md_path"] or "").strip()
+        if raw:
+            # Allow folder separators; sanitise everything else
+            raw = _re2.sub(r"[^a-zA-Z0-9_.\-/]", "_", raw)
+        updates["output_md_path"] = raw or None
+    if not updates:
+        raise HTTPException(422, "No updatable fields provided")
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                set_clause = ", ".join(f"{k}=%s" for k in updates)
+                cur.execute(
+                    f"UPDATE pr_pipeline_runs SET {set_clause} WHERE id=%s",
+                    [*updates.values(), run_id],
+                )
+                if cur.rowcount == 0:
+                    raise HTTPException(404, "Run not found")
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("patch_pipeline_run failed: %s", e)
+        raise HTTPException(500, str(e))
+    return {"ok": True, "run_id": run_id, **updates}
 
 
 @router.post("/pipeline-runs/{run_id}/approve")

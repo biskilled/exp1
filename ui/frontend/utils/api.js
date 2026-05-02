@@ -420,6 +420,7 @@ api.agents = {
   },
   approvePipelineRun:(id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/approve`, body),
   applyPipelineRun:  (id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/apply`, body),
+  patchPipelineRun:  (id, body)          => _patch(`/agents/pipeline-runs/${enc(id)}`, body),
   scoreRun:          (id, score)         => fetch(_base() + `/agents/pipeline-runs/${enc(id)}/score`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify({ score }),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),

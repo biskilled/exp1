@@ -42,6 +42,7 @@ let _ucRunCtx     = null;   // { mode, ucId, itemId, panelId }
 let _ucLastRuns   = {};     // { ucId|itemId → { runId, pipeName, label } } — last completed run per target
 let _ucActivePipeName  = '';
 let _ucActiveCtxLabel  = '';
+let _ucCurrentRunId    = null;  // run_id of the panel currently open
 const _UC_DROP_ID = 'uc-pipe-body-drop';  // body-level pipeline dropdown (avoids overflow:hidden clipping)
 
 // ── Type config ──────────────────────────────────────────────────────────────
@@ -1981,15 +1982,27 @@ function _ucOpenPanel(runId, pipeName, contextLabel, mdName) {
                      border-radius:4px;cursor:pointer;background:transparent;flex-shrink:0">✕</button>
     </div>
 
-    <!-- MD file path row -->
-    <div style="display:flex;align-items:center;gap:0.35rem;margin-bottom:0.5rem;flex-shrink:0">
-      <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap;
-                   text-transform:uppercase;letter-spacing:.04em">MD file:</span>
-      <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap">documents/pipelines/${_esc(pipeName)}/</span>
+    <!-- MD file path row (folder + filename, both editable) -->
+    <div style="display:flex;align-items:center;gap:0.25rem;margin-bottom:0.5rem;flex-shrink:0">
+      <span style="font-size:0.6rem;color:var(--muted);white-space:nowrap;flex-shrink:0;
+                   text-transform:uppercase;letter-spacing:.04em">MD:</span>
+      <input id="uc-panel-md-folder" value="documents/pipelines/${_esc(pipeName)}"
+             title="Folder path (relative to workspace)"
+             style="flex:2;min-width:0;font-size:0.63rem;padding:2px 4px;border:1px solid var(--border);
+                    border-radius:3px;background:var(--bg2);color:var(--muted);
+                    font-family:var(--font-mono,monospace)" />
+      <span style="font-size:0.7rem;color:var(--muted);flex-shrink:0">/</span>
       <input id="uc-panel-md-name" value="${_esc(defaultMd)}"
-             title="Edit to change the output markdown filename"
-             style="flex:1;min-width:0;font-size:0.65rem;padding:2px 5px;border:1px solid var(--border);
-                    border-radius:3px;background:var(--bg2);color:var(--text);font-family:var(--font-mono,monospace)" />
+             title="Filename (.md)"
+             style="flex:1.5;min-width:0;font-size:0.63rem;padding:2px 4px;border:1px solid var(--border);
+                    border-radius:3px;background:var(--bg2);color:var(--text);
+                    font-family:var(--font-mono,monospace)" />
+      <button id="uc-panel-md-save" title="Save path"
+              onclick="window._ucSaveMdPath()"
+              style="display:none;font-size:0.65rem;padding:2px 7px;border-radius:3px;flex-shrink:0;
+                     cursor:pointer;background:var(--accent);color:#fff;border:none;white-space:nowrap">
+        Save
+      </button>
     </div>
 
     <!-- Stages + per-step logs (all scrollable together) -->
@@ -2001,6 +2014,24 @@ function _ucOpenPanel(runId, pipeName, contextLabel, mdName) {
          style="display:none;margin-top:0.5rem;flex-shrink:0"></div>
   `;
   document.body.appendChild(panel);
+
+  // Track current run for PATCH calls
+  _ucCurrentRunId = runId;
+
+  // ── MD path: show Save button when folder or filename changes ─────────────
+  const _folderEl = document.getElementById('uc-panel-md-folder');
+  const _fileEl   = document.getElementById('uc-panel-md-name');
+  const _saveBtn  = document.getElementById('uc-panel-md-save');
+  if (_folderEl && _fileEl && _saveBtn) {
+    const _origFolder = _folderEl.value;
+    const _origFile   = _fileEl.value;
+    const _checkDirty = () => {
+      const dirty = _folderEl.value !== _origFolder || _fileEl.value !== _origFile;
+      _saveBtn.style.display = dirty ? '' : 'none';
+    };
+    _folderEl.addEventListener('input', _checkDirty);
+    _fileEl.addEventListener('input', _checkDirty);
+  }
 
   // ── Resize handle ─────────────────────────────────────────────────────────
   const handle = document.getElementById('uc-panel-resize');
@@ -2030,6 +2061,28 @@ window._ucClosePanel = () => {
   if (_ucPollTimer) { clearInterval(_ucPollTimer); _ucPollTimer = null; }
 };
 
+/** Save the edited MD folder + filename to the backend for the current run. */
+window._ucSaveMdPath = async () => {
+  const folderEl = document.getElementById('uc-panel-md-folder');
+  const fileEl   = document.getElementById('uc-panel-md-name');
+  const saveBtn  = document.getElementById('uc-panel-md-save');
+  const runId    = _ucCurrentRunId;
+  if (!runId || !folderEl || !fileEl) return;
+  const folder   = folderEl.value.trim().replace(/\/+$/, '');
+  const filename = fileEl.value.trim();
+  const fullPath = folder ? `${folder}/${filename}` : filename;
+  if (!fullPath) return;
+  try {
+    if (saveBtn) { saveBtn.textContent = '…'; saveBtn.disabled = true; }
+    await api.agents.patchPipelineRun(runId, { output_md_path: fullPath });
+    if (saveBtn) { saveBtn.style.display = 'none'; saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+    toast('Path saved', 'success');
+  } catch(e) {
+    if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+    toast('Could not save path: ' + e.message, 'error');
+  }
+};
+
 /** Open the panel in read-only mode showing a previously completed run. */
 window._ucShowLastRun = async (runId, pipeName, label) => {
   // Re-use _ucOpenPanel but without starting a new run
@@ -2044,6 +2097,19 @@ window._ucShowLastRun = async (runId, pipeName, label) => {
 
     if (titleEl) titleEl.textContent = `${pipeName || 'Pipeline'} — Last Run`;
     if (dot) dot.style.background = data.status === 'done' ? '#3ecf8e' : data.status === 'error' ? '#e85d75' : '#6b7490';
+
+    // Restore saved path from run data
+    if (data.output_md_path) {
+      const slash = data.output_md_path.lastIndexOf('/');
+      const folderEl = document.getElementById('uc-panel-md-folder');
+      const fileEl   = document.getElementById('uc-panel-md-name');
+      if (slash >= 0) {
+        if (folderEl) folderEl.value = data.output_md_path.slice(0, slash);
+        if (fileEl)   fileEl.value   = data.output_md_path.slice(slash + 1);
+      } else {
+        if (fileEl) fileEl.value = data.output_md_path;
+      }
+    }
 
     // Render stages read-only (same combined summaries + per-step logs layout)
     if (stagesEl && data.stages) {

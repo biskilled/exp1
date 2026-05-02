@@ -1,11 +1,11 @@
 # Pipeline Execution Report: build_feature
-**Run ID:** 67d525ef-860d-4b6c-9cee-6145448edb7a
+**Run ID:** 5af87ade-429a-4472-9866-4c62e7baf701
 **Project:** aicli
-**Date:** 2026-05-02 22:23 UTC
+**Date:** 2026-05-02 22:47 UTC
 **Verdict:** APPROVED
-**Duration:** 118.8s
-**Total Tokens:** 99,221 in / 1,950 out
-**Total Cost:** $0.3269
+**Duration:** 126.5s
+**Total Tokens:** 110,691 in / 1,926 out
+**Total Cost:** $0.3610
 **Linked UC:** 56557c83-15d1-4183-8e85-2098f3bb21d2
 
 ## Task Input
@@ -35,13 +35,13 @@ COMPLETED ITEMS (20):
 ---
 
 ## Stage: architect (Sr. Architect) — DONE
-_Duration: 28.4s | Tokens: 16,471 in / 478 out | Cost: $0.0566_
+_Duration: 34.4s | Tokens: 22,667 in / 505 out | Cost: $0.0756_
 
 **Input:** _(first stage — receives task directly)_
 
-**Tool calls (5):**
-  1. `search_memory`(query=work item management metadata tag mirroring feature snapshot)
-     → No results found for: work item management metadata tag mirroring feature snapshot
+**Tool calls (6):**
+  1. `search_memory`(query=work item management metadata system pipeline architecture)
+     → No results found for: work item management metadata system pipeline architecture
   2. `get_project_facts`()
      → Project Facts:
 
@@ -63,26 +63,32 @@ aicli/
      → Work item 'FE2007' not found in project 'aicli'.
   4. `get_tag_context`(tag_name=BU3008)
      → Work item 'BU3008' not found in project 'aicli'.
-  5. `get_tag_context`(tag_name=TA4009)
-     → Work item 'TA4009' not found in project 'aicli'.
+  5. `get_tag_context`(tag_name=Per-Prompt Tag Addition & Management)
+     → === Work Item: Per-Prompt Tag Addition & Management ===
+Type: feature  |  Status: blocked
+Summary: Add UI option to tag individual user prompts in chat view. Show all existing user tags for each prompt (same functionality as History/Prompts). Tags should persist to mem_mrr_prompts table with phase, 
+  6. `get_tag_context`(tag_name=Work Item UI Category Display Bug)
+     → === Work Item: Work Item UI Category Display Bug ===
+Type: bug  |  Status: pending
+Summary: Planner UI not displaying bug/category labels properly—only shows 'work_item' category. When AI tag is accepted, work item disappears but top screen remains empty. UI not rendering category distinctions corre
 
 **Output:**
 ```
-Thought: The work items aren't found by tag name. Let me try searching by feature name and also look at the relevant source files.
+Thought: Let me get context for the remaining two open items and search for related features.
 ```
 
 ---
 
 ## Stage: developer (Web Developer) — DONE
-_Duration: 41.1s | Tokens: 62,330 in / 781 out | Cost: $0.1987_
+_Duration: 35.9s | Tokens: 41,587 in / 580 out | Cost: $0.1335_
 
 **Input from previous stage:**
 - From role: **Sr. Architect**
-- Raw preview: Thought: The work items aren't found by tag name. Let me try searching by feature name and also look at the relevant source files.
+- Raw preview: Thought: Let me get context for the remaining two open items and search for related features.
 
-**Tool calls (9):**
-  1. `search_memory`(query=work item category display bug planner UI)
-     → No results found for: work item category display bug planner UI
+**Tool calls (7):**
+  1. `search_memory`(query=work item category display bug UI planner tags)
+     → No results found for: work item category display bug UI planner tags
   2. `get_project_facts`()
      → Project Facts:
 
@@ -100,104 +106,89 @@ aicli/
 │   │   ├── mcp/
 │   │   ├── providers/
 │   │   ├── to
-  3. `search_memory`(query=hook-log endpoint DB storage migration m050 prompts)
+  3. `search_memory`(query=per-prompt tag addition UI chat view mem_mrr_prompts)
+     → No results found for: per-prompt tag addition UI chat view mem_mrr_prompts
+  4. `search_memory`(query=hook-log endpoint DB storage migration m050 prompts)
      → No results found for: hook-log endpoint DB storage migration m050 prompts
-  4. `search_memory`(query=per-prompt tag addition management chat view mem_mrr_prompts)
-     → No results found for: per-prompt tag addition management chat view mem_mrr_prompts
   5. `list_dir`(path=ui/frontend/views)
      → Error: path not found: ui/frontend/views
-  6. `read_file`(path=backend/routers/route_work_items.py)
-     → Error: file not found: backend/routers/route_work_items.py
-  7. `list_dir`(path=/)
-     → f  .VolumeIcon.icns
-f  .file
-d  .nofollow
-d  .resolve
-d  .vol
-d  Applications
-d  Library
-d  System
-d  Users
-d  Volumes
-d  bin
-d  cores
-d  dev
-d  etc
-d  home
-d  opt
-d  private
-d  sbin
-d  tmp
-d  usr
-d  var
-  8. `list_dir`(path=/Users)
-     → f  .localized
-d  Shared
-d  user
-  9. `list_dir`(path=/Users/user)
-     → f  .CFUserTextEncoding
-f  .DS_Store
-d  .Trash
-d  .aicli
-d  .cache
-d  .cargo
-d  .claude
-f  .claude.json
-d  .config
-d  .junie
-d  .local
-d  .npm
-f  .profile
-d  .rustup
-d  .ssh
-d  .streamlit
-d  .vscode
-f  .zprofile
-f  .zsh_history
-d  .zsh_sessions
-f  .zshenv
-f  .zshrc
-d  Applications
-f  CREATE EXTENSION
+  6. `list_dir`(path=ui/frontend/stores)
+     → Error: path not found: ui/frontend/stores
+  7. `list_dir`(path=ui)
+     → Error: path not found: ui
 
 **Output:**
 ```
-Thought: Let me check the Desktop and Documents for the project.
+Thought: The path might be different. Let me check the root directory structure.
 ```
 
 ---
 
 ## Stage: reviewer (Code Reviewer) — DONE
-_Duration: 34.9s | Tokens: 20,420 in / 691 out | Cost: $0.0716_
+_Duration: 40.4s | Tokens: 46,437 in / 841 out | Cost: $0.1519_
 
 **Input from previous stage:**
 - From role: **Web Developer**
-- Raw preview: Thought: Let me check the Desktop and Documents for the project.
+- Raw preview: Thought: The path might be different. Let me check the root directory structure.
 
-**Tool calls (6):**
-  1. `git_diff`(cwd=., staged=False)
-     → diff --git a/.cursorrules b/.cursorrules
-index 7b214212..b5b12bcb 100644
---- a/.cursorrules
-+++ b/.cursorrules
-@@ -1,4 +1,4 @@
--<!-- Last updated: 2026-05-02 21:51 UTC -->
-+<!-- Last updated: 2026-05-02 22:20 UTC -->
- ## Project: aicli
- 
- ## Stack
-@@ -14,10 +14,10 @@ ui_components: xterm.js + Monaco
-  2. `search_memory`(query=Work Item Management US1002 FE2007 TA4009 BU3008 RE6001, limit=6)
+**Tool calls (9):**
+  1. `git_diff`(cwd=., staged=True)
+  2. `search_memory`(query=Work Item Management US1002 FE2007 TA4009 BU3008 RE6001)
      → No results found for: Work Item Management US1002 FE2007 TA4009 BU3008 RE6001
-  3. `git_diff`(cwd=., staged=True)
-  4. `search_memory`(query=per-prompt tag addition chat view mem_mrr_prompts FE2007, limit=6)
-     → No results found for: per-prompt tag addition chat view mem_mrr_prompts FE2007
-  5. `search_memory`(query=hook-log DB storage migration m050 prompt persistence TA4009, limit=6)
-     → No results found for: hook-log DB storage migration m050 prompt persistence TA4009
-  6. `search_memory`(query=work item UI category display bug planner BU3008, limit=6)
-     → No results found for: work item UI category display bug planner BU3008
+  3. `git_diff`(cwd=., staged=False)
+     → diff --git a/workspace/aicli/history/commit_log.jsonl b/workspace/aicli/history/commit_log.jsonl
+index 42896cd9..6acad59a 100644
+--- a/workspace/aicli/history/commit_log.jsonl
++++ b/workspace/aicli/history/commit_log.jsonl
+@@ -1729,3 +1729,5 @@
+ {"ts": "2026-05-02T21:50:57Z", "action": "commit_push"
+  4. `search_memory`(query=per-prompt tag addition chat view mem_mrr_prompts)
+     → No results found for: per-prompt tag addition chat view mem_mrr_prompts
+  5. `list_dir`(path=.)
+     → f  .env
+f  __init__.py
+d  __pycache__
+d  agents
+d  core
+d  data
+f  main.py
+d  memory
+d  pipelines
+f  pwa_router.py
+f  pyproject.toml
+f  requirements.txt
+d  routers
+f  start_backend.sh
+  6. `search_memory`(query=hook-log DB storage migration m050 prompt persistence)
+     → No results found for: hook-log DB storage migration m050 prompt persistence
+  7. `list_dir`(path=routers)
+     → f  __init__.py
+d  __pycache__
+f  route_admin.py
+f  route_agent_roles.py
+f  route_agents.py
+f  route_auth.py
+f  route_billing.py
+f  route_chat.py
+f  route_config_sync.py
+f  route_documents.py
+f  route_files.py
+f  route_git.py
+f  route_graph_workflows.py
+f  route_history.py
+f  route_logs.py
+f  route_m
+  8. `list_dir`(path=workspace/aicli)
+     → Error: path not found: workspace/aicli
+  9. `list_dir`(path=data)
+     → f  __init__.py
+d  __pycache__
+f  clean_pg_db.py
+f  dl_api_keys.py
+f  dl_seq.py
+f  dl_user.py
 
 **Output:**
 ```
-Thought: Memory returns empty for all specific queries. Let me list the project directory to understand the structure, and also search for broader topics.
+Thought: Let me look at the memory directory and check for frontend files.
 ```

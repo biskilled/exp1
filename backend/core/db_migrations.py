@@ -3573,6 +3573,17 @@ Return ONLY this JSON object (no markdown fences, no preamble):
     log.info("m089: updated Architect/Developer/Reviewer prompts for per-item tracking")
 
 
+def m090_pipeline_run_output_path(conn) -> None:
+    """Add output_md_path to pr_pipeline_runs so users can update the save path mid-run."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            ALTER TABLE pr_pipeline_runs
+              ADD COLUMN IF NOT EXISTS output_md_path TEXT DEFAULT NULL
+        """)
+    conn.commit()
+    log.info("m090: added output_md_path to pr_pipeline_runs")
+
+
 MIGRATIONS: list[tuple[str, Callable]] = [
     # All migrations through m017 (ai_tags column) were applied via the legacy
     # ALTER TABLE system in database.py and are tracked as:
@@ -3650,4 +3661,5 @@ MIGRATIONS: list[tuple[str, Callable]] = [
     ("m087_pipeline_mode_flags", m087_pipeline_mode_flags),
     ("m088_stage_steps_and_input", m088_stage_steps_and_input),
     ("m089_role_prompt_per_item_tracking", m089_role_prompt_per_item_tracking),
+    ("m090_pipeline_run_output_path", m090_pipeline_run_output_path),
 ]
