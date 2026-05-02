@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Execution logs visibility: Execution Log section now open by default (<details open>) displaying ReAct iterations (tool steps, observations) instead of just start/done markers
-- Pipeline list validation: All 8 YAML pipelines validated (standard, build_feature, etc.) using correct role references; pipeline display now uses listPipelines() API consistently without duplicate 'Recent Run' section
-- Embedding scope expansion: Architect agent now checks memory for sorted items; embedding only on closed/approved items; CODE.md requires embedding scope update per memory architecture
-- Batch document delete: DELETE /documents/batch endpoint implemented with checkbox UI for bulk deletion of files in Documents tab
-- Pipeline reports routing: Reports now save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md and appear in Documents tab tree under pipelines/ folder
-- History UI consolidation: Pipeline execution runs displayed under History tab (not Pipelines tab); phase filter synced between Chat and History; removed Recent Run duplication
+- Pipeline YAML validation and model dropdown: all 8 pipelines (pl_*.yaml) properly configured with roles; node properties now show dynamic model dropdown that updates when provider changes
+- Execution logs visibility: expanded `<details>` element to show ReAct iteration traces (tool calls, observations) and full stage thinking instead of only start/done markers
+- Pipeline reports to Documents folder: reports now save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md and appear in Documents tab tree
+- Batch document delete endpoint: DELETE /documents/batch accepts paths array for bulk deletion with checkboxes in Documents UI
+- Embedding flow for memory items: semantic search via pgvector cosine similarity; embeddings flowing at ~2/second across 212+ items for architectural context retrieval
+- Node properties panel: dynamic model/provider dropdowns, acceptance criteria fields, and proper YAML-based configuration UI alignment
 
 ## Key Decisions
 
@@ -324,7 +324,7 @@ sidebar tabs:
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
 - Verdict banner with score visualization: approved/needs_changes/rejected verdict with ●/○ dots (0-5), stage details panel with input summary, output artifacts (code diffs), collapsible ReAct steps per stage with duration/cost breakdown
 
 ## Deprecated

@@ -52,6 +52,9 @@ def _enrich_task_from_db(
         with db.conn() as conn:
             with conn.cursor() as cur:
 
+                uc_row = None  # set if linked_uc_id branch executes
+                ir     = None  # set if linked_item_id branch executes
+
                 if linked_uc_id:
                     # ── Full UC data ─────────────────────────────────────────
                     cur.execute(
@@ -141,25 +144,78 @@ def _enrich_task_from_db(
                                 it_sec.append(f"UC Summary: {p_sum[:400]}")
                         sections.append("\n".join(it_sec))
 
-                # ── Recent activity ───────────────────────────────────────────
+                # ── Linked prompts/commits (wi_id column ties mirror rows to items) ─
+                # Determine the text wi_id (e.g. "UC0001") for linking.
+                # Use Python's scoping: uc_wi_id / wid set in branches above.
+                _link_wi_id = (
+                    (uc_row[1] if linked_uc_id and uc_row else None)   # uc_wi_id
+                    or (ir[1] if linked_item_id and ir else None)       # wid
+                )
+                _link_uuid = str(linked_uc_id or linked_item_id)
+
                 try:
+                    if _link_wi_id:
+                        # Recent prompts/responses tied to this UC or item
+                        cur.execute(
+                            """SELECT left(prompt, 400), left(response, 400), created_at
+                               FROM mem_mrr_prompts
+                               WHERE project_id=%s AND wi_id=%s
+                               ORDER BY created_at DESC LIMIT 5""",
+                            (project_id, _link_wi_id),
+                        )
+                        prows = cur.fetchall()
+                        if prows:
+                            psec = [f"\n## PRIOR WORK — Prompts linked to {_link_wi_id}:"]
+                            for p_txt, r_txt, ts in prows:
+                                ts_str = ts.strftime("%d/%m/%y %H:%M") if ts else "?"
+                                psec.append(f"\n[{ts_str}]")
+                                if p_txt: psec.append(f"User: {p_txt}")
+                                if r_txt: psec.append(f"AI: {r_txt}")
+                            sections.append("\n".join(psec))
+
+                        # Commits tied to this UC or item
+                        cur.execute(
+                            """SELECT commit_msg, diff_summary, created_at
+                               FROM mem_mrr_commits
+                               WHERE project_id=%s AND wi_id=%s
+                               ORDER BY created_at DESC LIMIT 5""",
+                            (project_id, _link_wi_id),
+                        )
+                        crows = cur.fetchall()
+                        if crows:
+                            csec = [f"\n## PRIOR WORK — Commits linked to {_link_wi_id}:"]
+                            for msg, diff, ts in crows:
+                                ts_str = ts.strftime("%d/%m/%y %H:%M") if ts else "?"
+                                csec.append(f"\n[{ts_str}] {msg or ''}")
+                                if diff: csec.append(f"  Summary: {diff[:300]}")
+                            sections.append("\n".join(csec))
+
+                    # Previous successful pipeline run for this item/UC
                     cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_prompts WHERE project_id=%s "
-                        "AND created_at > NOW() - INTERVAL '30 days'",
-                        (project_id,),
+                        """SELECT s.role_name, s.status, left(s.output_text, 500), r.created_at
+                           FROM pr_pipeline_run_stages s
+                           JOIN pr_pipeline_runs r ON r.id = s.run_id
+                           WHERE (r.linked_uc_id=%s::uuid OR r.linked_item_id=%s::uuid)
+                             AND r.status = 'done'
+                           ORDER BY r.created_at DESC, s.id
+                           LIMIT 16""",
+                        (_link_uuid, _link_uuid),
                     )
-                    p_cnt = (cur.fetchone() or [0])[0]
-                    cur.execute(
-                        "SELECT COUNT(*) FROM mem_mrr_commits WHERE project_id=%s",
-                        (project_id,),
-                    )
-                    c_cnt = (cur.fetchone() or [0])[0]
-                    sections.append(
-                        f"\n## PROJECT ACTIVITY\n"
-                        f"Recent prompts (30d): {p_cnt}  |  Total commits: {c_cnt}"
-                    )
-                except Exception:
-                    pass
+                    prev_stages = cur.fetchall()
+                    if prev_stages:
+                        prev_sec = ["\n## PREVIOUS PIPELINE RUN OUTPUT (most recent completed):"]
+                        seen_run_ts: str | None = None
+                        for role, status, output, ts in prev_stages:
+                            ts_str = ts.strftime("%d/%m/%y %H:%M") if ts else "?"
+                            if ts_str != seen_run_ts:
+                                seen_run_ts = ts_str
+                                prev_sec.append(f"\n### Run from {ts_str}:")
+                            if output:
+                                prev_sec.append(f"\n**{role}** ({status}):\n{output}")
+                        sections.append("\n".join(prev_sec))
+
+                except Exception as _e:
+                    log.debug("linked context query failed: %s", _e)
 
     except Exception as e:
         log.warning("_enrich_task_from_db failed: %s", e)

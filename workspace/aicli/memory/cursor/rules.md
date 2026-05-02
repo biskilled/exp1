@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 21:14 UTC -->
+<!-- Last updated: 2026-05-02 21:41 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -38,4 +38,4 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 - Pipeline cost tracking: fixed cost_usd calculation for max_iterations terminal states; _calc_cost(provider, model, in_tokens, out_tokens) applied across all completion scenarios; cost breakdown in pipeline reports
 - Pipeline node diagram and execution flow: Cytoscape.js visualization with async DAG execution, per-node checkpoint/resume, approval gates, and real-time status updates
 
-_Last updated: 2026-05-02 21:14 UTC_
+_Last updated: 2026-05-02 21:41 UTC_

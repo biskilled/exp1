@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 21:14 UTC -->
+<!-- Last updated: 2026-05-02 21:41 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -216,9 +216,9 @@ _Files with highest commit frequency — candidates for refactoring._
 | `backend/agents/mcp/server.py` | 12.0 | 10 | 932 | 0 | 2026-05-02 |
 | `ui/frontend/views/prompts.js` | 12.0 | 10 | 1642 | 0 | 2026-04-29 |
 | `backend/routers/route_git.py` | 9.0 | 7 | 1691 | 0 | 2026-04-27 |
+| `backend/routers/route_work_items.py` | 8.0 | 8 | 650 | 0 | 2026-05-02 |
 | `backend/core/database.py` | 8.0 | 8 | 795 | 0 | 2026-04-29 |
 | `ui/frontend/views/settings.js` | 7.0 | 5 | 1887 | 0 | 2026-04-30 |
-| `backend/routers/route_work_items.py` | 7.0 | 7 | 594 | 0 | 2026-04-27 |
 | `backend/routers/route_history.py` | 6.0 | 4 | 938 | 0 | 2026-04-30 |
 | `backend/agents/agent.py` | 5.0 | 5 | 686 | 0 | 2026-05-02 |
 | `ui/frontend/views/chat.js` | 5.0 | 3 | 2261 | 0 | 2026-04-30 |

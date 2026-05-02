@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-02 21:13 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-02 21:40 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -25,6 +25,7 @@ _Last updated: 2026-05-02_
 - **workflow_engine**: Async DAG executor (asyncio.gather) with per-node temperature/top_p/provider/model/max_iterations overrides
 - **code_parser**: tree-sitter (Python/JavaScript/TypeScript) with 180-day recency-weighted hotspot scoring
 - **role_config**: YAML factory defaults (workspace/_templates/pipelines/roles/*.yaml) seeded ON CONFLICT DO NOTHING; mng_agent_roles DB is source-of-truth at runtime
+- **pipeline_config**: YAML (workspace/_templates/pipelines/pl_*.yaml) with 8 standard pipelines; all nodes reference roles from mng_agent_roles
 - **mcp_transport**: Stdio MCP server with 10 tools; unified REST dispatch
 - **deployment_backend**: Railway (Dockerfile + railway.toml)
 - **deployment_desktop**: Electron-builder (Mac dmg, Windows nsis, Linux AppImage+deb)
@@ -44,13 +45,13 @@ _Last updated: 2026-05-02_
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
+- Stage execution logging: steps_json captures ReAct iteration trace (tool_name, tool_args, observation) and score_dots display (● ○ visual indicator 0-5); input_snapshot preserves handoff context; pipeline reports saved to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
 - Verdict banner with score visualization: approved/needs_changes/rejected verdict with ●/○ dots (0-5), stage details panel with input summary, output artifacts (code diffs), collapsible ReAct steps per stage with duration/cost breakdown
 
 ## Recent Context (last 5 changes)
 
-- [2026-05-02] I cant see the approved use cases, can tou check that it is loaind properly.  About saving the md file for pipeline - al
-- [2026-05-02] It seems that it is not working can you please check and fix the following:   1. pipeline output md file  - not working.
 - [2026-05-02] About MD file - I suppose to see that under documents as the UI - so it is suppose to be under documents I think. Also I
 - [2026-05-02] Ok. I do see the logs in the md file , but do not see them at the execution logs . which they suppose to be as well. Als
 - [2026-05-02] When I look at the pipelines - I dont see this pipeline. can you confirm that all pipeline are using proper yaml file , 
+- [2026-05-02] All pipeline suppose to be based on yaml config. Also the one that user is doing (are shaped as yaml file). Also I do se
+- [2026-05-02] I did not finish the prompt. will write that again -  All pipeline suppose to be based on yaml config. Also the one that
