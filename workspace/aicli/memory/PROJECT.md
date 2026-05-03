@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Loop detection fix: agent.py _detect_loop now requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
-- Code Reviewer structured output: role now returns per-item scores (0-5) in JSON; verdict zone renders items_reviewed table with item ID, status, score, and reasoning
-- Resizable pipeline run panel: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage; per-stage execution logs as collapsible <details> below each stage summary
-- Pipeline YAML node properties: provider/model dropdowns update dynamically based on provider selection; mode_use_case and mode_item checkboxes control visibility in respective sections; require_approval_after computed per node from DB
-- Batch document delete: frontend checkbox-based selection + DELETE /documents/batch endpoint deletes multiple files; documents tab supports quick cleanup
-- Database schema cleanup: migration m087 added mode_use_case/mode_item to pipelines; removed unused columns from mem_ai_events; fixed undefined column errors in route_entities and route_history
+- Approval/rejection UI flow: verdict zone showing approval/reject buttons with api reference error ('api is not defined' in onclick handler); needs api global or import fix in work_items.js approval handler
+- Code Reviewer structured output: role returns per-item scores (0-5) in JSON; some edge cases where LLM outputs 'Thought:' continuation instead of final JSON, preventing structured_out from being parsed
+- Verdict zone per-item scores: items_reviewed table rendering scores after pipeline completion; working but need to ensure all roles (Architect, Developer, Reviewer) collect and pass structured_out correctly
+- Pipeline report markdown files: saving to documents/pipelines folder with editable folder path and filename; in-memory stage data collection verified; need to confirm all stage inputs/outputs (file_analysis, code changes, test results) are captured in reports
+- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; working with path array input
+- Provider/model dropdown sync in pipeline node properties: dynamic model selection when provider changes; cached provider-model map from GET /agents/models; requires_approval_after computed per node from DB
 
 ## Key Decisions
 
@@ -317,7 +317,7 @@ sidebar tabs:
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{slug}.md
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
 - Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 - Code Reviewer role outputs structured_out JSON with per-item score (0-5) and reasoning; verdict zone displays items_reviewed table after pipeline completion with scores and brief acceptance reasoning
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
@@ -325,7 +325,7 @@ sidebar tabs:
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
-- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs appear as collapsible toggles below stage summary only (not global); stage summaries show verdict + duration + cost; pipeline MD reports have editable folder path and filename with PATCH endpoint
+- Loop detection: agent._detect_loop now requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

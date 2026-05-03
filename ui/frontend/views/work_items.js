@@ -2391,10 +2391,10 @@ function _ucPollRun(runId) {
         verdEl.style.color = '#9b7ef8';
         verdEl.innerHTML = `Waiting for approval
           <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:center">
-            <button onclick="api.agents.approvePipelineRun('${runId}',{approved:true}).catch(()=>{})"
+            <button onclick="window._ucApprovePipelineRun('${runId}',true)"
                     style="padding:0.25rem 0.8rem;border-radius:4px;background:#3ecf8e22;color:#3ecf8e;
                            border:1px solid #3ecf8e;cursor:pointer;font-size:0.75rem">Approve</button>
-            <button onclick="api.agents.approvePipelineRun('${runId}',{approved:false}).catch(()=>{})"
+            <button onclick="window._ucApprovePipelineRun('${runId}',false)"
                     style="padding:0.25rem 0.8rem;border-radius:4px;background:#e85d7522;color:#e85d75;
                            border:1px solid #e85d75;cursor:pointer;font-size:0.75rem">Reject</button>
           </div>`;
@@ -2537,6 +2537,15 @@ window._ucApplyRun = async (runId, sid) => {
     setTimeout(() => _loadUseCases().catch(() => {}), 300);
   } catch (e) {
     toast('Apply failed: ' + e.message, 'error');
+  }
+};
+
+window._ucApprovePipelineRun = async (runId, approved) => {
+  try {
+    await api.agents.approvePipelineRun(runId, { approved });
+    toast(approved ? 'Approved — pipeline continuing…' : 'Rejected — pipeline stopped', approved ? 'success' : 'info');
+  } catch (e) {
+    toast('Approval failed: ' + e.message, 'error');
   }
 };
 

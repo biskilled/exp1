@@ -1,6 +1,6 @@
-<!-- Last updated: 2026-05-03 20:05 UTC -->
+<!-- Last updated: 2026-05-03 20:14 UTC -->
 # aicli
-_2026-05-03 20:05 UTC | Memory synced: 2026-05-02_
+_2026-05-03 20:14 UTC | Memory synced: 2026-05-03_
 
 ## Vision
 **aicli gives every LLM the same project memory.**
@@ -49,21 +49,21 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ## Key Architectural Decisions
 
-- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() → _embed_work_item()
+- Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{slug}.md
-- Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
+- Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file
+- Code Reviewer role outputs structured JSON with per-item score (0-5) and reasoning; verdict zone displays items_reviewed table after pipeline completion with scores and acceptance reasoning
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
-- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
+- Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections
+- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
-- Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Resizable pipeline run panel: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs appear as collapsible <details> toggles below stage summary only; stage summaries show verdict + duration + cost; pipeline MD reports have editable folder path and filename with PATCH endpoint
+- Resizable pipeline run panel: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage; per-stage execution logs as collapsible details below each stage summary
 
 ## In Progress
 
@@ -93,8 +93,8 @@ No more copy-pasting context. No more re-explaining your architecture.
 - `backend/memory/memory_code_parser.py` — score 58.9626 (2 commits, 788 lines)
 - `backend/memory/memory_work_items.py` — score 31.0 (29 commits, 1379 lines)
 - `backend/core/db_migrations.py` — score 23.0 (21 commits, 3902 lines)
+- `backend/routers/route_agents.py` — score 21.0 (19 commits, 1480 lines)
 - `ui/frontend/views/work_items.js` — score 21.0 (19 commits, 3354 lines)
-- `backend/routers/route_agents.py` — score 20.0 (18 commits, 1479 lines)
 - `backend/memory/memory_files.py` — score 20.0 (18 commits, 1176 lines)
 - `backend/routers/route_projects.py` — score 19.0 (17 commits, 1693 lines)
 - `backend/routers/route_agent_roles.py` — score 13.0 (11 commits, 1692 lines)
@@ -123,4 +123,4 @@ No more copy-pasting context. No more re-explaining your architecture.
 
 ---
 _Auto-generated by aicli memory system. Run `/memory` to refresh._
-_Last updated: 2026-05-03 20:05 UTC_
+_Last updated: 2026-05-03 20:14 UTC_
