@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-03 21:49 UTC -->
+<!-- Last updated: 2026-05-03 21:59 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -100,6 +100,7 @@ aicli/
 │   │   ├── preload.js
 │   │   └── terminal.js
 │   ├── frontend/
+│   │   ├── assets/
 │   │   ├── stores/
 │   │   ├── styles/
 │   │   ├── utils/

@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-03 21:49 UTC -->
+<!-- Last updated: 2026-05-03 21:59 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,8 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Auto-commit and chore management: multiple session-triggered chore commits (90bb3086, 4e182835) indicating Claude CLI session post-work hook integration is active and working
-- Session stability: 15 consecutive commits across May 2-3 suggest sustained active development with frequent save/sync cycles via auto_commit_push.sh
-- Project consolidation phase: high frequency of commits without detailed messages suggests focus on stabilizing existing features rather than adding new ones
+- Chore: auto-commit-push after claude cli sessions (session 90bb3086 and 4e182835) — multiple commits 2026-05-02 21:40 through 2026-05-03 21:59 indicate active CLI integration testing
+- Pipeline report markdown generation: saving to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data collected during execution
+- Per-role execution logs in use case panel: each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output)
+- Resizable execution panel in use case view: left-edge drag handle with 7px col-resize cursor, min 300px / max 85% viewport, persists to localStorage
 
-_Last updated: 2026-05-03 21:49 UTC_
+_Last updated: 2026-05-03 21:59 UTC_

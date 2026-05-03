@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline report markdown generation: saving to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data collected during execution; folder and filename editable via PATCH endpoint; visible in Documents tab
-- Per-role execution logs in use case panel: each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output); logs show INPUT (what stage received) and OUTPUT (file analysis, code plan, review items)
-- Resizable execution panel in use case view: left-edge drag handle with 7px col-resize cursor, min 300px / max 85% viewport, persists to localStorage; panel width syncs with Documents tree visibility
-- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; checkbox state managed per-file with removable chips showing selected paths
-- Verdict zone per-item scores display: items_reviewed table showing FE####/BU####/etc with scores 0-5 and reasoning; LLM-output structured_out JSON parsed to extract per-item verdict data
-- Approval/rejection UI flow: approval buttons use window._ucApprovePipelineRun() to PATCH /pipeline/{run_id}/approval endpoint; continues pipeline after approval or halts on rejection
+- AgentDesk branding: Updated UI (index.html, main.js, package.json) to replace 'aicli' with 'AgentDesk'; logo image support added with 22×22px circular styling in titlebar
+- Pipeline execution flow: Fully implemented 3-point execution (chat /pipeline, pipeline section, use case/item runners); all 9 steps verified including planning_out/planning_tokens/planning_cost_usd columns and approval flow
+- Verdict zone per-item scoring: items_reviewed table displaying FE####/BU####/etc with 0-5 scores and reasoning; structured_out JSON parsing extracts per-item verdict data from reviewer stage output
+- Resizable execution panel: Left-edge drag handle (7px col-resize), min 300px / max 85% viewport, persists to localStorage; syncs with Documents tree visibility
+- Per-role execution logs: Each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output); INPUT (received from prior stage) and OUTPUT (file_analysis, code_plan, review_items) clearly separated
+- Pipeline report markdown generation: Saves to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data; folder and filename editable via PATCH endpoint; visible in Documents tab tree
 
 ## Key Decisions
 
@@ -325,7 +325,7 @@ sidebar tabs:
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
-- Loop detection: agent._detect_loop requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
+- Loop detection: agent._detect_loop requires identical tool calls (same name + identical args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.
