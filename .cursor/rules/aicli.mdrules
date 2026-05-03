@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-03 21:46 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-03 21:49 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -34,23 +34,23 @@ _Last updated: 2026-05-03_
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() → _embed_work_item()
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Work item classification pipeline: POST /wi/{project}/classify deletes AI draft rows, invokes Haiku to classify mem_mrr_items into use_case/feature/bug/task/requirement, inserts approved rows with UC/FE/BU/TA prefix and embedding vector
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
 - Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 - Code Reviewer role outputs structured_out JSON with per-item score (0-5) and reasoning; verdict zone displays items_reviewed table after pipeline completion with scores and acceptance reasoning
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Loop detection: agent._detect_loop requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
 
 ## Recent Context (last 5 changes)
 
-- [2026-05-03] Still did not able to update the pipleine - that was the message in the backend - "PATCH /graph/null/nodes/developer HTT
 - [2026-05-03] Can you also recheck that the previous promts was fixed - role are working as exptected on use case. Also - it is still 
 - [2026-05-03] Ok. I do see now approval/reject - but there is an error - 2026-05-03 21:34:48 | ERROR    | routers.route_logs          
 - [2026-05-03] It looks like to pipeline logs are not working properly , and approval is not as well. pipeline logs - can show each ste
 - [2026-05-03] Working to pipeline flow -  pipeline can run for 3 places    - direclty from chat using /pipeline [pipeline name]   - fr
+- [2026-05-03] can you the last prompt again and check that is implemented as expected

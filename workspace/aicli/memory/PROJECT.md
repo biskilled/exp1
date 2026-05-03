@@ -302,28 +302,28 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Pipeline execution logs per stage: each role (Architect/Developer/Code Reviewer) now has individual <details> log toggle showing ReAct steps (tool name, args, observation, final JSON output); global log section removed to avoid duplication; logs appear below stage summary rows
-- Verdict zone per-item scores: items_reviewed table displaying FE####/BU####/etc with scores 0-5 and reasoning; fixed LLM 'Thought:' continuation preventing structured_out JSON parsing by enforcing final JSON output only
-- Pipeline report markdown generation: saves to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md with editable folder path and filename inputs; reports built from in-memory _stage_mem data collected during execution
-- Resizable execution panel in use case view: left-edge drag handle (7px col-resize), min 300px / max 85% viewport, persists width to localStorage; panel holds stage summaries + per-stage log toggles stacked vertically
-- Approval/rejection flow: approval buttons trigger window._ucApprovePipelineRun() calling PATCH /pipeline/{run_id}/approval endpoint; pipeline continues after approval or stops on rejection; stage execution respects require_approval_after flag from YAML
-- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; multiple files selectable as removable chips, all deletion confirmed in single call
+- Pipeline report markdown generation: saving to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data collected during execution; folder and filename editable via PATCH endpoint; visible in Documents tab
+- Per-role execution logs in use case panel: each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output); logs show INPUT (what stage received) and OUTPUT (file analysis, code plan, review items)
+- Resizable execution panel in use case view: left-edge drag handle with 7px col-resize cursor, min 300px / max 85% viewport, persists to localStorage; panel width syncs with Documents tree visibility
+- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; checkbox state managed per-file with removable chips showing selected paths
+- Verdict zone per-item scores display: items_reviewed table showing FE####/BU####/etc with scores 0-5 and reasoning; LLM-output structured_out JSON parsed to extract per-item verdict data
+- Approval/rejection UI flow: approval buttons use window._ucApprovePipelineRun() to PATCH /pipeline/{run_id}/approval endpoint; continues pipeline after approval or halts on rejection
 
 ## Key Decisions
 
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() → _embed_work_item()
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
+- Work item classification pipeline: POST /wi/{project}/classify deletes AI draft rows, invokes Haiku to classify mem_mrr_items into use_case/feature/bug/task/requirement, inserts approved rows with UC/FE/BU/TA prefix and embedding vector
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability
 - Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 - Code Reviewer role outputs structured_out JSON with per-item score (0-5) and reasoning; verdict zone displays items_reviewed table after pipeline completion with scores and acceptance reasoning
 - Tool category bundles: tool selection by category (git/files/memory) instead of individual items; categories show tool count; multi-select in role editor
 - Pipeline & role activation: Settings → Roles & Pipelines dual-pane shows all roles/pipelines with activation checkboxes; only activated items appear in main tabs and are executable; pipeline activation requires all constituent roles to be activated
 - Execute bar unified input: output folder combobox + searchable project docs dropdown + multi-file upload; files shown as removable chips; supports multiple document and file selections; per-role and per-pipeline execution modes
-- Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Loop detection: agent._detect_loop requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
 

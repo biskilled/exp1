@@ -1,7 +1,7 @@
 {
-  "name": "aicli-desktop",
+  "name": "agentdesk",
   "version": "2.0.0",
-  "description": "aicli — AI-powered development CLI desktop app",
+  "description": "AgentDesk — AI-powered development desktop app",
   "main": "electron/main.js",
   "type": "commonjs",
   "scripts": {
@@ -24,9 +24,9 @@
     "vite": "^5.0.0"
   },
   "build": {
-    "appId": "com.aicli.desktop",
-    "productName": "aicli Desktop",
-    "copyright": "Copyright © 2026 aicli",
+    "appId": "com.agentdesk.app",
+    "productName": "AgentDesk",
+    "copyright": "Copyright © 2026 AgentDesk",
     "directories": {
       "output": "dist-electron"
     },
@@ -48,7 +48,7 @@
       "minimumSystemVersion": "13.0"
     },
     "dmg": {
-      "title": "aicli Desktop",
+      "title": "AgentDesk",
       "window": { "width": 540, "height": 380 }
     },
     "win": {

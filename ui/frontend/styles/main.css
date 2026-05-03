@@ -125,6 +125,14 @@ html.platform-darwin #titlebar {
 
 .titlebar-icon { color: var(--accent); font-size: 1.1rem; }
 
+.titlebar-logo-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .titlebar-name {
   font-family: var(--font-ui);
   font-weight: 800;

@@ -229,8 +229,8 @@ function renderShell() {
       <div id="titlebar">
         <button class="titlebar-toggle" onclick="window._toggleSidebar()" title="Toggle sidebar">☰</button>
         <div class="titlebar-logo">
-          <span class="titlebar-icon">⬡</span>
-          <span class="titlebar-name">aicli</span>
+          <img src="./assets/logo.jpg" class="titlebar-logo-img" alt="AgentDesk" />
+          <span class="titlebar-name">AgentDesk</span>
         </div>
         <span class="titlebar-sep">·</span>
         <div class="titlebar-project" id="titlebar-project" onclick="window._nav('home')" title="Switch project">
