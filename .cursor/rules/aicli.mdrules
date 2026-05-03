@@ -1,5 +1,5 @@
 # aicli — AI Coding Rules
-> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-03 20:46 UTC
+> Managed by aicli. Run `/memory` to refresh. Generated: 2026-05-03 21:46 UTC
 
 # aicli — Shared AI Memory Platform
 
@@ -46,3 +46,11 @@ _Last updated: 2026-05-03_
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Loop detection: agent._detect_loop requires identical tool calls (same name + args) 3× in a row to trigger, not just same tool name; fixes false positives when iterating over multiple work items with search_memory
+
+## Recent Context (last 5 changes)
+
+- [2026-05-03] Still did not able to update the pipleine - that was the message in the backend - "PATCH /graph/null/nodes/developer HTT
+- [2026-05-03] Can you also recheck that the previous promts was fixed - role are working as exptected on use case. Also - it is still 
+- [2026-05-03] Ok. I do see now approval/reject - but there is an error - 2026-05-03 21:34:48 | ERROR    | routers.route_logs          
+- [2026-05-03] It looks like to pipeline logs are not working properly , and approval is not as well. pipeline logs - can show each ste
+- [2026-05-03] Working to pipeline flow -  pipeline can run for 3 places    - direclty from chat using /pipeline [pipeline name]   - fr

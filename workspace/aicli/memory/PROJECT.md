@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Verdict zone per-item scores display: items_reviewed table showing FE####/BU####/etc with scores 0-5 and reasoning; LLM occasionally outputs 'Thought:' continuation instead of final JSON, preventing structured_out parsing
-- Approval/rejection UI flow: approval buttons use window._ucApprovePipelineRun() instead of inline API reference; flows to backend PATCH /pipeline/{run_id}/approval endpoint
-- Pipeline report markdown generation: saving to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data collected during execution; folder and filename editable via PATCH endpoint
-- Resizable execution panel in use case view: left-edge drag handle with 7px col-resize cursor, min 300px / max 85% viewport, persists to localStorage; panel width syncs with Documents tree visibility
-- Per-role execution logs in use case panel: each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output)
-- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; checkbox state managed per-file with removable chips showing selected paths
+- Pipeline execution logs per stage: each role (Architect/Developer/Code Reviewer) now has individual <details> log toggle showing ReAct steps (tool name, args, observation, final JSON output); global log section removed to avoid duplication; logs appear below stage summary rows
+- Verdict zone per-item scores: items_reviewed table displaying FE####/BU####/etc with scores 0-5 and reasoning; fixed LLM 'Thought:' continuation preventing structured_out JSON parsing by enforcing final JSON output only
+- Pipeline report markdown generation: saves to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md with editable folder path and filename inputs; reports built from in-memory _stage_mem data collected during execution
+- Resizable execution panel in use case view: left-edge drag handle (7px col-resize), min 300px / max 85% viewport, persists width to localStorage; panel holds stage summaries + per-stage log toggles stacked vertically
+- Approval/rejection flow: approval buttons trigger window._ucApprovePipelineRun() calling PATCH /pipeline/{run_id}/approval endpoint; pipeline continues after approval or stops on rejection; stage execution respects require_approval_after flag from YAML
+- Batch document delete: DELETE /documents/batch endpoint with checkbox selection in Documents tab; multiple files selectable as removable chips, all deletion confirmed in single call
 
 ## Key Decisions
 
