@@ -632,20 +632,26 @@ function _applyListData(workflows, roles, yamlPipes) {
 window._gwOpenYamlPipeline = async (name) => {
   try {
     const pl = await api.agentRoles.getPipelineConfig(name);
+    const reqApprovalAfter = pl.require_approval_after || null;
+    const rawStages = pl.stages || [];
     // Build synthetic workflow object that _renderPipeline + _showPipelineProps can consume
-    const nodes = (pl.stages || []).map((s, i) => ({
-      id:            s.key || `stage_${i}`,
-      name:          s.role || s.key,
-      role_id:       null,
-      provider:      s.provider || null,
-      model:         s.model    || null,
-      temperature:   s.temperature_override ?? null,
-      stateless:     false,
-      max_retry:     s.retry ?? 1,
-      continue_on_fail: false,
-      require_approval: false,
-      _isYamlStage:  true,   // flag: no delete button, no add
-    }));
+    const nodes = rawStages.map((s, i) => {
+      // require_approval = true when the PREVIOUS stage's key matches require_approval_after
+      const prevKey = i > 0 ? rawStages[i - 1].key : null;
+      return {
+        id:               s.key || `stage_${i}`,
+        name:             s.role || s.key,
+        role_id:          null,
+        provider:         s.provider || null,
+        model:            s.model    || null,
+        temperature:      s.temperature_override ?? null,
+        stateless:        false,
+        max_retry:        s.retry ?? 1,
+        continue_on_fail: false,
+        require_approval: !!(reqApprovalAfter && prevKey === reqApprovalAfter),
+        _isYamlStage:     true,   // flag: no delete button, no add
+      };
+    });
     const edges = nodes.slice(0, -1).map((_, i) => ({
       id: `e${i}`, source_node_id: nodes[i].id, target_node_id: nodes[i + 1].id, label: '',
     }));
@@ -657,6 +663,8 @@ window._gwOpenYamlPipeline = async (name) => {
       description:           (pl.description || '').split('\n')[0].trim(),
       nodes,
       edges,
+      _stageOrder:           rawStages.map(s => s.key || ''),  // for approval mapping
+      require_approval_after: reqApprovalAfter,
       max_rejection_retries: pl.max_rejection_retries ?? 2,
       continue_on_failure:   pl.continue_on_failure ?? false,
       save_memory:           pl.save_memory ?? true,
@@ -2422,6 +2430,38 @@ async function _saveNodeFromForm() {
     require_approval:    document.getElementById('dn-approval')?.checked || false,
     max_retry:           parseInt(document.getElementById('dn-max-retry')?.value || '3', 10),
   };
+
+  // YAML pipelines have no graph DB id — route to pipeline settings endpoint
+  if (_currentWf._isYaml) {
+    const pipelineName = _currentWf._yamlName || _currentWf.name;
+    const stageOrder   = _currentWf._stageOrder || [];
+    const stageIdx     = stageOrder.indexOf(_selectedNodeId);
+
+    // "Approval gate" on a stage means pause BEFORE it runs → store as require_approval_after = prevStage
+    let reqApprovalAfter = null;
+    if (data.require_approval && stageIdx > 0) {
+      reqApprovalAfter = stageOrder[stageIdx - 1];
+    }
+
+    try {
+      await api.agents.patchPipelineSettings(pipelineName, {
+        require_approval_after: reqApprovalAfter,
+        continue_on_failure:    data.continue_on_fail,
+      });
+      // Sync local state so UI reflects the new value immediately
+      _currentWf.require_approval_after = reqApprovalAfter;
+      _currentWf.nodes.forEach((n, i) => {
+        const prevKey = i > 0 ? stageOrder[i - 1] : null;
+        n.require_approval = !!(reqApprovalAfter && prevKey === reqApprovalAfter);
+      });
+      _renderPipeline(_currentWf);
+      _selectNode(_selectedNodeId);
+      toast('Pipeline settings saved', 'success');
+    } catch (e) {
+      toast(`Save failed: ${e.message}`, 'error');
+    }
+    return;
+  }
 
   try {
     await api.graphWorkflows.updateNode(_currentWf.id, _selectedNodeId, data);

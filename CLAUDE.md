@@ -26,7 +26,7 @@ You are working on **aicli**.
 
 # aicli — Shared AI Memory Platform
 
-_Last updated: 2026-05-02_
+_Last updated: 2026-05-03_
 
 > **How this file works**
 > - Sections marked `<!-- user-managed -->` are yours to edit freely — they feed directly into CLAUDE.md.
@@ -86,7 +86,7 @@ Layer 3 — Work Items (mem_work_items)
   user_status TEXT: open → pending → in-progress → review → done
 
 
-*See PROJECT.md for full documentation (334 lines total)*
+*See PROJECT.md for full documentation (335 lines total)*
 
 ## Recent Work (last 5 prompts)
 

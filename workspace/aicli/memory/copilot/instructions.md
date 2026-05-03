@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 23:50 UTC -->
+<!-- Last updated: 2026-05-03 19:48 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore commits after Claude CLI session 90bb3086 (15 consecutive commits May 1-2, 2026) — ongoing automated post-session hook execution
-- Database schema cleanup & bug fixes: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
-- Architect role system prompt refinement: mandatory research sequence (search_memory → get_project_facts → search_features → list_dir → read_file) now explicit in DB; outputs file_analysis with current_state and required_changes per file
-- Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible log details below summary; logs appear only under their respective stage (no duplication)
+- Chore commits via claude cli session 90bb3086 (15 consecutive automation-triggered pushes on 2026-05-02 and 2026-05-03)
+- Verdict zone with item-by-item scoring: items reviewed table shows each work item with final score (0-5) + reasoning; score calculated from Code Reviewer step structured_out JSON
+- Code Reviewer role prompt refinement: validates each work item against acceptance_criteria, outputs structured JSON with score (0-5) and reason per item
+- Resizable pipeline run panel UI: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage
 
-_Last updated: 2026-05-02 23:50 UTC_
+_Last updated: 2026-05-03 19:48 UTC_
