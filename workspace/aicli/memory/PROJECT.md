@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- Architect role system prompt refinement: mandatory research sequence (search_memory → get_project_facts → search_features → list_dir → read_file) now explicit in DB; outputs file_analysis with current_state and required_changes per file to provide actionable context to developer
+- Verdict zone with item-by-item scoring: items reviewed table shows each work item with final score (0-5) + reasoning; score calculated from Code Reviewer step structured_out JSON and displayed as dots + numeric; reviewer role now explicitly checks task completion against acceptance criteria
+- Code Reviewer role prompt refinement: now validates each work item against acceptance_criteria, outputs structured JSON with score (0-5) and reason per item, ensuring actionable feedback to developer and user
 - Resizable pipeline run panel UI: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage('uc_panel_width')
-- Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible <details> log toggle below stage summary; logs appear only under their respective stage (no duplication)
+- Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible <details> log toggle below stage summary; logs appear only under their respective stage (no duplication); stage summaries shown first with verdict/duration/cost
 - Pipeline report MD folder/filename editing: PATCH endpoint live; folder path and filename are now independently editable inputs in panel; supports path changes with automatic save
-- Verdict zone with item-by-item scoring: items reviewed table shows each work item with final score (0-5) + reasoning; score calculated from Code Reviewer step output and displayed as dots + numeric
-- Database schema cleanup & bug fixes: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
+- Database schema cleanup & bug fixes: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors, fixing tool_use block handling in agent.py for proper message reconstruction
 
 ## Key Decisions
 
@@ -325,7 +325,7 @@ sidebar tabs:
 - Pipeline execution entry points: (1) Pipelines tab with node diagram and exec bar, (2) /pipeline [name] slash command in Chat, (3) /role [name] slash command for direct role execution, (4) Use Cases section with approval gating; each mode (use_case/item) independently togglable
 - Delivery type and tech tags: each work item gets delivery_type (web_ui/backend_api/infra/database) and auto-detected tech_tags from project_state.json tech_stack
 - Auto-closure via commit regex: patterns ('fixes BU0012', 'closes FE0001') in commit messages auto-set score_status=5 and score_importance=5 for user approval
-- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs collapsible under stage summary only (no global toggle); stage summaries appear first, followed by per-role log toggles below; pipeline MD reports editable folder path and filename with PATCH endpoint
+- Resizable pipeline run panel: left edge drag handle adjusts width (min 300px / max 85% viewport), saved to localStorage; per-stage execution logs appear as collapsible toggles below stage summary only (not global); stage summaries show verdict + duration + cost; pipeline MD reports have editable folder path and filename with PATCH endpoint
 
 ## Deprecated
 <!-- List superseded architectural decisions, one per line.

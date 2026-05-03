@@ -633,6 +633,14 @@ async def update_node(
         fields.append("auto_commit=%s"); values.append(body.auto_commit)
     if not fields:
         raise HTTPException(400, "Nothing to update")
+    # Validate node_id is a UUID before passing to SQL (prevents type error if
+    # the frontend accidentally sends a stage key like "developer")
+    import re as _re_uuid
+    if not _re_uuid.match(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        node_id.lower(),
+    ):
+        raise HTTPException(422, f"node_id must be a UUID, got: {node_id!r}")
     values.extend([node_id, workflow_id])
     with db.conn() as conn:
         with conn.cursor() as cur:
@@ -640,6 +648,8 @@ async def update_node(
                 f"UPDATE pr_graph_nodes SET {', '.join(fields)} WHERE id=%s AND workflow_id=%s",
                 values,
             )
+            if cur.rowcount == 0:
+                raise HTTPException(404, f"Node {node_id!r} not found in workflow {workflow_id!r}")
     return {"updated": True, "node_id": node_id}
 
 

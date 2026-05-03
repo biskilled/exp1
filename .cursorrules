@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-02 23:40 UTC -->
+<!-- Last updated: 2026-05-02 23:50 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -17,11 +17,11 @@ ui_components: xterm.js + Monaco editor + Cytoscape.js
 - Memory 3-layer architecture: raw captures (mem_mrr_* tables) → structured artifacts (mem_ai_project_facts) → approved work items (mem_work_items); ONLY approved items (UC/FE/BU/TA prefix) embed to pgvector; re-embedding on item change automatic via update() → _embed_work_item()
 - Single source of truth: /memory POST endpoint is ONLY writer to project_state.json via get_project_context() + Haiku synthesis; CLAUDE.md, CODE.md, PROJECT.md all regenerated from single JSON state
 - Work item hierarchy: unified mem_work_items with wi_type (use_case/feature/bug/task/requirement), user_status TEXT (open/pending/in-progress/review/done), wi_parent_id linking children to use_case parents; wi_id progression: AI#### (draft) → UC/FE/BU/TA#### (approved)
-- Work item classification pipeline: POST /wi/{project}/classify deletes AI draft rows, ingests backlog, uses Claude to classify items, user review UI approves with wi_id reassignment and vector embedding
 - Role YAML as factory defaults: workspace/_templates/pipelines/roles/*.yaml are read-only templates seeded with ON CONFLICT DO NOTHING on backend startup; mng_agent_roles DB is single source of truth at runtime; base_snapshot JSONB stores pristine state
 - System prompts: 3 shared canonical presets (Coding—General, Design & Planning, Review & Quality) in workspace/_templates/pipelines/system_prompts.yaml; all roles default to one preset; system_roles table contains only 3 canonical entries
 - Agent execution: roles define identity/behavior (system_prompt, provider/model, temperature/top_p, tools, mcp, max_iterations); pipeline nodes can override provider/model/temperature/top_p/max_iterations per stage; nodes default to role values when not overridden
-- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{timestamp}_{slug}.md
+- Pipeline execution: 4-agent async DAG triggered on approved items; executed via asyncio.gather; max_iterations mandatory per node; per-node checkboxes: max_retry, stateless, continue-on-fail, approval-gate; mode_use_case and mode_item flags control visibility/executability; pipeline reports save to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{slug}.md
+- Architect role mandatory research sequence: search_memory → get_project_facts → search_features → list_dir → read_file (in order); outputs file_analysis with current_state and required_changes per file; acts as information gatherer for downstream developer
 
 ## Active Features (do not break)
 
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore commits from Claude CLI session 90bb3086: repeated auto-commit pattern May 2-3 2026 indicating active development cycle with multiple incremental changes
-- Work item classification and approval flow: backlog ingestion, AI classification, and user review UI for wi_id reassignment
-- Database schema stability and unused column cleanup in mem_ai_events and mem_ai_project_facts
-- Commit sync and history route error fixes for batch upsert operations
+- Chore commits after Claude CLI session 90bb3086 (15 consecutive commits May 1-2, 2026) — ongoing automated post-session hook execution
+- Database schema cleanup & bug fixes: removing unused columns from mem_ai_events, fixing undefined column errors in route_entities (lifecycle), fixing commit sync batch upsert and route_history DB read errors
+- Architect role system prompt refinement: mandatory research sequence (search_memory → get_project_facts → search_features → list_dir → read_file) now explicit in DB; outputs file_analysis with current_state and required_changes per file
+- Per-stage execution logs: removed global 'Execution Log' toggle; each stage has collapsible log details below summary; logs appear only under their respective stage (no duplication)
 
-_Last updated: 2026-05-02 23:40 UTC_
+_Last updated: 2026-05-02 23:50 UTC_

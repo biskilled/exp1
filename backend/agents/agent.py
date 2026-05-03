@@ -317,11 +317,26 @@ class Agent:
 
     @staticmethod
     def _detect_loop(steps: list[ReactStep]) -> bool:
-        """Return True if the same tool was called 3 times in a row."""
+        """Return True if the EXACT same tool call (tool + args) was made 3× in a row.
+
+        Calling the same tool with different arguments is valid (e.g., searching memory
+        once per work item).  Only identical tool+args repeated 3 times is a loop.
+        """
         if len(steps) < 3:
             return False
-        last_tools = [s.action_name for s in steps[-3:]]
-        return len(set(last_tools)) == 1
+        last = steps[-3:]
+        tools = [s.action_name for s in last]
+        if len(set(tools)) != 1:
+            return False
+        # Same tool — also require identical args to confirm it's truly stuck
+        import json as _json
+        def _sig(s: "ReactStep") -> str:
+            try:
+                return _json.dumps(s.action_args or {}, sort_keys=True)
+            except Exception:
+                return ""
+        sigs = [_sig(s) for s in last]
+        return len(set(sigs)) == 1
 
     # ── Memory save ───────────────────────────────────────────────────────────
 
@@ -651,19 +666,62 @@ class Agent:
             # ── Loop detection ─────────────────────────────────────────────────
             if self._detect_loop(steps):
                 log.error(
-                    "Agent '%s' loop detected at step %d — aborting",
+                    "Agent '%s' loop detected at step %d — requesting JSON output",
                     self.name, iteration,
                 )
+                # Satisfy pending tool calls so messages history is valid, then
+                # inject a JSON-demand turn before giving up.
+                _raw_loop = resp.get("raw")
+                messages.append({
+                    "role": "assistant",
+                    "content": _raw_loop.content if (
+                        _raw_loop and hasattr(_raw_loop, "content")
+                    ) else content,
+                })
+                _loop_tool_results = []
+                for tc in tool_calls:
+                    tid = getattr(tc, "id", "") if not isinstance(tc, dict) else tc.get("id", "")
+                    _loop_tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tid,
+                        "content": "Loop detected — tool call skipped.",
+                    })
+                messages.append({"role": "user", "content": _loop_tool_results})
+                messages.append({
+                    "role": "assistant",
+                    "content": "Understood — I will stop calling tools and produce the final output.",
+                })
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "You have been calling the same tool repeatedly. Stop now. "
+                        "Based on everything you have found so far, output ONLY the "
+                        "required JSON object. No Thought:, no markdown fences."
+                    ),
+                })
+                resp_loop = await self._call_provider(
+                    messages, max_tokens, api_key, system_override=system
+                )
+                total_input  += resp_loop.get("input_tokens", 0)
+                total_output += resp_loop.get("output_tokens", 0)
+                loop_content  = resp_loop.get("content", "")
+                loop_struct   = self._parse_structured_output(loop_content)
+                if loop_struct:
+                    await self._save_to_memory(task, loop_struct, project)
+                    log.info("Agent '%s' recovered from loop — got structured output", self.name)
+                else:
+                    log.warning("Agent '%s' loop recovery failed — no structured output", self.name)
                 cost = _calc_cost(self.provider, self.model, total_input, total_output)
                 return AgentResult(
-                    output=content,
+                    output=loop_content if loop_struct else content,
+                    structured_output=loop_struct,
                     steps=steps,
                     tool_calls_made=tool_calls_made,
                     cost_usd=cost,
                     input_tokens=total_input,
                     output_tokens=total_output,
-                    status="loop_detected",
-                    error=f"Same tool called 3× in a row at step {iteration}",
+                    status="done" if loop_struct else "loop_detected",
+                    error=None if loop_struct else f"Loop at step {iteration}",
                 )
 
             # ── Execute tools ──────────────────────────────────────────────────

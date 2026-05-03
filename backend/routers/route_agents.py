@@ -603,8 +603,10 @@ async def _run_pipeline_bg(
         except Exception:
             pass
 
-        # Approval gate BEFORE this stage (if required after previous)
-        if require_approval_after and stage_order[i - 1] == require_approval_after if i > 0 else False:
+        # Approval gate BEFORE this stage — triggered by per-stage flag OR DB setting
+        _gate_by_stage = stage_def.approval_gate
+        _gate_by_db    = bool(require_approval_after and i > 0 and stage_order[i - 1] == require_approval_after)
+        if _gate_by_stage or _gate_by_db:
             try:
                 with db.conn() as conn:
                     with conn.cursor() as cur:
@@ -1258,6 +1260,36 @@ async def patch_pipeline_run(run_id: str, body: dict) -> dict:
         log.exception("patch_pipeline_run failed: %s", e)
         raise HTTPException(500, str(e))
     return {"ok": True, "run_id": run_id, **updates}
+
+
+@router.patch("/pipelines/{name}/settings")
+async def patch_pipeline_settings(name: str, body: dict) -> dict:
+    """Update mutable pipeline settings: require_approval_after, continue_on_failure."""
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+    updates: dict[str, object] = {}
+    if "require_approval_after" in body:
+        v = body["require_approval_after"]
+        updates["require_approval_after"] = str(v) if v else None
+    if "continue_on_failure" in body:
+        updates["continue_on_failure"] = bool(body["continue_on_failure"])
+    if not updates:
+        raise HTTPException(422, "No updatable fields")
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                set_clause = ", ".join(f"{k}=%s" for k in updates)
+                cur.execute(
+                    f"INSERT INTO mng_agent_pipelines (client_id, name, {', '.join(updates)}) "
+                    f"VALUES (1, %s, {', '.join(['%s']*len(updates))}) "
+                    f"ON CONFLICT (client_id, name) DO UPDATE SET {set_clause}",
+                    [name, *updates.values(), *updates.values()],
+                )
+            conn.commit()
+    except Exception as e:
+        log.exception("patch_pipeline_settings failed: %s", e)
+        raise HTTPException(500, str(e))
+    return {"ok": True, "pipeline": name, **updates}
 
 
 @router.post("/pipeline-runs/{run_id}/approve")

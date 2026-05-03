@@ -12,6 +12,7 @@ stages:
   - key: "developer"
     role: "Web Developer"
     description: "Implement the Architect's spec; read before editing; verify after every change"
+    approval_gate: true   # pause here for human review of Architect's plan before code changes
 
   - key: "reviewer"
     role: "Code Reviewer"

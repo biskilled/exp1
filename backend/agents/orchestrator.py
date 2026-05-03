@@ -143,6 +143,7 @@ class PipelineStage:
     timeout_seconds: float | None = None    # asyncio.wait_for timeout; None = no limit
     temperature_override: float | None = None
     max_iterations_override: int | None = None
+    approval_gate: bool = False             # pause BEFORE this stage for human approval
 
 
 @dataclass
@@ -175,6 +176,7 @@ class PipelineDef:
                 timeout_seconds=float(s["timeout_seconds"]) if s.get("timeout_seconds") else None,
                 temperature_override=float(s["temperature_override"]) if s.get("temperature_override") is not None else None,
                 max_iterations_override=int(s["max_iterations_override"]) if s.get("max_iterations_override") is not None else None,
+                approval_gate=bool(s.get("approval_gate", False)),
             )
             for s in raw.get("stages", [])
         ]
