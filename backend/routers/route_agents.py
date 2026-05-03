@@ -1265,6 +1265,7 @@ async def patch_pipeline_run(run_id: str, body: dict) -> dict:
 @router.patch("/pipelines/{name}/settings")
 async def patch_pipeline_settings(name: str, body: dict) -> dict:
     """Update mutable pipeline settings: require_approval_after, continue_on_failure."""
+    from core.database import db
     if not db.is_available():
         raise HTTPException(503, "Database not available")
     updates: dict[str, object] = {}

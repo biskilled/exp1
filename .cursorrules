@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-03 19:48 UTC -->
+<!-- Last updated: 2026-05-03 20:05 UTC -->
 ## Project: aicli
 
 ## Stack
@@ -33,9 +33,9 @@ Audit and clean planner_tags table schema: Review planner_tags table for redunda
 
 ## In Progress
 
-- Chore commits via claude cli session 90bb3086 (15 consecutive automation-triggered pushes on 2026-05-02 and 2026-05-03)
 - Verdict zone with item-by-item scoring: items reviewed table shows each work item with final score (0-5) + reasoning; score calculated from Code Reviewer step structured_out JSON
 - Code Reviewer role prompt refinement: validates each work item against acceptance_criteria, outputs structured JSON with score (0-5) and reason per item
+- Per-stage execution logs: each stage has collapsible <details> log toggle below stage summary; logs appear only under their respective stage (no duplication in global output)
 - Resizable pipeline run panel UI: left edge drag handle (7px col-resize zone) adjusts width (min 300px / max 85% viewport), persists to localStorage
 
-_Last updated: 2026-05-03 19:48 UTC_
+_Last updated: 2026-05-03 20:05 UTC_
