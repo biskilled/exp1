@@ -2233,11 +2233,115 @@ function _ucPollRun(runId) {
       dot.style.background = STATUS_COLORS[data.status] || '#f5a623';
 
       if (stagesEl && data.stages) {
-        // Save log-toggle open/closed state BEFORE we reset innerHTML
+        // ── Save open/closed state AND scroll positions before re-render ──
         const openMap = {};
+        const scrollMap = {};
         stagesEl.querySelectorAll('details[data-stid]').forEach(d => {
           openMap[d.dataset.stid] = d.open;
         });
+        stagesEl.querySelectorAll('[data-scroll-id]').forEach(el => {
+          scrollMap[el.dataset.scrollId] = el.scrollTop;
+        });
+
+        // ── Build INPUT section for a stage ──
+        const _buildInputHtml = (snap) => {
+          if (!snap) return '';
+          const lines = [];
+          const role = snap.role;
+
+          if (role === 'architect') {
+            // Architect output passed to Developer
+            if (snap.approach) lines.push(`Strategy: ${snap.approach.slice(0, 120)}`);
+            (snap.work_items_addressed || []).forEach(wi =>
+              lines.push(`  ${wi.wi_id}: ${(wi.approach || wi.title || '').slice(0, 80)}`));
+            (snap.file_analysis || []).forEach(fa => {
+              const n = (fa.required_changes || []).length;
+              lines.push(`  ${(fa.action || 'MOD').toUpperCase()} ${fa.path} — ${n} change${n !== 1 ? 's' : ''}`);
+            });
+            if (snap.memory_findings?.length) lines.push(`  ${snap.memory_findings.length} memory finding${snap.memory_findings.length !== 1 ? 's' : ''}`);
+            if (snap.constraints?.length) lines.push(`  Constraints: ${snap.constraints.slice(0,2).join(' | ').slice(0,100)}`);
+          } else if (role === 'developer') {
+            // Developer output passed to Reviewer
+            if (snap.confidence != null) lines.push(`Confidence: ${snap.confidence}`);
+            (snap.changes_made || []).forEach(ch =>
+              lines.push(`  ${(ch.action || 'MOD').toUpperCase()} ${ch.file}: ${(ch.description || '').slice(0, 70)}`));
+            if (snap.tests_run?.length) lines.push(`  Tests: ${snap.tests_run.slice(0, 2).join(', ').slice(0, 100)}`);
+          } else {
+            // Generic fallback
+            if (snap.role) lines.push(`From: ${snap.role}`);
+            if (snap.summary) lines.push(snap.summary.slice(0, 120));
+            if (snap.verdict) lines.push(`Verdict: ${snap.verdict}`);
+            if (snap.issues?.length) lines.push(`Issues: ${snap.issues.slice(0, 2).join('; ').slice(0, 100)}`);
+          }
+          if (snap.user_approval_feedback) lines.push(`User feedback: ${snap.user_approval_feedback.slice(0, 120)}`);
+
+          if (!lines.length) return '';
+          return `<div style="margin-bottom:0.5rem;padding:0.35rem 0.45rem;background:#3ecf8e0d;
+                              border-left:3px solid #3ecf8e55;border-radius:0 4px 4px 0">
+            <div style="font-weight:700;font-size:0.62rem;letter-spacing:.06em;text-transform:uppercase;
+                        color:#3ecf8e;margin-bottom:0.25rem">INPUT</div>
+            <div style="font-size:0.68rem;line-height:1.5;color:var(--text)">${lines.map(l => _esc(l)).join('<br>')}</div>
+          </div>`;
+        };
+
+        // ── Build OUTPUT section for a stage ──
+        const _buildOutputHtml = (s) => {
+          const so = s.structured_out;
+          if (!so && !s.output_preview) return '';
+          const lines = [];
+
+          if (so) {
+            const role = so.role;
+            if (role === 'architect') {
+              if (so.approach) lines.push(`Strategy: ${so.approach.slice(0, 120)}`);
+              (so.work_items_addressed || []).forEach(wi =>
+                lines.push(`  ${wi.wi_id}: ${(wi.approach || wi.title || '').slice(0, 80)}`));
+              (so.file_analysis || []).forEach(fa => {
+                const n = (fa.required_changes || []).length;
+                lines.push(`  ${(fa.action || 'MOD').toUpperCase()} ${fa.path} — ${n} change${n !== 1 ? 's' : ''}`);
+                // Show first required change as hint
+                if (fa.required_changes?.[0]) lines.push(`    → ${fa.required_changes[0].slice(0, 80)}`);
+              });
+              if (so.memory_findings?.length) lines.push(`  ${so.memory_findings.length} memory finding${so.memory_findings.length !== 1 ? 's' : ''}`);
+              if (so.constraints?.length) lines.push(`  Constraints: ${so.constraints.slice(0, 2).join(' | ').slice(0, 100)}`);
+              if (so.conflicts_with_existing?.length) lines.push(`  ⚠ Conflict: ${so.conflicts_with_existing[0].slice(0, 80)}`);
+            } else if (role === 'developer') {
+              (so.changes_made || []).forEach(ch =>
+                lines.push(`  ${(ch.action || 'MOD').toUpperCase()} ${ch.file}: ${(ch.description || '').slice(0, 70)}`));
+              if (so.tests_run?.length) lines.push(`Tests: ${so.tests_run.slice(0, 2).join(', ').slice(0, 100)}`);
+              if (so.issues_encountered?.length) lines.push(`Issues: ${so.issues_encountered[0].slice(0, 80)}`);
+              if (so.commit_hash) lines.push(`Commit: ${so.commit_hash.slice(0, 8)}`);
+            } else if (role === 'reviewer') {
+              if (so.verdict) lines.push(`Verdict: ${so.verdict.toUpperCase()}`);
+              (so.work_items_reviewed || []).forEach(wi => {
+                const sc = wi.score != null ? `${wi.score}/5` : '?';
+                const stMark = (wi.status === 'done' || wi.status === 'already_working') ? '✓'
+                             : wi.status === 'partial' ? '~' : '✗';
+                const firstFail = (wi.ac_results || []).find(a => a.status === 'FAIL');
+                const reason = firstFail
+                  ? `FAIL: ${(firstFail.criterion || firstFail.evidence || '').slice(0, 60)}`
+                  : (wi.summary || '').slice(0, 70);
+                lines.push(`  ${stMark} ${wi.wi_id || '?'} [${sc}] ${wi.status || '?'}${reason ? ' — ' + reason : ''}`);
+              });
+              if (so.issues?.length) lines.push(`Issues: ${so.issues.slice(0, 2).join('; ').slice(0, 120)}`);
+            } else {
+              // Generic fallback
+              if (so.summary) lines.push(so.summary.slice(0, 200));
+              if (so.verdict) lines.push(`Verdict: ${so.verdict}`);
+            }
+          } else if (s.output_preview) {
+            const cleaned = s.output_preview.replace(/^(Thought:.*?\n)+/m, '').trim().slice(0, 300);
+            if (cleaned) lines.push(cleaned);
+          }
+
+          if (!lines.length) return '';
+          return `<div style="margin-top:0.35rem;padding:0.35rem 0.45rem;background:#a78bfa0d;
+                              border-left:3px solid #a78bfa55;border-radius:0 4px 4px 0">
+            <div style="font-weight:700;font-size:0.62rem;letter-spacing:.06em;text-transform:uppercase;
+                        color:#a78bfa;margin-bottom:0.25rem">OUTPUT</div>
+            <div style="font-size:0.68rem;line-height:1.5;color:var(--text)">${lines.map(l => _esc(l)).join('<br>')}</div>
+          </div>`;
+        };
 
         const summaryHtml = data.stages.map(s => {
           const icon  = STAGE_ICONS[s.status] || '○';
@@ -2251,99 +2355,40 @@ function _ucPollRun(runId) {
           const detId = `stage-det-${s.id}`;
           const hasDetails = s.status === 'done' || s.status === 'error';
 
-          // Build detail section
+          // Build steps trace
+          let stepsHtml = '';
+          const steps = s.steps_json;
+          if (steps?.length) {
+            const stepLines = steps.map(st => {
+              const tool = st.tool || '?';
+              const args = st.args || {};
+              const mainArg = args.file_path || args.path || args.pattern || args.command || args.query || '';
+              const argStr = mainArg ? `(${String(mainArg).slice(0, 50)})` : '';
+              const obs = (st.observation || '').slice(0, 60).replace(/\n/g, ' ');
+              return `<div style="display:flex;gap:0.3rem;align-items:baseline;padding:0.08rem 0">
+                <span style="color:var(--accent);font-weight:600;min-width:14px;flex-shrink:0">${st.step}.</span>
+                <span style="color:#a78bfa;white-space:nowrap;flex-shrink:0">${_esc(tool)}</span>
+                <span style="color:var(--muted);font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(argStr)}</span>
+                ${obs ? `<span style="color:var(--muted);font-size:0.65rem;flex-shrink:0;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${_esc(obs)}">→ ${_esc(obs)}</span>` : ''}
+              </div>`;
+            });
+            stepsHtml = `<div style="margin:0.35rem 0;padding:0.3rem 0.4rem;background:var(--surface2);
+                                    border-radius:4px;font-size:0.68rem;font-family:monospace">
+              <div style="font-weight:700;font-size:0.62rem;letter-spacing:.06em;text-transform:uppercase;
+                          color:var(--muted);margin-bottom:0.2rem">${steps.length} Steps</div>
+              ${stepLines.join('')}
+            </div>`;
+          }
+
           let detailHtml = '';
           if (hasDetails) {
-            // Input summary
-            let inputHtml = '';
-            const snap = s.input_snapshot;
-            if (snap) {
-              const inputLines = [];
-              if (snap.role) inputLines.push(`From: ${snap.role}`);
-              if (snap.summary) inputLines.push(snap.summary.slice(0, 120));
-              if (snap.work_items?.length) inputLines.push(`${snap.work_items.length} work items`);
-              if (snap.verdict) inputLines.push(`Verdict: ${snap.verdict}`);
-              if (snap.issues?.length) inputLines.push(`Issues: ${snap.issues.slice(0,2).join('; ').slice(0,100)}`);
-              if (snap.raw_output) inputLines.push(snap.raw_output.slice(0, 150));
-              if (inputLines.length) {
-                inputHtml = `<div style="margin-bottom:0.35rem;color:var(--muted)">
-                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase">Input</span>
-                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4">${inputLines.map(l => _esc(l)).join('<br>')}</div>
-                </div>`;
-              }
-            }
-
-            // Steps / tool calls
-            let stepsHtml = '';
-            const steps = s.steps_json;
-            if (steps?.length) {
-              const stepLines = steps.map(st => {
-                const tool = st.tool || '?';
-                // Pick most meaningful arg
-                const args = st.args || {};
-                const mainArg = args.file_path || args.path || args.pattern || args.command || args.query || '';
-                const argStr = mainArg ? `(${String(mainArg).slice(0, 50)})` : '';
-                // Short observation
-                const obs = (st.observation || '').slice(0, 80).replace(/\n/g, ' ');
-                return `<div style="display:flex;gap:0.3rem;align-items:baseline;padding:0.1rem 0">
-                  <span style="color:var(--accent);font-weight:600;min-width:4px">${st.step}.</span>
-                  <span style="color:#a78bfa;white-space:nowrap">${_esc(tool)}</span>
-                  <span style="color:var(--muted);font-size:0.67rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(argStr)}</span>
-                  ${obs ? `<span style="color:var(--muted);font-size:0.67rem;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px" title="${_esc(obs)}">→ ${_esc(obs.slice(0,40))}</span>` : ''}
-                </div>`;
-              });
-              stepsHtml = `<div style="margin-bottom:0.35rem">
-                <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">${steps.length} Steps</span>
-                <div style="margin-top:0.25rem;font-size:0.7rem;font-family:monospace;border-left:2px solid var(--border);padding-left:0.4rem">${stepLines.join('')}</div>
-              </div>`;
-            }
-
-            // Output summary
-            let outputHtml = '';
-            const so = s.structured_out;
-            if (so) {
-              const outLines = [];
-              if (so.summary) outLines.push(so.summary.slice(0, 200));
-              if (so.verdict) outLines.push(`Verdict: ${so.verdict}`);
-              if (so.issues?.length) outLines.push(`Issues: ${so.issues.slice(0,3).join('; ').slice(0,150)}`);
-              if (so.suggested_fixes?.length) outLines.push(`Fixes: ${so.suggested_fixes.slice(0,2).join('; ').slice(0,120)}`);
-              if (so.files_changed?.length) outLines.push(`Files: ${so.files_changed.slice(0,5).join(', ')}`);
-              if (so.commit_hash) outLines.push(`Commit: ${so.commit_hash.slice(0,8)}`);
-              if (so.work_items_reviewed?.length) {
-                so.work_items_reviewed.slice(0, 8).forEach(wi => {
-                  const sc = wi.score != null ? `${wi.score}/5` : '?';
-                  const stMark = (wi.status === 'done' || wi.status === 'already_working') ? '✓'
-                               : wi.status === 'partial' ? '~' : '✗';
-                  // Show first FAIL criterion as reason, else summary
-                  const firstFail = (wi.ac_results || []).find(a => a.status === 'FAIL');
-                  const reason = firstFail
-                    ? `FAIL: ${(firstFail.criterion || firstFail.evidence || '').slice(0, 60)}`
-                    : (wi.summary || '').slice(0, 70);
-                  outLines.push(`${stMark} ${wi.wi_id || '?'} [${sc}] ${wi.status || '?'}${reason ? ' — ' + reason : ''}`);
-                });
-              } else if (so.work_items?.length) outLines.push(`Work items assessed: ${so.work_items.length}`);
-              if (outLines.length) {
-                outputHtml = `<div style="margin-bottom:0.35rem">
-                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Output</span>
-                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4">${outLines.map(l => _esc(l)).join('<br>')}</div>
-                </div>`;
-              }
-            } else if (s.output_preview) {
-              // Strip leading "Thought:" lines to show cleaner text
-              const cleaned = s.output_preview.replace(/^(Thought:.*?\n)+/m, '').trim().slice(0, 300);
-              if (cleaned) {
-                outputHtml = `<div style="margin-bottom:0.35rem">
-                  <span style="font-weight:600;font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Output</span>
-                  <div style="margin-top:0.2rem;color:var(--text);font-size:0.7rem;line-height:1.4;font-style:italic">${_esc(cleaned)}</div>
-                </div>`;
-              }
-            }
-
             detailHtml = `<div id="${detId}"
                 style="display:none;margin-top:0.35rem;padding:0.45rem 0.55rem;
-                       background:var(--surface2);border-radius:4px;border-left:3px solid ${color};
-                       font-size:0.72rem;overflow:hidden">
-              ${inputHtml}${stepsHtml}${outputHtml}
+                       background:var(--bg1);border-radius:4px;border-left:3px solid ${color};
+                       font-size:0.72rem">
+              ${_buildInputHtml(s.input_snapshot)}
+              ${stepsHtml}
+              ${_buildOutputHtml(s)}
             </div>`;
           }
 
@@ -2361,42 +2406,95 @@ function _ucPollRun(runId) {
           </div>`;
         }).join('');
 
-        // ── Per-stage log toggles (below summaries, same scrollable area) ──
+        // ── Per-stage log toggles ──
         const stagesWithLogs = data.stages.filter(s => s.log_lines?.length);
         const logsHtml = stagesWithLogs.length ? stagesWithLogs.map(s => {
-          const isOpen = openMap[s.id] !== undefined
-            ? openMap[s.id]
-            : (s.status === 'running');   // auto-open the active stage
+          const isOpen = openMap[s.id] !== undefined ? openMap[s.id] : (s.status === 'running');
           const c = STATUS_COLORS[s.status] || 'var(--muted)';
           const txt = s.log_lines.map(l => l.text || '').join('\n');
           return `<details data-stid="${s.id}" ${isOpen ? 'open' : ''}>
             <summary style="font-size:0.63rem;color:${c};font-weight:600;letter-spacing:.04em;
-                            text-transform:uppercase;cursor:pointer;padding:0.18rem 0">
+                            text-transform:uppercase;cursor:pointer;padding:0.18rem 0;user-select:none">
               ${_esc(s.role_name || s.stage_key)} (${s.log_lines.length})
             </summary>
-            <div style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:160px;
+            <div data-scroll-id="log-${s.id}"
+                 style="font-family:monospace;font-size:0.63rem;color:var(--muted);max-height:200px;
                         overflow-y:auto;white-space:pre-wrap;line-height:1.4;margin-top:0.1rem;
                         padding-left:0.4rem">${_esc(txt)}</div>
           </details>`;
         }).join('') : '';
 
+        // Replace innerHTML then restore scroll positions
         stagesEl.innerHTML = summaryHtml
-          + (logsHtml ? `<div style="border-top:1px solid var(--border);margin-top:0.5rem;
-                                     padding-top:0.3rem">${logsHtml}</div>` : '');
+          + (logsHtml ? `<div style="border-top:1px solid var(--border);margin-top:0.5rem;padding-top:0.3rem">${logsHtml}</div>` : '');
+
+        // Restore scroll positions (prevents jump when logs update)
+        stagesEl.querySelectorAll('[data-scroll-id]').forEach(el => {
+          const saved = scrollMap[el.dataset.scrollId];
+          if (saved !== undefined) el.scrollTop = saved;
+          else if (el.dataset.scrollId?.startsWith('log-')) {
+            // Auto-scroll to bottom for running stage logs
+            el.scrollTop = el.scrollHeight;
+          }
+        });
       }
 
       if (data.status === 'waiting_approval' && verdEl) {
+        // Find last completed stage to show its plan
+        const lastDone = [...(data.stages || [])].filter(s => s.status === 'done').pop();
+        const so = lastDone?.structured_out;
+        let planHtml = '';
+        if (so) {
+          const planLines = [];
+          if (so.role === 'architect') {
+            if (so.approach) planLines.push(`<strong>Strategy:</strong> ${_esc(so.approach)}`);
+            (so.work_items_addressed || []).forEach(wi =>
+              planLines.push(`&nbsp;&nbsp;<strong>${_esc(wi.wi_id)}:</strong> ${_esc((wi.approach || wi.title || '').slice(0, 100))}`));
+            (so.file_analysis || []).forEach(fa => {
+              planLines.push(`&nbsp;&nbsp;<strong>${_esc((fa.action || 'MOD').toUpperCase())} ${_esc(fa.path)}</strong>`);
+              (fa.required_changes || []).slice(0, 2).forEach(c =>
+                planLines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ ${_esc(c.slice(0, 100))}`));
+            });
+            if (so.constraints?.length) planLines.push(`<strong>Constraints:</strong> ${_esc(so.constraints.slice(0, 2).join(' | ').slice(0, 120))}`);
+          } else {
+            if (so.summary) planLines.push(_esc(so.summary.slice(0, 200)));
+            if (so.verdict) planLines.push(`<strong>Verdict:</strong> ${_esc(so.verdict)}`);
+          }
+          if (planLines.length) {
+            planHtml = `<div style="margin-bottom:0.5rem;padding:0.4rem 0.5rem;background:var(--bg1);
+                                   border-radius:4px;font-size:0.7rem;line-height:1.6;max-height:200px;
+                                   overflow-y:auto;border:1px solid var(--border)">
+              <div style="font-weight:700;font-size:0.62rem;text-transform:uppercase;color:#9b7ef8;
+                          margin-bottom:0.3rem">${_esc(lastDone.role_name || lastDone.stage_key)} Plan</div>
+              ${planLines.join('<br>')}
+            </div>`;
+          }
+        }
         verdEl.style.display = 'block';
-        verdEl.style.background = '#9b7ef822';
-        verdEl.style.color = '#9b7ef8';
-        verdEl.innerHTML = `Waiting for approval
-          <div style="display:flex;gap:0.5rem;margin-top:0.5rem;justify-content:center">
-            <button onclick="window._ucApprovePipelineRun('${runId}',true)"
-                    style="padding:0.25rem 0.8rem;border-radius:4px;background:#3ecf8e22;color:#3ecf8e;
-                           border:1px solid #3ecf8e;cursor:pointer;font-size:0.75rem">Approve</button>
-            <button onclick="window._ucApprovePipelineRun('${runId}',false)"
-                    style="padding:0.25rem 0.8rem;border-radius:4px;background:#e85d7522;color:#e85d75;
-                           border:1px solid #e85d75;cursor:pointer;font-size:0.75rem">Reject</button>
+        verdEl.innerHTML = `
+          <div style="padding:0.5rem;background:#9b7ef811;border:1px solid #9b7ef844;
+                      border-radius:6px;margin-top:0.5rem">
+            <div style="font-weight:700;font-size:0.72rem;color:#9b7ef8;margin-bottom:0.4rem">
+              Review &amp; Approve Plan
+            </div>
+            ${planHtml}
+            <textarea id="uc-appr-fb-${runId}"
+                      placeholder="Optional feedback for Developer (e.g. 'focus on error handling first')…"
+                      style="width:100%;height:52px;padding:0.35rem 0.4rem;border-radius:4px;
+                             background:var(--bg1);border:1px solid var(--border);color:var(--text);
+                             font-size:0.72rem;resize:none;box-sizing:border-box;margin-bottom:0.4rem"></textarea>
+            <div style="display:flex;gap:0.5rem">
+              <button onclick="window._ucApprovePipelineRun('${runId}',true)"
+                      style="flex:1;padding:0.3rem;border-radius:4px;background:#3ecf8e22;color:#3ecf8e;
+                             border:1px solid #3ecf8e;cursor:pointer;font-size:0.73rem;font-weight:600">
+                ✓ Approve
+              </button>
+              <button onclick="window._ucApprovePipelineRun('${runId}',false)"
+                      style="flex:1;padding:0.3rem;border-radius:4px;background:#e85d7522;color:#e85d75;
+                             border:1px solid #e85d75;cursor:pointer;font-size:0.73rem;font-weight:600">
+                ✗ Reject
+              </button>
+            </div>
           </div>`;
       }
 
@@ -2541,9 +2639,10 @@ window._ucApplyRun = async (runId, sid) => {
 };
 
 window._ucApprovePipelineRun = async (runId, approved) => {
+  const feedback = document.getElementById(`uc-appr-fb-${runId}`)?.value?.trim() || '';
   try {
-    await api.agents.approvePipelineRun(runId, { approved });
-    toast(approved ? 'Approved — pipeline continuing…' : 'Rejected — pipeline stopped', approved ? 'success' : 'info');
+    await api.agents.approvePipelineRun(runId, { approved, feedback });
+    toast(approved ? 'Approved — Developer starting…' : 'Rejected — pipeline stopped', approved ? 'success' : 'info');
   } catch (e) {
     toast('Approval failed: ' + e.message, 'error');
   }

@@ -633,6 +633,12 @@ async def _run_pipeline_bg(
                 final_error = f"Run rejected at approval gate: {result_info.get('feedback', '')}"
                 break
 
+            # Inject user feedback into handoff so next stage sees it
+            user_fb = result_info.get("feedback", "").strip()
+            if user_fb and isinstance(handoff, dict):
+                handoff["user_approval_feedback"] = user_fb
+                log.info("Approval gate: injecting user feedback (%d chars) into handoff", len(user_fb))
+
             # Restore running status
             try:
                 with db.conn() as conn:
