@@ -190,6 +190,25 @@ def _enrich_task_from_db(
                                 if diff: csec.append(f"  Summary: {diff[:300]}")
                             sections.append("\n".join(csec))
 
+                    # Related commits with hash (backlog_ref OR wi_id)
+                    if _link_wi_id:
+                        cur.execute(
+                            """SELECT commit_hash, commit_msg, diff_summary
+                               FROM mem_mrr_commits
+                               WHERE project_id=%s AND wi_id=%s
+                               ORDER BY created_at DESC LIMIT 8""",
+                            (project_id, _link_wi_id),
+                        )
+                        hash_commits = cur.fetchall()
+                        if hash_commits:
+                            hcsec = [f"\n## RELATED COMMITS"]
+                            for hc in hash_commits:
+                                msg = (hc[1] or "").split("\n")[0][:80]
+                                hcsec.append(f"- {(hc[0] or '')[:8]}: {msg}")
+                                if hc[2]:
+                                    hcsec.append(f"  {(hc[2] or '')[:150]}")
+                            sections.append("\n".join(hcsec))
+
                     # Previous successful pipeline run for this item/UC
                     cur.execute(
                         """SELECT s.role_name, s.status, left(s.output_text, 500), r.created_at
@@ -485,6 +504,71 @@ def _append_stage_log(conn, stage_id: int, text: str, level: str = "info") -> No
     conn.commit()
 
 
+def _update_run_status(run_id: str, status: str) -> None:
+    """Update the status field on pr_pipeline_runs."""
+    from core.database import db
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pr_pipeline_runs SET status=%s WHERE id=%s",
+                    (status, run_id),
+                )
+            conn.commit()
+    except Exception as _e:
+        log.warning("_update_run_status failed (run_id=%s status=%s): %s", run_id, status, _e)
+
+
+def _get_approval_chat(stage_id: int) -> list:
+    """Return the approval_chat JSONB array for a stage row."""
+    from core.database import db
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT approval_chat FROM pr_pipeline_run_stages WHERE id=%s",
+                    (stage_id,),
+                )
+                row = cur.fetchone()
+                return row[0] if row and row[0] else []
+    except Exception as _e:
+        log.warning("_get_approval_chat failed (stage_id=%s): %s", stage_id, _e)
+        return []
+
+
+def _append_approval_chat(stage_id: int, entries: list) -> None:
+    """Append entries to approval_chat JSONB array for a stage row."""
+    from core.database import db
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE pr_pipeline_run_stages
+                       SET approval_chat = approval_chat || %s::jsonb
+                       WHERE id=%s""",
+                    (_json.dumps(entries), stage_id),
+                )
+            conn.commit()
+    except Exception as _e:
+        log.warning("_append_approval_chat failed (stage_id=%s): %s", stage_id, _e)
+
+
+def _format_plan_for_chat(plan_data: dict) -> str:
+    """Format a planning_out dict into a readable text summary for LLM chat."""
+    lines: list[str] = []
+    if plan_data.get("approach"):
+        lines.append(f"Strategy: {plan_data['approach']}")
+    for wi in (plan_data.get("work_items_addressed") or [])[:5]:
+        lines.append(f"  {wi.get('wi_id','?')}: {wi.get('approach','')[:80]}")
+    for fa in (plan_data.get("file_analysis") or plan_data.get("code_plan") or [])[:8]:
+        path = fa.get("path", "")
+        n = len(fa.get("required_changes") or fa.get("exact_changes") or [])
+        lines.append(
+            f"  {(fa.get('action','MOD')).upper()} {path} — {n} change{'s' if n != 1 else ''}"
+        )
+    return "\n".join(lines)[:1500]
+
+
 async def _run_pipeline_bg(
     run_id: str,
     pipeline_name: str,
@@ -606,26 +690,66 @@ async def _run_pipeline_bg(
         # Approval gate BEFORE this stage — triggered by per-stage flag OR DB setting
         _gate_by_stage = stage_def.approval_gate
         _gate_by_db    = bool(require_approval_after and i > 0 and stage_order[i - 1] == require_approval_after)
-        if _gate_by_stage or _gate_by_db:
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE pr_pipeline_runs SET status='waiting_approval' WHERE id=%s",
-                            (run_id,),
-                        )
-                    conn.commit()
-            except Exception:
-                pass
+        _exec_system_suffix: str | None = None   # set by planning phase; consumed by stage run
 
+        if _gate_by_stage or _gate_by_db:
+            # ── PLANNING SUB-RUN ─────────────────────────────────────────────
+            # Run agent in planning mode (read-only tools) to produce a code plan
+            log.info("Planning sub-run starting for run_id=%s stage=%s", run_id, stage_def.key)
+            plan_data: dict = {}
+            try:
+                plan_agent = await Agent.from_role(stage_def.role)
+                plan_agent.max_iterations = min(plan_agent.max_iterations, 8)
+                if stage_def.temperature_override is not None:
+                    plan_agent.temperature = stage_def.temperature_override
+
+                plan_result = await plan_agent.run_pipeline(
+                    task=task,
+                    handoff=handoff,
+                    project=project,
+                    planning_mode=True,
+                )
+                plan_data = plan_result.structured_output or {}
+                log.info(
+                    "Planning sub-run done for run_id=%s: tokens=%d cost=$%.4f",
+                    run_id, plan_result.input_tokens + plan_result.output_tokens, plan_result.cost_usd or 0,
+                )
+            except Exception as _pe:
+                log.warning("Planning sub-run failed (run_id=%s): %s", run_id, _pe)
+
+            # Persist planning result to stage row
+            if stage_id:
+                try:
+                    _plan_tokens  = 0
+                    _plan_cost    = 0.0
+                    try:
+                        _plan_tokens = plan_result.input_tokens + plan_result.output_tokens
+                        _plan_cost   = float(plan_result.cost_usd or 0)
+                    except NameError:
+                        pass  # plan_result not set if planning raised before assignment
+                    with db.conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """UPDATE pr_pipeline_run_stages
+                                   SET planning_out=%s::jsonb,
+                                       planning_tokens=%s, planning_cost_usd=%s
+                                   WHERE id=%s""",
+                                (_json.dumps(plan_data), _plan_tokens, _plan_cost, stage_id),
+                            )
+                        conn.commit()
+                except Exception as _pe2:
+                    log.warning("Could not persist planning_out (run_id=%s): %s", run_id, _pe2)
+
+            # ── APPROVAL GATE ─────────────────────────────────────────────────
+            _update_run_status(run_id, "waiting_approval")
             event = _asyncio.Event()
             _approval_events[run_id] = event
-            log.info("Approval gate waiting for run_id=%s before stage=%s", run_id, stage_def.key)
+            log.info("Approval gate (planning done) — run_id=%s stage=%s", run_id, stage_def.key)
             try:
-                await _asyncio.wait_for(event.wait(), timeout=600)
+                await _asyncio.wait_for(event.wait(), timeout=1800)  # 30 min for chat
             except _asyncio.TimeoutError:
                 log.warning("Approval gate timed out for run_id=%s", run_id)
-                final_error = "Approval gate timed out after 600s"
+                final_error = "Approval gate timed out after 1800s"
                 break
 
             result_info = _approval_results.pop(run_id, {})
@@ -633,23 +757,39 @@ async def _run_pipeline_bg(
                 final_error = f"Run rejected at approval gate: {result_info.get('feedback', '')}"
                 break
 
-            # Inject user feedback into handoff so next stage sees it
-            user_fb = result_info.get("feedback", "").strip()
-            if user_fb and isinstance(handoff, dict):
-                handoff["user_approval_feedback"] = user_fb
-                log.info("Approval gate: injecting user feedback (%d chars) into handoff", len(user_fb))
+            # ── BUILD EXECUTION CONTEXT ───────────────────────────────────────
+            _update_run_status(run_id, "running")
 
-            # Restore running status
-            try:
-                with db.conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE pr_pipeline_runs SET status='running' WHERE id=%s",
-                            (run_id,),
-                        )
-                    conn.commit()
-            except Exception:
-                pass
+            # Fetch chat messages accumulated during approval review
+            approval_chat = _get_approval_chat(stage_id) if stage_id else []
+            chat_summary = (
+                "\n".join(
+                    f"{m['role'].upper()}: {m['content']}"
+                    for m in approval_chat[-10:]
+                )
+                if approval_chat else ""
+            )
+
+            # Inject planning output + chat feedback into handoff for execution stage
+            if isinstance(handoff, dict):
+                handoff = {**handoff, "planning_out": plan_data}
+                if chat_summary:
+                    handoff["approval_chat_summary"] = chat_summary
+            else:
+                handoff = {"planning_out": plan_data}
+                if chat_summary:
+                    handoff["approval_chat_summary"] = chat_summary
+
+            _exec_system_suffix = (
+                "\n\n## EXECUTION PHASE\n"
+                "The code plan is in your input under 'planning_out'. "
+                + (f"User feedback from review:\n{chat_summary}\n" if chat_summary else "")
+                + "Implement the plan file by file. Do not re-plan."
+            )
+            log.info(
+                "Approval gate passed — running execution stage (run_id=%s, chat_msgs=%d)",
+                run_id, len(approval_chat),
+            )
 
         if stage_id:
             try:
@@ -675,7 +815,10 @@ async def _run_pipeline_bg(
                 # Snapshot what we're passing into this stage (for display)
                 input_snap = _json.dumps(handoff) if handoff else None
 
-                coro = agent.run_pipeline(task=task, handoff=handoff, project=project)
+                coro = agent.run_pipeline(
+                    task=task, handoff=handoff, project=project,
+                    system_suffix=_exec_system_suffix,
+                )
                 if stage_def.timeout_seconds:
                     import asyncio
                     stage_result = await asyncio.wait_for(coro, timeout=stage_def.timeout_seconds)
@@ -1176,7 +1319,8 @@ async def get_pipeline_run(run_id: str) -> dict:
                     """SELECT id, stage_key, role_name, status, attempt,
                               output_text, log_lines, input_tokens, output_tokens,
                               cost_usd, duration_s, temperature_used, started_at, finished_at,
-                              structured_out, steps_json, input_snapshot
+                              structured_out, steps_json, input_snapshot,
+                              planning_out, approval_chat, planning_tokens, planning_cost_usd
                        FROM pr_pipeline_run_stages
                        WHERE run_id=%s ORDER BY id""",
                     (run_id,),
@@ -1185,23 +1329,27 @@ async def get_pipeline_run(run_id: str) -> dict:
 
         stages = [
             {
-                "id":              sr[0],
-                "stage_key":       sr[1],
-                "role_name":       sr[2],
-                "status":          sr[3],
-                "attempt":         sr[4],
-                "output_preview":  (sr[5] or "")[:1500],
-                "log_lines":       sr[6] or [],
-                "input_tokens":    sr[7],
-                "output_tokens":   sr[8],
-                "cost_usd":        float(sr[9] or 0),
-                "duration_s":      sr[10],
-                "temperature_used":sr[11],
-                "started_at":      sr[12].isoformat() if sr[12] else None,
-                "finished_at":     sr[13].isoformat() if sr[13] else None,
-                "structured_out":  sr[14],   # parsed JSON handoff (if model emitted one)
-                "steps_json":      sr[15],   # ReAct trace steps
-                "input_snapshot":  sr[16],   # handoff passed INTO this stage
+                "id":                sr[0],
+                "stage_key":         sr[1],
+                "role_name":         sr[2],
+                "status":            sr[3],
+                "attempt":           sr[4],
+                "output_preview":    (sr[5] or "")[:1500],
+                "log_lines":         sr[6] or [],
+                "input_tokens":      sr[7],
+                "output_tokens":     sr[8],
+                "cost_usd":          float(sr[9] or 0),
+                "duration_s":        sr[10],
+                "temperature_used":  sr[11],
+                "started_at":        sr[12].isoformat() if sr[12] else None,
+                "finished_at":       sr[13].isoformat() if sr[13] else None,
+                "structured_out":    sr[14],   # parsed JSON handoff (if model emitted one)
+                "steps_json":        sr[15],   # ReAct trace steps
+                "input_snapshot":    sr[16],   # handoff passed INTO this stage
+                "planning_out":      sr[17],   # planning sub-run structured output
+                "approval_chat":     sr[18] or [],  # chat messages during review
+                "planning_tokens":   sr[19] or 0,
+                "planning_cost_usd": float(sr[20] or 0),
             }
             for sr in stage_rows
         ]
@@ -1309,6 +1457,127 @@ async def approve_pipeline_run(run_id: str, body: dict) -> dict:
     if event:
         event.set()
     return {"ok": True, "run_id": run_id, "approved": approved}
+
+
+@router.post("/pipeline-runs/{run_id}/approval-chat")
+async def approval_chat_message(run_id: str, body: dict) -> dict:
+    """Chat with the role LLM during the approval gate.
+
+    Same provider/model as the waiting stage role. Persists chat to approval_chat column.
+    Body: {message: str, project?: str}
+    """
+    from core.database import db
+
+    message = str(body.get("message", "")).strip()
+    if not message:
+        raise HTTPException(422, "message required")
+
+    if not db.is_available():
+        raise HTTPException(503, "Database not available")
+
+    # Fetch run status + stages
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status FROM pr_pipeline_runs WHERE id=%s",
+                    (run_id,),
+                )
+                run_row = cur.fetchone()
+                if not run_row:
+                    raise HTTPException(404, "Run not found")
+                if run_row[0] != "waiting_approval":
+                    raise HTTPException(400, "Run is not waiting for approval")
+
+                # Find the waiting stage (has planning_out or is the latest non-pending stage)
+                cur.execute(
+                    """SELECT id, role_name, planning_out
+                       FROM pr_pipeline_run_stages
+                       WHERE run_id=%s
+                       ORDER BY id DESC""",
+                    (run_id,),
+                )
+                stage_rows = cur.fetchall()
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("approval_chat_message: DB query failed: %s", e)
+        raise HTTPException(500, str(e))
+
+    # Pick the stage that has planning_out, or fall back to the last non-pending stage
+    waiting_stage = next(
+        (r for r in stage_rows if r[2] is not None), None
+    ) or next(
+        (r for r in stage_rows if r[2] is None), stage_rows[0] if stage_rows else None
+    )
+    if not waiting_stage:
+        raise HTTPException(404, "No waiting stage found")
+
+    stage_id  = waiting_stage[0]
+    role_name = waiting_stage[1]
+    plan_data = waiting_stage[2] or {}
+
+    # Load role config for provider/model
+    provider    = "claude"
+    model       = "claude-sonnet-4-6"
+    temperature = 0.3
+    try:
+        with db.conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT provider, model, temperature FROM mng_agent_roles "
+                    "WHERE name=%s AND is_active=TRUE LIMIT 1",
+                    (role_name,),
+                )
+                role_row = cur.fetchone()
+        if role_row:
+            provider    = role_row[0] or provider
+            model       = role_row[1] or model
+            temperature = float(role_row[2]) if role_row[2] is not None else temperature
+    except Exception as _re:
+        log.warning("approval_chat_message: could not load role config: %s", _re)
+
+    # Fetch existing chat history
+    existing_chat = _get_approval_chat(stage_id)
+
+    # Format plan as readable context
+    plan_text = _format_plan_for_chat(plan_data) if plan_data else "(no plan produced)"
+
+    system = (
+        f"You are {role_name}. You produced the plan below and are discussing it with the user.\n"
+        "Answer questions about the plan, explain your reasoning, and note any user changes.\n"
+        "Be concise (2-4 sentences). Do not write code — just discuss the plan.\n\n"
+        f"## YOUR PLAN:\n{plan_text}"
+    )
+    messages = [{"role": m["role"], "content": m["content"]} for m in existing_chat]
+    messages.append({"role": "user", "content": message})
+
+    # Call LLM via Agent
+    from agents.agent import Agent as _Agent
+    from data.dl_api_keys import get_key as _get_key
+    try:
+        temp_agent = _Agent(
+            name=role_name,
+            system_prompt=system,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+        )
+        api_key = _get_key(provider) or _get_key("claude")
+        resp = await temp_agent._call_provider(messages, 600, api_key=api_key, system_override=system)
+        ai_response = resp.get("content", "")
+    except Exception as _ce:
+        log.exception("approval_chat_message: LLM call failed: %s", _ce)
+        raise HTTPException(500, f"LLM call failed: {_ce}")
+
+    # Persist new entries
+    new_entries = [
+        {"role": "user",      "content": message,     "ts": _datetime.utcnow().isoformat()},
+        {"role": "assistant", "content": ai_response, "ts": _datetime.utcnow().isoformat()},
+    ]
+    _append_approval_chat(stage_id, new_entries)
+
+    return {"response": ai_response, "chat_history": existing_chat + new_entries}
 
 
 @router.post("/pipeline-runs/{run_id}/apply")

@@ -85,6 +85,12 @@ Observation: [result — filled in automatically]
 Repeat Thought/Action/Observation as needed. When you have sufficient
 information, write your final output directly."""
 
+# Tools allowed in planning phase (read-only research)
+_PLANNING_TOOLS = frozenset({
+    "search_memory", "get_project_facts", "get_tag_context",
+    "search_features", "read_file", "list_dir", "git_diff",
+})
+
 # ── SQL ───────────────────────────────────────────────────────────────────────
 
 _SQL_LOAD_ROLE = """SELECT ar.system_prompt, ar.provider, ar.model,
@@ -536,6 +542,8 @@ class Agent:
         project: str = "aicli",
         max_tokens: int = 4096,
         api_key: str | None = None,
+        planning_mode: bool = False,
+        system_suffix: str | None = None,
     ) -> AgentResult:
         """ReAct-enforced pipeline run with structured handoff.
 
@@ -546,6 +554,9 @@ class Agent:
         - Loop detection: aborts if same tool called 3× in a row
         - Parses final response as structured JSON handoff
         - Saves structured output to mem_mrr_prompts (memory)
+
+        planning_mode: restrict tools to read-only set and inject planning instructions
+        system_suffix: additional text appended to system prompt (e.g. execution phase context)
         """
         from data.dl_api_keys import get_key
         from agents.tools import invoke_tool
@@ -553,7 +564,23 @@ class Agent:
         if api_key is None:
             api_key = get_key(self.provider) or get_key("claude")
 
+        # Planning mode: filter tools to read-only + inject planning suffix
+        original_tools = self.tools
+        if planning_mode:
+            self.tools = [t for t in self.tools if t.get("name") in _PLANNING_TOOLS]
+            planning_suffix = (
+                "\n\n## PLANNING PHASE\n"
+                "Do NOT call write_file, git_commit, or git_push. "
+                "Research the codebase and produce a detailed code plan. "
+                "Include 'phase': 'planning' in your JSON output."
+            )
+            system_suffix = (system_suffix or "") + planning_suffix
+
         system, messages = self.build_prompt(task, handoff)
+
+        # Inject system_suffix (planning phase or execution phase context)
+        if system_suffix:
+            system = system + "\n" + system_suffix
 
         steps: list[ReactStep] = []
         tool_calls_made: list[dict] = []
@@ -562,8 +589,10 @@ class Agent:
         _MAX_GUARD_RETRIES = 3
         resp: dict = {}
 
-        log.info("Agent '%s' starting pipeline run (project=%s, max_iter=%d)",
-                 self.name, project, self.max_iterations)
+        log.info(
+            "Agent '%s' starting pipeline run (project=%s, max_iter=%d, planning_mode=%s)",
+            self.name, project, self.max_iterations, planning_mode,
+        )
 
         for iteration in range(self.max_iterations + 1):
             resp = await self._call_provider(messages, max_tokens, api_key,
@@ -770,6 +799,7 @@ class Agent:
 
         # Max iterations exceeded
         log.warning("Agent '%s' exceeded max_iterations=%d", self.name, self.max_iterations)
+        self.tools = original_tools  # restore before returning
         cost = _calc_cost(self.provider, self.model, total_input, total_output)
         return AgentResult(
             output=resp.get("content", ""),

@@ -94,6 +94,13 @@ system_prompt: |-
     "changes_made": [
       {"file": "path/to/file.py", "action": "create|modify", "description": "What changed", "work_item_id": "FE0001"}
     ],
+    "code_plan": [
+      {
+        "path": "relative/path/to/file.py",
+        "action": "create|modify|delete",
+        "exact_changes": ["Add function X at line Y", "Modify class Z.__init__ to add field W"]
+      }
+    ],
     "tests_run": ["Command or check performed"],
     "test_results": ["PASS: criterion X verified via git_diff | FAIL: reason"],
     "issues_encountered": ["Problem and how it was resolved or why an item was skipped"],

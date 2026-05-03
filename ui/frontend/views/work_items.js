@@ -2355,21 +2355,28 @@ function _ucPollRun(runId) {
           const detId = `stage-det-${s.id}`;
           const hasDetails = s.status === 'done' || s.status === 'error';
 
-          // Build steps trace
+          // Build steps trace — 2-line format: "N. tool (arg) thought" + "↳ result"
           let stepsHtml = '';
           const steps = s.steps_json;
           if (steps?.length) {
             const stepLines = steps.map(st => {
-              const tool = st.tool || '?';
-              const args = st.args || {};
-              const mainArg = args.file_path || args.path || args.pattern || args.command || args.query || '';
-              const argStr = mainArg ? `(${String(mainArg).slice(0, 50)})` : '';
-              const obs = (st.observation || '').slice(0, 60).replace(/\n/g, ' ');
-              return `<div style="display:flex;gap:0.3rem;align-items:baseline;padding:0.08rem 0">
-                <span style="color:var(--accent);font-weight:600;min-width:14px;flex-shrink:0">${st.step}.</span>
-                <span style="color:#a78bfa;white-space:nowrap;flex-shrink:0">${_esc(tool)}</span>
-                <span style="color:var(--muted);font-size:0.65rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc(argStr)}</span>
-                ${obs ? `<span style="color:var(--muted);font-size:0.65rem;flex-shrink:0;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${_esc(obs)}">→ ${_esc(obs)}</span>` : ''}
+              const tool    = st.tool || '?';
+              const args    = st.args || {};
+              const mainArg = args.file_path || args.path || args.query || args.pattern || args.command || '';
+              const argShort = mainArg ? String(mainArg).split('/').pop().slice(0, 35) : '';
+              const thought = (st.thought || '').slice(0, 85).replace(/\n/g, ' ');
+              const obs     = (st.observation || '').replace(/\n/g, ' ').slice(0, 80);
+              return `<div style="margin-bottom:0.3rem">
+                <div style="display:flex;gap:0.3rem;align-items:baseline">
+                  <span style="color:var(--accent);font-weight:600;min-width:18px">${st.step}.</span>
+                  <span style="color:#a78bfa;font-weight:600">${_esc(tool)}</span>
+                  ${argShort ? `<span style="color:var(--muted);font-size:0.66rem">(${_esc(argShort)})</span>` : ''}
+                  <span style="color:var(--muted);font-size:0.66rem;flex:1;overflow:hidden;
+                              text-overflow:ellipsis;white-space:nowrap" title="${_esc(thought)}">${_esc(thought)}</span>
+                </div>
+                ${obs ? `<div style="padding-left:1.4rem;color:var(--text);font-size:0.65rem;
+                                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                          title="${_esc(obs)}">↳ ${_esc(obs)}</div>` : ''}
               </div>`;
             });
             stepsHtml = `<div style="margin:0.35rem 0;padding:0.3rem 0.4rem;background:var(--surface2);
@@ -2440,54 +2447,65 @@ function _ucPollRun(runId) {
       }
 
       if (data.status === 'waiting_approval' && verdEl) {
-        // Find last completed stage to show its plan
-        const lastDone = [...(data.stages || [])].filter(s => s.status === 'done').pop();
-        const so = lastDone?.structured_out;
-        let planHtml = '';
-        if (so) {
-          const planLines = [];
-          if (so.role === 'architect') {
-            if (so.approach) planLines.push(`<strong>Strategy:</strong> ${_esc(so.approach)}`);
-            (so.work_items_addressed || []).forEach(wi =>
-              planLines.push(`&nbsp;&nbsp;<strong>${_esc(wi.wi_id)}:</strong> ${_esc((wi.approach || wi.title || '').slice(0, 100))}`));
-            (so.file_analysis || []).forEach(fa => {
-              planLines.push(`&nbsp;&nbsp;<strong>${_esc((fa.action || 'MOD').toUpperCase())} ${_esc(fa.path)}</strong>`);
-              (fa.required_changes || []).slice(0, 2).forEach(c =>
-                planLines.push(`&nbsp;&nbsp;&nbsp;&nbsp;→ ${_esc(c.slice(0, 100))}`));
-            });
-            if (so.constraints?.length) planLines.push(`<strong>Constraints:</strong> ${_esc(so.constraints.slice(0, 2).join(' | ').slice(0, 120))}`);
-          } else {
-            if (so.summary) planLines.push(_esc(so.summary.slice(0, 200)));
-            if (so.verdict) planLines.push(`<strong>Verdict:</strong> ${_esc(so.verdict)}`);
+        // Find the waiting stage: has planning_out, or last non-pending stage
+        const waitingStage = data.stages.find(s => s.planning_out) ||
+                             [...(data.stages || [])].filter(s => s.status !== 'pending').pop();
+        const planData    = waitingStage?.planning_out;
+        const chatHistory = waitingStage?.approval_chat || [];
+
+        // If panel already rendered, only update chat area when new messages arrive
+        const existingPanel = document.getElementById(`uc-appr-panel-${runId}`);
+        if (existingPanel) {
+          const chatEl = document.getElementById(`uc-chat-hist-${runId}`);
+          if (chatEl && chatHistory.length > parseInt(chatEl.dataset.count || '0')) {
+            chatEl.dataset.count = chatHistory.length;
+            chatEl.innerHTML = _renderChatHistory(chatHistory, waitingStage?.role_name || 'Assistant');
+            chatEl.scrollTop = chatEl.scrollHeight;
           }
-          if (planLines.length) {
-            planHtml = `<div style="margin-bottom:0.5rem;padding:0.4rem 0.5rem;background:var(--bg1);
-                                   border-radius:4px;font-size:0.7rem;line-height:1.6;max-height:200px;
-                                   overflow-y:auto;border:1px solid var(--border)">
-              <div style="font-weight:700;font-size:0.62rem;text-transform:uppercase;color:#9b7ef8;
-                          margin-bottom:0.3rem">${_esc(lastDone.role_name || lastDone.stage_key)} Plan</div>
-              ${planLines.join('<br>')}
-            </div>`;
-          }
+          return; // don't re-render whole panel
         }
+
         verdEl.style.display = 'block';
         verdEl.innerHTML = `
-          <div style="padding:0.5rem;background:#9b7ef811;border:1px solid #9b7ef844;
-                      border-radius:6px;margin-top:0.5rem">
-            <div style="font-weight:700;font-size:0.72rem;color:#9b7ef8;margin-bottom:0.4rem">
-              Review &amp; Approve Plan
+          <div id="uc-appr-panel-${runId}"
+               style="padding:0.5rem;background:#9b7ef811;border:1px solid #9b7ef844;border-radius:6px;margin-top:0.4rem">
+            <div style="font-weight:700;font-size:0.73rem;color:#9b7ef8;margin-bottom:0.4rem"
+                 data-role-name="${_esc(waitingStage?.role_name || '')}">
+              Review ${_esc(waitingStage?.role_name || '')} Plan
             </div>
-            ${planHtml}
-            <textarea id="uc-appr-fb-${runId}"
-                      placeholder="Optional feedback for Developer (e.g. 'focus on error handling first')…"
-                      style="width:100%;height:52px;padding:0.35rem 0.4rem;border-radius:4px;
-                             background:var(--bg1);border:1px solid var(--border);color:var(--text);
-                             font-size:0.72rem;resize:none;box-sizing:border-box;margin-bottom:0.4rem"></textarea>
+
+            ${planData ? `<div style="padding:0.4rem;background:var(--bg1);border-radius:4px;
+                                      font-size:0.7rem;max-height:160px;overflow-y:auto;
+                                      margin-bottom:0.4rem;border:1px solid var(--border)">
+              ${_buildPlanLines(planData).map(l => _esc(l)).join('<br>')}
+            </div>` : ''}
+
+            <div id="uc-chat-hist-${runId}"
+                 data-count="${chatHistory.length}"
+                 style="max-height:160px;overflow-y:auto;padding:0.3rem;margin-bottom:0.3rem;
+                        background:var(--bg1);border-radius:4px;font-size:0.7rem;min-height:40px;
+                        ${chatHistory.length ? '' : 'color:var(--muted);font-style:italic'}">
+              ${chatHistory.length
+                ? _renderChatHistory(chatHistory, waitingStage?.role_name || 'Assistant')
+                : 'Ask a question about the plan…'}
+            </div>
+
+            <div style="display:flex;gap:0.3rem;margin-bottom:0.4rem">
+              <input id="uc-chat-in-${runId}" type="text"
+                     placeholder="Ask or give feedback…"
+                     style="flex:1;padding:0.25rem 0.4rem;border-radius:4px;background:var(--bg1);
+                            border:1px solid var(--border);color:var(--text);font-size:0.72rem"
+                     onkeydown="if(event.key==='Enter')window._ucSendApprovalChat('${runId}','${_project}')" />
+              <button onclick="window._ucSendApprovalChat('${runId}','${_project}')"
+                      style="padding:0.25rem 0.6rem;border-radius:4px;background:var(--accent);
+                             color:#fff;border:none;cursor:pointer;font-size:0.72rem">Send</button>
+            </div>
+
             <div style="display:flex;gap:0.5rem">
               <button onclick="window._ucApprovePipelineRun('${runId}',true)"
                       style="flex:1;padding:0.3rem;border-radius:4px;background:#3ecf8e22;color:#3ecf8e;
                              border:1px solid #3ecf8e;cursor:pointer;font-size:0.73rem;font-weight:600">
-                ✓ Approve
+                ✓ Approve &amp; Execute
               </button>
               <button onclick="window._ucApprovePipelineRun('${runId}',false)"
                       style="flex:1;padding:0.3rem;border-radius:4px;background:#e85d7522;color:#e85d75;
@@ -2496,6 +2514,10 @@ function _ucPollRun(runId) {
               </button>
             </div>
           </div>`;
+
+        // Auto-scroll chat to bottom
+        const chatEl = document.getElementById(`uc-chat-hist-${runId}`);
+        if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
       }
 
       if (data.status === 'done' || data.status === 'error') {
@@ -2638,11 +2660,67 @@ window._ucApplyRun = async (runId, sid) => {
   }
 };
 
-window._ucApprovePipelineRun = async (runId, approved) => {
-  const feedback = document.getElementById(`uc-appr-fb-${runId}`)?.value?.trim() || '';
+// ── Approval chat helpers ─────────────────────────────────────────────────────
+
+function _buildPlanLines(plan) {
+  const lines = [];
+  if (plan.approach) lines.push(`Strategy: ${plan.approach.slice(0, 120)}`);
+  (plan.work_items_addressed || []).forEach(wi =>
+    lines.push(`  ${wi.wi_id}: ${(wi.approach || wi.title || '').slice(0, 80)}`));
+  (plan.file_analysis || plan.code_plan || []).forEach(fa => {
+    const n = (fa.required_changes || fa.exact_changes || []).length;
+    lines.push(`  ${(fa.action || 'MOD').toUpperCase()} ${fa.path} — ${n} change${n !== 1 ? 's' : ''}`);
+    (fa.required_changes || fa.exact_changes || []).slice(0, 1).forEach(c =>
+      lines.push(`    → ${c.slice(0, 90)}`));
+  });
+  if (plan.constraints?.length)
+    lines.push(`Constraints: ${plan.constraints.slice(0, 2).join(' | ').slice(0, 100)}`);
+  return lines;
+}
+
+function _renderChatHistory(chat, roleName) {
+  return chat.map(m => {
+    const isUser = m.role === 'user';
+    return `<div style="margin-bottom:0.3rem;${isUser ? 'text-align:right' : ''}">
+      <span style="font-size:0.62rem;color:var(--muted);font-weight:600">
+        ${_esc(isUser ? 'You' : roleName)}
+      </span>
+      <div style="display:inline-block;max-width:90%;padding:0.2rem 0.4rem;border-radius:4px;
+                  background:${isUser ? 'var(--accent)22' : 'var(--surface2)'};
+                  color:var(--text);font-size:0.68rem;text-align:left;margin-top:0.1rem">
+        ${_esc(m.content)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window._ucSendApprovalChat = async (runId, project) => {
+  const inp = document.getElementById(`uc-chat-in-${runId}`);
+  const msg = inp?.value?.trim();
+  if (!msg || inp?.disabled) return;
+  inp.value = '';
+  inp.disabled = true;
   try {
-    await api.agents.approvePipelineRun(runId, { approved, feedback });
-    toast(approved ? 'Approved — Developer starting…' : 'Rejected — pipeline stopped', approved ? 'success' : 'info');
+    const res = await api.agents.approvalChat(runId, { message: msg, project });
+    const chatEl = document.getElementById(`uc-chat-hist-${runId}`);
+    if (chatEl && res.chat_history) {
+      chatEl.dataset.count = res.chat_history.length;
+      const roleName = document.querySelector(`#uc-appr-panel-${runId} [data-role-name]`)?.dataset.roleName || 'Assistant';
+      chatEl.innerHTML = _renderChatHistory(res.chat_history, roleName);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+  } catch (e) {
+    toast('Chat failed: ' + e.message, 'error');
+  } finally {
+    if (inp) inp.disabled = false;
+    inp?.focus();
+  }
+};
+
+window._ucApprovePipelineRun = async (runId, approved) => {
+  try {
+    await api.agents.approvePipelineRun(runId, { approved, feedback: '' });
+    toast(approved ? 'Approved — executing…' : 'Rejected — pipeline stopped', approved ? 'success' : 'info');
   } catch (e) {
     toast('Approval failed: ' + e.message, 'error');
   }

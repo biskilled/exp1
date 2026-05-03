@@ -419,6 +419,7 @@ api.agents = {
     return _get(`/agents/pipeline-runs?${q}`);
   },
   approvePipelineRun:(id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/approve`, body),
+  approvalChat:      (id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/approval-chat`, body),
   applyPipelineRun:  (id, body)          => _post(`/agents/pipeline-runs/${enc(id)}/apply`, body),
   patchPipelineRun:  (id, body)          => _patch(`/agents/pipeline-runs/${enc(id)}`, body),
   patchPipelineSettings: (name, body)   => _patch(`/agents/pipelines/${enc(name)}/settings`, body),
