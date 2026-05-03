@@ -18,7 +18,7 @@ export async function renderCode(container, projectName, project) {
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
 
   const codeDir = project?.code_dir || '';
-  const savedW  = parseInt(localStorage.getItem('aicli_code_tree_w') || '200');
+  const savedW  = parseInt(localStorage.getItem('ad_code_tree_w') || '200');
 
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;overflow:hidden;height:100%">
@@ -116,7 +116,7 @@ function _initResizeHandle() {
     dragging = false;
     document.body.style.cursor = document.body.style.userSelect = '';
     handle.style.background = 'var(--border)';
-    localStorage.setItem('aicli_code_tree_w', String(tree.offsetWidth));
+    localStorage.setItem('ad_code_tree_w', String(tree.offsetWidth));
   });
 }
 

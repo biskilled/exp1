@@ -23,8 +23,8 @@ export function renderLogin(container, backendUrl, onSuccess, onClose = null) {
             display:flex;align-items:center;justify-content:center;
             border-radius:50%;transition:background 0.15s;line-height:1
           ">✕</button>` : ''}
-          <div class="login-logo">aicli</div>
-          <div class="login-subtitle">AI-powered dev CLI</div>
+          <div class="login-logo">AgentDesk</div>
+          <div class="login-subtitle">AI-powered development platform</div>
 
           <div class="login-tabs">
             <button class="login-tab ${!isRegister ? 'active' : ''}" id="tab-login">Sign in</button>
@@ -118,8 +118,8 @@ export function renderLogin(container, backendUrl, onSuccess, onClose = null) {
       }
 
       // Store token
-      localStorage.setItem('aicli_token', data.token);
-      localStorage.setItem('aicli_user', JSON.stringify(data.user));
+      localStorage.setItem('ad_token', data.token);
+      localStorage.setItem('ad_user', JSON.stringify(data.user));
 
       // Apply coupon code if provided during registration
       if (mode === 'register') {
@@ -165,7 +165,7 @@ export function renderLogin(container, backendUrl, onSuccess, onClose = null) {
  * Returns {valid: bool, token: str|null, user: dict|null}
  */
 export async function checkStoredAuth(backendUrl) {
-  const token = localStorage.getItem('aicli_token');
+  const token = localStorage.getItem('ad_token');
   if (!token) return { valid: false, token: null, user: null };
 
   try {
@@ -184,8 +184,8 @@ export async function checkStoredAuth(backendUrl) {
 
 
 export function logout() {
-  localStorage.removeItem('aicli_token');
-  localStorage.removeItem('aicli_user');
+  localStorage.removeItem('ad_token');
+  localStorage.removeItem('ad_user');
 }
 
 

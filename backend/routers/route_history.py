@@ -7,7 +7,7 @@ All sources write to the same file:
   - "workflow"   : workflow runner steps
 
 Legacy sources still merged for backward compat:
-  - {engine_root}/.aicli/prompt_log.jsonl (older hook format)
+  - {engine_root}/.agentdesk/prompt_log.jsonl (older hook format)
 """
 
 import asyncio
@@ -178,8 +178,8 @@ def _load_unified_history(project: str | None, provider: str | None = None) -> l
 
 
 def _load_prompt_log_legacy() -> list[dict]:
-    """Read legacy .aicli/prompt_log.jsonl — entries not already in unified history."""
-    path = _ENGINE_ROOT / ".aicli" / "prompt_log.jsonl"
+    """Read legacy .agentdesk/prompt_log.jsonl — entries not already in unified history."""
+    path = _ENGINE_ROOT / ".agentdesk" / "prompt_log.jsonl"
     if not path.exists():
         return []
     entries = []

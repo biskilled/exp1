@@ -142,7 +142,7 @@ def _append_history(
             tags_dict[prefix] = v
 
     # source goes into src column — not user tags
-    src_value = provider or "aicli"
+    src_value = provider or "agentdesk"
     project_id = db.get_or_create_project_id(project)
     try:
         with db.conn() as conn:

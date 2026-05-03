@@ -17,7 +17,7 @@ function _esc(s) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export async function renderMcpCatalog(container, project) {
-  const proj = project || state.currentProject?.name || 'aicli';
+  const proj = project || state.currentProject?.name || 'agentdesk';
 
   container.innerHTML = `
     <div style="padding:1.5rem;max-width:1100px">

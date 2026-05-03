@@ -83,7 +83,7 @@ async function boot() {
   renderShell();
 
   // Restore sidebar state
-  if (localStorage.getItem('aicli_sidebar_open') === '0')
+  if (localStorage.getItem('ad_sidebar_open') === '0')
     document.body.classList.add('sidebar-collapsed');
 
   // 1. Check backend health — retry up to 8× (1.5 s apart) so the UI waits
@@ -133,7 +133,7 @@ async function boot() {
         async (token, user) => {
           setState({ user });
           renderShell();
-          if (localStorage.getItem('aicli_sidebar_open') === '0')
+          if (localStorage.getItem('ad_sidebar_open') === '0')
             document.body.classList.add('sidebar-collapsed');
           await _continueToApp(user);
         }
@@ -276,7 +276,7 @@ function renderShell() {
 
   window._toggleSidebar = () => {
     const collapsed = document.body.classList.toggle('sidebar-collapsed');
-    localStorage.setItem('aicli_sidebar_open', collapsed ? '0' : '1');
+    localStorage.setItem('ad_sidebar_open', collapsed ? '0' : '1');
   };
 }
 
@@ -401,8 +401,8 @@ window._showLoginModal = (initialMode = 'login') => {
   import('./views/login.js').then(({ renderLogin }) => {
     renderLogin(overlay, state.settings.backend_url, (token, user) => {
       overlay.remove();
-      localStorage.setItem('aicli_token', token);
-      localStorage.setItem('aicli_user', JSON.stringify(user));
+      localStorage.setItem('ad_token', token);
+      localStorage.setItem('ad_user', JSON.stringify(user));
       setState({ user });
       renderSidebarFooter();
       toast(`Signed in as ${user.email}`, 'success');

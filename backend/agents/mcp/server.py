@@ -1,7 +1,7 @@
 """
-aicli MCP Server — exposes the 5-layer project memory as LLM tools.
+AgentDesk MCP Server — exposes the 5-layer project memory as LLM tools.
 
-Run: python3.12 ui/mcp_server.py [--project aicli] [--backend http://localhost:8000]
+Run: python3.12 ui/mcp_server.py [--project agentdesk] [--backend http://localhost:8000]
 
 Claude CLI and Cursor register this server via their settings files.
 All tools call the FastAPI backend via HTTP — no direct DB access.
@@ -50,8 +50,8 @@ except ImportError:
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 
-parser = argparse.ArgumentParser(description="aicli MCP Server")
-parser.add_argument("--project", default=os.environ.get("ACTIVE_PROJECT", "aicli"))
+parser = argparse.ArgumentParser(description="AgentDesk MCP Server")
+parser.add_argument("--project", default=os.environ.get("ACTIVE_PROJECT", "agentdesk"))
 parser.add_argument("--backend", default=os.environ.get("BACKEND_URL", "http://localhost:8000"))
 args, _ = parser.parse_known_args()
 
@@ -87,7 +87,7 @@ async def _put(path: str, body: dict) -> Any:
 
 # ── MCP Server ─────────────────────────────────────────────────────────────────
 
-server = Server("aicli-memory")
+server = Server("agentdesk-memory")
 
 
 @server.list_tools()

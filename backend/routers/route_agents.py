@@ -273,14 +273,14 @@ class AgentRunRequest(BaseModel):
     role: str                          # DB role name e.g. "Product Manager"
     task: str
     handoff: dict | None = None        # structured input from a previous agent
-    project: str = "aicli"
+    project: str = "agentdesk"
     max_tokens: int = 4096
 
 
 class PipelineRunRequest(BaseModel):
     pipeline: str = "standard"        # name of YAML in workspace/_templates/pipelines/
     task: str
-    project: str = "aicli"
+    project: str = "agentdesk"
     max_tokens: int = 4096
 
 
@@ -485,7 +485,7 @@ _approval_results: dict[str, dict]           = {}
 class AsyncPipelineRunRequest(BaseModel):
     pipeline:        str           = "standard"
     task:            str
-    project:         str           = "aicli"
+    project:         str           = "agentdesk"
     input_files:     list          = []
     source:          str           = "direct"   # direct|use_case|item|chat
     linked_uc_id:    str | None    = None
@@ -1664,7 +1664,7 @@ async def apply_pipeline_run(run_id: str, body: dict) -> dict:
 
 @router.get("/pipeline-runs")
 async def list_pipeline_runs(
-    project: str = Query("aicli"),
+    project: str = Query("agentdesk"),
     pipeline_name: str | None = Query(None),
     limit: int = Query(20),
 ) -> dict:

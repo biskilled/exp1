@@ -65,7 +65,7 @@ export function renderChat(container) {
   container.className  = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
 
-  const _savedPanelW = parseInt(localStorage.getItem('aicli_chat_sessions_w') || '190', 10);
+  const _savedPanelW = parseInt(localStorage.getItem('ad_chat_sessions_w') || '190', 10);
 
   container.innerHTML = `
     <div style="display:flex;flex:1;overflow:hidden;min-height:0">
@@ -1158,7 +1158,7 @@ function _initChatResize() {
     dragging = false;
     document.body.style.cursor = document.body.style.userSelect = '';
     handle.style.background = 'var(--border)';
-    localStorage.setItem('aicli_chat_sessions_w', String(panel.offsetWidth));
+    localStorage.setItem('ad_chat_sessions_w', String(panel.offsetWidth));
   });
 }
 
@@ -1970,7 +1970,7 @@ function _showWelcome() {
 
   if (!proj) {
     el.innerHTML = `
-      <div style="font-size:1.4rem;font-weight:800;color:var(--accent);margin-bottom:0.35rem">aicli Chat</div>
+      <div style="font-size:1.4rem;font-weight:800;color:var(--accent);margin-bottom:0.35rem">AgentDesk Chat</div>
       <div style="font-size:0.68rem;color:var(--muted)">Open a project from the sidebar to start chatting with context.</div>`;
     container.appendChild(el);
     return;
@@ -2155,7 +2155,7 @@ function _renderSessionHeader(sessionId, phase) {
 let _chatTagCache    = null;  // [{cat, values}] or null = not loaded yet
 let _sessRefreshTimer = null; // auto-refresh interval for session sidebar
 
-const _sessCacheKey = (proj) => `aicli_sess_v1_${proj}`;
+const _sessCacheKey = (proj) => `ad_sess_v1_${proj}`;
 
 /** Update session ID badge in tag bar — shows last 5 chars; click = copy full ID. */
 function _updateSessionIdBadge(id) {

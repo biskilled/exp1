@@ -120,13 +120,13 @@ def _get_active_project() -> str:
     import os
     project = os.environ.get("ACTIVE_PROJECT", "")
     if not project:
-        state_path = Path.home() / ".aicli" / "session_state.json"
+        state_path = Path.home() / ".agentdesk" / "session_state.json"
         if state_path.exists():
             try:
                 project = json.loads(state_path.read_text()).get("project", "")
             except Exception:
                 pass
-    return project or "aicli"
+    return project or "agentdesk"
 
 
 # ── Tool definitions ───────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ def _handle_search_memory(args: dict) -> str:
     # JSONL fallback (DB unavailable)
     if not results:
         try:
-            cfg_path = Path.home() / ".aicli" / "config.json"
+            cfg_path = Path.home() / ".agentdesk" / "config.json"
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
@@ -328,7 +328,7 @@ def _handle_get_recent_history(args: dict) -> str:
     # JSONL fallback
     if not results:
         try:
-            cfg_path = Path.home() / ".aicli" / "config.json"
+            cfg_path = Path.home() / ".agentdesk" / "config.json"
             workspace = "workspace"
             if cfg_path.exists():
                 workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)
@@ -382,7 +382,7 @@ def _handle_get_project_facts(args: dict) -> str:
 
     # Fallback: project_state.json
     try:
-        cfg_path = Path.home() / ".aicli" / "config.json"
+        cfg_path = Path.home() / ".agentdesk" / "config.json"
         workspace = "workspace"
         if cfg_path.exists():
             workspace = json.loads(cfg_path.read_text()).get("workspace_dir", workspace)

@@ -3,7 +3,7 @@
  *
  * Wraps fetch() with JWT auth headers, a 30-second AbortController timeout,
  * and structured error propagation. API keys live server-side; the client
- * sends only a Bearer token stored in localStorage as "aicli_token".
+ * sends only a Bearer token stored in localStorage as "ad_token".
  * Exports the `api` namespace object and project-recency helpers
  * `addRecentProject` / `getRecentProjects`.
  */
@@ -17,7 +17,7 @@ function _base() {
 
 function _headers(extra = {}) {
   const h = { 'Content-Type': 'application/json', ...extra };
-  const tok = localStorage.getItem('aicli_token');
+  const tok = localStorage.getItem('ad_token');
   if (tok) h['Authorization'] = `Bearer ${tok}`;
   return h;
 }
@@ -351,7 +351,7 @@ api.agentRoles = {
   list:           (project = '_global', showDeactivated = false) =>
     _get(`/agent-roles/?project=${enc(project)}${showDeactivated ? '&show_deactivated=true' : ''}`),
   create:         (body)                => _post('/agent-roles/', body),
-  patch:          (id, body, project = 'aicli') => fetch(_base() + `/agent-roles/${id}?project=${enc(project)}`, {
+  patch:          (id, body, project = 'agentdesk') => fetch(_base() + `/agent-roles/${id}?project=${enc(project)}`, {
     method: 'PATCH', headers: _headers(), body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || r.statusText)))),
   delete:         (id)                  => _del(`/agent-roles/${id}`),
@@ -360,7 +360,7 @@ api.agentRoles = {
   restoreDefault: (id)                  => _post(`/agent-roles/${id}/restore`, {}),
   setBase:        (id)                  => _post(`/agent-roles/${id}/set-base`, {}),
   resetToBase:    (id)                  => _post(`/agent-roles/${id}/reset-to-base`, {}),
-  reloadFromYaml: (project = 'aicli')  => _post(`/agent-roles/reload?project=${enc(project)}`, {}),
+  reloadFromYaml: (project = 'agentdesk')  => _post(`/agent-roles/reload?project=${enc(project)}`, {}),
   providers:      ()                    => _get('/agent-roles/providers'),
   availableTools: ()                    => _get('/agent-roles/available-tools'),
   validateYaml:   (body)                => _post('/agent-roles/validate-yaml', body),
@@ -378,13 +378,13 @@ api.agentRoles = {
   mcpDeactivate:  (project, name)       => _del(`/agent-roles/mcp-activate/${enc(name)}?project=${enc(project)}`),
   mcpUsage:       (project, name)       => _get(`/agent-roles/mcp-usage?project=${enc(project)}&mcp_name=${enc(name)}`),
   systemPrompts:  ()                    => _get(`/agent-roles/system-prompts`),
-  pipelinesConfig: (project = 'aicli') => _get(`/agent-roles/pipelines-config?project=${enc(project)}`),
-  patchPipeline:  (name, body, project = 'aicli') => fetch(_base() + `/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`, {
+  pipelinesConfig: (project = 'agentdesk') => _get(`/agent-roles/pipelines-config?project=${enc(project)}`),
+  patchPipeline:  (name, body, project = 'agentdesk') => fetch(_base() + `/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`, {
     method: 'PATCH',
     headers: _headers(),
     body: JSON.stringify(body),
   }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e))))),
-  getPipelineConfig: (name, project = 'aicli') => _get(`/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`),
+  getPipelineConfig: (name, project = 'agentdesk') => _get(`/agent-roles/pipelines/${enc(name)}?project=${enc(project)}`),
 };
 
 // ── System Roles API ──────────────────────────────────────────────────────────
@@ -568,7 +568,7 @@ export function logToBackend(level, message, context = null) {
   }).catch(() => {});
 }
 
-const RECENT_KEY = 'aicli_recent_projects';
+const RECENT_KEY = 'ad_recent_projects';
 
 export function addRecentProject(name) {
   let recent = getRecentProjects();

@@ -44,7 +44,7 @@ async function _electronInvoke(cmd, args) {
 
 function _settingsPath() {
   // Store settings next to the engine root; fallback to home dir
-  return (window.__ENGINE_PATH__ || "") + "/.aicli/ui_settings.json";
+  return (window.__ENGINE_PATH__ || "") + "/.agentdesk/ui_settings.json";
 }
 
 function _defaultSettings() {

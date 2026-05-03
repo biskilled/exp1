@@ -8,7 +8,7 @@ Wraps Python's standard logging with:
   - Console handler at the configured level
   - Consistent timestamped format across all handlers
 
-Log directory lives OUTSIDE backend/ — defaults to ~/.aicli/logs/
+Log directory lives OUTSIDE backend/ — defaults to ~/.agentdesk/logs/
 and is configurable via the LOG_DIR env var or Settings.log_dir.
 
 Usage (any module):

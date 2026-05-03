@@ -538,7 +538,7 @@ class RoleUpdate(BaseModel):
 
 
 @router.patch("/{role_id}")
-async def update_role(role_id: int, body: RoleUpdate, project: str = Query("aicli"), user=Depends(get_optional_user)):
+async def update_role(role_id: int, body: RoleUpdate, project: str = Query("agentdesk"), user=Depends(get_optional_user)):
     _require_db()
     _require_admin(user)
 
@@ -695,7 +695,7 @@ async def list_available_tools():
 # ── Pipeline config endpoints ─────────────────────────────────────────────────
 
 @router.get("/pipelines-config")
-async def get_pipelines_config(project: str = Query("aicli")):
+async def get_pipelines_config(project: str = Query("agentdesk")):
     """List all pipelines from YAML + their activated status from mng_agent_pipelines.
 
     Also computes eligible = all required roles are activated.
@@ -791,7 +791,7 @@ async def get_pipelines_config(project: str = Query("aicli")):
 
 
 @router.get("/pipelines/{pipeline_name}")
-async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli")):
+async def get_pipeline_config(pipeline_name: str, project: str = Query("agentdesk")):
     """Return full config for a single pipeline: YAML definition + DB overrides."""
     import yaml as _yaml
 
@@ -901,7 +901,7 @@ async def get_pipeline_config(pipeline_name: str, project: str = Query("aicli"))
 async def patch_pipeline(
     pipeline_name: str,
     body: dict,
-    project: str = Query("aicli"),
+    project: str = Query("agentdesk"),
     user=Depends(get_optional_user),
 ):
     """Update pipeline properties (activated, max_rejection_retries, etc.).
@@ -1086,7 +1086,7 @@ def _build_role_yaml_dict(role: dict) -> dict:
     }
 
 
-def _write_role_to_yaml(role: dict, project: str = "aicli") -> None:
+def _write_role_to_yaml(role: dict, project: str = "agentdesk") -> None:
     """Write a role dict to workspace/{project}/pipelines/roles/, keeping it in sync with DB."""
     import yaml as _yaml
 
@@ -1202,7 +1202,7 @@ def _save_mcp_json(code_dir: str, data: dict) -> None:
 # ── MCP Catalog endpoints ─────────────────────────────────────────────────────
 
 @router.get("/mcp-catalog")
-async def get_mcp_catalog(project: str = Query("aicli")):
+async def get_mcp_catalog(project: str = Query("agentdesk")):
     """Return mcp_catalog.yaml for the project (falls back to _templates)."""
     mcps = _load_mcp_catalog(project)
     return {"mcps": mcps}
@@ -1213,7 +1213,7 @@ class McpCatalogBody(BaseModel):
 
 
 @router.put("/mcp-catalog")
-async def put_mcp_catalog(body: McpCatalogBody, project: str = Query("aicli"), user=Depends(get_optional_user)):
+async def put_mcp_catalog(body: McpCatalogBody, project: str = Query("agentdesk"), user=Depends(get_optional_user)):
     """Write mcp_catalog.yaml to workspace/{project}/pipelines/."""
     _require_admin(user)
     _save_mcp_catalog(project, body.mcps)
@@ -1221,7 +1221,7 @@ async def put_mcp_catalog(body: McpCatalogBody, project: str = Query("aicli"), u
 
 
 @router.get("/mcp-active")
-async def get_mcp_active(project: str = Query("aicli")):
+async def get_mcp_active(project: str = Query("agentdesk")):
     """Return list of active MCP server names from project code_dir/.mcp.json."""
     code_dir = _get_project_code_dir(project)
     if not code_dir:
@@ -1238,7 +1238,7 @@ class McpActivateBody(BaseModel):
 
 
 @router.post("/mcp-activate")
-async def mcp_activate(body: McpActivateBody, project: str = Query("aicli")):
+async def mcp_activate(body: McpActivateBody, project: str = Query("agentdesk")):
     """Add or update an MCP server in project code_dir/.mcp.json."""
     code_dir = _get_project_code_dir(project)
     if not code_dir:
@@ -1255,7 +1255,7 @@ async def mcp_activate(body: McpActivateBody, project: str = Query("aicli")):
 
 
 @router.delete("/mcp-activate/{name}")
-async def mcp_deactivate(name: str, project: str = Query("aicli")):
+async def mcp_deactivate(name: str, project: str = Query("agentdesk")):
     """Remove an MCP server from project code_dir/.mcp.json."""
     code_dir = _get_project_code_dir(project)
     if not code_dir:
@@ -1270,7 +1270,7 @@ async def mcp_deactivate(name: str, project: str = Query("aicli")):
 
 
 @router.get("/mcp-usage")
-async def get_mcp_usage(project: str = Query("aicli"), mcp_name: str = Query(...)):
+async def get_mcp_usage(project: str = Query("agentdesk"), mcp_name: str = Query(...)):
     """Return agent roles that reference mcp:{mcp_name} in their tools array."""
     if not db.is_available():
         return {"roles": []}
@@ -1313,7 +1313,7 @@ async def get_system_prompts():
 # ── Reload all roles from YAML files → DB ─────────────────────────────────────
 
 @router.post("/reload")
-async def reload_roles_from_yaml(project: str = Query("aicli"), user=Depends(get_optional_user)):
+async def reload_roles_from_yaml(project: str = Query("agentdesk"), user=Depends(get_optional_user)):
     """Re-read all YAML role files (project overrides first, templates fallback) and
     UPSERT into DB. Call this after editing YAML files directly, or via the UI refresh button.
     Returns the updated role list."""
@@ -1458,7 +1458,7 @@ async def restore_role_default(role_id: int, user=Depends(get_optional_user)):
     result = _row_to_role(row, admin=True)
 
     # Delete any project-specific override so future reloads use the template
-    for project in ("aicli",):  # iterate known projects if needed
+    for project in ("agentdesk",):  # iterate known projects if needed
         proj_yaml = _project_yaml_for(name, project)
         if proj_yaml and proj_yaml.exists():
             try:

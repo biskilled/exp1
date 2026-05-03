@@ -1,7 +1,7 @@
 /**
  * home.js — Home screen: project list and quick-open dashboard.
  *
- * Renders the aicli landing page showing recently opened projects first, followed by
+ * Renders the AgentDesk landing page showing recently opened projects first, followed by
  * all available projects in alphabetical order, with create-project and open-project
  * actions.
  * Rendered via: renderHome() called from main.js navigateTo().
@@ -317,7 +317,7 @@ function _step3Html(wizard) {
 
   return `
     <div class="modal-title">AI IDE &amp; Provider Support</div>
-    <div class="modal-subtitle">Choose how aicli memory is delivered to each tool.</div>
+    <div class="modal-subtitle">Choose how AgentDesk memory is delivered to each tool.</div>
     ${disabledNote}
 
     <div style="font-size:0.7rem;color:var(--muted);margin:0.75rem 0 0.4rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
@@ -332,16 +332,16 @@ function _step3Html(wizard) {
       )}
       ${_check('cursor', 'cursor',
         'Cursor',
-        `Creates <code>${cd}/.cursor/rules/aicli.mdrules</code> (project context, refreshed on /memory)<br>
+        `Creates <code>${cd}/.cursor/rules/agentdesk.mdrules</code> (project context, refreshed on /memory)<br>
          Creates <code>${cd}/.cursor/mcp.json</code> — same 8 MCP tools available in Cursor Composer`
       )}
     </div>
 
     <div style="font-size:0.7rem;color:var(--muted);margin:1rem 0 0.4rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
-      API providers — context injected by aicli before every prompt
+      API providers — context injected by AgentDesk before every prompt
     </div>
     <div style="font-size:0.68rem;color:var(--muted);margin-bottom:0.5rem">
-      When used via aicli CLI or UI, these providers automatically receive <code>context.md</code>
+      When used via AgentDesk CLI or UI, these providers automatically receive <code>context.md</code>
       (project state + recent history) prepended to their system prompt. Set API keys in Admin → API Keys.
     </div>
     <div style="display:flex;flex-direction:column;gap:0.6rem">

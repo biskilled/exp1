@@ -3402,7 +3402,7 @@ async function _rrRun() {
     const result = await api.agents.runPipeline({
       pipeline,
       task,
-      project: _project || 'aicli',
+      project: _project || 'agentdesk',
     });
     _rrRenderResult(result);
   } catch (err) {

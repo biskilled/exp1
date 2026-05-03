@@ -302,12 +302,12 @@ sidebar tabs:
 <!-- auto-updated by /memory — safe to edit, will be merged on next run -->
 ## Recent Work
 
-- AgentDesk branding: Updated UI (index.html, main.js, package.json) to replace 'aicli' with 'AgentDesk'; logo image support added with 22×22px circular styling in titlebar
-- Pipeline execution flow: Fully implemented 3-point execution (chat /pipeline, pipeline section, use case/item runners); all 9 steps verified including planning_out/planning_tokens/planning_cost_usd columns and approval flow
+- AgentDesk branding: Rebranded all UI (index.html, main.js, package.json, titlebar) from 'aicli' to 'AgentDesk'; logo image support added (22×22px circular styling in titlebar); awaiting logo.jpg file upload
+- Pipeline execution full flow: All 9 steps verified — chat /pipeline, pipeline section, use case/item runners fully functional; planning_out/planning_tokens/planning_cost_usd columns and approval flow working end-to-end
 - Verdict zone per-item scoring: items_reviewed table displaying FE####/BU####/etc with 0-5 scores and reasoning; structured_out JSON parsing extracts per-item verdict data from reviewer stage output
+- Per-role execution logs: Each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output); INPUT and OUTPUT clearly separated; global execution log removed
+- Pipeline report markdown generation: Saves to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md with editable folder path and filename; visible in Documents tab tree; collected from in-memory _stage_mem data during run
 - Resizable execution panel: Left-edge drag handle (7px col-resize), min 300px / max 85% viewport, persists to localStorage; syncs with Documents tree visibility
-- Per-role execution logs: Each stage (architect/developer/reviewer) has individual <details> log toggle showing ReAct steps (tool calls, observations, final output); INPUT (received from prior stage) and OUTPUT (file_analysis, code_plan, review_items) clearly separated
-- Pipeline report markdown generation: Saves to workspace/{project}/documents/pipelines/{pipeline_name}/{ddmmyy_HHMM}_{uc_slug}.md using in-memory _stage_mem data; folder and filename editable via PATCH endpoint; visible in Documents tab tree
 
 ## Key Decisions
 

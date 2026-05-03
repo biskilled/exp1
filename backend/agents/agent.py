@@ -46,7 +46,7 @@ def _calc_cost(provider: str, model: str | None, input_tok: int, output_tok: int
 # Role-specific content (job, must-nots, output format) lives in each YAML.
 # This base is prepended by run_pipeline() automatically.
 _REACT_SYSTEM_BASE: str = prompts.content("react_pipeline_base") or """\
-You are an aicli AI agent. You operate in a strict ReAct loop.
+You are an AgentDesk AI agent. You operate in a strict ReAct loop.
 
 ## ReAct Rules
 - ALWAYS write Thought: before any action
@@ -539,7 +539,7 @@ class Agent:
         self,
         task: str,
         handoff: dict | None = None,
-        project: str = "aicli",
+        project: str = "agentdesk",
         max_tokens: int = 4096,
         api_key: str | None = None,
         planning_mode: bool = False,

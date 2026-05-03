@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-05-03 21:59 UTC -->
+<!-- Last updated: 2026-05-03 22:11 UTC -->
 # Code Map: aicli
 _Comprehensive code structure — single source for all LLMs. Refresh: `/memory`_
 
@@ -85,6 +85,9 @@ aicli/
 ├── data/
 │   └── usage/
 │       └── pipeline.jsonl
+├── docs/
+│   ├── agentdesk-data-etl.md
+│   └── agentdesk-overview.md
 ├── tests/
 │   ├── __init__.py
 │   ├── test_context_builder.py

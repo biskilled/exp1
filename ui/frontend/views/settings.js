@@ -717,7 +717,7 @@ async function _renderUpdateSection(content) {
   content.innerHTML = `
     <div style="max-width:580px">
       <div class="settings-section-title">Updates</div>
-      <div class="settings-section-desc">Check for new versions of aicli from your server's update manifest.</div>
+      <div class="settings-section-desc">Check for new versions of AgentDesk from your server's update manifest.</div>
 
       <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
                   padding:1rem 1.25rem;margin-bottom:1.25rem">
@@ -814,7 +814,7 @@ async function _renderUpdateSection(content) {
         if (resultEl) resultEl.innerHTML = `
           <div style="font-size:0.72rem;color:var(--green);padding:0.75rem;background:rgba(34,197,94,.07);
                       border:1px solid rgba(34,197,94,.25);border-radius:var(--radius)">
-            ✓ aicli ${_esc(currentVersion)} is the latest version.
+            ✓ AgentDesk ${_esc(currentVersion)} is the latest version.
           </div>`;
         return;
       }
@@ -1446,7 +1446,7 @@ function renderSecurity(content) {
 
 function _jwtIsAdmin() {
   try {
-    const tok = localStorage.getItem('aicli_token');
+    const tok = localStorage.getItem('ad_token');
     if (!tok) return false;
     const b64 = tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(atob(b64));

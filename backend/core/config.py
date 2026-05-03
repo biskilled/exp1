@@ -16,14 +16,14 @@ _BACKEND_DIR = Path(__file__).parent.parent.resolve()
 
 _ENGINE_ROOT = _BACKEND_DIR.parent
 
-# Bootstrap WORKSPACE_DIR from ~/.aicli/config.json when not already set via env
-_aicli_config_path = Path.home() / ".aicli" / "config.json"
-if _aicli_config_path.exists() and not os.environ.get("WORKSPACE_DIR"):
+# Bootstrap WORKSPACE_DIR from ~/.agentdesk/config.json when not already set via env
+_agentdesk_config_path = Path.home() / ".agentdesk" / "config.json"
+if _agentdesk_config_path.exists() and not os.environ.get("WORKSPACE_DIR"):
     try:
-        _c = json.loads(_aicli_config_path.read_text())
-        _aicli_dir = _c.get("aicli_dir", "")
-        if _aicli_dir:
-            os.environ.setdefault("WORKSPACE_DIR", str(Path(_aicli_dir) / "workspace"))
+        _c = json.loads(_agentdesk_config_path.read_text())
+        _agentdesk_dir = _c.get("agentdesk_dir", "")
+        if _agentdesk_dir:
+            os.environ.setdefault("WORKSPACE_DIR", str(Path(_agentdesk_dir) / "workspace"))
     except Exception:
         pass
 
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # Workspace
     workspace_dir: str = str(_ENGINE_ROOT / "workspace")
-    active_project: str = "aicli"
+    active_project: str = "agentdesk"
     code_dir: str = str(_ENGINE_ROOT)
 
     # Auth
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
 
     # Logging — files written to log_dir (external to backend/)
     # Override via env: LOG_DIR, LOG_LEVEL, LOG_RETENTION_DAYS, LOG_DEBUG_BACKUP_COUNT
-    log_dir: str = str(Path.home() / ".aicli" / "logs")
+    log_dir: str = str(Path.home() / ".agentdesk" / "logs")
     log_level: str = "info"            # console level: debug|info|warning|error
     log_retention_days: int = 30       # days to keep app.log + error.log backups
     log_debug_backup_count: int = 7    # days to keep debug.log backups

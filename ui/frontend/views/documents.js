@@ -11,7 +11,7 @@ import { api } from '../utils/api.js';
 import { toast } from '../utils/toast.js';
 import { renderMd } from '../utils/markdown.js';
 
-const TREE_W_KEY = 'aicli_docs_tree_w';
+const TREE_W_KEY = 'ad_docs_tree_w';
 
 let _project = '';
 let _selectedPath = '';

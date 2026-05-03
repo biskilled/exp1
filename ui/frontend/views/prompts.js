@@ -95,7 +95,7 @@ export async function renderPrompts(container, projectName) {
   _mcpCatalog      = [];
   _msCloseAll();
 
-  const savedW = parseInt(localStorage.getItem('aicli_prompts_tree_w') || '220', 10);
+  const savedW = parseInt(localStorage.getItem('ad_prompts_tree_w') || '220', 10);
 
   container.className  = 'view active';
   container.style.cssText = 'display:flex;flex-direction:column;overflow:hidden;height:100%';
@@ -301,7 +301,7 @@ async function _rolesReloadFromYaml(projectName) {
   const btn = document.getElementById('roles-reload-btn');
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    const data = await api.agentRoles.reloadFromYaml(projectName || 'aicli');
+    const data = await api.agentRoles.reloadFromYaml(projectName || 'agentdesk');
     toast(`Reloaded ${data.reloaded} role(s) from YAML`, 'success');
     await _loadRoles(projectName);
     // Re-open active role if still selected
@@ -580,7 +580,7 @@ async function _loadRoleTools(role) {
   // Fetch tools and MCP catalog in parallel
   let allTools = [], mcps = _mcpCatalog;
   try {
-    const fetches = [api.agentRoles.mcpCatalog(_project || 'aicli').catch(() => ({ mcps: [] }))];
+    const fetches = [api.agentRoles.mcpCatalog(_project || 'agentdesk').catch(() => ({ mcps: [] }))];
     if (!isNative) fetches.unshift(api.agentRoles.availableTools().catch(() => ({ tools: [] })));
     const results = await Promise.all(fetches);
     if (!isNative) { allTools = results[0].tools || []; mcps = results[1]?.mcps || []; }
@@ -1149,7 +1149,7 @@ async function _rolesSave(id) {
     const updated = await api.agentRoles.patch(id, {
       name, provider, model, description, system_prompt: systemPrompt,
       tools, max_iterations: maxIterations, temperature,
-    }, _project || 'aicli');
+    }, _project || 'agentdesk');
     const idx = _roles.findIndex(r => r.id === id);
     if (idx !== -1) _roles[idx] = { ..._roles[idx], ...updated,
       name, provider, model, description, system_prompt: systemPrompt,
@@ -1621,7 +1621,7 @@ function _initPromptsResize() {
     dragging = false;
     document.body.style.cursor = document.body.style.userSelect = '';
     handle.style.background = 'var(--border)';
-    localStorage.setItem('aicli_prompts_tree_w', String(panel.offsetWidth));
+    localStorage.setItem('ad_prompts_tree_w', String(panel.offsetWidth));
   });
 }
 

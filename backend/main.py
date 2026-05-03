@@ -42,7 +42,7 @@ from pwa_router import router as pwa_router
 
 
 def _migrate_server_data():
-    """One-time migration: copy files from old .aicli/server_data/ to ui/backend/data/."""
+    """One-time migration: copy files from old .agentdesk/server_data/ (formerly .aicli/) to ui/backend/data/."""
     engine_root = Path(__file__).parent.parent.resolve()
     old_path = engine_root / ".aicli" / "server_data"
     new_path = Path(settings.data_dir)

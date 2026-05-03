@@ -9,7 +9,7 @@ backend_url: http://localhost:8000
 # Workspace: where project workspaces live
 # ------------------------------------------------------------------
 workspace_dir: /Users/user/Documents/gdrive_cellqlick/2026/aicli/workspace
-active_project: aicli    # current project workspace (workspace/aicli/)
+active_project: agentdesk    # current project workspace (workspace/agentdesk/)
 
 # CLI runtime data is stored at: workspace/{active_project}/_system/aicli/
 # (auto-computed — no manual config needed)
@@ -43,7 +43,7 @@ memory:
 # LOGGING
 # ------------------------------------------------------------------
 logging:
-  log_dir: ~/.aicli/logs        # external to backend/ — use ~ or absolute path
+  log_dir: ~/.agentdesk/logs        # external to backend/ — use ~ or absolute path
   level: info                   # console log level: debug | info | warning | error
   retention_days: 30            # days to keep app.log + error.log rotated backups
   debug_backup_count: 7         # days to keep debug.log backups (verbose, fills fast)
@@ -102,13 +102,13 @@ git:
 # ------------------------------------------------------------------
 mcp:
   servers:
-    - name: aicli_project
+    - name: agentdesk_project
       type: stdio
       command: python3.12
       args: ["/Users/user/Documents/gdrive_cellqlick/2026/aicli/backend/agents/mcp/server.py"]
       env:
         BACKEND_URL: "http://localhost:8000"
-        ACTIVE_PROJECT: "aicli"
+        ACTIVE_PROJECT: "agentdesk"
   # - name: github
   #   type: github
   #   token_env: GITHUB_TOKEN
